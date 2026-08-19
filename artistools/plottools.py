@@ -454,15 +454,17 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
                 direction="in",
             )
 
-        if "ymin" in args or "ymax" in args:
-            axis.set_ylim(args.ymin, args.ymax)
-        if "xmin" in args or "xmax" in args:
-            axis.set_xlim(args.xmin, args.xmax)
-
+        # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
+        # padding on a log axis. A limit of None on both sides is left alone for the same reason
         if getattr(args, "logscalex", False):
             axis.set_xscale("log")
         if getattr(args, "logscaley", False):
             axis.set_yscale("log")
+
+        if getattr(args, "ymin", None) is not None or getattr(args, "ymax", None) is not None:
+            axis.set_ylim(args.ymin, args.ymax)
+        if getattr(args, "xmin", None) is not None or getattr(args, "xmax", None) is not None:
+            axis.set_xlim(args.xmin, args.xmax)
 
     return ax
 

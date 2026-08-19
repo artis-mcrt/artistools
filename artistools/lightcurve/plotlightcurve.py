@@ -372,16 +372,12 @@ def plot_artis_lightcurve(
         lcdataframes = at.lightcurve.readfile(lcpath)
 
         if average_over_phi:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi")
+            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi", derivedcols=derived_lum_unit_cols())
 
         if average_over_theta:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
-
-        if average_over_phi or average_over_theta:
-            # averaging is linear, so it is only valid for the luminosity columns. Rebuild the magnitude from
-            # the averaged luminosity rather than averaging magnitudes, which a single dark bin sends to inf.
-            unitcols = derived_lum_unit_cols()
-            lcdataframes = {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdataframes.items()}
+            lcdataframes = at.average_direction_bins(
+                lcdataframes, overangle="theta", derivedcols=derived_lum_unit_cols()
+            )
 
     ycolumn = get_plot_lum_column(args)
 
@@ -754,19 +750,12 @@ def make_lightcurve_plot(
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
-    if args.logscalex:
-        axis.set_xscale("log")
-
-    if args.logscaley:
-        axis.set_yscale("log")
-
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
     set_time_axis_limits(axis, args)
-    if args.ymin is not None:
-        axis.set_ylim(bottom=args.ymin)
-    if args.ymax is not None:
-        axis.set_ylim(top=args.ymax)
+    # the y limits, the log scales and the tick style are shared with the band and colour evolution figures.
+    # This parser has no -xmin/-xmax (the time range is -timemin/-timemax), so it leaves the x limits alone
+    at.plottools.set_axis_properties(axis, args)
     if lumunit == "mag":
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost

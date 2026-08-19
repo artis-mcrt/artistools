@@ -8,6 +8,7 @@ import argparse
 import gzip
 import io
 import lzma
+import math
 import os
 import subprocess
 import sys
@@ -673,6 +674,34 @@ def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatc
     for start_bin in (0, 4, 8):
         expected = sum(start_bin + n for n in range(nphibins)) / nphibins
         assert averaged_phi[start_bin].collect()["value"].to_list() == pytest.approx([expected, expected])
+
+
+def test_average_direction_bins_rebuilds_derived_cols(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A column derived non-linearly is rebuilt from the averaged values, not averaged itself."""
+    nphibins = 4
+    ncosthetabins = 3
+
+    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: nphibins)
+    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: ncosthetabins)
+
+    # one bin of every group is dark, so the mean of the logs is -inf while the log of the mean is finite
+    logcol = (pl.col("value").log10()).alias("logvalue")
+    dirbindataframes = {
+        dirbin: pl.DataFrame({"timestep": [0], "value": [float(dirbin % nphibins)]}).with_columns(logcol)
+        for dirbin in range(nphibins * ncosthetabins)
+    }
+
+    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="phi", derivedcols=[logcol])
+
+    meanvalue = sum(range(nphibins)) / nphibins
+    for start_bin in (0, 4, 8):
+        row = averaged[start_bin].collect()
+        assert row["value"].item() == pytest.approx(meanvalue)
+        assert row["logvalue"].item() == pytest.approx(math.log10(meanvalue))
+
+    # without the expressions the magnitude-like column is averaged, which the dark bin sends to -inf
+    averaged_nodeclare = dirbins.average_direction_bins(dirbindataframes, overangle="phi")
+    assert averaged_nodeclare[0].collect()["logvalue"].item() == -math.inf
 
 
 def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyPatch) -> None:
