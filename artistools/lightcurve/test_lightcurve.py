@@ -778,12 +778,12 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
 
 def test_get_plot_lum_unit_and_column() -> None:
     """The unit choice and the light curve column to plot come from one place."""
-    for magnitude, lsun, expected_unit, expected_col in [
+    for magnitude, lsun, expected_unit, expected_col in (
         (True, False, "mag", "mag"),
         (True, True, "mag", "mag"),  # magnitude wins over Lsun
         (False, True, "Lsun", "luminosity_Lsun"),
         (False, False, "erg/s", "luminosity_erg/s"),
-    ]:
+    ):
         args = argparse.Namespace(magnitude=magnitude, Lsun=lsun)
         assert at.lightcurve.plotlightcurve.get_plot_lum_unit(args) == expected_unit
         assert at.lightcurve.plotlightcurve.get_plot_lum_column(args) == expected_col
