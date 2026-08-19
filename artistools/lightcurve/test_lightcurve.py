@@ -247,25 +247,44 @@ def test_colour_evolution_plot_color_arg(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any, capsys: pytest.CaptureFixture[str]) -> None:
+def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any) -> None:
     """Direction bins get one colour each from the tab20 colour map, whatever -color says.
 
     The -color list has one entry per model, so it cannot colour the direction bins. This used to warn about
-    a -color argument that the user never gave, and then leave the colour unset.
+    a -color argument that the user never gave, and then leave the colour unset. More direction bins than the
+    colour map has colours must wrap around rather than run off the end of the list.
     """
+    ndirbins = 21  # one more than the number of colours in the colour map
     at.lightcurve.plot(
         argsraw=[],
-        modelpath=modelpath,
+        modelpath=modelpath_classic_3d,
         colour_evolution=["B-V"],
-        plotviewingangle=[0],
+        plotviewingangle=list(range(ndirbins)),
+        timemin=5,
+        timemax=8,
         color=["magenta"],
         outputfile=outputpath,
     )
 
-    assert "WARNING: -color" not in capsys.readouterr().out
     colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
-    assert colors, "no lines were plotted"
-    assert all(np.allclose(color, plt.get_cmap("tab20")(0.0)) for color in colors), colors
+    assert len(colors) == ndirbins
+    assert np.allclose(colors[0], plt.get_cmap("tab20")(0.0))
+    assert np.allclose(colors[-1], colors[0])
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_single_dirbin_colour(mockplot: t.Any) -> None:
+    """Use the -color value when a model contributes a single line, even if that line is one direction bin."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        colour_evolution=["B-V"],
+        plotviewingangle=[5],
+        color=["magenta"],
+        outputfile=outputpath,
+    )
+
+    assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
 
 
 def test_colour_evolution_subplots() -> None:

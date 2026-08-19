@@ -1091,8 +1091,9 @@ def make_band_lightcurves_plot(
                                 plotnumber,
                             )
 
-                if len(dirbins) == 1:
-                    plotkwargs["color"] = args.color[modelnumber]
+                # a model with several direction bins has only one -color entry to share between them, so let
+                # matplotlib pick a colour per line. plotkwargs is reused, so clear any previous model's colour
+                plotkwargs["color"] = args.color[modelnumber] if len(dirbins) == 1 else None
 
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
@@ -1101,8 +1102,7 @@ def make_band_lightcurves_plot(
                         dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                     )
 
-                if args.linestyle:
-                    plotkwargs["linestyle"] = args.linestyle[modelnumber]
+                plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
 
@@ -1162,14 +1162,14 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
 
-                if args.plotviewingangle:
-                    # one colour per direction bin, so the -color argument (one colour per model) is not used here
-                    plotkwargs["color"] = color_list[angle_counter]
+                if len(dirbins) > 1:
+                    # -color has one colour per model, which cannot distinguish a model's direction bins, so
+                    # take a colour per line from the colour map instead, wrapping around when it runs out
+                    plotkwargs["color"] = color_list[angle_counter % len(color_list)]
                     angle_counter += 1
                 else:
                     plotkwargs["color"] = args.color[modelnumber]
-                if args.linestyle:
-                    plotkwargs["linestyle"] = args.linestyle[modelnumber]
+                plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 if args.reflightcurves and modelnumber == 0:
                     if len(dirbins) > 1 and index > 0:
