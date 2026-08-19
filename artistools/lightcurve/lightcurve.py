@@ -19,11 +19,23 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Mbol_sun
 from artistools.misc import path_is_artis_model
 from artistools.misc.fileio import find_compressed
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
+
+
+def derived_lum_unit_cols() -> list[pl.Expr]:
+    """Return the expressions adding the bolometric magnitude and erg/s columns to a luminosity in Lsun.
+
+    Every loader must produce the same set of unit columns, since the plotting code selects one of them by name.
+    """
+    return [
+        (Mbol_sun - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
+    ]
 
 
 def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
@@ -35,10 +47,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
-    ).with_columns(
-        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
-    )
+    ).with_columns(derived_lum_unit_cols())
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata = at.split_multitable_dataframe(lzdf)
@@ -178,13 +187,7 @@ def get_from_packets(
             )
 
         lcdata[dirbin] = (
-            lcdata[dirbin]
-            .rename({"tmid_days": "time_days"})
-            .drop("twidth_days")
-            .with_columns(
-                (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-                (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
-            )
+            lcdata[dirbin].rename({"tmid_days": "time_days"}).drop("twidth_days").with_columns(derived_lum_unit_cols())
         )
 
     return lcdata
@@ -352,7 +355,6 @@ def bolometric_magnitude(
                 )[angle].collect()
             integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
-            Mbol_sun = 4.74
             with np.errstate(divide="ignore"):
                 magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / Lsun_to_erg_per_s))
             magnitudes.append(magnitude)

@@ -1,16 +1,22 @@
+import argparse
 import typing as t
+import warnings
 from operator import itemgetter
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Mbol_sun
 
 modelpath = at.get_path("testdata") / "testmodel"
+modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
 
@@ -512,3 +518,272 @@ def test_find_bol_reflightcurve_file_reads_a_compressed_file(tmp_path: Path) -> 
     assert at.lightcurve.find_bol_reflightcurve_file(tmp_path / "myref.txt") == tmp_path / "myref.txt.xz"
     assert at.lightcurve.path_is_reference_lightcurve(tmp_path / "myref.txt")
     assert at.lightcurve.find_bol_reflightcurve_file(tmp_path / "notafile.txt") is None
+
+
+REFLIGHTCURVE = "AT2017gfo_smarttetal2017.txt"
+
+
+def get_reflightcurve_errorbar_call(mockerrorbar: t.Any) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the times and luminosities that the reference light curve was drawn with."""
+    assert mockerrorbar.call_count == 1
+    callargs = mockerrorbar.call_args_list[0]
+
+    return np.array(callargs[0][1]), np.array(callargs[0][2])
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_erg_per_s(mockerrorbar: t.Any) -> None:
+    """A bolometric reference light curve is plotted in erg/s by default."""
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], outputfile=outputpath / "lightcurve_reflightcurve_ergpers.pdf"
+    )
+
+    arr_time_d, arr_lum = get_reflightcurve_errorbar_call(mockerrorbar)
+
+    assert np.isclose(arr_time_d[0], 0.638, rtol=1e-4)
+    assert np.isclose(arr_lum[0], 1.1246049739669314e42, rtol=1e-4)
+
+    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
+    assert np.isclose(yerr[0][0], 2.7737755982632654e41, rtol=1e-4)
+    assert np.isclose(yerr[1][0], 3.681894356120629e41, rtol=1e-4)
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_lsun(mockerrorbar: t.Any) -> None:
+    """A bolometric reference light curve must be converted to Lsun when the axis is in Lsun.
+
+    Before the conversion was applied, the reference data stayed in erg/s and was drawn a factor of
+    Lsun_to_erg_per_s above the ARTIS light curves on the same axis.
+    """
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], Lsun=True, outputfile=outputpath / "lc_reflc_Lsun.pdf"
+    )
+
+    _arr_time_d, arr_lum = get_reflightcurve_errorbar_call(mockerrorbar)
+
+    assert np.isclose(arr_lum[0], 1.1246049739669314e42 / Lsun_to_erg_per_s, rtol=1e-4)
+    assert np.isclose(arr_lum[0], 2.9393752586e8, rtol=1e-4)
+
+    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
+    assert np.isclose(yerr[0][0], 2.7737755982632654e41 / Lsun_to_erg_per_s, rtol=1e-4)
+    assert np.isclose(yerr[1][0], 3.681894356120629e41 / Lsun_to_erg_per_s, rtol=1e-4)
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_magnitude(mockerrorbar: t.Any) -> None:
+    """A bolometric reference light curve must be converted to magnitudes when the axis is in magnitudes."""
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], magnitude=True, outputfile=outputpath / "lc_reflc_mag.pdf"
+    )
+
+    _arr_time_d, arr_mag = get_reflightcurve_errorbar_call(mockerrorbar)
+
+    dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
+    lum_lsun = dflightcurve["luminosity_erg/s"].to_numpy() / Lsun_to_erg_per_s
+    assert np.allclose(arr_mag, Mbol_sun - 2.5 * np.log10(lum_lsun), rtol=1e-10)
+    assert np.isclose(arr_mag[0], -16.4306375858, rtol=1e-9)
+
+    # the file gives a symmetric error in log10(luminosity), so both magnitude error bars are 2.5 times it
+    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
+    expected_magerr = 2.5 * dflightcurve["log_lbol_err"].to_numpy()
+    assert np.allclose(yerr[0], expected_magerr, rtol=1e-3)
+    assert np.allclose(yerr[1], expected_magerr, rtol=1e-3)
+
+
+def test_convert_lum_lsun_to_plotunits() -> None:
+    """Deposition rates and reference data must use the same unit conversion as the ARTIS light curves."""
+    lum_lsun = np.array([1.0, 1e8])
+
+    args = argparse.Namespace(magnitude=False, Lsun=True)
+    assert np.allclose(at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), lum_lsun)
+
+    args = argparse.Namespace(magnitude=False, Lsun=False)
+    assert np.allclose(
+        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), lum_lsun * Lsun_to_erg_per_s
+    )
+
+    args = argparse.Namespace(magnitude=True, Lsun=False)
+    assert np.allclose(
+        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, args), [Mbol_sun, Mbol_sun - 20.0]
+    )
+
+
+def test_convert_lum_ergs_to_plotunits() -> None:
+    """The erg/s axis must pass the reference data through untouched, with no round trip through Lsun."""
+    lum_erg_per_s = np.array([1.1246049739669314e42, 3.0e41])
+
+    args = argparse.Namespace(magnitude=False, Lsun=False)
+    assert (at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, args) == lum_erg_per_s).all()
+
+    args = argparse.Namespace(magnitude=False, Lsun=True)
+    assert np.allclose(
+        at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, args),
+        lum_erg_per_s / Lsun_to_erg_per_s,
+    )
+
+
+def test_convert_lum_to_plotunits_nonpositive() -> None:
+    """A zero or negative luminosity has no magnitude, and must not raise a numpy warning."""
+    args = argparse.Namespace(magnitude=True, Lsun=False)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(np.array([0.0, -1.0, 1.0]), args)
+
+    assert np.isinf(result[0])
+    assert np.isnan(result[1])
+    assert np.isclose(result[2], Mbol_sun)
+
+
+def test_get_reflightcurve_yerr_magnitude() -> None:
+    """Magnitude error bars must reach the magnitudes of the brightest and faintest luminosity bounds.
+
+    matplotlib draws the bar from y - yerr[0] to y + yerr[1], and a brighter (larger) luminosity is a smaller
+    magnitude, so the two rows are asymmetric and must not be swapped.
+    """
+    args = argparse.Namespace(magnitude=True, Lsun=False)
+    lum = np.array([1e42, 1e42, 1e42])
+    errplus = np.array([1e42, 0.0, 1e42])
+    errminus = np.array([0.9e42, 0.0, 2e42])  # the last error bar reaches past zero luminosity
+
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
+    mag = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum, args)
+
+    assert np.isclose(yerr[0][0], 2.5 * np.log10(2.0))  # brighter by a factor of two
+    assert np.isclose(yerr[1][0], 2.5)  # fainter by a factor of ten
+    assert yerr[1][0] > yerr[0][0], "the fainter (upper) row must not be swapped with the brighter (lower) row"
+
+    assert np.isclose(mag[0] - yerr[0][0], Mbol_sun - 2.5 * np.log10(2e42 / Lsun_to_erg_per_s))
+    assert np.isclose(mag[0] + yerr[1][0], Mbol_sun - 2.5 * np.log10(0.1e42 / Lsun_to_erg_per_s))
+
+    assert yerr[0][1] == 0.0  # a zero error stays zero on both sides
+    assert yerr[1][1] == 0.0
+
+    # an error bar reaching zero luminosity has no faintest magnitude, but the brighter side is still defined
+    assert np.isnan(yerr[1][2])
+    assert not np.isnan(yerr[0][2])
+
+
+def test_get_reflightcurve_yerr_scaling() -> None:
+    """Without magnitudes the error bar sizes are scaled the same way as the luminosities."""
+    lum = np.array([1e42, 2e42])
+    errminus = np.array([1e41, 3e41])
+    errplus = np.array([2e41, 4e41])
+
+    args = argparse.Namespace(magnitude=False, Lsun=False)
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
+    assert np.allclose(yerr[0], errminus)
+    assert np.allclose(yerr[1], errplus)
+
+    args = argparse.Namespace(magnitude=False, Lsun=True)
+    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, args)
+    assert np.allclose(yerr[0], errminus / Lsun_to_erg_per_s)
+    assert np.allclose(yerr[1], errplus / Lsun_to_erg_per_s)
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: t.Any) -> None:
+    """A reference curve with asymmetric luminosity errors gets asymmetric magnitude error bars.
+
+    AT2017gfo_smarttetal2017.txt has errors that are symmetric in log10(luminosity), so its two magnitude
+    error bar rows are equal and cannot catch a swapped or symmetric-only implementation.
+    """
+    reflightcurve = "AT2017gfo_waxmanetal2018.txt"
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[reflightcurve, modelpath],
+        magnitude=True,
+        outputfile=outputpath / "lc_reflc_mag_asym.pdf",
+    )
+
+    dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(reflightcurve)
+    expected = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(
+        dflightcurve["luminosity_erg/s"].to_numpy(),
+        dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
+        dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
+        argparse.Namespace(magnitude=True, Lsun=False),
+    )
+
+    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
+    assert np.allclose(yerr[0], expected[0])
+    assert np.allclose(yerr[1], expected[1])
+    assert not np.allclose(yerr[0], yerr[1], rtol=1e-2), "this file must exercise the asymmetric branch"
+
+
+@pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "magnitude"])
+def test_plotdeposition(lumunit: str) -> None:
+    """Deposition curves are drawn in the y axis units, in every unit mode.
+
+    plot_deposition_thermalisation() appends a suffix to the caller's label and picks its own linestyle and
+    colour, so those keys must not also arrive in the **plotkwargs splat, which used to raise
+    "got multiple values for keyword argument".
+    """
+    plotkwargs: dict[str, t.Any] = {} if lumunit == "erg/s" else {lumunit: True}
+
+    with warnings.catch_warnings():
+        # a zero deposition rate has no magnitude, but it must not warn
+        warnings.simplefilter("error", RuntimeWarning)
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotdeposition=True,
+            outputfile=outputpath / f"lc_deposition_{lumunit.replace('/', '')}.pdf",
+            **plotkwargs,
+        )
+
+
+def test_plotthermalisation() -> None:
+    """The thermalisation curves share plot_deposition_thermalisation's kwargs handling."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotthermalisation=True,
+        outputfile=outputpath / "lc_thermalisation.pdf",
+    )
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
+    """-reflightcurves must draw the same curve as a positional reference file, error bars included.
+
+    This branch used to scatter the points with no uncertainties while the positional branch drew error bars
+    from the same file, and it kept its own copy of the unit conversion.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        reflightcurves=[REFLIGHTCURVE],
+        magnitude=True,
+        outputfile=outputpath / "lc_reflightcurves_arg.pdf",
+    )
+
+    dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
+    lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
+    args = argparse.Namespace(magnitude=True, Lsun=False)
+
+    assert mockerrorbar.call_count == 1
+    arr_mag = np.array(mockerrorbar.call_args_list[0][0][2])
+    assert np.allclose(arr_mag, Mbol_sun - 2.5 * np.log10(lum_erg_per_s / Lsun_to_erg_per_s))
+
+    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
+    expected = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(
+        lum_erg_per_s,
+        dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
+        dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
+        args,
+    )
+    assert np.allclose(yerr[0], expected[0])
+    assert np.allclose(yerr[1], expected[1])
+
+
+def test_get_plot_lum_unit_and_column() -> None:
+    """The unit choice and the light curve column to plot come from one place."""
+    for magnitude, lsun, expected_unit, expected_col in [
+        (True, False, "mag", "mag"),
+        (True, True, "mag", "mag"),  # magnitude wins over Lsun
+        (False, True, "Lsun", "luminosity_Lsun"),
+        (False, False, "erg/s", "luminosity_erg/s"),
+    ]:
+        args = argparse.Namespace(magnitude=magnitude, Lsun=lsun)
+        assert at.lightcurve.plotlightcurve.get_plot_lum_unit(args) == expected_unit
+        assert at.lightcurve.plotlightcurve.get_plot_lum_column(args) == expected_col
