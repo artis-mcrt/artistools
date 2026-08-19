@@ -434,3 +434,46 @@ def test_lightcurve_plot_reference_colors(mockplot: t.Any, mockerrorbar: t.Any) 
 
     modelcolors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list if "color" in callargs.kwargs]
     assert modelcolors == ["C0"]
+
+
+@mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_lightcurve_plot_reflightcurves_continue_the_greys(mockerrorbar: t.Any, mockscatter: t.Any) -> None:
+    """A -reflightcurves file follows the reference files of the model path list, thus no two series are black."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath, "AT2017gfo_smarttetal2017.txt"],
+        reflightcurves=["AT2017gfo_waxmanetal2018.txt"],
+        outputfile=outputpath,
+    )
+
+    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0"]
+    assert [callargs.kwargs["color"] for callargs in mockscatter.call_args_list] == ["0.4"]
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_plot_colors_survive_a_skipped_model(mockplot: t.Any, mockerrorbar: t.Any) -> None:
+    """A model path that plots nothing must not shift the colour of every later series."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=["nonexistentmodelfolder", "AT2017gfo_smarttetal2017.txt", modelpath],
+        outputfile=outputpath,
+    )
+
+    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0"]
+
+    modelcolors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list if "color" in callargs.kwargs]
+    assert modelcolors == ["C1"]
+
+
+def test_find_bol_reflightcurve_file_reads_a_compressed_file(tmp_path: Path) -> None:
+    """A reference light curve that is compressed must be found under the name of the plain file."""
+    import lzma
+
+    with lzma.open(tmp_path / "myref.txt.xz", "wt", encoding="utf-8") as compressedfile:
+        compressedfile.write("#time_days lum\n1.0 2.0\n")
+
+    assert at.lightcurve.find_bol_reflightcurve_file(tmp_path / "myref.txt") == tmp_path / "myref.txt.xz"
+    assert at.lightcurve.path_is_reference_lightcurve(tmp_path / "myref.txt")
+    assert at.lightcurve.find_bol_reflightcurve_file(tmp_path / "notafile.txt") is None

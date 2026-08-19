@@ -282,30 +282,51 @@ glasbey_category20_nogreys = [
     color for color in glasbey_category20 if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]
 ]
 
-# the plot colours of the reference data series, in the order that they are used
+# the plot colours of the reference data series, in the order that the code uses them
 refseries_colors = ("0.0", "0.4", "0.6", "0.7")
 
 
-def get_series_colors(isreference: Sequence[bool]) -> list[str]:
-    """Return the default plot colour of each data series.
+def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | None] = ()) -> list[str]:
+    """Return the plot colour of each data series.
 
-    The first reference data series get black and then lighter greys. The other series, and the reference
-    series after the greys, get the colours of the matplotlib colour cycle in order.
+    A colour in usercolors has priority. The first reference data series get black and then lighter greys.
+    The other series, and the reference series after the greys, get the colours of the matplotlib cycle.
+    The code skips a colour of the cycle that the user asked for, thus two series do not get one colour.
     """
-    cyclecolorcount = len(plt.rcParams["axes.prop_cycle"])
+    askedfor = {color for color in usercolors if color}
     colors: list[str] = []
     refindex = 0
     cycleindex = 0
-    for isref in isreference:
-        if isref and refindex < len(refseries_colors):
+    for seriesindex, isref in enumerate(isreference):
+        usercolor = usercolors[seriesindex] if seriesindex < len(usercolors) else None
+        if usercolor:
+            colors.append(usercolor)
+        elif isref and refindex < len(refseries_colors):
             colors.append(refseries_colors[refindex])
-        else:
-            colors.append(f"C{cycleindex % cyclecolorcount}")
-            cycleindex += 1
-        if isref:
             refindex += 1
+        else:
+            while f"C{cycleindex}" in askedfor:
+                cycleindex += 1
+            colors.append(f"C{cycleindex}")
+            cycleindex += 1
 
     return colors
+
+
+def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
+    """Remove the colours of seriescolors from the colour cycle of each axis.
+
+    A series that gets its colour from the cycle, e.g. an extra direction bin, then does not
+    repeat the colour of another series.
+    """
+    colors = [
+        color
+        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+        if f"C{i}" not in seriescolors and color not in seriescolors
+    ]
+    if colors:
+        for axis in axes:
+            axis.set_prop_cycle(color=colors)
 
 
 def set_mpl_style() -> None:

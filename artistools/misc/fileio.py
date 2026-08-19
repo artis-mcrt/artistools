@@ -303,8 +303,13 @@ def stripallsuffixes(f: Path) -> Path:
 
 
 def path_is_artis_model(filepath: Path | str) -> bool:
-    """Return whether the path is an ARTIS model and not a reference data file."""
-    return Path(filepath).name.endswith((".out", ".out.zst")) or Path(filepath).is_dir()
+    """Return whether the path is an ARTIS model and not a reference data file.
+
+    An ARTIS model is a folder, or an output file of ARTIS that is possibly compressed.
+    """
+    filepath = Path(filepath)
+
+    return filepath.is_dir() or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
 
 
 def readnoncommentline(file: io.TextIOBase) -> str:

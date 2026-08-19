@@ -59,6 +59,7 @@ from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
+from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -630,13 +631,8 @@ def make_spectrum_plot(
     refspecindex = 0
     seriesindex = 0
 
-    # take any specified colours our of the cycle
-    colors = [
-        color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
-    ]
+    set_prop_cycle_unusedcolors(axes, args.color)
     for axis in axes:
-        if colors:
-            axis.set_prop_cycle(color=colors)
         axis.margins(0.0, 0.0)
 
     for seriesindex, specpath in enumerate(speclist):
@@ -1505,9 +1501,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
 
-    if not args.color:
-        # the reference spectra get black and greys, and the ARTIS models get the colour cycle
-        args.color = get_series_colors([not path_is_artis_model(filepath) for filepath in args.specpath])
+    # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
+    args.color = get_series_colors([not path_is_artis_model(filepath) for filepath in args.specpath], args.color)
 
     if args.distmpc is None:
         for filepath in args.specpath:

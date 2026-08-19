@@ -1096,3 +1096,15 @@ def test_get_series_colors_greys_then_cycle() -> None:
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])
 
     assert colors == ["C0", "0.0", "0.4", "C1", "0.6", "0.7", "C2", "C3"]
+
+
+def test_get_series_colors_keeps_the_colours_of_the_user() -> None:
+    """A colour of the user has priority, and no other series gets that colour of the cycle."""
+    assert at.plottools.get_series_colors([False, False, True], ["C1"]) == ["C1", "C0", "0.0"]
+    assert at.plottools.get_series_colors([False, True], [None, "red"]) == ["C0", "red"]
+
+
+def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
+    """A compressed ARTIS output file is a model, and not a reference data file."""
+    assert all(at.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
+    assert not at.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
