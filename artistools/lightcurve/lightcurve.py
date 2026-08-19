@@ -19,6 +19,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Mbol_sun
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -34,7 +35,7 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
     ).with_columns(
-        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (Mbol_sun - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
         (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
     )
     if "_res" in Path(filepath).stem:
@@ -180,7 +181,7 @@ def get_from_packets(
             .rename({"tmid_days": "time_days"})
             .drop("twidth_days")
             .with_columns(
-                (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+                (Mbol_sun - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
                 (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
             )
         )

@@ -19,5 +19,6 @@ km_to_cm = 1e5  # Kilometre [cm], also converts a velocity in km/s to cm/s
 megaparsec_to_cm = 3.085677581491367e24  # Megaparsec [cm]
 Msun_to_g = 1.989e33  # Solar mass [g]
 Lsun_to_erg_per_s = 3.826e33  # Solar luminosity [erg/s]
+Mbol_sun = 4.74  # Absolute bolometric magnitude of the Sun
 
 day_to_s = 86400.0  # Day [s]

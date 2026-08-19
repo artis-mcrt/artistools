@@ -25,6 +25,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Mbol_sun
 from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import add_axis_limit_args
@@ -37,6 +38,37 @@ from artistools.misc import add_series_style_args
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
+
+
+def convert_lum_lsun_to_plotunits(
+    lum_lsun: npt.NDArray[np.floating[t.Any]], args: argparse.Namespace
+) -> npt.NDArray[np.floating[t.Any]]:
+    """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
+    if args.magnitude:
+        return Mbol_sun - 2.5 * np.log10(lum_lsun)
+
+    return lum_lsun if args.Lsun else lum_lsun * Lsun_to_erg_per_s
+
+
+def get_reflightcurve_yerr(
+    lum_lsun: npt.NDArray[np.floating[t.Any]],
+    errminus_lsun: npt.NDArray[np.floating[t.Any]],
+    errplus_lsun: npt.NDArray[np.floating[t.Any]],
+    args: argparse.Namespace,
+) -> list[npt.NDArray[np.floating[t.Any]]]:
+    """Return the [lower, upper] error bar sizes in the y axis units for a luminosity in Lsun and its errors."""
+    if args.magnitude:
+        # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
+        mag = convert_lum_lsun_to_plotunits(lum_lsun, args)
+        # an error bar reaching zero luminosity has no faintest magnitude, so leave it undefined
+        lum_faintest_lsun = np.where(lum_lsun > errminus_lsun, lum_lsun - errminus_lsun, np.nan)
+        return [
+            mag - convert_lum_lsun_to_plotunits(lum_lsun + errplus_lsun, args),
+            convert_lum_lsun_to_plotunits(lum_faintest_lsun, args) - mag,
+        ]
+
+    # the conversion is a simple scaling, so it applies to the error sizes directly
+    return [convert_lum_lsun_to_plotunits(errminus_lsun, args), convert_lum_lsun_to_plotunits(errplus_lsun, args)]
 
 
 def plot_deposition_thermalisation(
@@ -61,7 +93,7 @@ def plot_deposition_thermalisation(
 
     axis.plot(
         depdata["tmid_days"],
-        depdata["gammadep_Lsun"] * Lsun_to_erg_per_s,
+        convert_lum_lsun_to_plotunits(depdata["gammadep_Lsun"].to_numpy(), args),
         **plotkwargs,
         label=plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
         linestyle="dashed",
@@ -73,7 +105,7 @@ def plot_deposition_thermalisation(
     if "eps_elec_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
-            depdata["eps_elec_Lsun"] * Lsun_to_erg_per_s,
+            convert_lum_lsun_to_plotunits(depdata["eps_elec_Lsun"].to_numpy(), args),
             **plotkwargs,
             label=plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
             linestyle="dotted",
@@ -83,7 +115,7 @@ def plot_deposition_thermalisation(
     if "elecdep_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
-            depdata["elecdep_Lsun"] * Lsun_to_erg_per_s,
+            convert_lum_lsun_to_plotunits(depdata["elecdep_Lsun"].to_numpy(), args),
             **plotkwargs,
             label=plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
             linestyle="dashed",
@@ -98,7 +130,7 @@ def plot_deposition_thermalisation(
         if "eps_alpha_ana_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
-                depdata["eps_alpha_ana_Lsun"] * Lsun_to_erg_per_s,
+                convert_lum_lsun_to_plotunits(depdata["eps_alpha_ana_Lsun"].to_numpy(), args),
                 **plotkwargs,
                 label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
                 linestyle="solid",
@@ -108,7 +140,7 @@ def plot_deposition_thermalisation(
         if "eps_alpha_Lsun" in depdata:
             axis.plot(
                 depdata["tmid_days"],
-                depdata["eps_alpha_Lsun"] * Lsun_to_erg_per_s,
+                convert_lum_lsun_to_plotunits(depdata["eps_alpha_Lsun"].to_numpy(), args),
                 **plotkwargs,
                 label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
                 linestyle="dashed",
@@ -117,7 +149,7 @@ def plot_deposition_thermalisation(
 
         axis.plot(
             depdata["tmid_days"],
-            depdata["alphadep_Lsun"] * Lsun_to_erg_per_s,
+            convert_lum_lsun_to_plotunits(depdata["alphadep_Lsun"].to_numpy(), args),
             **plotkwargs,
             label=plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
             linestyle="dotted",
@@ -570,14 +602,20 @@ def make_lightcurve_plot(
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
             color = args.color[lcindex] or ["0.0", "0.5", "0.7"][reflightcurveindex]
+            lum_lsun = dflightcurve["luminosity_erg/s"].to_numpy() / Lsun_to_erg_per_s
             if (
                 "luminosity_errminus_erg/s" in dflightcurve.columns
                 and "luminosity_errplus_erg/s" in dflightcurve.columns
             ):
                 axis.errorbar(
                     dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
-                    yerr=[dflightcurve["luminosity_errminus_erg/s"], dflightcurve["luminosity_errplus_erg/s"]],
+                    convert_lum_lsun_to_plotunits(lum_lsun, args),
+                    yerr=get_reflightcurve_yerr(
+                        lum_lsun,
+                        dflightcurve["luminosity_errminus_erg/s"].to_numpy() / Lsun_to_erg_per_s,
+                        dflightcurve["luminosity_errplus_erg/s"].to_numpy() / Lsun_to_erg_per_s,
+                        args,
+                    ),
                     fmt="o",
                     capsize=3,
                     label=lightcurvelabel,
@@ -587,7 +625,7 @@ def make_lightcurve_plot(
             else:
                 axis.scatter(
                     dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
+                    convert_lum_lsun_to_plotunits(lum_lsun, args),
                     label=lightcurvelabel,
                     color=color,
                     zorder=0,
@@ -662,13 +700,12 @@ def make_lightcurve_plot(
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
-            if args.Lsun:
-                print("Check units - trying to plot ref light curve in erg/s")
-                sys.exit(1)
             bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             axis.scatter(
                 bollightcurve_data["time_days"],
-                bollightcurve_data["luminosity_erg/s"],
+                convert_lum_lsun_to_plotunits(
+                    bollightcurve_data["luminosity_erg/s"].to_numpy() / Lsun_to_erg_per_s, args
+                ),
                 label=metadata.get("label", bolreflightcurve),
                 color="k",
             )
