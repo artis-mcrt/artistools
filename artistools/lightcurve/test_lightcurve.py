@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
@@ -194,6 +195,38 @@ def test_colour_evolution_plot_ylabel(mockylabel: t.Any) -> None:
 
     ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
     assert r"$\Delta$m" in ylabels, ylabels
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_color_arg(mockplot: t.Any) -> None:
+    """A -color value must reach the plotted line."""
+    at.lightcurve.plot(
+        argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], color=["magenta"], outputfile=outputpath
+    )
+
+    assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any, capsys: pytest.CaptureFixture[str]) -> None:
+    """Direction bins get one colour each from the tab20 colour map, whatever -color says.
+
+    The -color list has one entry per model, so it cannot colour the direction bins. This used to warn about
+    a -color argument that the user never gave, and then leave the colour unset.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        colour_evolution=["B-V"],
+        plotviewingangle=[0],
+        color=["magenta"],
+        outputfile=outputpath,
+    )
+
+    assert "WARNING: -color" not in capsys.readouterr().out
+    colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
+    assert colors, "no lines were plotted"
+    assert all(np.allclose(color, plt.get_cmap("tab20")(0.0)) for color in colors), colors
 
 
 def test_colour_evolution_subplots() -> None:
