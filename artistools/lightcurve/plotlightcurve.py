@@ -178,7 +178,8 @@ def plot_deposition_thermalisation(
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
-        model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
+        # one collect for both sums: get_modeldata returns a plan, so a second one re-derives every column
+        model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     depdata = at.get_deposition(modelpath).collect()
@@ -233,8 +234,6 @@ def plot_deposition_thermalisation(
                 linestyle="solid",
                 color=ratiocolor,
             )
-
-        ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
         print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
@@ -301,7 +300,6 @@ def plot_artis_lightcurve(
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
-    axistherm: mplax.Axes | None = None,
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -309,14 +307,9 @@ def plot_artis_lightcurve(
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
-    showdeposition: bool = True,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
-    """Plot one model's bolometric light curve, and return the plotted data per direction bin.
-
-    The deposition rates belong to the model rather than to one escape type or pellet nuclide, so a caller
-    that plots several series from one model asks for them on one series only, with showdeposition.
-    """
+    """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
     if args is None:
         args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
@@ -385,13 +378,14 @@ def plot_artis_lightcurve(
 
         lcdataframes = at.lightcurve.readfile(lcpath)
 
+        # averaging is linear, so the magnitude has to be rebuilt from the averaged luminosity
+        unitcols = derived_lum_unit_cols()
+
         if average_over_phi:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi", derivedcols=derived_lum_unit_cols())
+            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi", derivedcols=unitcols)
 
         if average_over_theta:
-            lcdataframes = at.average_direction_bins(
-                lcdataframes, overangle="theta", derivedcols=derived_lum_unit_cols()
-            )
+            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta", derivedcols=unitcols)
 
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
@@ -566,12 +560,6 @@ def plot_artis_lightcurve(
                 **plotkwargs,
             )
 
-    if showdeposition and shows_deposition(args):
-        # plotkwargs is whatever the direction bin loop above left behind, so build the deposition style from
-        # the command line instead of inheriting one bin's colour, transparency, z order and line width
-        depositionkwargs: dict[str, t.Any] = {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
-        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname=linelabel, args=args, **depositionkwargs)
-
     return lcdataframes
 
 
@@ -652,6 +640,7 @@ def make_lightcurve_plot(
             plottedsomething = True
 
         else:
+            plottedthismodel = False
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types: list[str] = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
@@ -694,7 +683,6 @@ def make_lightcurve_plot(
                         escape_type=escape_type,
                         frompackets=frompackets,
                         maxpacketfiles=maxpacketfiles,
-                        axistherm=axistherm,
                         directionbins=dirbin,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
@@ -702,9 +690,6 @@ def make_lightcurve_plot(
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
-                        # one model can contribute an r-packet series, a gamma series and one series per
-                        # nuclide, but it has a single set of deposition rates to draw
-                        showdeposition=escape_type == escape_types[0] and pellet_nucname is None,
                         linestyle=args.linestyle[lcindex]
                         if (escape_type == "TYPE_RPKT" or len(escape_types) == 1)
                         else ":",
@@ -712,6 +697,22 @@ def make_lightcurve_plot(
                         linelabel=args.label[lcindex],
                     )
                     plottedsomething = plottedsomething or (lcdataframes is not None)
+                    plottedthismodel = plottedthismodel or (lcdataframes is not None)
+
+            if plottedthismodel and shows_deposition(args):
+                # the rates belong to the model, not to one escape type or pellet nuclide, and the style
+                # comes from the command line rather than from whatever a series left in its plot kwargs
+                depositionkwargs: dict[str, t.Any] = (
+                    {"linewidth": args.linewidth[lcindex]} if args.linewidth[lcindex] else {}
+                )
+                plot_deposition_thermalisation(
+                    axis,
+                    axistherm,
+                    Path(modelpath).parent if Path(modelpath).is_file() else Path(modelpath),
+                    modelname=get_series_label(args.label, lcindex, at.get_model_name(modelpath)),
+                    args=args,
+                    **depositionkwargs,
+                )
 
         print()
 
@@ -732,20 +733,18 @@ def make_lightcurve_plot(
 
     axis.set_xlabel(r"Time [days]")
 
-    showsdeposition = shows_deposition(args)
-
     if lumunit == "mag":
         # the gamma-ray light curve and the deposition rates are converted onto this same magnitude axis, so
         # the label must name what is drawn rather than always claiming a bolometric luminosity
         ylabel = r"Absolute $\gamma$-ray Magnitude" if showgamma and not showuvoir else "Absolute Bolometric Magnitude"
-        if showsdeposition:
+        if shows_deposition(args):
             ylabel += r" ($L$ or $\dot{E}$)"
         axis.set_ylabel(ylabel)
     else:
         str_units = r" [{}$\mathrm{{L}}_\odot$]" if lumunit == "Lsun" else " [{}erg/s]"
         if args.logscaley:
             str_units = str_units.replace("{}", "")
-        if showsdeposition:
+        if shows_deposition(args):
             yvarname = r"$L$ or $\dot{{E}}$"
         elif showgamma and not showuvoir:
             yvarname = r"$\mathrm{{L}}_\gamma$"
@@ -981,7 +980,7 @@ def make_colorbar_viewingangles(
             cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
         else:
             assert ax is not None
-            firstaxis = ax if isinstance(ax, mplax.Axes) else next(iter(ax))
+            firstaxis = iter_axes(ax)[0]
             axisfigure = firstaxis.get_figure()
             assert axisfigure is not None
             cbar = axisfigure.colorbar(scaledmap, ax=ax)
@@ -1029,8 +1028,7 @@ def make_band_lightcurves_plot(
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
-                axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
-                assert isinstance(axis, mplax.Axes)
+                axis = iter_axes(ax)[plotnumber]
                 if first_band_name is None:
                     first_band_name = band_name
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
@@ -1188,26 +1186,26 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                                 args,
                             )
 
-                curax = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
+                curax = iter_axes(ax)[plotnumber]
                 curax.plot(plot_times, colour_delta_mag, linewidth=4 if args.subplots else 3, **plotkwargs)
-
-                assert isinstance(curax, mplax.Axes)
-                curax.annotate(
-                    f"{filter_names[0]}-{filter_names[1]}",
-                    xy=(1.0, 1.0),
-                    xycoords="axes fraction",
-                    textcoords="offset points",
-                    xytext=(-30, -30),
-                    horizontalalignment="right",
-                    verticalalignment="top",
-                    fontsize="x-large",
-                )
 
             # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
             # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
             # tmax_B = at.match_closest_time(tmax_B, plot_times)
             # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
             #       f'{diff[plot_times.index(tmax_B)]}')
+
+    for plotnumber, filters in enumerate(args.colour_evolution):
+        iter_axes(ax)[plotnumber].annotate(
+            filters,
+            xy=(1.0, 1.0),
+            xycoords="axes fraction",
+            textcoords="offset points",
+            xytext=(-30, -30),
+            horizontalalignment="right",
+            verticalalignment="top",
+            fontsize="x-large",
+        )
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
     ax = at.plottools.set_axis_properties(ax, args)
@@ -1255,8 +1253,7 @@ def plot_lightcurve_from_refdata(
 
     filter_data = {}
     for axnumber, filter_name_raw in enumerate(filter_names):
-        axis = ax if isinstance(ax, mplax.Axes) else ax[axnumber]
-        assert isinstance(axis, mplax.Axes)
+        axis = iter_axes(ax)[axnumber]
         if filter_name_raw == "bol":
             continue
         with Path(filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
@@ -1355,8 +1352,7 @@ def plot_color_evolution_from_data(
     merge_dataframes = filter_data[0].join(
         filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
     )
-    axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
-    assert isinstance(axis, mplax.Axes)
+    axis = iter_axes(ax)[plotnumber]
     axis.plot(
         merge_dataframes["time"],
         merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],

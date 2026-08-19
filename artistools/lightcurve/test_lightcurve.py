@@ -886,8 +886,7 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
     dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
 
-    assert mockerrorbar.call_count == 1
-    arr_mag = np.array(mockerrorbar.call_args_list[0][0][2])
+    _arr_time_d, arr_mag = get_reflightcurve_errorbar_call(mockerrorbar)
     assert np.allclose(arr_mag, Mbol_sun - 2.5 * np.log10(lum_erg_per_s / Lsun_to_erg_per_s))
 
     yerr = mockerrorbar.call_args_list[0][1]["yerr"]

@@ -88,10 +88,7 @@ def average_direction_bins(
 
         print(f"bin number {start_bin:2d} = the average of bins {contribbins}")
 
-    if derivedcols:
-        return {dirbin: lzdf.with_columns(derivedcols) for dirbin, lzdf in dirbindataframesout.items()}
-
-    return dirbindataframesout
+    return {dirbin: lzdf.with_columns(derivedcols) for dirbin, lzdf in dirbindataframesout.items()}
 
 
 def get_viewingdirectionbincount() -> int:
