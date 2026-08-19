@@ -329,6 +329,18 @@ def test_firstexisting_anyexist(tmp_path: Path) -> None:
     assert at.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
 
 
+def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
+    """An absolute path is not below the default folder, but the message must not raise a ValueError."""
+    (tmp_path / "here.txt").write_text("here")
+    assert at.firstexisting(tmp_path / "here.txt") == tmp_path / "here.txt"
+
+    missingpath = tmp_path / "notafile.txt"
+    with pytest.raises(FileNotFoundError, match=str(missingpath)):
+        at.firstexisting(missingpath)
+
+    assert at.firstexisting_or_none(missingpath) is None
+
+
 def test_readnoncommentline() -> None:
     stream = io.StringIO("\n# a comment\n   # indented comment\nreal data line\nsecond\n")
     assert at.readnoncommentline(stream) == "real data line\n"

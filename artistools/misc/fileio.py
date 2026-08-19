@@ -270,7 +270,8 @@ def firstexisting(
                             return thispath
                         fullpaths.append(thispath)
 
-    strfilelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
+    # an absolute path is not below the folder, thus the message shows the full path for it
+    strfilelist = "\n  ".join([str(x.relative_to(folder)) if x.is_relative_to(folder) else str(x) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
     msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
     raise FileNotFoundError(msg)
