@@ -18,53 +18,6 @@ import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.plottools import save_figure
 
-_base_colours = [
-    "k",
-    "tab:blue",
-    "tab:red",
-    "tab:green",
-    "purple",
-    "tab:orange",
-    "tab:pink",
-    "tab:gray",
-    "gold",
-    "tab:cyan",
-    "darkblue",
-    "bisque",
-    "yellow",
-]
-
-# the first cycle inserts five extra unique colours before bisque, then the 13-colour base repeats
-define_colours_list = [
-    *_base_colours[:11],
-    "darkgreen",
-    "maroon",
-    "mediumvioletred",
-    "saddlebrown",
-    "darkslategrey",
-    *_base_colours[11:],
-    *(_base_colours * 7),
-]
-
-define_colours_list2 = [
-    "gray",
-    "lightblue",
-    "pink",
-    "yellowgreen",
-    "mediumorchid",
-    "sandybrown",
-    "plum",
-    "lightgray",
-    "wheat",
-    "paleturquoise",
-    "royalblue",
-    "springgreen",
-    "r",
-    "deeppink",
-    "sandybrown",
-    "teal",
-]
-
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
@@ -367,20 +320,16 @@ def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tu
     plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
-    elif args.color:
-        plotkwargsviewingangles["color"] = args.color[modelnumber]
     else:
-        plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
+        plotkwargsviewingangles["color"] = args.color[modelnumber]
 
     plotkwargsangleaveraged = {
         "marker": "o",
         "zorder": 10,
         "edgecolor": "k",
         "s": 120,
-        "color": args.color[modelnumber] if args.color else define_colours_list[modelnumber],
+        "color": args.color[modelnumber],
     }
-    if args.colorbarcostheta or args.colorbarphi:
-        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
 
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
@@ -458,14 +407,12 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         else:
             args.plotvalues.append((a0, a0))
         if not args.noerrorbars:
-            ecolor = args.color or define_colours_list
-
             ax.errorbar(
                 xvalues_angleaveraged,
                 args.band_peakmag_angle_averaged_polyfit[ii],
                 xerr=np.std(xvalues_viewingangles),
                 yerr=np.std(band_peak_mag_viewing_angles),
-                ecolor=ecolor[ii],
+                ecolor=args.color[ii],
                 capsize=2,
             )
 

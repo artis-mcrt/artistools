@@ -1162,17 +1162,11 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
 
-                if args.color and args.plotviewingangle:
-                    print(
-                        "WARNING: -color argument will not work with viewing angles for colour evolution plots,"
-                        "colours are taken from color_list array instead"
-                    )
-                    # plotkwargs["color"] = color_list[angle_counter]  # index instead of angle_counter??
-                    angle_counter += 1
-                elif args.plotviewingangle:
+                if args.plotviewingangle:
+                    # one colour per direction bin, so the -color argument (one colour per model) is not used here
                     plotkwargs["color"] = color_list[angle_counter]
                     angle_counter += 1
-                elif args.color:
+                else:
                     plotkwargs["color"] = args.color[modelnumber]
                 if args.linestyle:
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
