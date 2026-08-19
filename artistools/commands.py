@@ -278,9 +278,9 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unu
 
 def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
     """Print the artistools version."""
-    from artistools.version import version
+    from importlib.metadata import version
 
-    print(f"artistools {version}")
+    print(f"artistools {version('artistools')}")
 
 
 def get_path(key: str) -> Path:

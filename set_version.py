@@ -42,12 +42,6 @@ def main() -> None:
     replace_line(repo_path / "CITATION.cff", r"^version: .*$", f"version: {version}")
     replace_line(repo_path / "CITATION.cff", r"^date-released: .*$", f"date-released: {date_released}")
 
-    # version.py is regenerated in full, so it must carry its own docstring or ruff's D100 fails after a release
-    (repo_path / "artistools" / "version.py").write_text(
-        f'"""Package version, updated by set_version.py at release time."""\n\nversion = "{version}"\n',
-        encoding="utf-8",
-    )
-
     subprocess.check_call(["uv", "lock"], cwd=repo_path)
 
 
