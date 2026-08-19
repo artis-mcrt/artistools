@@ -1005,6 +1005,10 @@ def make_band_lightcurves_plot(
         args.labelfontsize = 22
     fig, ax = create_axes(args)
 
+    # a model with several direction bins takes its line colours from the cycle, so keep the cycle clear of
+    # the colours that other series were given
+    set_prop_cycle_unusedcolors([ax] if isinstance(ax, mplax.Axes) else ax.tolist(), [*args.color, *args.refspeccolors])
+
     plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
