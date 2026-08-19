@@ -291,9 +291,16 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
 
     A colour in usercolors has priority. The first reference data series get black and then lighter greys.
     The other series, and the reference series after the greys, get the colours of the matplotlib cycle.
-    The code skips a colour of the cycle that the user asked for, thus two series do not get one colour.
+    The code steps over a colour that the user asked for, thus two series do not get one colour.
     """
     askedfor = {color for color in usercolors if color}
+    cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    # the colours of the cycle that no series has, by either the name CN or the colour value
+    freecycleindices = [
+        i for i in range(len(cyclecolors)) if f"C{i}" not in askedfor and cyclecolors[i] not in askedfor
+    ] or list(range(max(len(cyclecolors), 1)))
+
     colors: list[str] = []
     refindex = 0
     cycleindex = 0
@@ -301,13 +308,17 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
         usercolor = usercolors[seriesindex] if seriesindex < len(usercolors) else None
         if usercolor:
             colors.append(usercolor)
-        elif isref and refindex < len(refseries_colors):
+            continue
+
+        # step over a colour that the user asked for, thus two series do not get one colour
+        while isref and refindex < len(refseries_colors) and refseries_colors[refindex] in askedfor:
+            refindex += 1
+
+        if isref and refindex < len(refseries_colors):
             colors.append(refseries_colors[refindex])
             refindex += 1
         else:
-            while f"C{cycleindex}" in askedfor:
-                cycleindex += 1
-            colors.append(f"C{cycleindex}")
+            colors.append(f"C{freecycleindices[cycleindex % len(freecycleindices)]}")
             cycleindex += 1
 
     return colors

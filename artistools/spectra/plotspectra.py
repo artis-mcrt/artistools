@@ -45,6 +45,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
+from artistools.misc import makelist
 from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -1502,7 +1503,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timedays = args.timedayslist[0]
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
-    args.color = get_series_colors([not path_is_artis_model(filepath) for filepath in args.specpath], args.color)
+    args.color = get_series_colors(
+        [not path_is_artis_model(filepath) for filepath in args.specpath], makelist(args.color)
+    )
 
     if args.distmpc is None:
         for filepath in args.specpath:
