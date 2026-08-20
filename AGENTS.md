@@ -1,142 +1,167 @@
 # Instructions for LLM coding agents
 
-Artistools is a plotting, analysis, and file-conversion toolkit for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) plus a small Rust extension (`rust/`, imported as `artistools.rustext`).
+Artistools is a toolkit that plots data, analyses data, and converts files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) and a small Rust extension (`rust/`, imported as `artistools.rustext`).
 
-The package has **no public API**: code with no callers can be deleted, and functions can be renamed or refactored freely. Prefer fixing a design properly over adding a compatibility shim or a deprecation path.
+The package has **no public API**. You can delete code that has no callers. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path. Correct the design instead.
+
+## Writing style
+
+Write all English in ASD-STE100 (Simplified Technical English). This applies to comments, docstrings, documentation, commit messages, pull request text, and new log, warning, and error strings.
+
+- Use the active voice. Write "the Makefile writes `version.h`" and not "`version.h` is written by the Makefile".
+- Use the simple tenses. Do not use the -ing form as a noun or as an adjective if a simple form is possible.
+- Use one term for one thing. Do not change between "cell" and "grid cell", or between "time step" and "timestep".
+- Write short sentences. Use a maximum of 20 words in an instruction and a maximum of 25 words in descriptive text.
+- Use a maximum of three words in a noun cluster. Write "the checksums of the output files" and not "output file checksum comparison".
+- Write positive statements. Do not use slang, idioms, or jokes. Do not use an abbreviation that the text does not define.
+- Use a vertical list for more than three related items or conditions.
+
+Use the British spellings that this repository uses, e.g. "normalise", "parallelise", "colour", and "centre". Use an American spelling only when an external interface makes it necessary, e.g. the matplotlib keywords `color=` and `center=`, and the named colour `"gray"`. STE controls the choice of words and the structure of the sentences. It does not control the spelling variant.
+
+These rules do not apply to:
+
+- Identifiers in the code, e.g. the names of variables, functions, and namespaces. Keep the conventions of the file that you change, e.g. `at.normalize_path_list`.
+- The names of the columns and the keys in the ARTIS files that artistools reads and writes.
+- A log string that a script reads. Do not change such a string.
+- Quoted text from an external source, e.g. a compiler message or a title of a publication.
 
 ## Setup
 
 ```sh
-uv sync --all-extras                       # create/refresh .venv (needs a rust compiler)
-cd tests/data && source ./setuptestdata.sh # download simulation data used by most tests
+uv sync --all-extras                       # make or update .venv (needs a rust compiler)
+cd tests/data && source ./setuptestdata.sh # get the simulation data for most tests
 ```
 
-Most tests read data that is not in the repository. If tests fail on missing paths under `tests/data/testmodel`, run the setup script above.
+Most tests read data that the repository does not contain. Run the setup script above if a test fails because a path below `tests/data/testmodel` does not exist.
 
-## Verify before committing
+## Verify before you commit
 
-Run every check that covers what you touched, from the repository root:
+Run every check that applies to the files that you changed. Run each check from the repository root.
 
 ```sh
 uv run -- ruff format
-uv run -- ruff check --no-fix     # --no-fix shows what CI sees (config sets fix = true)
+uv run -- ruff check --no-fix     # --no-fix shows the same errors as CI (the config sets fix = true)
 uv run -- mypy
 uv run -- pyrefly check
 uv run -- ty check
+uv run -- refurb artistools --quiet -- --follow-imports=skip   # only artistools/, because mypy fails on pyvista
+uv run -- vulture                                      # informational, see below
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
-cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for Rust changes
+cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for a Rust change
 ```
 
-All four type checkers must be clean, and a change that satisfies one must not break another. `.github/workflows/pytest.yml` is the authority on what CI runs; it also runs the `prek` hooks from `.pre-commit-config.yaml`.
+The type checkers mypy, pyrefly, and ty must all give no errors. A change that satisfies one checker must not cause an error in a different checker. The file `.github/workflows/pytest.yml` defines what CI runs. CI also runs the `prek` hooks from `.pre-commit-config.yaml`. The vulture check gives information only. It reports code that possibly has no callers, but some of these reports are incorrect, thus CI does not fail on them.
 
-Never report that checks passed when you could not run them. If the environment lacks the tools, the venv, the network, or the test data, say which checks were skipped and why.
+Do not report that a check passed if you did not run it. Tell the user which checks you did not run, and give the reason for each one.
 
-## Python and typing
+## Python and type annotations
 
-- Target Python >= 3.13 and keep syntax valid on 3.14, including free-threaded builds (`3.14t`), which CI tests. Do not add module-level mutable state or rely on the GIL for thread safety.
-- Annotate every function fully: mypy runs in strict mode. Untyped defs and untyped calls are errors.
-- Use modern generics: `list[str]`, `X | None`, PEP 695 (`def f[T](...)`, `type Alias = ...`). No `typing.List`, `typing.Optional`, or bare `Any` where a real type fits.
-- A lambda's parameter types have to be inferable from the call site (pyrefly's `implicit-any-lambda`). A `sorted`/`min`/`filter` key that pyrefly cannot infer becomes an annotated `def` instead — lambdas take no annotations. Prefer a comprehension over `filter(lambda ...)` either way.
-- Raise exceptions with a named message variable, not a literal:
+- Write code for Python 3.13 or a later version. The syntax must also be correct on the later versions and on the free-threaded builds that CI tests. The file `.github/workflows/pytest.yml` gives the list of versions. Do not add mutable state at module level. Do not use the GIL for thread safety.
+- Give a full annotation to every function. mypy runs in strict mode, and it reports an untyped def or an untyped call as an error.
+- Use the modern generics: `list[str]`, `X | None`, and PEP 695 (`def f[T](...)`, `type Alias = ...`). Do not use `typing.List` or `typing.Optional`. Use `Any` only if no more accurate type is possible.
+- Pyrefly must infer the parameter types of a lambda from the call site (`implicit-any-lambda`). A lambda accepts no annotations. Thus, if pyrefly cannot infer the types of a `sorted`, `min`, or `filter` key, write an annotated `def`. Use a comprehension in place of `filter(lambda ...)`.
+- Put the message of an exception in a variable. Do not use a literal:
   ```python
   msg = f"Unknown path key: {key}"
   raise KeyError(msg)
   ```
-- Line length is 120. Comments should explain *why*, not restate the code.
-- Docstrings should be one line for simple functions, or a one-line summary followed by a blank line and a longer description. Use imperative mood for summaries: "Return the sum" not "Returns the sum". Use `"""` triple quotes, not `'''`.
+- The maximum line length is 120 characters. `ruff format` does not reflow a comment, thus you must keep a comment inside the limit.
+- A comment must give the reason for the code. Do not repeat what the code does.
+- Write a docstring of one line for a simple function. For a more complex function, write a summary of one line, then an empty line, then a longer description. Write the summary as an instruction: "Return the sum" and not "Returns the sum". Use the `"""` quotes and not `'''`.
 
-## Suppressing lint and type errors
+## Suppress lint and type errors
 
-Fix the underlying issue first; a suppression is a last resort and each tool has its own syntax. Always include the specific rule name — blanket suppressions are rejected.
+Correct the initial problem first. Add a suppression only if you cannot correct the problem. Each tool has a different syntax. Always give the name of the applicable rule, because the tools reject a suppression that has no rule name.
 
 | Tool | Syntax |
 | --- | --- |
 | ruff | `# ruff:ignore[rule-name]`, file-level `# ruff:file-ignore[rule-name]` |
 | mypy | `# type: ignore[error-code]` (a bare `# type: ignore` fails `ignore-without-code`) |
 | pyrefly | `# pyrefly: ignore[rule-name]` |
+| pyright | `# pyright: ignore[rule-name]` |
 | ty | `# ty:ignore[rule-name]` |
 
-Ruff rules are configured by **name**, not by code (`"any-type"`, not `"ANN401"`) — match that in suppressions. `enableTypeIgnoreComments` is off for pyright, so `# type: ignore` silences only mypy. One line may need several comments (see `artistools/lightcurve/plotlightcurve.py`).
+The configuration gives each ruff rule by **name** and not by code (`"any-type"` and not `"ANN401"`). Use the name in a suppression. The setting `enableTypeIgnoreComments` is off for pyright, thus `# type: ignore` applies only to mypy. One line can need more than one comment. For an example, see `artistools/_polarscompat.py`.
 
-`warn_unused_ignores` is on: when you fix the underlying error, delete the now-stale suppression or mypy will fail.
+The option `warn_unused_ignores` is on. Delete a suppression when you correct the error that it hides. If the suppression stays, mypy fails.
 
 ## Imports and module layout
 
-- Absolute imports only; relative imports are banned.
-- One import per line (`force-single-line`); no `from x import a, b`.
-- Use the configured aliases: `artistools as at`, `polars as pl`, `polars.selectors as cs`, `polars.testing as pltest`, `numpy as np`, `numpy.typing as npt`, `matplotlib.pyplot as plt`, `matplotlib.axes as mplax`, `matplotlib.figure as mplfig`, `typing as t`.
-- Inside package modules, import the specific submodule or function (`from artistools.misc import get_nu_grid`) to avoid import cycles. `import artistools as at` is for tests and top-level scripts.
-- Import heavy or optional dependencies (pyvista, plotly, imageio, pynonthermal, argcomplete) inside the function that needs them. `import-outside-top-level` is disabled deliberately to keep CLI startup fast.
-- flake8-type-checking runs in `strict` mode: an import used *only* in annotations belongs in an `if t.TYPE_CHECKING:` block after the normal imports, for the same startup-cost reason. Adding a runtime use of that name means moving the import back out.
-- Pyrefly's `missing-import` is an error, so a renamed or mistyped module fails CI. A genuinely optional dependency that a plain `uv sync` would not install belongs in `ignore-missing-imports` in `[tool.pyrefly]`.
-- `implicit_reexport` is off: a new public function must be re-exported in the parent `__init__.py` using the `from module import name as name` form, matching the surrounding alphabetical order.
+- Use only absolute imports. A relative import is not permitted.
+- Write one import on each line (`force-single-line`). Do not write `from x import a, b`.
+- Use the aliases in `[tool.ruff.lint.flake8-import-conventions.extend-aliases]`, e.g. `artistools as at`, `polars as pl`, and `typing as t`. Ruff rejects a different alias.
+- In a package module, import the applicable submodule or function, e.g. `from artistools.misc import get_nu_grid`. This prevents an import cycle. Use `import artistools as at` only in a test or a top-level script.
+- Import a large or optional dependency in the function that uses it. Examples are pyvista, plotly, imageio, pynonthermal, and argcomplete. The rule `import-outside-top-level` is off for this reason, because the CLI must start quickly.
+- flake8-type-checking runs in `strict` mode. Put an import that only the annotations use in an `if t.TYPE_CHECKING:` block after the usual imports. This also decreases the start time. If the code then uses that name at run time, move the import out of the block.
+- Pyrefly reports `missing-import` as an error. Thus CI fails if you rename a module or make an error in its name. A plain `uv sync` does not install an optional dependency. Put such a dependency in `ignore-missing-imports` in `[tool.pyrefly]`.
+- The option `implicit_reexport` is off. Re-export a new public function in the parent `__init__.py`. Use the form `from module import name as name`. Keep the alphabetical order of the other lines.
 
 ## Polars
 
-Use polars (`import polars as pl`) for all new dataframe code. pandas remains only where an external interface requires it — do not introduce new pandas usage. Never round-trip polars → pandas → polars to run a Python loop; if a helper needs pandas input, rewrite the helper as a polars expression or join rather than converting around it.
+Use polars (`import polars as pl`) for all new dataframe code. The code keeps pandas only where an external interface makes it necessary. Do not write new pandas code. Do not convert a polars dataframe to pandas and back to run a Python loop. If a function needs a pandas input, write that function again as a polars expression or a polars join.
 
-- `.group_by()`, not pandas' `.groupby()`.
-- There is no `.group_by().filter()`: aggregate first, then filter.
-- Wrap column references in expressions with `pl.col("colname")`, and literals with `pl.lit(...)`.
-- `None` is a missing value and `float("nan")` is NaN; they are distinct.
-- No multi-indexing — use columns for grouping and sorting.
-- Prefer native expressions over `.map_elements()`, which is slow and blocks query optimisation. When there is genuinely no expression equivalent, always pass `return_dtype`.
-- Never walk a dataframe row by row. `.iterrows()`, `.itertuples()`, and `.apply(..., axis=1)` are the pandas equivalents of `.map_elements()` and are slower still — replace them with a vectorised expression, a join, or `dict(zip(df["a"], df["b"], strict=True))`. Likewise, reshape a flat per-cell array onto a 3D grid with `arr.reshape((nx, ny, nz), order="F")` and `np.linspace`, never nested `nx`/`ny`/`nz` loops.
-- Prefer lazy evaluation: build `pl.LazyFrame` pipelines, take `pl.LazyFrame` in internal function signatures, and `.collect()` once at the end. Never call `.collect()` inside a loop over cells, timesteps, or ions — that re-runs the entire query every iteration. Collect once before the loop and index the resulting `pl.DataFrame`.
-- Join with explicit `on=` (and `how=`) arguments; convert types with `.cast()`.
-- Methods return new frames — there are no in-place operations, so use the return value.
-- Compare frames in tests with `pltest.assert_frame_equal`.
+- There is no `.group_by().filter()`. Do the aggregation first, then apply the filter.
+- In an expression, write a column as `pl.col("colname")` and a literal as `pl.lit(...)`.
+- A `None` value and a `float("nan")` value are different. `None` shows that the value is not available.
+- Use a native expression in place of `.map_elements()`, which is slow and prevents the optimisation of the query. If no expression can do the same operation, always give `return_dtype`.
+- Do not read a dataframe one row at a time. In pandas, `.iterrows()`, `.itertuples()`, and `.apply(..., axis=1)` do the same as `.map_elements()`, but more slowly. Use a vectorised expression, a join, or `dict(zip(df["a"], df["b"], strict=True))`. To put a flat array of cells on a 3D grid, use `arr.reshape((nx, ny, nz), order="F")` with `np.linspace`. Do not write nested loops over `nx`, `ny`, and `nz`.
+- Use lazy evaluation. Build a `pl.LazyFrame` pipeline, accept a `pl.LazyFrame` in an internal function, and call `.collect()` one time at the end. Do not call `.collect()` in a loop over cells, timesteps, or ions, because this runs the full query again at each step. Call `.collect()` before the loop, then index the `pl.DataFrame`.
+- Give the `on=` argument and the `how=` argument for each join.
+- A method returns a new dataframe. There is no in-place operation, thus you must use the value that the method returns.
+- In a test, compare two dataframes with `pltest.assert_frame_equal`.
 
 ## Command-line entry points
 
-Modules that expose a subcommand follow one pattern:
+A module that supplies a subcommand has this structure:
 
 ```python
 def addargs(parser: argparse.ArgumentParser) -> None: ...
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """One-line description used as the CLI help text."""
+    """Give a description of one line for the CLI help text."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 ```
 
-Register new subcommands in `subcommandtree` in `artistools/commands.py` rather than adding a new console script. A module with the `addargs`/`main` shape that is not registered there is unreachable from the CLI and tends to rot unnoticed — register it or delete it, but do not extend it.
+Add a new subcommand to `subcommandtree` in `artistools/commands.py`. Do not add a new console script. The CLI cannot find a module that has the `addargs` and `main` functions but no entry in `subcommandtree`. Such a module becomes incorrect, because no user and no test calls it. Add the entry or delete the module, but do not add more code to it.
 
-Keep data loading in importable functions separate from plotting, so both can be tested by calling `main(argsraw=[], **kwargs)`. `main` should be argument parsing plus a handful of calls, roughly under 50 lines. When editing a `main` that already inlines loading, physics, and plotting, extract the part you are touching rather than adding to it.
+Put the code that reads the data in functions that are separate from the plot code. A test can then call `main(argsraw=[], **kwargs)` for both parts. The `main` function must parse the arguments and then make a small number of calls. Keep it below approximately 50 lines.
 
-Build parsers and resolve paths with the shared helpers rather than hand-rolling them:
+A `main` function can already contain the data code, the physics code, and the plot code. Move the part that you change into a new function. Do not add more code to `main`.
 
-- `at.add_modelpath_arg(parser)` for a `-modelpath` or positional model-path argument.
-- `at.normalize_path_list(args.modelpath)` to apply the default and coerce to `list[Path]`, instead of `if not args.modelpath: args.modelpath = Path()`.
-- `at.get_timestep_times(modelpath, loc="mid")` rather than averaging the `start` and `end` arrays.
-- `at.plottools.set_axis_properties` / `set_axis_labels` for standard axis and tick setup. `artistools/plottools.py` is reachable only as `at.plottools.*` — apart from `set_mpl_style` it is not re-exported at top level, so read it before writing new plot boilerplate.
+Use the shared functions to build a parser and to find a path. Do not write this code again:
+
+- `at.add_modelpath_arg(parser)` adds a `-modelpath` argument or a positional model path.
+- `at.normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
+- `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
+- `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports only `set_mpl_style`. Read that module before you write new plot code.
 
 ## Tests
 
-- Tests live beside the code they cover: `artistools/<area>/test_<area>.py`, with `test_*` functions. The `name-tests-test` hook enforces the `test_` prefix.
-- Locate data with `at.get_path("testdata")` / `at.get_path("testoutput")`, or use pytest's `tmp_path`. Never write outside the repository's test output directory.
-- Assert on numbers with `np.isclose`/`rtol`, not exact float equality; physics results shift slightly across platforms and library versions.
-- To test plots without inspecting images, patch the axes method and check the call args:
+- Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. The `name-tests-test` hook makes this necessary.
+- Find the data with `at.get_path("testdata")` or `at.get_path("testoutput")`. As an alternative, use the pytest `tmp_path` fixture. Do not write a file outside the test output directory of the repository.
+- Compare a number with `np.isclose` or an `rtol` value. Do not compare two floats for exact equality. A physics result changes by a small quantity on a different platform or with a different version of a library.
+- You can test a plot without an image. Patch the axes method and examine the arguments of the call:
   ```python
   @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
   def test_something(mockplot: t.Any) -> None: ...
   ```
-- Mark representative slow tests `@pytest.mark.benchmark`, or take a `benchmark: BenchmarkFixture` argument, so CodSpeed tracks them.
-- Every bug fix gets a regression test. When you change a numerical result on purpose, update the expected value in the same commit and say why in the commit message.
+- Add `@pytest.mark.benchmark` to a slow test that is representative. As an alternative, give the test a `benchmark: BenchmarkFixture` argument. CodSpeed then monitors that test.
+- Write a regression test for each bug that you correct. If you change a numerical result deliberately, change the expected value in the same commit. Give the reason in the commit message.
 
-## Performance and data handling
+## Performance and data access
 
-- `@lru_cache` is used on pure loaders keyed by path/arguments. Arguments must be hashable, and callers must not mutate what a cached function returned — copy first (see `artistools/misc/dirbins.py`).
-- Cache parsed text files as parquet with `at.write_parquet_atomic`, which writes to a temporary file and renames, so an interrupted run cannot leave a corrupt cache.
-- Use `at.parallel_map` instead of building multiprocessing pools directly; it picks threads or processes depending on whether the GIL is enabled.
-- Read compressed ARTIS output through `at.zopen`/`at.zopenpl` rather than handling `.gz`/`.xz`/`.zst` yourself.
-- Never grow a dataframe inside a loop: repeated `pd.concat([df, new])` or `.loc[key] = ...` row-appends are O(n²) in the iteration count. Accumulate into a list and concatenate once after the loop.
-- Prefer the lazy whole-run scanners (`at.scan_estimators`) to the eager per-cell readers (`at.estimators.read_estimators`), which are very slow when many cells and timesteps are collected. Never call an eager loader inside a per-cell loop.
+- The code puts `@lru_cache` on a pure function that reads data for a given path or a given set of arguments. Each argument must be hashable. Do not change the object that a cached function returns. Make a copy first. For an example, see `artistools/misc/dirbins.py`.
+- Write the cache of a parsed text file as parquet with `at.write_parquet_atomic`. This function writes a temporary file, then changes its name. Thus a run that stops early cannot leave a corrupt cache.
+- Use `at.parallel_map`. Do not make a multiprocessing pool directly. This function selects threads or processes, because the GIL can be on or off.
+- Read a compressed ARTIS output file with `at.zopen` or `at.zopenpl`. Do not write your own code for the `.gz`, `.xz`, and `.zst` formats.
+- Do not add rows to a dataframe in a loop. A repeated `pl.concat` or `pd.concat` call has a cost of O(n²) for n steps. The pandas operation `.loc[key] = ...` has the same cost. Collect the parts in a list, then concatenate them one time after the loop.
+- Use the lazy scanner that reads a full run, e.g. `at.scan_estimators`. The eager reader `at.estimators.read_estimators` operates on one cell, and it is very slow for many cells and timesteps. Do not call an eager reader in a loop over the cells.
 
-## Repository hygiene
+## Repository rules
 
-- `pyproject.toml` is the single source of tool configuration; do not add per-tool config files or inline overrides that duplicate it.
-- Add dependencies sparingly: runtime deps in `[project.dependencies]`, heavy optional ones in `[project.optional-dependencies].extras` with a lazy in-function import, tooling in `[dependency-groups].dev`. Run `uv lock` afterwards and commit `uv.lock`.
-- Do not commit simulation output, generated plots, or files over 800 kB (blocked by pre-commit).
-- When renaming or deleting, search the whole repository for the old name — including `artistools/commands.py`, the `__init__.py` re-exports, and tests — and update it all in one commit.
-- Do not leave commented-out code behind when you replace or disable something — delete it, since git has the old version. Ruff's `commented-out-code` rule is deliberately both ignored and unfixable, so nothing catches this for you. The exception is a commented block that serves as documentation rather than as leftovers: a menu of alternative configuration entries showing what a setting accepts, or a published benchmark setup kept so it can be reproduced. Delete superseded code, keep worked examples — and if you are unsure which a block is, leave it and ask.
+- The file `pyproject.toml` holds all the tool configuration. Do not add a configuration file for one tool. Do not add an inline setting that repeats a value from `pyproject.toml`.
+- Add a dependency only if it is necessary. Put a run-time dependency in `[project.dependencies]`. Put a large optional dependency in `[project.optional-dependencies].extras`. Put a tool in `[dependency-groups].dev`. Then run `uv lock` and commit `uv.lock`.
+- Do not commit simulation output, a plot file, or a file larger than 800 kB. The pre-commit hook rejects a large file.
+- Before you rename or delete a name, search the full repository for it. Examine `artistools/commands.py`, the re-exports in each `__init__.py`, and the tests. Change all the occurrences in one commit.
+- Delete the old code when you replace it or make it inactive. Do not keep it as a comment, because git holds the old version. The ruff rule `commented-out-code` is off and it has no fix, thus no tool finds such code for you. A comment block that is documentation is different: an example that shows the permitted values of a setting, or a published benchmark configuration that a user can run again. Keep such an example, but delete code that a new version replaced. If you are not sure which type a block is, keep it and ask the user.
