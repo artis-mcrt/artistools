@@ -446,7 +446,12 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         return
 
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-    lockfd = os.open(lockpath, os.O_CREAT | os.O_WRONLY, 0o666)
+    # flock locks a read-only descriptor, so a different user regenerating a cache in a shared model
+    # directory needs only read access to the lock file. The chmod grants that under a restrictive umask,
+    # and fails harmlessly for a user who does not own the lock
+    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    with contextlib.suppress(OSError):
+        lockpath.chmod(0o666)
     try:
         fcntl.flock(lockfd, fcntl.LOCK_EX)
         identity = get_file_identity(destpath)

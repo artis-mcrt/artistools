@@ -611,6 +611,9 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
     assert lockpath.exists()
+    # a different user in a shared model directory needs to open and flock the lock, which takes only read
+    # access: the lock is opened read-only and made world-readable whatever the umask
+    assert lockpath.stat().st_mode & 0o444 == 0o444
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
