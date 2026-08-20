@@ -48,6 +48,9 @@ from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_prop_cycle_unusedcolors
 
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
+
 type LumUnit = t.Literal["mag", "Lsun", "erg/s"]
 
 
@@ -1075,9 +1078,10 @@ def make_band_lightcurves_plot(
                         verticalalignment="top",
                     )
 
-                # a model with several direction bins has only one -color entry to share between them, so let
-                # matplotlib pick a colour per line. plotkwargs is reused, so clear any previous model's colour
-                plotkwargs["color"] = args.color[modelnumber] if len(dirbins) == 1 else None
+                # only the first direction bin can take the model's single -color entry, as on the bolometric
+                # figure; the rest take a colour each from the cycle, which set_prop_cycle_unusedcolors has
+                # kept clear of the assigned colours. plotkwargs is reused, so always assign it
+                plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
 
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
@@ -1117,14 +1121,24 @@ def make_band_lightcurves_plot(
     save_figure(fig, args.outputfile, format="pdf")
 
 
+def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
+    """Return the colours to hand out to the direction bins of a colour evolution plot.
+
+    A direction bin must not repeat the colour that a whole model was given, since both go on the same axes.
+    The whole map is the fallback for the case where every one of its colours was assigned to a series: a bin
+    has to be drawn in some colour, and there is none left that no series holds.
+    """
+    tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+
+    return get_unused_colors(tab20colors, seriescolors) or tab20colors
+
+
 def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
     """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
     if args.labelfontsize is None:
         args.labelfontsize = 24
     angle_counter = 0
-    # a direction bin must not repeat the colour that a whole model was given, since both go on the same axes
-    tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    color_list = get_unused_colors(tab20colors, [*args.color, *args.refspeccolors]) or tab20colors
+    color_list = get_dirbin_palette([*args.color, *args.refspeccolors])
 
     fig, ax = create_axes(args)
     axes = iter_axes(ax)
@@ -1411,10 +1425,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot the entire light curve including partially accumulated parts (light travel time effects)",
     )
 
-    parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
+    parser.add_argument(
+        "--plotdeposition", action="store_true", help="Plot the gamma-ray and positron deposition rates"
+    )
 
     parser.add_argument(
-        "--plotalphadeposition", action="store_true", help="Plot alpha decay energy release and deposition rates"
+        "--plotalphadeposition",
+        action="store_true",
+        help="Also plot the alpha decay energy release and deposition rates (implies --plotdeposition)",
     )
 
     parser.add_argument(

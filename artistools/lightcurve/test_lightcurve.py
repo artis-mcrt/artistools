@@ -312,22 +312,36 @@ def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any) -> None:
     a -color argument that the user never gave, and then leave the colour unset. More direction bins than the
     colour map has colours must wrap around rather than run off the end of the list.
     """
-    ndirbins = 21  # one more than the number of colours in the colour map
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=modelpath_classic_3d,
-        colour_evolution=["B-V"],
-        plotviewingangle=list(range(ndirbins)),
-        timemin=5,
-        timemax=8,
-        color=["magenta"],
-        outputfile=outputpath,
-    )
+    palette = ["#111111", "#222222"]
+    ndirbins = len(palette) + 1  # one more than the palette holds, so the last bin wraps to the first colour
+
+    # a short palette exercises the wrap with three direction bins rather than the twenty-one the tab20 map
+    # would need, and the palette itself is covered by test_colour_evolution_plot_dirbin_colours_*
+    with mock.patch.object(at.lightcurve.plotlightcurve, "get_dirbin_palette", return_value=palette):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=modelpath_classic_3d,
+            colour_evolution=["B-V"],
+            plotviewingangle=list(range(ndirbins)),
+            timemin=5,
+            timemax=8,
+            color=["magenta"],
+            outputfile=outputpath,
+        )
 
     colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
-    assert len(colors) == ndirbins
-    assert np.allclose(colors[0], plt.get_cmap("tab20")(0.0))
-    assert np.allclose(colors[-1], colors[0])
+    assert colors == [*palette, palette[0]]
+
+
+def test_dirbin_palette_avoids_the_assigned_colours() -> None:
+    """The direction bin palette holds tab20 colours, minus any that a whole series was given."""
+    tab20colors = [mplcolors.to_hex(color) for color in plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))]
+
+    palette = [mplcolors.to_hex(color) for color in at.lightcurve.plotlightcurve.get_dirbin_palette([tab20colors[0]])]
+    assert palette == tab20colors[1:]
+
+    # every colour of the map assigned leaves none free, and a bin still has to be drawn in something
+    assert len(at.lightcurve.plotlightcurve.get_dirbin_palette(tab20colors)) == len(tab20colors)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1391,3 +1405,41 @@ def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: t.Any
     )
 
     assert mockcolor.call_count == withoutalpha + 1
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_plot_first_dirbin_takes_the_color_arg(mockplot: t.Any) -> None:
+    """A -color value is removed from the cycle for the model, so one of its lines has to use it.
+
+    The band figure gave every line of a multi-bin model a cycle colour, so the requested colour was
+    reserved and then drawn nowhere. The bolometric figure has always given it to the first bin.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        filter=["B"],
+        plotviewingangle=[0, 1],
+        color=["magenta"],
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath / "lc_band_dirbin_color.pdf",
+    )
+
+    colors = [
+        mplcolors.to_hex(callargs[1]["color"]) for callargs in mockplot.call_args_list if callargs[1].get("color")
+    ]
+    assert mplcolors.to_hex("magenta") in colors, colors
+
+
+def test_scatterplot_magnitude_axis_stays_inverted_with_limits() -> None:
+    """set_ylim re-sorts the pair it is given, so an inversion applied before it is lost."""
+    fig, axis = plt.subplots()
+    axis.plot([1.0, 10.0], [-19.0, -15.0])
+    args = argparse.Namespace(colouratpeak=False, ymin=-20.0, ymax=-14.0, colorbarcostheta=False, colorbarphi=False)
+
+    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
+
+    ymin, ymax = axis.get_ylim()
+    assert ymin > ymax, "the magnitude axis must point downwards even when -ymin/-ymax are given"
+    assert np.isclose(ymin, -14.0)
+    assert np.isclose(ymax, -20.0)

@@ -356,12 +356,13 @@ def update_plotkwargs_for_viewingangle_colorbar(
 
 def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argparse.Namespace) -> None:
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
-    if not args.colouratpeak:
-        axis.invert_yaxis()
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
     if args.ymin is not None or args.ymax is not None:
         axis.set_ylim(args.ymin, args.ymax)
+    if not args.colouratpeak:
+        # after the limits: set_ylim re-sorts the pair it is given, so an inversion applied first is lost
+        at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
     axis.minorticks_on()
     axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
     axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
