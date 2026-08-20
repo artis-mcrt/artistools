@@ -350,7 +350,7 @@ def get_series_label(labels: Sequence[str | None], index: int, fallback: str) ->
     trim_or_pad pads the list with None, so an entry can be missing either as a None or, when the series
     count is not the model path count, by running off the end.
     """
-    label = labels[index] if index < len(labels) else None
+    label = labels[index] if 0 <= index < len(labels) else None
 
     return label or fallback
 

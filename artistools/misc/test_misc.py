@@ -823,3 +823,15 @@ def test_drop_trailing_null_column() -> None:
     assert at.drop_trailing_null_column(
         pl.LazyFrame({"a": [], "b": []}, schema=emptyschema)
     ).collect_schema().names() == ["a", "b"]
+
+
+def test_get_series_label() -> None:
+    """A series is named by its -label entry, or by the fallback when the user gave none for it."""
+    assert at.get_series_label(["A", "B"], 1, "modelname") == "B"
+    assert at.get_series_label([None, "B"], 0, "modelname") == "modelname"
+
+    # trim_or_pad sizes the list to the model paths, so a per-series index can run off the end
+    assert at.get_series_label(["A"], 3, "modelname") == "modelname"
+
+    # a sentinel index such as the -1 this codebase uses for a direction bin must not wrap to the last label
+    assert at.get_series_label(["A", "B"], -1, "modelname") == "modelname"

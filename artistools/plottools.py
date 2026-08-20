@@ -19,6 +19,8 @@ from artistools.misc import print_saved
 if t.TYPE_CHECKING:
     from pathlib import Path
 
+    import matplotlib.typing as mplt
+
 # colorcet.glasbey_category20
 glasbey_category20 = [
     (0.121569, 0.466667, 0.705882),
@@ -287,6 +289,15 @@ glasbey_category20_nogreys = [
 refseries_colors = ("0.0", "0.4", "0.6", "0.7")
 
 
+def get_assigned_colors(seriescolors: Sequence[str | None]) -> set[str]:
+    """Return the hex values of the colours that series were given.
+
+    Comparing by value is the single rule for "a series already has this colour", so that the name "C0",
+    the alias "tab:blue" and the value "#1F77B4" all match the first colour of the cycle.
+    """
+    return {mplcolors.to_hex(color) for color in seriescolors if color}
+
+
 def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | None] = ()) -> list[str]:
     """Return the plot colour of each data series.
 
@@ -294,13 +305,13 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     The other series, and the reference series after the greys, get the colours of the matplotlib cycle.
     The code steps over a colour that the user asked for, thus two series do not get one colour.
     """
-    askedfor = {color for color in usercolors if color}
+    askedfor = get_assigned_colors(usercolors)
     cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    # the colours of the cycle that no series has, by either the name CN or the colour value
-    freecycleindices = [
-        i for i in range(len(cyclecolors)) if f"C{i}" not in askedfor and cyclecolors[i] not in askedfor
-    ] or list(range(max(len(cyclecolors), 1)))
+    # the colours of the cycle that no series has, by value rather than by spelling
+    freecycleindices = [i for i, color in enumerate(cyclecolors) if mplcolors.to_hex(color) not in askedfor] or list(
+        range(max(len(cyclecolors), 1))
+    )
 
     colors: list[str] = []
     refindex = 0
@@ -312,7 +323,7 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
             continue
 
         # step over a colour that the user asked for, thus two series do not get one colour
-        while isref and refindex < len(refseries_colors) and refseries_colors[refindex] in askedfor:
+        while isref and refindex < len(refseries_colors) and mplcolors.to_hex(refseries_colors[refindex]) in askedfor:
             refindex += 1
 
         if isref and refindex < len(refseries_colors):
@@ -325,13 +336,15 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
-def get_unused_colors(palette: Sequence[t.Any], seriescolors: Sequence[str | None]) -> list[t.Any]:
+def get_unused_colors(
+    palette: Sequence["mplt.ColorType"], seriescolors: Sequence[str | None]
+) -> list["mplt.ColorType"]:
     """Return the colours of palette that no series in seriescolors was given.
 
     A series that takes its colour from the palette, e.g. an extra direction bin, then does not
     repeat the colour of another series. Colours are compared by value, so "C0" matches "#1f77b4".
     """
-    assignedcolors = {mplcolors.to_hex(color) for color in seriescolors if color}
+    assignedcolors = get_assigned_colors(seriescolors)
 
     return [color for color in palette if mplcolors.to_hex(color) not in assignedcolors]
 
@@ -433,14 +446,14 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
 
 def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
-    """Return a flat list of the axes, whether the figure has a single axes or a grid of them."""
+    """Return a flat list of the axes, whether the figure has a single axes or a grid of them.
+
+    Iterating a 2D array of axes yields its rows, so the rows are flattened rather than returned as they are.
+    """
     if isinstance(ax, mplax.Axes):
         return [ax]
 
-    axes = list(ax)
-    assert all(isinstance(axis, mplax.Axes) for axis in axes)
-
-    return axes
+    return [axis for item in ax for axis in iter_axes(item)]
 
 
 def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
@@ -449,6 +462,10 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
         args.subplots = False
     if "labelfontsize" not in args:
         args.labelfontsize = 18
+
+    ymin, ymax = getattr(args, "ymin", None), getattr(args, "ymax", None)
+    xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
+    logscalex, logscaley = getattr(args, "logscalex", False), getattr(args, "logscaley", False)
 
     for axis in iter_axes(ax):
         axis.minorticks_on()
@@ -466,16 +483,14 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
 
         # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
         # padding on a log axis. A limit of None on both sides is left alone for the same reason
-        if getattr(args, "logscalex", False):
+        if logscalex:
             axis.set_xscale("log")
-        if getattr(args, "logscaley", False):
+        if logscaley:
             axis.set_yscale("log")
 
-        ymin, ymax = getattr(args, "ymin", None), getattr(args, "ymax", None)
         if ymin is not None or ymax is not None:
             axis.set_ylim(ymin, ymax)
 
-        xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
         if xmin is not None or xmax is not None:
             axis.set_xlim(xmin, xmax)
 
