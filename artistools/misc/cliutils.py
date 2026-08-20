@@ -364,11 +364,12 @@ def get_series_label(labels: Sequence[str | None], index: int, fallback: str) ->
     """Return the -label value for one series, or fallback when the user gave none for it.
 
     trim_or_pad pads the list with None, so an entry can be missing either as a None or, when the series
-    count is not the model path count, by running off the end.
+    count is not the model path count, by running off the end. An empty label is not a missing one:
+    matplotlib gives no legend entry to a series labelled "", which is how one is left out of the legend.
     """
     label = labels[index] if 0 <= index < len(labels) else None
 
-    return label or fallback
+    return fallback if label is None else label
 
 
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:

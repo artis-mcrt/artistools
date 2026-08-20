@@ -835,3 +835,7 @@ def test_get_series_label() -> None:
 
     # a sentinel index such as the -1 this codebase uses for a direction bin must not wrap to the last label
     assert at.get_series_label(["A", "B"], -1, "modelname") == "modelname"
+
+    # an empty label is a series deliberately left out of the legend, not a missing one
+    # the return type is str, so falsy is the empty string rather than the model name
+    assert not at.get_series_label([""], 0, "modelname")
