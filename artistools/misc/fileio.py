@@ -416,6 +416,40 @@ def get_file_identity(filepath: Path) -> tuple[int, int] | None:
     return (filestat.st_dev, filestat.st_ino)
 
 
+def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple[int, int] | None) -> None:
+    """Replace destpath with newfilepath, but only if it still holds the file the caller found out of date.
+
+    The identity check and the rename happen under an exclusive lock file. Without it, two writers that
+    both found the same out-of-date file could both pass the check, and the second rename would replace the
+    first writer's fresh file while a reader scans it. A writer that finds the lock taken leaves the
+    destination alone: the holder is installing an equally valid replacement built from the same inputs.
+    """
+    import os
+    import time
+
+    if get_file_identity(destpath) != outdatedfile:
+        return
+
+    # the dot prefix keeps the lock out of the globs that find the parquet files, like the .partial file
+    lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
+    try:
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        # the lock is held for the duration of one rename, so an old lock belongs to a process that died
+        # while it held it: remove it, and a later call replaces the out-of-date file
+        with contextlib.suppress(FileNotFoundError):
+            if time.time() - lockpath.stat().st_mtime > 60.0:
+                lockpath.unlink(missing_ok=True)
+        return
+
+    try:
+        if get_file_identity(destpath) == outdatedfile:
+            newfilepath.replace(destpath)
+    finally:
+        os.close(lockfd)
+        lockpath.unlink(missing_ok=True)
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
@@ -468,8 +502,7 @@ def write_parquet_atomic(
             # complete in one step and no reader of it ever sees a different file at the same path
             os.link(partialfilepath, parquetfilepath)
         except FileExistsError:
-            if get_file_identity(parquetfilepath) == outdatedfile:
-                partialfilepath.replace(parquetfilepath)
+            replace_outdated_file(partialfilepath, parquetfilepath, outdatedfile)
         except OSError:
             # a file system without hard links cannot make the destination in one step, thus accept the
             # rename and the scans that it can break

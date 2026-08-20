@@ -24,6 +24,7 @@ import yaml
 
 import artistools as at
 from artistools.misc import dirbins
+from artistools.misc import fileio
 
 
 def _write_timesteps_out(modeldir: Path) -> None:
@@ -474,6 +475,75 @@ def test_write_parquet_atomic_replaces_an_outdated_file(tmp_path: Path) -> None:
 
     assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
     assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) -> None:
+    """The second of two writers that found the same out-of-date file must not replace the first's file.
+
+    Both writers pass the identity check taken before their own write, so only the re-check under the lock
+    separates "still the out-of-date file" from "already the other writer's fresh replacement".
+    """
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+
+    # the first writer replaces the out-of-date file, changing its identity
+    first = tmp_path / "first"
+    first.write_text("first replacement", encoding="utf-8")
+    fileio.replace_outdated_file(first, destpath, outdated)
+    assert destpath.read_text(encoding="utf-8") == "first replacement"
+
+    # the second writer still holds the identity of the file both of them found out of date
+    second = tmp_path / "second"
+    second.write_text("second replacement", encoding="utf-8")
+    fileio.replace_outdated_file(second, destpath, outdated)
+    assert destpath.read_text(encoding="utf-8") == "first replacement"
+
+
+def test_replace_outdated_file_rechecks_under_the_lock(tmp_path: Path) -> None:
+    """The identity is checked again under the lock, where a rival's rename can no longer interleave.
+
+    The first check alone is the race: both writers can pass it before either renames. Here it is forced to
+    pass, as it does for a writer that checked just before the rival's rename landed.
+    """
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+
+    first = tmp_path / "first"
+    first.write_text("first replacement", encoding="utf-8")
+    fileio.replace_outdated_file(first, destpath, outdated)
+
+    second = tmp_path / "second"
+    second.write_text("second replacement", encoding="utf-8")
+    real_get_file_identity = fileio.get_file_identity
+    with mock.patch.object(fileio, "get_file_identity", side_effect=[outdated, real_get_file_identity(destpath)]):
+        fileio.replace_outdated_file(second, destpath, outdated)
+
+    assert destpath.read_text(encoding="utf-8") == "first replacement"
+
+
+def test_replace_outdated_file_defers_to_the_lock_holder(tmp_path: Path) -> None:
+    """A writer that finds the replacement lock taken leaves the destination to the holder."""
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+    lockpath = tmp_path / ".cache.replace-lock"
+    lockpath.touch()
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+    fileio.replace_outdated_file(replacement, destpath, outdated)
+
+    assert destpath.read_text(encoding="utf-8") == "outdated"
+    assert lockpath.exists(), "a fresh lock belongs to a live writer and must be left in place"
+
+    # a lock older than the holder could possibly hold it belongs to a dead process and is removed
+    os.utime(lockpath, (0.0, 0.0))
+    fileio.replace_outdated_file(replacement, destpath, outdated)
+    assert not lockpath.exists()
+    fileio.replace_outdated_file(replacement, destpath, outdated)
+    assert destpath.read_text(encoding="utf-8") == "replacement"
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
