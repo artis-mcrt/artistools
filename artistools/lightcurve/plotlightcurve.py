@@ -217,8 +217,9 @@ def plot_deposition_thermalisation(
     color_beta = at.plottools.get_next_color(axis)
     # the alpha curves are drawn only on request, so their colour is taken only then: consuming it anyway
     # would step the next model's deposition curves along the cycle for a curve that is never drawn
-    plotsalpha = args.plotalphadeposition or args.plotthermalisation
-    color_alpha: str | None = at.plottools.get_next_color(axis) if plotsalpha else None
+    color_alpha: str | None = (
+        at.plottools.get_next_color(axis) if args.plotalphadeposition or args.plotthermalisation else None
+    )
 
     depositioncurves: list[tuple[str, str, str, str | None]] = [
         ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
@@ -274,53 +275,34 @@ def plot_deposition_thermalisation(
         m5 = model_mass_grams / (5e-3 * Msun_to_g)  # M / (5e-3 Msun)
         v2 = ejecta_v / (0.2 * C_cm_per_s)  # ejecta_v / (0.2c)
 
+        def barnes_f_charged(t_ineff: float) -> list[float]:
+            """Return the Barnes et al (2016) equation 32 thermalisation efficiency of a charged particle."""
+            return [math.log(1 + 2 * (t / t_ineff) ** 2) / (2 * (t / t_ineff) ** 2) for t in depdata["tmid_days"]]
+
         # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
         t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
-        # Barnes et al (2016) equation 33
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_gamma,
-            linewidth=linewidth,
-            label=r"Barnes+2016 $f_\gamma$",
-            linestyle="dashed",
-            color=color_gamma,
-        )
-
         e0_beta_mev = 0.5
         # Barnes et al (2016) equation 20
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        # Barnes et al (2016) equation 32
-        barnes_f_beta = [
-            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2) for t in depdata["tmid_days"]
-        ]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_beta,
-            linewidth=linewidth,
-            label=r"Barnes+2016 $f_\beta$",
-            linestyle="dashed",
-            color=color_beta,
-        )
-
         e0_alpha_mev = 6.0
         # Barnes et al (2016) equation 25 times equation 16 for t_peak
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        # Barnes et al (2016) equation 32
-        barnes_f_alpha = [
-            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2) for t in depdata["tmid_days"]
-        ]
 
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_alpha,
-            linewidth=linewidth,
-            label=r"Barnes+2016 $f_\alpha$",
-            linestyle="dashed",
-            color=color_alpha,
-        )
+        barnes_curves = [
+            # Barnes et al (2016) equation 33 for the gamma rays, equation 32 for the charged particles
+            ([1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]], r"\gamma", color_gamma),
+            (barnes_f_charged(t_ineff_beta), r"\beta", color_beta),
+            (barnes_f_charged(t_ineff_alpha), r"\alpha", color_alpha),
+        ]
+        for barnes_f, symbol, curvecolor in barnes_curves:
+            axistherm.plot(
+                depdata["tmid_days"],
+                barnes_f,
+                linewidth=linewidth,
+                label=rf"Barnes+2016 $f_{symbol}$",
+                linestyle="dashed",
+                color=curvecolor,
+            )
 
 
 def plot_artis_lightcurve(
@@ -348,8 +330,9 @@ def plot_artis_lightcurve(
         raise ValueError(msg)
 
     # handle e.g. modelpath = 'modelpath/light_curve.out'
-    lcfilename = Path(modelpath).name if Path(modelpath).is_file() else None
-    modelpath = get_model_folder(modelpath)
+    inputpath = Path(modelpath)
+    lcfilename = inputpath.name if inputpath.is_file() else None
+    modelpath = inputpath.parent if lcfilename else inputpath
 
     if not modelpath.is_dir():
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
@@ -783,7 +766,7 @@ def make_lightcurve_plot(
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
-    at.plottools.set_axis_properties(axis, args)
+    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     if lumunit == "mag":
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost
@@ -1021,8 +1004,9 @@ def make_band_lightcurves_plot(
         )
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    first_band_name = None
-    bandnames: list[str] = []
+    # every model is asked for the same bands, so one list serves the loader, the reference curves, the
+    # y axis label and the output file name. main() dispatches here only when -filter has a value
+    bandnames: list[str] = list(args.filter)
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
@@ -1031,9 +1015,8 @@ def make_band_lightcurves_plot(
             modelname = at.get_model_name(modelpath)
             print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin, modelnumber=modelnumber
+                modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
             )
-            bandnames = list(band_lightcurve_data)
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
                 hesma_model = at.lightcurve.read_hesma_lightcurve(args)
@@ -1041,8 +1024,6 @@ def make_band_lightcurves_plot(
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
-                if first_band_name is None:
-                    first_band_name = band_name
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
@@ -1111,15 +1092,15 @@ def make_band_lightcurves_plot(
 
     at.set_mpl_style()
 
-    ax = at.plottools.set_axis_properties(ax, args)
-    fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=first_band_name)
+    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
 
-    if args.filter and len(band_lightcurve_data) == 1:
-        args.outputfile = Path(outputfolder, f"plot{first_band_name}lightcurves.pdf")
+    if args.filter and len(bandnames) == 1:
+        args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
 
     if args.show:
@@ -1159,7 +1140,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, dirbin in enumerate(dirbins):
+        for dirbin in dirbins:
             if len(dirbins) > 1:
                 # -color has one colour per model, which cannot distinguish a model's direction bins, so take a
                 # colour per bin from the colour map instead, wrapping around when it runs out. The colour is
@@ -1181,21 +1162,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
 
-                if args.reflightcurves and modelnumber == 0:
-                    if len(dirbins) > 1 and index > 0:
-                        print("already plotted reflightcurve")
-                    else:
-                        for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_color_evolution_from_data(
-                                filter_names,
-                                reflightcurve,
-                                args.refspeccolors[i],
-                                args.refspecmarkers[i],
-                                ax,
-                                plotnumber,
-                                args,
-                            )
-
                 axes[plotnumber].plot(
                     plot_times,
                     colour_delta_mag,
@@ -1204,6 +1170,20 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                     linestyle=args.linestyle[modelnumber],
                     linewidth=4 if args.subplots else 3,
                 )
+
+    # once for the whole figure, as on the band plot: the reference data does not depend on the models or
+    # their direction bins, so drawing it inside those loops re-read each file once per model per pair
+    for refindex, reflightcurve in enumerate(args.reflightcurves):
+        for plotnumber, filters in enumerate(args.colour_evolution):
+            plot_color_evolution_from_data(
+                filters.split("-"),
+                reflightcurve,
+                args.refspeccolors[refindex],
+                args.refspecmarkers[refindex],
+                ax,
+                plotnumber,
+                args,
+            )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
         axes[plotnumber].annotate(
@@ -1218,7 +1198,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
         )
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
-    ax = at.plottools.set_axis_properties(ax, args)
+    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     set_lightcurveplot_legend(ax, args)
 
     invert_magnitude_yaxis(ax)
@@ -1657,9 +1637,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
     )
-
-    # the x axis is the time axis, so the shared limit helpers see the time range under the name they read
-    args.xmin, args.xmax = args.timemin, args.timemax
 
     args.reflightcurves = makelist(args.reflightcurves)
     args.refspeccolors, args.refspecmarkers = trim_or_pad(

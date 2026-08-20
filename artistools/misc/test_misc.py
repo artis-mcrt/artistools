@@ -731,8 +731,12 @@ def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatc
         assert averaged_phi[start_bin].collect()["value"].to_list() == pytest.approx([expected, expected])
 
 
-def test_average_direction_bins_rebuilds_derived_cols(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A column derived non-linearly is rebuilt from the averaged values, not averaged itself."""
+def test_average_direction_bins_averages_every_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every column is averaged, so a column that is not linear in the bins must be derived afterwards.
+
+    This is why readfile() derives the magnitude only once the bins are averaged: the mean of the
+    magnitudes of the bins is not the magnitude of their mean luminosity.
+    """
     nphibins = 4
     ncosthetabins = 3
 
@@ -746,17 +750,18 @@ def test_average_direction_bins_rebuilds_derived_cols(monkeypatch: pytest.Monkey
         for dirbin in range(nphibins * ncosthetabins)
     }
 
-    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="phi", derivedcols=[logcol])
+    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="phi")
 
     meanvalue = sum(range(nphibins)) / nphibins
     for start_bin in (0, 4, 8):
         row = averaged[start_bin].collect()
         assert row["value"].item() == pytest.approx(meanvalue)
-        assert row["logvalue"].item() == pytest.approx(math.log10(meanvalue))
-
-    # without the expressions the magnitude-like column is averaged, which the dark bin sends to -inf
-    averaged_nodeclare = dirbins.average_direction_bins(dirbindataframes, overangle="phi")
-    assert averaged_nodeclare[0].collect()["logvalue"].item() == -math.inf
+        # the column carried through the averaging holds the mean of the logs, which the dark bin sends to -inf
+        assert row["logvalue"].item() == -math.inf
+        # deriving it from the averaged value instead gives the finite answer that a caller wants
+        assert averaged[start_bin].with_columns(logcol).collect()["logvalue"].item() == pytest.approx(
+            math.log10(meanvalue)
+        )
 
 
 def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyPatch) -> None:

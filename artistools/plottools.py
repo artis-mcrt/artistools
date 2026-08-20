@@ -470,18 +470,32 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     return limit
 
 
-def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
-    """Apply the standard tick, minor tick, and font size settings to one or more axes."""
+def set_axis_properties(
+    ax: Iterable[mplax.Axes] | mplax.Axes,
+    args: argparse.Namespace,
+    xlimits: tuple[float | None, float | None, str] | None = None,
+) -> t.Any:
+    """Apply the standard tick, minor tick, and font size settings to one or more axes.
+
+    A command whose x range has its own argument name, e.g. the -timemin/-timemax of the light curve
+    commands, passes it as xlimits=(min, max, "-timemin") rather than copying the values onto args.xmin:
+    a copied value would also reach every other reader of args.xmin, and a warning about it would name an
+    argument that the user did not give.
+    """
     if "subplots" not in args:
         args.subplots = False
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
+    if xlimits is None:
+        xlimits = (getattr(args, "xmin", None), getattr(args, "xmax", None), "-xmin")
+
     logscalex, logscaley = getattr(args, "logscalex", False), getattr(args, "logscaley", False)
     ymin = log_axis_limit(getattr(args, "ymin", None), logscale=logscaley, argname="-ymin")
     ymax = log_axis_limit(getattr(args, "ymax", None), logscale=logscaley, argname="-ymax")
-    xmin = log_axis_limit(getattr(args, "xmin", None), logscale=logscalex, argname="-xmin")
-    xmax = log_axis_limit(getattr(args, "xmax", None), logscale=logscalex, argname="-xmax")
+    xargname = xlimits[2]
+    xmin = log_axis_limit(xlimits[0], logscale=logscalex, argname=xargname)
+    xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
 
     for axis in iter_axes(ax):
         axis.minorticks_on()

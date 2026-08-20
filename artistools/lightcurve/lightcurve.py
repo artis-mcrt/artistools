@@ -53,9 +53,10 @@ def readfile(
     """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
-    bin contributions: averaging without rebuilding it plots the mean of the magnitudes, where a single dark
-    bin sends the whole averaged bin to inf.
+    bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the
+    magnitudes, where a single dark bin sends the whole averaged bin to inf.
     """
+    at.check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
@@ -63,7 +64,7 @@ def readfile(
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
-    ).with_columns(derived_lum_unit_cols())
+    )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata = at.split_multitable_dataframe(lzdf)
@@ -75,12 +76,16 @@ def readfile(
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     if average_over_phi:
-        lcdata = at.average_direction_bins(lcdata, overangle="phi", derivedcols=derived_lum_unit_cols())
+        lcdata = at.average_direction_bins(lcdata, overangle="phi")
 
     if average_over_theta:
-        lcdata = at.average_direction_bins(lcdata, overangle="theta", derivedcols=derived_lum_unit_cols())
+        lcdata = at.average_direction_bins(lcdata, overangle="theta")
 
-    return lcdata
+    # after the averaging, never before it: a magnitude is not linear in the bin contributions, so the mean
+    # of the magnitudes of the bins is not the magnitude of their mean luminosity
+    unitcols = derived_lum_unit_cols()
+
+    return {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdata.items()}
 
 
 def get_from_packets(
@@ -281,9 +286,7 @@ def generate_band_lightcurve_data(
             args.filter = ["B"]
         filternames = args.filter
 
-    filters_list = filternames
-
-    for filter_name in filters_list:
+    for filter_name in filternames:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
                 Path(modelpath),
@@ -303,7 +306,7 @@ def generate_band_lightcurve_data(
 
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
-    for filter_name in filters_list:
+    for filter_name in filternames:
         if filter_name == "bol":
             continue
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(

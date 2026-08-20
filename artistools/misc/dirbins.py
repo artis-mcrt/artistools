@@ -28,16 +28,13 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame],
-    overangle: t.Literal["phi", "theta"],
-    derivedcols: Sequence[pl.Expr] = (),
+    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.LazyFrame]:
     """Average dict of direction-binned polars DataFrames according to the phi or theta angle.
 
     Every column is averaged, which is only valid for a column that is linear in the bin contributions. A
     column derived non-linearly from the others, such as a magnitude, is not the average of its bins: a
-    single dark bin sends the mean to infinity. Pass the expressions that build any such column as
-    derivedcols and they are rebuilt from the averaged values.
+    single dark bin sends the mean to infinity. Derive such a column after averaging, not before.
     """
     dirbincount = get_viewingdirectionbincount()
     nphibins = get_viewingdirection_phibincount()
@@ -88,10 +85,7 @@ def average_direction_bins(
 
         print(f"bin number {start_bin:2d} = the average of bins {contribbins}")
 
-    if not derivedcols:
-        return dirbindataframesout
-
-    return {dirbin: lzdf.with_columns(derivedcols) for dirbin, lzdf in dirbindataframesout.items()}
+    return dirbindataframesout
 
 
 def get_viewingdirectionbincount() -> int:

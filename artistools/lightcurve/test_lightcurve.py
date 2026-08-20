@@ -1,6 +1,7 @@
 import argparse
 import typing as t
 import warnings
+from collections.abc import Sequence
 from operator import itemgetter
 from pathlib import Path
 from unittest import mock
@@ -13,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import pytest
+from matplotlib.container import ErrorbarContainer
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
@@ -832,11 +834,14 @@ def test_get_reflightcurve_yerr_nonpositive_luminosity_draws_no_bar() -> None:
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_unbounded_faint_side_keeps_the_bright_half(mockerrorbar: t.Any, tmp_path: Path) -> None:
-    """An error bar reaching zero luminosity keeps its bright half and gains an arrow on the faint side.
+def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow(
+    mockerrorbar: t.Any, tmp_path: Path
+) -> None:
+    """An error bar reaching zero luminosity keeps its bright half, plus an arrow pointing at the faint side.
 
     Putting NaN in the faint row instead makes matplotlib collapse the segment to a single vertex, so the
-    finite bright half disappears with it.
+    finite bright half disappears with it. The arrow direction is fixed at the errorbar call, and a
+    magnitude axis is inverted only after every series is drawn, so the default direction is the wrong one.
     """
     reffile = tmp_path / "unbounded_reflightcurve.txt"
     reffile.write_text(
@@ -846,9 +851,9 @@ def test_bol_reflightcurve_unbounded_faint_side_keeps_the_bright_half(mockerrorb
         encoding="utf-8",
     )
 
-    at.lightcurve.plot(
-        argsraw=[], modelpath=[reffile], magnitude=True, outputfile=outputpath / "lc_reflc_unbounded.pdf"
-    )
+    _fig, axis = plt.subplots()
+    at.lightcurve.plotlightcurve.plot_bol_reflightcurve(axis, reffile, "mag", color="0.0")
+    at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
 
     barcall, arrowcall = mockerrorbar.call_args_list
     yerr = barcall[1]["yerr"]
@@ -860,31 +865,11 @@ def test_bol_reflightcurve_unbounded_faint_side_keeps_the_bright_half(mockerrorb
     assert arrowcall[1]["lolims"] is True
     assert np.allclose(arrowcall[0][1], [3.0]), "only the unbounded point gets an arrow"
 
-
-@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_unbounded_arrow_points_at_the_faint_side(mockerrorbar: t.Any, tmp_path: Path) -> None:
-    """The arrow of an open-ended magnitude bar must point away from the brighter magnitudes.
-
-    matplotlib picks the direction from the orientation of the axis at the time of the errorbar call, and
-    a magnitude axis is inverted only after every series is drawn, so the default direction is the wrong one.
-    """
-    reffile = tmp_path / "unbounded_arrow_reflightcurve.txt"
-    reffile.write_text(
-        "#time_days luminosity_erg/s luminosity_errminus_erg/s luminosity_errplus_erg/s\n"
-        "2.0 1e42 5e41 5e41\n"
-        "3.0 1e42 2e42 5e41\n",
-        encoding="utf-8",
-    )
-
-    at.lightcurve.plot(
-        argsraw=[], modelpath=[reffile], magnitude=True, outputfile=outputpath / "lc_reflc_unbounded_arrow.pdf"
-    )
-
-    axis = mockerrorbar.call_args_list[-1][0][0]
     ymin, ymax = axis.get_ylim()
     assert ymin > ymax, "this test only means anything on an inverted magnitude axis"
-
-    carets = [line.get_marker() for line in axis.containers[-1].lines[1]]
+    arrowcontainer = axis.containers[-1]
+    assert isinstance(arrowcontainer, ErrorbarContainer)
+    carets = [line.get_marker() for line in arrowcontainer.lines[1]]
     assert carets == [mplmarkers.CARETDOWNBASE], carets
     # a downward caret is drawn towards the lower screen positions, which on this axis are the fainter
     # (larger) magnitudes, so the arrow marks the side of the bar that has no end
@@ -1281,21 +1266,29 @@ def test_lightcurve_ylabel_names_deposition_only_when_it_is_drawn(mockylabel: t.
     assert all(r"\dot{E}" not in ylabel for ylabel in ylabels), ylabels
 
 
+def run_set_scatterplot_plot_params(
+    magnitudes: Sequence[float], ymin: float | None, ymax: float | None
+) -> tuple[float, float, float]:
+    """Plot the magnitudes, apply the shared scatter plot setup, and return xmax, ymin, ymax."""
+    fig, axis = plt.subplots()
+    axis.plot([1.0, 10.0], list(magnitudes))
+    args = argparse.Namespace(colouratpeak=False, ymin=ymin, ymax=ymax, colorbarcostheta=False, colorbarphi=False)
+
+    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
+
+    return axis.get_xlim()[1], *axis.get_ylim()
+
+
 def test_set_scatterplot_plot_params_without_xmin() -> None:
     """The light curve parser names its range -timemin/-timemax, so the scatter setup must not read args.xmin.
 
     Reading args.xmin raised AttributeError and made every --make_viewing_angle_peakmag_* run fail.
     """
-    fig, axis = plt.subplots()
-    axis.plot([1.0, 10.0], [15.0, 19.0])
-    args = argparse.Namespace(colouratpeak=False, ymin=None, ymax=None, colorbarcostheta=False, colorbarphi=False)
+    xmax, ymin, ymax = run_set_scatterplot_plot_params([15.0, 19.0], ymin=None, ymax=None)
 
-    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
-
-    ymin, ymax = axis.get_ylim()
     assert ymin > ymax, "the magnitude axis must point downwards"
     # neither side falls back to the default 0-1 view when no limit was given
-    assert axis.get_xlim()[1] >= 10.0
+    assert xmax >= 10.0
     assert ymin >= 19.0
 
 
@@ -1421,23 +1414,18 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: t.Any) -> None:
 @mock.patch.object(at.plottools, "get_next_color", side_effect=at.plottools.get_next_color, autospec=True)
 def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: t.Any) -> None:
     """A colour taken but not drawn steps every later series along the cycle for nothing."""
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=[modelpath_classic_3d],
-        plotdeposition=True,
-        outputfile=outputpath / "lc_dep_colourcount.pdf",
-    )
-    withoutalpha = mockcolor.call_count
+    for plotalphadeposition, expected_extra in ((False, 0), (True, 1)):
+        _fig, axis = plt.subplots()
+        args = argparse.Namespace(
+            plotdeposition=True, plotalphadeposition=plotalphadeposition, plotthermalisation=False,
+            magnitude=False, Lsun=False,
+        )  # fmt: skip
 
-    mockcolor.reset_mock()
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=[modelpath_classic_3d],
-        plotalphadeposition=True,
-        outputfile=outputpath / "lc_alphadep_colourcount.pdf",
-    )
+        mockcolor.reset_mock()
+        at.lightcurve.plotlightcurve.plot_deposition_thermalisation(axis, None, modelpath_classic_3d, "modelname", args)
 
-    assert mockcolor.call_count == withoutalpha + 1
+        # one colour skipped plus gamma and beta, and the alpha colour only when its curves are drawn
+        assert mockcolor.call_count == 3 + expected_extra
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1466,13 +1454,8 @@ def test_band_plot_first_dirbin_takes_the_color_arg(mockplot: t.Any) -> None:
 
 def test_scatterplot_magnitude_axis_stays_inverted_with_limits() -> None:
     """set_ylim re-sorts the pair it is given, so an inversion applied before it is lost."""
-    fig, axis = plt.subplots()
-    axis.plot([1.0, 10.0], [-19.0, -15.0])
-    args = argparse.Namespace(colouratpeak=False, ymin=-20.0, ymax=-14.0, colorbarcostheta=False, colorbarphi=False)
+    _xmax, ymin, ymax = run_set_scatterplot_plot_params([-19.0, -15.0], ymin=-20.0, ymax=-14.0)
 
-    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
-
-    ymin, ymax = axis.get_ylim()
     assert ymin > ymax, "the magnitude axis must point downwards even when -ymin/-ymax are given"
     assert np.isclose(ymin, -14.0)
     assert np.isclose(ymax, -20.0)

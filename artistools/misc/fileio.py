@@ -437,9 +437,16 @@ def write_parquet_atomic(
     import os
     import tempfile
 
+    # one snapshot of the destination serves the mode and the identity below: the function's whole premise
+    # is that the path can change while it works, so two stats could describe two different files
+    try:
+        deststat: os.stat_result | None = parquetfilepath.stat()
+    except FileNotFoundError:
+        deststat = None
+
     # the file this call was asked to replace, if any. A different one at the end of the write belongs to
     # another process, which read the same inputs and thus wrote the same data
-    outdatedfile = get_file_identity(parquetfilepath)
+    outdatedfile = (deststat.st_dev, deststat.st_ino) if deststat else None
 
     fd, partialfilename = tempfile.mkstemp(
         dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
@@ -450,9 +457,7 @@ def write_parquet_atomic(
     # cache written into a group-shared model directory would be unreadable to everyone but its author.
     # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
     # reading the process umask would need a get-and-restore that is not safe against other threads.
-    destmode = (
-        parquetfilepath.stat().st_mode if parquetfilepath.is_file() else parquetfilepath.parent.stat().st_mode & 0o666
-    )
+    destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(

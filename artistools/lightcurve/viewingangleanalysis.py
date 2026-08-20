@@ -65,6 +65,15 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     return dirbins, dirbin_definition
 
 
+def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
+    """Return whether the command-line arguments ask for the angle-averaged peak magnitude data."""
+    return bool(
+        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+        or args.make_viewing_angle_peakmag_risetime_scatter_plot
+        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
+    )
+
+
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
@@ -91,11 +100,7 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
                 comments="",
             )
 
-    elif (
-        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
+    elif wants_angle_averaged_data(args):
         args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
         args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
         args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
@@ -116,11 +121,7 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
 
 def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argparse.Namespace) -> None:
     """Write the angle-averaged peak magnitude, rise time, and decline rate of every model to a text file."""
-    if (
-        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
+    if wants_angle_averaged_data(args):
         np.savetxt(
             f"{band_name}band_{modelnames[0]}_angle_averaged_all_models_data.txt",
             np.c_[
@@ -552,6 +553,16 @@ def peakmag_risetime_declinerate_init(
     modelpaths: list[str | Path] | list[Path] | list[str], args: argparse.Namespace
 ) -> None:
     """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
+    if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file and wants_angle_averaged_data(args):
+        # writing the per-direction-bin files takes the branch that never measures the angle-averaged
+        # values, so the two steps of the workflow cannot run at once. Say so before reading any spectra
+        msg = (
+            "The angle-averaged peak magnitudes are not measured while"
+            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file writes the per-direction-bin data."
+            " Write the data in one run, then plot it in another."
+        )
+        raise ValueError(msg)
+
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
     args.band_risetime_polyfit = []
@@ -619,20 +630,6 @@ def peakmag_risetime_declinerate_init(
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
         save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
-
-    wantsangleaveraged = (
-        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    )
-    if wantsangleaveraged and len(args.band_peakmag_angle_averaged_polyfit) != len(modelnames):
-        # save_viewing_angle_data_for_plotting fills these only when the run is not writing the
-        # per-direction-bin files, so the two steps of the workflow cannot be asked for at once
-        msg = (
-            "The angle-averaged peak magnitudes were not measured. Write the per-direction-bin data with"
-            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file in one run, then plot it in another."
-        )
-        raise ValueError(msg)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
