@@ -143,7 +143,7 @@ jobs:
             - name: Publish package to PyPI
               uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
               with:
-                  # a version that PyPI already has shows a mistake, thus this job must fail on it.
-                  # The TestPyPI job keeps skip-existing, because the push trigger repeats it often
-                  skip-existing: false
+                  # a second run for one version can happen, e.g. two dispatches of this workflow.
+                  # The upload of a file that PyPI already has is then not an error
+                  skip-existing: true
                   verbose: false
