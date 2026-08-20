@@ -576,6 +576,48 @@ def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None
     assert destpath.read_text(encoding="utf-8") == "holders replacement"
 
 
+def test_replace_outdated_file_installs_at_an_empty_destination(tmp_path: Path) -> None:
+    """An empty destination takes the new file, so a file system without hard links can still create it."""
+    destpath = tmp_path / "cache"
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+
+    fileio.replace_outdated_file(replacement, destpath, None)
+
+    assert destpath.read_text(encoding="utf-8") == "replacement"
+
+    # a file that is already there is kept when this write does not claim to replace anything
+    another = tmp_path / "another"
+    another.write_text("another", encoding="utf-8")
+    fileio.replace_outdated_file(another, destpath, None)
+    assert destpath.read_text(encoding="utf-8") == "replacement"
+
+
+def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_path: Path) -> None:
+    """A file system that rejects hard links gets the same locked identity rule, not a bare rename."""
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    theirs = pl.DataFrame({"a": [1, 2, 3]})
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def sink_parquet_after_another_process_finished(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        result = real_sink_parquet(self, path, **kwargs)
+        real_sink_parquet(theirs.lazy(), parquetpath)
+        return result
+
+    with (
+        mock.patch.object(fileio.os, "link", side_effect=OSError),
+        mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished),
+    ):
+        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
+
+    # the fallback still replaces the file the caller found out of date
+    with mock.patch.object(fileio.os, "link", side_effect=OSError):
+        at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.get_file_identity(parquetpath))
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [7, 8, 9]
+
+
 def test_replace_outdated_file_takes_over_from_a_dead_lock_holder(tmp_path: Path) -> None:
     """A lock older than the moment its holder could hold it belongs to a dead process and is removed."""
     destpath = tmp_path / "cache"

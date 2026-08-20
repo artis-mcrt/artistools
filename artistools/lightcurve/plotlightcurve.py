@@ -144,7 +144,8 @@ def plot_bol_reflightcurve(
     Return the label used in the plot legend, which comes from the file metadata unless label is given.
     """
     dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(lightcurvefilename)
-    plotlabel = label or str(metadata.get("label", lightcurvefilename))
+    # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
+    plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)

@@ -422,26 +422,24 @@ def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
 
 
 def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple[int, int] | None) -> None:
-    """Replace destpath with newfilepath, but only if it still holds the file the caller found out of date.
+    """Install newfilepath at destpath, unless a file other than the given out-of-date one is there.
 
-    The identity check and the rename happen under an exclusive lock file. Without it, two writers that
-    both found the same out-of-date file could both pass the check, and the second rename would replace the
-    first writer's fresh file while a reader scans it. A writer that finds the lock taken waits: the holder
-    is installing an equally valid replacement built from the same inputs, and returning at once would let
-    this writer's caller read the out-of-date file in the moment before the holder's rename lands.
+    An empty destination takes the new file, the file whose identity is outdatedfile is replaced, and any
+    other file is kept: it is a rival's fresh replacement, built from the same inputs. The identity check
+    and the rename happen under an exclusive lock file. Without it, two writers that both found the same
+    out-of-date file could both pass the check, and the second rename would replace the first writer's
+    fresh file while a reader scans it. A writer that finds the lock taken waits: returning at once would
+    let this writer's caller read the out-of-date file in the moment before the holder's rename lands.
     """
     import time
-
-    if outdatedfile is None:
-        # this write does not replace anything, so a file that appeared at the destination is kept
-        return
 
     # the dot prefix keeps the lock out of the globs that find the parquet files, like the .partial file
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
 
     while True:
-        if get_file_identity(destpath) != outdatedfile:
-            # another writer has replaced the out-of-date file with the same fresh data
+        identity = get_file_identity(destpath)
+        if identity is not None and identity != outdatedfile:
+            # another writer has put the same fresh data in place
             return
 
         try:
@@ -456,7 +454,8 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
             continue
 
         try:
-            if get_file_identity(destpath) == outdatedfile:
+            identity = get_file_identity(destpath)
+            if identity is None or identity == outdatedfile:
                 newfilepath.replace(destpath)
         finally:
             os.close(lockfd)
@@ -516,8 +515,8 @@ def write_parquet_atomic(
         except FileExistsError:
             replace_outdated_file(partialfilepath, parquetfilepath, replaces)
         except OSError:
-            # a file system without hard links cannot make the destination in one step, thus accept the
-            # rename and the scans that it can break
-            partialfilepath.replace(parquetfilepath)
+            # a file system without hard links cannot make the destination appear in one step, but the
+            # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
     finally:
         partialfilepath.unlink(missing_ok=True)

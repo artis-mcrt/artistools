@@ -878,6 +878,25 @@ def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow
     assert screen_y_of_fainter < screen_y_of_brighter
 
 
+def test_bol_reflightcurve_empty_label_stays_out_of_the_legend() -> None:
+    """An explicit -label "" keeps a positional reference curve out of the legend.
+
+    Only a missing label takes the file metadata: matplotlib gives no legend entry to a series
+    labelled "", which is how one is suppressed.
+    """
+    _fig, axis = plt.subplots()
+    plotlabel = at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
+        axis, "AT2017gfo_smarttetal2017.txt", "erg/s", color="0.0", label=""
+    )
+    assert not plotlabel
+
+    plotlabel = at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
+        axis, "AT2017gfo_smarttetal2017.txt", "erg/s", color="0.0", label=None
+    )
+    assert plotlabel
+    assert plotlabel != "None"
+
+
 def test_get_reflightcurve_yerr_scaling() -> None:
     """Without magnitudes the error bar sizes are scaled the same way as the luminosities."""
     lum = np.array([1e42, 2e42])
