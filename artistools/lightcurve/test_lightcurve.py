@@ -7,6 +7,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
+import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -858,6 +859,38 @@ def test_bol_reflightcurve_unbounded_faint_side_keeps_the_bright_half(mockerrorb
 
     assert arrowcall[1]["lolims"] is True
     assert np.allclose(arrowcall[0][1], [3.0]), "only the unbounded point gets an arrow"
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_unbounded_arrow_points_at_the_faint_side(mockerrorbar: t.Any, tmp_path: Path) -> None:
+    """The arrow of an open-ended magnitude bar must point away from the brighter magnitudes.
+
+    matplotlib picks the direction from the orientation of the axis at the time of the errorbar call, and
+    a magnitude axis is inverted only after every series is drawn, so the default direction is the wrong one.
+    """
+    reffile = tmp_path / "unbounded_arrow_reflightcurve.txt"
+    reffile.write_text(
+        "#time_days luminosity_erg/s luminosity_errminus_erg/s luminosity_errplus_erg/s\n"
+        "2.0 1e42 5e41 5e41\n"
+        "3.0 1e42 2e42 5e41\n",
+        encoding="utf-8",
+    )
+
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[reffile], magnitude=True, outputfile=outputpath / "lc_reflc_unbounded_arrow.pdf"
+    )
+
+    axis = mockerrorbar.call_args_list[-1][0][0]
+    ymin, ymax = axis.get_ylim()
+    assert ymin > ymax, "this test only means anything on an inverted magnitude axis"
+
+    carets = [line.get_marker() for line in axis.containers[-1].lines[1]]
+    assert carets == [mplmarkers.CARETDOWNBASE], carets
+    # a downward caret is drawn towards the lower screen positions, which on this axis are the fainter
+    # (larger) magnitudes, so the arrow marks the side of the bar that has no end
+    screen_y_of_fainter = axis.transData.transform((0.0, max(ymin, ymax)))[1]
+    screen_y_of_brighter = axis.transData.transform((0.0, min(ymin, ymax)))[1]
+    assert screen_y_of_fainter < screen_y_of_brighter
 
 
 def test_get_reflightcurve_yerr_scaling() -> None:

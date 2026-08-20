@@ -14,6 +14,7 @@ import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
@@ -159,7 +160,7 @@ def plot_bol_reflightcurve(
         if unbounded.any():
             # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
             # second, zero-length bar whose arrow head sits on the point the bar above already reaches
-            axis.errorbar(
+            limitbars = axis.errorbar(
                 time_days[unbounded],
                 yvalues[unbounded],
                 yerr=np.zeros(int(unbounded.sum())),
@@ -168,6 +169,12 @@ def plot_bol_reflightcurve(
                 color=color,
                 zorder=0,
             )
+            # matplotlib picks the direction of the arrow from the orientation of the axis as it is now, and
+            # a magnitude axis is inverted only after every series is drawn, so point it at the faint side.
+            # The cast is for the marker constant, which matplotlib types as an int that its own setter rejects
+            caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
+            for capline in limitbars.lines[1]:
+                capline.set_marker(caretdown)
     else:
         axis.scatter(time_days, yvalues, label=plotlabel, color=color, zorder=0)
 
