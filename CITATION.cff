@@ -23,7 +23,7 @@ authors:
   - family-names: Leck
     given-names: Gerrit
 title: artistools
-version: 2026.8.20.1
+version: 2026.8.20.2
 date-released: 2026-08-20
 doi: 10.5281/zenodo.7728326
 license: MIT
