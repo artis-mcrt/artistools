@@ -774,7 +774,7 @@ def test_get_reflightcurve_yerr_magnitude() -> None:
     errplus = np.array([1e42, 0.0, 1e42])
     errminus = np.array([0.9e42, 0.0, 2e42])  # the last error bar reaches past zero luminosity
 
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "mag")
+    yerr, unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "mag")
     mag = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum, "mag")
 
     assert np.isclose(yerr[0][0], 2.5 * np.log10(2.0))  # brighter by a factor of two
@@ -784,12 +784,65 @@ def test_get_reflightcurve_yerr_magnitude() -> None:
     assert np.isclose(mag[0] - yerr[0][0], Mbol_sun - 2.5 * np.log10(2e42 / Lsun_to_erg_per_s))
     assert np.isclose(mag[0] + yerr[1][0], Mbol_sun - 2.5 * np.log10(0.1e42 / Lsun_to_erg_per_s))
 
-    assert yerr[0][1] == 0.0  # a zero error stays zero on both sides
-    assert yerr[1][1] == 0.0
+    assert np.isclose(yerr[0][1], 0.0)  # a zero error stays zero on both sides
+    assert np.isclose(yerr[1][1], 0.0)
 
-    # an error bar reaching zero luminosity has no faintest magnitude, but the brighter side is still defined
-    assert np.isnan(yerr[1][2])
-    assert not np.isnan(yerr[0][2])
+    # a bar reaching zero luminosity has no faintest magnitude. A NaN there makes matplotlib drop the whole
+    # bar, so the faint side has no length and the point is flagged for an arrow instead
+    assert np.allclose(unbounded, [False, False, True])
+    assert np.isfinite(yerr[1][2])
+    assert np.isclose(yerr[1][2], 0.0)
+    assert np.isclose(yerr[0][2], 2.5 * np.log10(2.0))
+
+
+def test_get_reflightcurve_yerr_nonpositive_luminosity_draws_no_bar() -> None:
+    """A luminosity at or below zero has no magnitude, so it must not reach matplotlib as an infinite bar.
+
+    matplotlib adds the error to the value, and inf + -inf warns and yields NaN.
+    """
+    lum = np.array([0.0, -1e42, 1e42])
+    errminus = np.array([1e41, 1e41, 1e41])
+    errplus = np.array([1e41, 1e41, 1e41])
+
+    yerr, unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "mag")
+
+    assert np.all(np.isfinite(yerr[0])), yerr[0]
+    assert np.all(np.isfinite(yerr[1])), yerr[1]
+    assert np.allclose(yerr[0][:2], 0.0)
+    assert np.allclose(yerr[1][:2], 0.0)
+    # a point with no magnitude is not an open faint side, it is not drawn at all
+    assert not unbounded[:2].any()
+    assert yerr[0][2] > 0.0
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_bol_reflightcurve_unbounded_faint_side_keeps_the_bright_half(mockerrorbar: t.Any, tmp_path: Path) -> None:
+    """An error bar reaching zero luminosity keeps its bright half and gains an arrow on the faint side.
+
+    Putting NaN in the faint row instead makes matplotlib collapse the segment to a single vertex, so the
+    finite bright half disappears with it.
+    """
+    reffile = tmp_path / "unbounded_reflightcurve.txt"
+    reffile.write_text(
+        "#time_days luminosity_erg/s luminosity_errminus_erg/s luminosity_errplus_erg/s\n"
+        "2.0 1e42 5e41 5e41\n"
+        "3.0 1e42 2e42 5e41\n",
+        encoding="utf-8",
+    )
+
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[reffile], magnitude=True, outputfile=outputpath / "lc_reflc_unbounded.pdf"
+    )
+
+    barcall, arrowcall = mockerrorbar.call_args_list
+    yerr = barcall[1]["yerr"]
+    assert np.all(np.isfinite(yerr[0]))
+    assert np.all(np.isfinite(yerr[1]))
+    assert yerr[0][1] > 0.0, "the bright half of the unbounded bar must still be drawn"
+    assert np.isclose(yerr[1][1], 0.0), "the faint half has no length, so matplotlib keeps the bright one"
+
+    assert arrowcall[1]["lolims"] is True
+    assert np.allclose(arrowcall[0][1], [3.0]), "only the unbounded point gets an arrow"
 
 
 def test_get_reflightcurve_yerr_scaling() -> None:
@@ -798,11 +851,12 @@ def test_get_reflightcurve_yerr_scaling() -> None:
     errminus = np.array([1e41, 3e41])
     errplus = np.array([2e41, 4e41])
 
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "erg/s")
+    yerr, unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "erg/s")
     assert np.allclose(yerr[0], errminus)
     assert np.allclose(yerr[1], errplus)
+    assert not unbounded.any(), "a luminosity axis reaches zero, so no bar is open-ended"
 
-    yerr = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "Lsun")
+    yerr, _unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "Lsun")
     assert np.allclose(yerr[0], errminus / Lsun_to_erg_per_s)
     assert np.allclose(yerr[1], errplus / Lsun_to_erg_per_s)
 
@@ -911,7 +965,7 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
     assert np.allclose(arr_mag, Mbol_sun - 2.5 * np.log10(lum_erg_per_s / Lsun_to_erg_per_s))
 
     yerr = mockerrorbar.call_args_list[0][1]["yerr"]
-    expected = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(
+    expected, _unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(
         lum_erg_per_s,
         dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
         dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
@@ -1195,3 +1249,90 @@ def test_set_scatterplot_plot_params_without_xmin() -> None:
     # neither side falls back to the default 0-1 view when no limit was given
     assert axis.get_xlim()[1] >= 10.0
     assert ymin >= 19.0
+
+
+def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
+    """The loader owns the averaging, so the magnitude cannot be left as the mean of the magnitudes.
+
+    Averaging is linear and a magnitude is logarithmic, so a single dark bin sends the arithmetic mean of
+    the magnitudes to inf while the magnitude of the averaged luminosity stays finite.
+    """
+    lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
+
+    averaged = at.lightcurve.readfile(lcpath, average_over_phi=True)[0].collect()
+    stalemean = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+
+    with np.errstate(divide="ignore"):
+        magofmeanlum = Mbol_sun - 2.5 * np.log10(averaged["luminosity_Lsun"].to_numpy())
+
+    assert np.allclose(averaged["mag"].to_numpy(), magofmeanlum, equal_nan=True)
+    assert not np.allclose(averaged["mag"].to_numpy(), stalemean["mag"].to_numpy(), equal_nan=True)
+
+
+def test_color_arg_rejects_a_colour_matplotlib_cannot_parse() -> None:
+    """A mistyped colour must be named by the argument that took it, not by a colour cycle helper."""
+    parser = argparse.ArgumentParser()
+    at.lightcurve.addargs(parser)
+
+    assert parser.parse_args(["-color", "tab:blue", "#1F77B4"]).color == ["tab:blue", "#1F77B4"]
+
+    for argname in ("-color", "-refspeccolors"):
+        with pytest.raises(SystemExit):
+            parser.parse_args([argname, "notacolour"])
+
+
+def test_transparent_series_colour_leaves_the_cycle_alone() -> None:
+    """A series drawn in "none" holds no colour, so it must not remove black from the palette."""
+    assert not at.plottools.get_assigned_colors(["none"])
+    assert mplcolors.to_hex("#000000") in {
+        mplcolors.to_hex(color) for color in at.plottools.get_unused_colors(["#000000", "#ffffff"], ["none"])
+    }
+
+
+@pytest.mark.parametrize("plottype", ["bolometric", "band", "colour_evolution"])
+@mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
+def test_time_limits_reach_every_figure(mockxlim: t.Any, plottype: str) -> None:
+    """-timemin/-timemax are this command's x limits, so every figure it draws must honour them."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        timemin=260,
+        timemax=300,
+        outputfile=outputpath,
+        filter=["B"] if plottype == "band" else [],
+        colour_evolution=["B-V"] if plottype == "colour_evolution" else [],
+    )
+
+    limits = [callargs[0][1:3] for callargs in mockxlim.call_args_list if len(callargs[0]) > 2]
+    assert (260, 300) in limits, limits
+
+
+def test_nonpositive_limit_on_a_log_axis_is_dropped(capsys: pytest.CaptureFixture[str]) -> None:
+    """A log axis cannot show a limit at or below zero, so it is dropped with a message naming the argument."""
+    _fig, axis = plt.subplots()
+    axis.plot([1.0, 10.0], [1e40, 1e44])
+    args = argparse.Namespace(logscaley=True, ymin=0.0, ymax=1e45, xmin=None, xmax=None)
+
+    at.plottools.set_axis_properties(axis, args)
+
+    assert "-ymin" in capsys.readouterr().out
+    ymin, ymax = axis.get_ylim()
+    assert ymin > 0.0, "the data must stay in view rather than the axis freezing at a rejected limit"
+    assert np.isclose(ymax, 1e45)
+
+
+def test_viewing_angle_scatter_needs_the_angle_averaged_step(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Writing the per-direction-bin data and plotting it are two runs, so asking for both must say so."""
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="angle-averaged"):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            timemin=250,
+            timemax=300,
+            outputfile=tmp_path,
+            save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+            make_viewing_angle_peakmag_risetime_scatter_plot=True,
+        )

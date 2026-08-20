@@ -293,9 +293,10 @@ def get_assigned_colors(seriescolors: Sequence[str | None]) -> set[str]:
     """Return the hex values of the colours that series were given.
 
     Comparing by value is the single rule for "a series already has this colour", so that the name "C0",
-    the alias "tab:blue" and the value "#1F77B4" all match the first colour of the cycle.
+    the alias "tab:blue" and the value "#1F77B4" all match the first colour of the cycle. A transparent
+    series holds no colour, and to_hex would report it as black.
     """
-    return {mplcolors.to_hex(color) for color in seriescolors if color}
+    return {mplcolors.to_hex(color) for color in seriescolors if color and mplcolors.to_rgba(color)[3] > 0.0}
 
 
 def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | None] = ()) -> list[str]:
@@ -456,6 +457,19 @@ def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
     return [axis for item in ax for axis in iter_axes(item)]
 
 
+def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> float | None:
+    """Return a plot range limit, or None when a log axis cannot show it.
+
+    matplotlib ignores a non-positive limit on a log scale, but warns in terms of neither the axis nor the
+    argument that asked for it.
+    """
+    if limit is not None and logscale and limit <= 0.0:
+        print(f"WARNING: ignoring {argname} {limit}, which a log axis cannot show")
+        return None
+
+    return limit
+
+
 def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
     """Apply the standard tick, minor tick, and font size settings to one or more axes."""
     if "subplots" not in args:
@@ -463,9 +477,11 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    ymin, ymax = getattr(args, "ymin", None), getattr(args, "ymax", None)
-    xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
     logscalex, logscaley = getattr(args, "logscalex", False), getattr(args, "logscaley", False)
+    ymin = log_axis_limit(getattr(args, "ymin", None), logscale=logscaley, argname="-ymin")
+    ymax = log_axis_limit(getattr(args, "ymax", None), logscale=logscaley, argname="-ymax")
+    xmin = log_axis_limit(getattr(args, "xmin", None), logscale=logscalex, argname="-xmin")
+    xmax = log_axis_limit(getattr(args, "xmax", None), logscale=logscalex, argname="-xmax")
 
     for axis in iter_axes(ax):
         axis.minorticks_on()

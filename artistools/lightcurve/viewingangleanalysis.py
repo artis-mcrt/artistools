@@ -358,11 +358,8 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     if not args.colouratpeak:
         axis.invert_yaxis()
-    # this parser names its time range -timemin/-timemax and declares no xmin/xmax, so reading them raised
-    # AttributeError. A limit of None on both sides would only turn autoscaling off, so apply what was given
-    xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
-    if xmin is not None or xmax is not None:
-        axis.set_xlim(xmin, xmax)
+    # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
+    # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
     if args.ymin is not None or args.ymax is not None:
         axis.set_ylim(args.ymin, args.ymax)
     axis.minorticks_on()
@@ -420,7 +417,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                 capsize=2,
             )
 
-    # modelnames has one entry per (model, direction bin), so it can outrun the per-model -label list
     linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
@@ -570,6 +566,9 @@ def peakmag_risetime_declinerate_init(
     modelnames = []  # save names of models
 
     for modelnumber, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+        # one entry per model, matching the per-model style lists and the one data file written per model
+        modelnames.append(modelname)
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
         if not args.filter:
@@ -583,8 +582,6 @@ def peakmag_risetime_declinerate_init(
             dirbins = [-1]
 
         for dirbin in dirbins:
-            modelname = at.get_model_name(modelpath)
-            modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
@@ -621,6 +618,20 @@ def peakmag_risetime_declinerate_init(
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
         save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
+
+    wantsangleaveraged = (
+        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+        or args.make_viewing_angle_peakmag_risetime_scatter_plot
+        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
+    )
+    if wantsangleaveraged and len(args.band_peakmag_angle_averaged_polyfit) != len(modelnames):
+        # save_viewing_angle_data_for_plotting fills these only when the run is not writing the
+        # per-direction-bin files, so the two steps of the workflow cannot be asked for at once
+        msg = (
+            "The angle-averaged peak magnitudes were not measured. Write the per-direction-bin data with"
+            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file in one run, then plot it in another."
+        )
+        raise ValueError(msg)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles

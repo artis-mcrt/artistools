@@ -26,7 +26,6 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
-from artistools.lightcurve.lightcurve import derived_lum_unit_cols
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
@@ -37,6 +36,7 @@ from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
+from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
@@ -102,23 +102,34 @@ def get_reflightcurve_yerr(
     errminus_erg_per_s: npt.NDArray[np.floating[t.Any]],
     errplus_erg_per_s: npt.NDArray[np.floating[t.Any]],
     lumunit: LumUnit,
-) -> list[npt.NDArray[np.floating[t.Any]]]:
-    """Return the [lower, upper] error bar sizes in the y axis units for a luminosity in erg/s and its errors."""
-    if lumunit == "mag":
-        # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
-        mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
-        # an error bar reaching zero luminosity has no faintest magnitude, so leave it undefined
-        lum_faintest = np.where(lum_erg_per_s > errminus_erg_per_s, lum_erg_per_s - errminus_erg_per_s, np.nan)
+) -> tuple[list[npt.NDArray[np.floating[t.Any]]], npt.NDArray[np.bool_]]:
+    """Return the [lower, upper] error bar sizes in the y axis units, and which faint sides are unbounded.
+
+    A magnitude bar whose luminosity reaches zero has no faintest magnitude. Putting NaN there makes
+    matplotlib drop the whole bar, including the finite bright half, so that side is given zero length and
+    the point is flagged instead: the caller marks it with an arrow.
+    """
+    if lumunit != "mag":
+        # the conversion is a simple scaling, so it applies to the error sizes directly
         return [
+            convert_lum_ergs_to_plotunits(errminus_erg_per_s, lumunit),
+            convert_lum_ergs_to_plotunits(errplus_erg_per_s, lumunit),
+        ], np.zeros(len(lum_erg_per_s), dtype=np.bool_)
+
+    # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
+    mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
+    hasmag = np.isfinite(mag)
+    unbounded = (errminus_erg_per_s >= lum_erg_per_s) & hasmag
+    lum_faintest = np.where(unbounded, lum_erg_per_s, lum_erg_per_s - errminus_erg_per_s)
+
+    with np.errstate(invalid="ignore"):
+        yerr = [
             mag - convert_lum_ergs_to_plotunits(lum_erg_per_s + errplus_erg_per_s, lumunit),
             convert_lum_ergs_to_plotunits(lum_faintest, lumunit) - mag,
         ]
 
-    # the conversion is a simple scaling, so it applies to the error sizes directly
-    return [
-        convert_lum_ergs_to_plotunits(errminus_erg_per_s, lumunit),
-        convert_lum_ergs_to_plotunits(errplus_erg_per_s, lumunit),
-    ]
+    # a non-positive luminosity has no magnitude to draw a bar around, and inf bounds make matplotlib warn
+    return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
 
 
 def plot_bol_reflightcurve(
@@ -131,31 +142,31 @@ def plot_bol_reflightcurve(
     dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(lightcurvefilename)
     plotlabel = label or str(metadata.get("label", lightcurvefilename))
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
+    time_days = dflightcurve["time_days"].to_numpy()
+    yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
 
     if {"luminosity_errminus_erg/s", "luminosity_errplus_erg/s"}.issubset(dflightcurve.columns):
-        axis.errorbar(
-            dflightcurve["time_days"],
-            convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit),
-            yerr=get_reflightcurve_yerr(
-                lum_erg_per_s,
-                dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
-                dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
-                lumunit,
-            ),
-            fmt="o",
-            capsize=3,
-            label=plotlabel,
-            color=color,
-            zorder=0,
+        yerr, unbounded = get_reflightcurve_yerr(
+            lum_erg_per_s,
+            dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
+            dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
+            lumunit,
         )
+        axis.errorbar(time_days, yvalues, yerr=yerr, fmt="o", capsize=3, label=plotlabel, color=color, zorder=0)
+        if unbounded.any():
+            # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
+            # second, zero-length bar whose arrow head sits on the point the bar above already reaches
+            axis.errorbar(
+                time_days[unbounded],
+                yvalues[unbounded],
+                yerr=np.zeros(int(unbounded.sum())),
+                lolims=True,
+                fmt="none",
+                color=color,
+                zorder=0,
+            )
     else:
-        axis.scatter(
-            dflightcurve["time_days"],
-            convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit),
-            label=plotlabel,
-            color=color,
-            zorder=0,
-        )
+        axis.scatter(time_days, yvalues, label=plotlabel, color=color, zorder=0)
 
     return plotlabel
 
@@ -381,16 +392,9 @@ def plot_artis_lightcurve(
             print(f"WARNING: Skipping because {lcfilename} does not exist")
             return None
 
-        lcdataframes = at.lightcurve.readfile(lcpath)
-
-        # averaging is linear, so the magnitude has to be rebuilt from the averaged luminosity
-        unitcols = derived_lum_unit_cols()
-
-        if average_over_phi:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi", derivedcols=unitcols)
-
-        if average_over_theta:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta", derivedcols=unitcols)
+        lcdataframes = at.lightcurve.readfile(
+            lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        )
 
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
@@ -581,14 +585,6 @@ def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
             axis.invert_yaxis()
 
 
-def set_time_axis_limits(axis: mplax.Axes, args: argparse.Namespace) -> None:
-    """Apply the requested time limits, leaving an unset side to autoscale to the plotted data."""
-    if args.timemin is not None:
-        axis.set_xlim(left=args.timemin)
-    if args.timemax is not None:
-        axis.set_xlim(right=args.timemax)
-
-
 def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str | Path,
@@ -774,11 +770,7 @@ def make_lightcurve_plot(
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
-    # the y limits, the log scales and the tick style are shared with the band and colour evolution figures.
-    # This parser has no -xmin/-xmax (the time range is -timemin/-timemax), so it leaves the x limits alone
     at.plottools.set_axis_properties(axis, args)
-    # after the scales, so that a non-positive time limit on a log axis is rejected rather than applied
-    set_time_axis_limits(axis, args)
     if lumunit == "mag":
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost
@@ -786,7 +778,8 @@ def make_lightcurve_plot(
 
     if args.plotthermalisation:
         assert axistherm is not None
-        set_time_axis_limits(axistherm, args)
+        # the second figure covers the same times as the first, so take its range rather than re-deriving it
+        axistherm.set_xlim(axis.get_xlim())
         # a thermalisation efficiency is a ratio, so keep the physical range rather than letting a
         # near-zero denominator at one timestep rescale every curve into the bottom of the panel
         axistherm.set_ylim(0.0, 1.0)
@@ -1195,12 +1188,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                     linewidth=4 if args.subplots else 3,
                 )
 
-            # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
-            # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
-            # tmax_B = at.match_closest_time(tmax_B, plot_times)
-            # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
-            #       f'{diff[plot_times.index(tmax_B)]}')
-
     for plotnumber, filters in enumerate(args.colour_evolution):
         axes[plotnumber].annotate(
             filters,
@@ -1502,7 +1489,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-refspeccolors", default=[], nargs="*", help="Set a list of colors for the reference light curves"
+        "-refspeccolors",
+        type=color_arg,
+        default=[],
+        nargs="*",
+        help="Set a list of colors for the reference light curves",
     )
 
     parser.add_argument(
@@ -1646,6 +1637,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
     )
+
+    # the x axis is the time axis, so the shared limit helpers see the time range under the name they read
+    args.xmin, args.xmax = args.timemin, args.timemax
 
     args.reflightcurves = makelist(args.reflightcurves)
     args.refspeccolors, args.refspecmarkers = trim_or_pad(

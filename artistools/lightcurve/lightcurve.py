@@ -47,8 +47,15 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating[t.Any]]) -> npt.NDArray[np
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
-def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
-    """Read an ARTIS light curve file."""
+def readfile(
+    filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
+) -> dict[int, pl.LazyFrame]:
+    """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.
+
+    The averaging belongs here rather than to the caller because the magnitude column is not linear in the
+    bin contributions: averaging without rebuilding it plots the mean of the magnitudes, where a single dark
+    bin sends the whole averaged bin to inf.
+    """
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
@@ -66,6 +73,12 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         # if the light_curve.out file repeats x values, keep the first half only
         if lcdata[-1].select(pl.col("time_days").n_unique() < pl.len()).collect().item():
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
+
+    if average_over_phi:
+        lcdata = at.average_direction_bins(lcdata, overangle="phi", derivedcols=derived_lum_unit_cols())
+
+    if average_over_theta:
+        lcdata = at.average_direction_bins(lcdata, overangle="theta", derivedcols=derived_lum_unit_cols())
 
     return lcdata
 

@@ -177,6 +177,21 @@ def add_axis_limit_args(
         parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
+def color_arg(value: str) -> str:
+    """Return a colour the user asked for, rejecting one matplotlib cannot parse.
+
+    The colours are compared and resolved long before anything is drawn, so a typo caught here names the
+    argument that caused it instead of surfacing from inside a plotting helper.
+    """
+    import matplotlib.colors as mplcolors
+
+    if not mplcolors.is_color_like(value):
+        msg = f"not a matplotlib color: {value}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return value
+
+
 def add_series_style_args(
     parser: argparse.ArgumentParser,
     *,
@@ -191,6 +206,7 @@ def add_series_style_args(
         "-color",
         "-colors",
         dest="color",
+        type=color_arg,
         default=list(colordefault) if colordefault else [],
         nargs="*",
         help="List of line colors",

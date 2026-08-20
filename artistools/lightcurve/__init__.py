@@ -3,7 +3,6 @@
 __all__ = ["plot", "plotlightcurve"]
 
 from artistools.lightcurve import plotlightcurve
-from artistools.lightcurve.lightcurve import derived_lum_unit_cols as derived_lum_unit_cols
 from artistools.lightcurve.lightcurve import find_bol_reflightcurve_file as find_bol_reflightcurve_file
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data as generate_band_lightcurve_data
 from artistools.lightcurve.lightcurve import get_band_lightcurve as get_band_lightcurve
