@@ -27,8 +27,14 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
+@lru_cache(maxsize=16)
 def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
-    """Return a polars LazyFrame containing the deposition data."""
+    """Return a polars LazyFrame containing the deposition data.
+
+    The file is read and its times checked against the timesteps on every call, and a light curve plot asks
+    for it once per model and again per escape type, so the parsed frame is cached. A LazyFrame has no
+    in-place operations, so a caller cannot alter what the next one gets.
+    """
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent

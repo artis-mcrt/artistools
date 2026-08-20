@@ -670,8 +670,8 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
-        lumattime = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_Lsun").collect().item(0, 0)
-        brightness = lumattime * at.constants.Lsun_to_erg_per_s
+        # readfile derives the erg/s column, so it does not have to be converted here again
+        brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").collect().item(0, 0)
         if args.colorbarphi:
             xvalues = int(angleindex / 10)
             xlabels = costheta_viewing_angle_bins

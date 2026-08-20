@@ -909,8 +909,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timebins_tend = list(at.get_timestep_times(args.modelpath[0], loc="end"))
 
     args.label = [
-        label if label is not None else at.get_model_name(modelpath)
-        for label, modelpath in zip(args.label, args.modelpath, strict=True)
+        at.get_series_label(args.label, index, at.get_model_name(modelpath))
+        for index, modelpath in enumerate(args.modelpath)
     ]
 
     at.plottools.set_mpl_style()

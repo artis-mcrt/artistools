@@ -10,6 +10,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import polars as pl
 import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
@@ -1336,3 +1337,57 @@ def test_viewing_angle_scatter_needs_the_angle_averaged_step(monkeypatch: pytest
             save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
             make_viewing_angle_peakmag_risetime_scatter_plot=True,
         )
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: t.Any) -> None:
+    """A band reference file is read and drawn once for the whole figure, not once per band.
+
+    plot_lightcurve_from_refdata already draws every band of the file onto its own panel, so calling it
+    from inside the band loop drew each reference curve once per band. It also asserted a single axes,
+    which a figure with more than one band never has, so -filter B V -reflightcurves raised AssertionError.
+    """
+    refdata = pl.DataFrame({
+        "band": ["B", "B", "V", "V"],
+        "time": [260.0, 280.0, 260.0, 280.0],
+        "magnitude": [-13.0, -12.5, -13.2, -12.7],
+    })
+
+    with mock.patch.object(
+        at.lightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+    ) as mockread:
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B", "V"],
+            reflightcurves=["fakeref.dat"],
+            outputfile=outputpath / "lc_band_ref_once.pdf",
+        )
+
+    assert mockread.call_count == 1, "the reference file must be read once, not once per band"
+
+    reflines = [callargs for callargs in mockplot.call_args_list if callargs[1].get("label") == "refband"]
+    assert len(reflines) == 2, "one reference curve per band panel"
+    assert {tuple(np.asarray(callargs[0][1])) for callargs in reflines} == {(260.0, 280.0)}
+
+
+@mock.patch.object(at.plottools, "get_next_color", side_effect=at.plottools.get_next_color, autospec=True)
+def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: t.Any) -> None:
+    """A colour taken but not drawn steps every later series along the cycle for nothing."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotdeposition=True,
+        outputfile=outputpath / "lc_dep_colourcount.pdf",
+    )
+    withoutalpha = mockcolor.call_count
+
+    mockcolor.reset_mock()
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotalphadeposition=True,
+        outputfile=outputpath / "lc_alphadep_colourcount.pdf",
+    )
+
+    assert mockcolor.call_count == withoutalpha + 1

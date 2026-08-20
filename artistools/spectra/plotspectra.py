@@ -42,6 +42,7 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
+from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
@@ -795,7 +796,7 @@ def make_emissionabsorption_plot(
     scale_to_peak: float | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
-    modelname = args.label[0] if args.label and args.label[0] is not None else get_model_name(modelpath)
+    modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
     print(f"====> {modelname}")
     clamp_to_timesteps = not args.notimeclamp

@@ -205,9 +205,12 @@ def plot_deposition_thermalisation(
     at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
     color_gamma = at.plottools.get_next_color(axis)
     color_beta = at.plottools.get_next_color(axis)
-    color_alpha = at.plottools.get_next_color(axis)
+    # the alpha curves are drawn only on request, so their colour is taken only then: consuming it anyway
+    # would step the next model's deposition curves along the cycle for a curve that is never drawn
+    plotsalpha = args.plotalphadeposition or args.plotthermalisation
+    color_alpha: str | None = at.plottools.get_next_color(axis) if plotsalpha else None
 
-    depositioncurves = [
+    depositioncurves: list[tuple[str, str, str, str | None]] = [
         ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
         ("eps_elec_Lsun", r" $\dot{E}_{rad,\beta^-}$", "dotted", color_beta),
         ("elecdep_Lsun", r" $\dot{E}_{dep,\beta^-}$", "dashed", color_beta),
@@ -861,9 +864,7 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
         return
 
     if args.subplots:
-        assert not isinstance(ax, mplax.Axes)
-        axis = ax[args.legendsubplotnumber]
-        assert isinstance(axis, mplax.Axes)
+        axis = iter_axes(ax)[args.legendsubplotnumber]
         axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
@@ -1011,16 +1012,18 @@ def make_band_lightcurves_plot(
         scaledmap = make_colorbar_viewingangles_colormap()
 
     first_band_name = None
+    bandnames: list[str] = []
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, dirbin in enumerate(dirbins):
+        for dirbin in dirbins:
             modelname = at.get_model_name(modelpath)
             print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
                 modelpath, args, dirbin, modelnumber=modelnumber
             )
+            bandnames = list(band_lightcurve_data)
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
                 hesma_model = at.lightcurve.read_hesma_lightcurve(args)
@@ -1072,21 +1075,6 @@ def make_band_lightcurves_plot(
                         verticalalignment="top",
                     )
 
-                if args.reflightcurves and modelnumber == 0:
-                    if len(dirbins) > 1 and index > 0:
-                        print("already plotted reflightcurve")
-                    else:
-                        assert isinstance(ax, mplax.Axes)
-                        for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_lightcurve_from_refdata(
-                                list(band_lightcurve_data.keys()),
-                                reflightcurve,
-                                args.refspeccolors[i],
-                                args.refspecmarkers[i],
-                                ax,
-                                plotnumber,
-                            )
-
                 # a model with several direction bins has only one -color entry to share between them, so let
                 # matplotlib pick a colour per line. plotkwargs is reused, so clear any previous model's colour
                 plotkwargs["color"] = args.color[modelnumber] if len(dirbins) == 1 else None
@@ -1101,6 +1089,14 @@ def make_band_lightcurves_plot(
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
+
+    # once for the whole figure: the helper draws every band of a reference file onto its own panel, so
+    # calling it per band drew each reference curve once per band and re-read the file each time. It also
+    # asserted a single axes, which a figure with more than one band never has
+    for refindex, reflightcurve in enumerate(args.reflightcurves):
+        plot_lightcurve_from_refdata(
+            bandnames, reflightcurve, args.refspeccolors[refindex], args.refspecmarkers[refindex], ax
+        )
 
     at.set_mpl_style()
 
@@ -1233,14 +1229,13 @@ def plot_lightcurve_from_refdata(
     color: t.Any,
     marker: t.Any,
     ax: npt.NDArray[t.Any] | mplax.Axes,
-    plotnumber: int,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     from extinction import apply
     from extinction import ccm89
 
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    linename = metadata["label"] if plotnumber == 0 else None
+    linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
