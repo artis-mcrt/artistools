@@ -41,23 +41,22 @@ Run every check that applies to the files that you changed. Run each check from 
 ```sh
 uv run -- ruff format
 uv run -- ruff check --no-fix     # --no-fix shows the same errors as CI (the config sets fix = true)
-uv run -- mypy
 uv run -- pyrefly check
 uv run -- ty check
-uv run -- refurb artistools --quiet -- --follow-imports=skip   # only artistools/, because mypy fails on pyvista
+uv run -- refurb artistools --quiet -- --follow-imports=skip   # only artistools/, because refurb runs mypy internally, and mypy fails on pyvista
 uv run -- vulture                                      # informational, see below
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
 cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for a Rust change
 ```
 
-The type checkers mypy, pyrefly, and ty must all give no errors. A change that satisfies one checker must not cause an error in a different checker. The file `.github/workflows/pytest.yml` defines what CI runs. CI also runs the `prek` hooks from `.pre-commit-config.yaml`. The vulture check gives information only. It reports code that possibly has no callers, but some of these reports are incorrect, thus CI does not fail on them.
+The type checkers pyrefly and ty must both give no errors. A change that satisfies one checker must not cause an error in a different checker. The file `.github/workflows/pytest.yml` defines what CI runs. CI also runs the `prek` hooks from `.pre-commit-config.yaml`. The vulture check gives information only. It reports code that possibly has no callers, but some of these reports are incorrect, thus CI does not fail on them.
 
 Do not report that a check passed if you did not run it. Tell the user which checks you did not run, and give the reason for each one.
 
 ## Python and type annotations
 
 - Write code for Python 3.13 or a later version. The syntax must also be correct on the later versions and on the free-threaded builds that CI tests. The file `.github/workflows/pytest.yml` gives the list of versions. Do not add mutable state at module level. Do not use the GIL for thread safety.
-- Give a full annotation to every function. mypy runs in strict mode, and it reports an untyped def or an untyped call as an error.
+- Give a full annotation to every function. The type checkers run in strict mode, and they report an untyped def or an untyped call as an error.
 - Use the modern generics: `list[str]`, `X | None`, and PEP 695 (`def f[T](...)`, `type Alias = ...`). Do not use `typing.List` or `typing.Optional`. Use `Any` only if no more accurate type is possible.
 - Pyrefly must infer the parameter types of a lambda from the call site (`implicit-any-lambda`). A lambda accepts no annotations. Thus, if pyrefly cannot infer the types of a `sorted`, `min`, or `filter` key, write an annotated `def`. Use a comprehension in place of `filter(lambda ...)`.
 - Put the message of an exception in a variable. Do not use a literal:
@@ -76,14 +75,11 @@ Correct the initial problem first. Add a suppression only if you cannot correct 
 | Tool | Syntax |
 | --- | --- |
 | ruff | `# ruff:ignore[rule-name]`, file-level `# ruff:file-ignore[rule-name]` |
-| mypy | `# type: ignore[error-code]` (a bare `# type: ignore` fails `ignore-without-code`) |
 | pyrefly | `# pyrefly: ignore[rule-name]` |
 | pyright | `# pyright: ignore[rule-name]` |
 | ty | `# ty:ignore[rule-name]` |
 
-The configuration gives each ruff rule by **name** and not by code (`"any-type"` and not `"ANN401"`). Use the name in a suppression. The setting `enableTypeIgnoreComments` is off for pyright, thus `# type: ignore` applies only to mypy. One line can need more than one comment. For an example, see `artistools/_polarscompat.py`.
-
-The option `warn_unused_ignores` is on. Delete a suppression when you correct the error that it hides. If the suppression stays, mypy fails.
+The configuration gives each ruff rule by **name** and not by code (`"any-type"` and not `"ANN401"`). Use the name in a suppression. The setting `enableTypeIgnoreComments` is off for pyright, thus a `# type: ignore` comment does not apply to pyright. One line can need more than one comment. For an example, see `artistools/_polarscompat.py`.
 
 ## Imports and module layout
 

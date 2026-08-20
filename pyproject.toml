@@ -68,7 +68,6 @@ extras = [
 [dependency-groups]
 dev = [
     "imageio>=2.37.3",
-    "mypy>=2.3.0",
     "prek>=0.4.12",
     "pynonthermal>=2026.4.27",
     "pyrefly>=1.2.0",
@@ -150,46 +149,6 @@ exclude = [
     { path = "set_version.py", format = "sdist" },
 ]
 
-[tool.mypy]
-python_executable = ".venv/bin/python3"
-strict = true
-# only settings that strict does not already imply, so the deliberate choices stay visible
-allow_redefinition = true
-disallow_any_explicit = false
-disallow_any_unimported = true
-error_summary = true
-enable_error_code = [
-    "comparison-overlap",
-    "deprecated",
-    "exhaustive-match",
-    "explicit-override",
-    "ignore-without-code",
-    "mutable-override",
-    "no-any-return",
-    "no-any-unimported",
-    "no-untyped-call",
-    "redundant-cast",
-    "redundant-expr",
-    "redundant-self",
-    "truthy-bool",
-    "truthy-iterable",
-    "type-arg",
-    "unused-awaitable",
-]
-# anchored to whole path components: an unanchored "data" also matched artistools/data/ and
-# every *data.py module, leaving them checked only by the other type checkers
-exclude = '(^|/)(build|dist|venv|\.venv)/'
-ignore_missing_imports = true
-implicit_optional = false
-implicit_reexport = false # strict implies this too, but the re-export rule is documented in CLAUDE.md
-packages = "artistools"
-pretty = true
-scripts_are_modules = true
-warn_unreachable = false
-fixed_format_cache = true
-python_version = "3.13"
-native_parser = true
-
 [tool.pyrefly]
 preset = "strict"
 project-excludes = [
@@ -204,7 +163,7 @@ project-excludes = [
 ]
 python-interpreter-path = ".venv/bin/python3"
 # missing-import is left enabled so a renamed or mistyped first-party module is an error (no other
-# checker catches that: mypy sets ignore_missing_imports and pyright downgrades it to information).
+# checker catches that: pyright downgrades it to information).
 # The [project.optional-dependencies] packages are absent from a plain `uv sync`, and zstandard is
 # not installed on 3.14+, so those resolve to Any rather than erroring.
 ignore-missing-imports = [
@@ -230,7 +189,7 @@ unsupported-operation = true
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-enableTypeIgnoreComments = false # leave these for mypy to interpret
+enableTypeIgnoreComments = false # leave these for the other type checkers to interpret
 exclude = [
     '**/node_modules',
     '**/__pycache__',
