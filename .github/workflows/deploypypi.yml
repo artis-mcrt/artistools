@@ -50,6 +50,23 @@ jobs:
               with:
                   output-dir: wheelhouse
 
+            # test-skip in pyproject.toml excludes the free-threaded wheels from the cibuildwheel
+            # test, because that test installs the dependencies, and polars has no free-threaded
+            # wheel. This step checks those wheels on the host. It installs each wheel without its
+            # dependencies, which is all that check_wheel.py needs, into a venv that has the
+            # free-threaded interpreter from the abi tag of the wheel
+            - name: Check the free-threaded wheels
+              if: matrix.freethreading == 't'
+              run: |
+                  for wheel in wheelhouse/*.whl; do
+                      abitag=$(basename "${wheel}" | cut -d- -f4)
+                      pyver=$(echo "${abitag}" | sed -E 's/^cp3([0-9]+)t$/3.\1t/')
+                      venv="${RUNNER_TEMP}/checkvenv-${abitag}"
+                      uv venv --python "${pyver}" "${venv}"
+                      uv pip install --python "${venv}/bin/python" --no-deps "${wheel}"
+                      "${venv}/bin/python" check_wheel.py
+                  done
+
             - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
                   name: cibw-wheels-${{ matrix.target.os_arch }}-${{ strategy.job-index }}

@@ -110,6 +110,11 @@ build-frontend = "uv"
 archs = ["auto64"]
 # check_wheel.py gives the reason why this is not a full run of the command-line interface
 test-command = "python {project}/check_wheel.py"
+# cibuildwheel installs the wheel together with its dependencies, and polars has no free-threaded
+# wheel. The test install thus compiles polars from source, and the compiler runs out of memory on
+# the aarch64 runner. deploypypi.yml checks the free-threaded wheels on the host instead, with an
+# install that skips the dependencies
+test-skip = "cp3*t-*"
 
 [tool.cibuildwheel.linux]
 before-all = [
