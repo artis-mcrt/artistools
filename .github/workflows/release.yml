@@ -4,6 +4,11 @@ permissions:
     contents: read
 on:
     workflow_dispatch:
+        inputs:
+            revision:
+                description: Number of the release on this date. Use 1 or more for a second release on the same date.
+                required: false
+                default: '0'
 # a second run while one is in flight would hit a non-fast-forward push or a duplicate tag
 concurrency:
     group: release
@@ -39,9 +44,11 @@ jobs:
 
             - name: Set the version
               id: setversion
+              env:
+                  REVISION: ${{ inputs.revision }}
               run: |
                   rustup update stable
-                  python3 set_version.py
+                  python3 set_version.py -revision "${REVISION}"
                   version=$(python3 -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
                   echo "version=${version}" >> "$GITHUB_OUTPUT"
 
@@ -64,6 +71,7 @@ jobs:
             - name: Commit the version bump
               env:
                   VERSION: ${{ steps.setversion.outputs.version }}
+                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
               run: |
                   # set_version.py is the only thing that edits pyproject.toml here, and the lockfiles
                   # it also refreshes are separate files, so churn alone cannot produce a "Set version
@@ -76,7 +84,7 @@ jobs:
                   git config user.name "${GITHUB_ACTOR}"
                   git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
                   git commit --all --message "Set version to ${VERSION}"
-                  git push
+                  git push origin "HEAD:${DEFAULT_BRANCH}"
 
             # --target pins the release to the version bump commit, and publishing the draft is
             # what fires release:published, which deploypypi.yml already listens for
