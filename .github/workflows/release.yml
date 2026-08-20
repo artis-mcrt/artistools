@@ -1,5 +1,5 @@
 ---
-name: Create release
+name: Bump version and draft release
 permissions:
     contents: read
 on:
