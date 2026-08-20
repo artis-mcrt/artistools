@@ -108,8 +108,8 @@ plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
 [tool.cibuildwheel]
 build-frontend = "uv"
 archs = ["auto64"]
-# installing dependencies on Linux arm64 takes ~20 minutes
-#test-command = "python -m artistools"
+# check_wheel.py gives the reason why this is not a full run of the command-line interface
+test-command = "python {project}/check_wheel.py"
 
 [tool.cibuildwheel.linux]
 before-all = [
@@ -147,6 +147,7 @@ include = [
 exclude = [
     { path = "**/test_*.py", format = "wheel" },
     { path = "set_version.py", format = "sdist" },
+    { path = "check_wheel.py", format = "sdist" },
 ]
 
 [tool.pyrefly]
