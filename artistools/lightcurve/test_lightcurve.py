@@ -16,6 +16,7 @@ from pytest_codspeed.plugin import BenchmarkFixture
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
+from artistools.lightcurve import viewingangleanalysis
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -214,6 +215,26 @@ def test_band_lightcurve_peakmag_risetime_plot() -> None:
         save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
         outputfile=outputpath,
     )
+
+
+def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The viewing angle scatter plot must not read -xmin/-xmax, which this parser does not define.
+
+    Its time range is named -timemin/-timemax, so args has no xmin and reading it raised AttributeError
+    before any scatter plot could be saved. The plot reads the data file that the first call writes.
+    """
+    monkeypatch.chdir(tmp_path)
+    commonargs: dict[str, t.Any] = {
+        "modelpath": [modelpath],
+        "filter": ["B"],
+        "timemin": 250,
+        "timemax": 300,
+        "outputfile": tmp_path,
+    }
+    at.lightcurve.plot(argsraw=[], save_viewing_angle_peakmag_risetime_delta_m15_to_file=True, **commonargs)
+    at.lightcurve.plot(argsraw=[], make_viewing_angle_peakmag_risetime_scatter_plot=True, **commonargs)
+
+    assert list(tmp_path.glob("*risetime_peakmag.pdf"))
 
 
 def test_band_lightcurve_subplots() -> None:
@@ -1124,3 +1145,53 @@ def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: t.Any) -> None:
     meanofmags = np.array([meanofmags_by_time[t_d] for t_d in arr_time_d])
     assert not np.allclose(arr_mag, meanofmags, equal_nan=True), "the stale mean of the magnitudes was plotted"
     assert np.isfinite(arr_mag).sum() > np.isfinite(meanofmags).sum(), "a dark bin still poisons the average"
+
+
+def test_colour_evolution_plot_leaves_the_filter_arg_alone() -> None:
+    """The band selection must not be written back onto args.filter, which main() dispatches on.
+
+    A caller that reuses one Namespace would otherwise take the band light curve branch on the second call
+    and silently draw a different plot.
+    """
+    parser = argparse.ArgumentParser()
+    at.lightcurve.addargs(parser)
+    args = parser.parse_args([])
+    args.modelpath = [modelpath]
+    args.colour_evolution = ["U-B", "B-V"]
+    args.outputfile = outputpath
+
+    at.lightcurve.plot(args=args)
+
+    assert not args.filter
+
+
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_lightcurve_ylabel_names_deposition_only_when_it_is_drawn(mockylabel: t.Any) -> None:
+    """Asking for deposition rates is not drawing them, so a run with no ARTIS model must not claim them."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[REFLIGHTCURVE],
+        plotdeposition=True,
+        outputfile=outputpath / "lc_reflc_only_deposition.pdf",
+    )
+
+    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
+    assert all(r"\dot{E}" not in ylabel for ylabel in ylabels), ylabels
+
+
+def test_set_scatterplot_plot_params_without_xmin() -> None:
+    """The light curve parser names its range -timemin/-timemax, so the scatter setup must not read args.xmin.
+
+    Reading args.xmin raised AttributeError and made every --make_viewing_angle_peakmag_* run fail.
+    """
+    fig, axis = plt.subplots()
+    axis.plot([1.0, 10.0], [15.0, 19.0])
+    args = argparse.Namespace(colouratpeak=False, ymin=None, ymax=None, colorbarcostheta=False, colorbarphi=False)
+
+    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
+
+    ymin, ymax = axis.get_ylim()
+    assert ymin > ymax, "the magnitude axis must point downwards"
+    # neither side falls back to the default 0-1 view when no limit was given
+    assert axis.get_xlim()[1] >= 10.0
+    assert ymin >= 19.0

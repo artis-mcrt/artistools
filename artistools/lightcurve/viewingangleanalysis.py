@@ -16,6 +16,7 @@ from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.misc import get_series_label
 from artistools.plottools import save_figure
 
 
@@ -357,8 +358,13 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     if not args.colouratpeak:
         axis.invert_yaxis()
-    axis.set_xlim(args.xmin, args.xmax)
-    axis.set_ylim(args.ymin, args.ymax)
+    # this parser names its time range -timemin/-timemax and declares no xmin/xmax, so reading them raised
+    # AttributeError. A limit of None on both sides would only turn autoscaling off, so apply what was given
+    xmin, xmax = getattr(args, "xmin", None), getattr(args, "xmax", None)
+    if xmin is not None or xmax is not None:
+        axis.set_xlim(xmin, xmax)
+    if args.ymin is not None or args.ymax is not None:
+        axis.set_ylim(args.ymin, args.ymax)
     axis.minorticks_on()
     axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
     axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
@@ -415,7 +421,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
             )
 
     # modelnames has one entry per (model, direction bin), so it can outrun the per-model -label list
-    linelabels = [at.get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
+    linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()

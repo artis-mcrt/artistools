@@ -221,6 +221,7 @@ def generate_band_lightcurve_data(
     args: argparse.Namespace | None = None,
     dirbin: int = -1,
     modelnumber: int | None = None,  # ruff:ignore[unused-function-argument]
+    filternames: Sequence[str] | None = None,
     **kwargs: t.Any,
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -260,10 +261,14 @@ def generate_band_lightcurve_data(
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
     filters_dict = {}
-    if not args.filter:
-        args.filter = ["B"]
+    if filternames is None:
+        # the colour evolution plot integrates the bands of every filter pair at once, so it names them here
+        # rather than by assigning args.filter, which also selects the subplot layout and the plot type
+        if not args.filter:
+            args.filter = ["B"]
+        filternames = args.filter
 
-    filters_list = args.filter
+    filters_list = filternames
 
     for filter_name in filters_list:
         if filter_name == "bol":
