@@ -16,6 +16,12 @@ from pathlib import Path
 
 def main() -> None:
     """Load artistools.rustext from the installed wheel and raise an error if it fails."""
+    # Python puts the directory of this script on sys.path, and cibuildwheel runs the script from
+    # the project root. The source tree there shadows the installed wheel, and the source tree has
+    # no compiled extension. Remove that entry, so that find_spec resolves to site-packages.
+    scriptdir = Path(__file__).resolve().parent
+    sys.path = [entry for entry in sys.path if Path(entry or ".").resolve() != scriptdir]
+
     pkgspec = importlib.util.find_spec("artistools")
     if pkgspec is None or pkgspec.submodule_search_locations is None:
         msg = "Found no installed artistools package"
