@@ -41,6 +41,7 @@ from artistools.misc.dirbins import split_multitable_dataframe as split_multitab
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
+from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model

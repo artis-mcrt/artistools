@@ -415,9 +415,10 @@ def get_packets_rankbatch_parquetfile(
             if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
                 conversion_needed = False
             else:
-                # leave the stale file in place: write_parquet_atomic() swaps the new one in with a rename, so
-                # the path always resolves to a complete parquet. Deleting it first opens a window in which a
-                # concurrent reader (another rank, or another pytest-xdist worker) finds it missing or half-swapped
+                # leave the outdated file in place: write_parquet_atomic() puts the new one at the path in
+                # one step, so the path always resolves to a complete parquet. Deleting it first opens a
+                # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
+                # it missing or half-swapped
                 reasons = []
                 if parquet_mtime <= last_textfile_mtime:
                     reasons.append(

@@ -440,6 +440,61 @@ def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) 
     assert pl.read_parquet(privatepath)["a"].item() == 2
 
 
+def test_write_parquet_atomic_keeps_a_concurrently_written_file(tmp_path: Path) -> None:
+    """A cache another process finished first is kept, because a reader may already be streaming it.
+
+    polars opens a parquet file again by its path between reading the metadata and reading the row groups,
+    so renaming a second copy of the same data onto the path makes every scan in progress read the new file
+    with the offsets of the old one.
+    """
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    theirs = pl.DataFrame({"a": [1, 2, 3]})
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def sink_parquet_after_another_process_finished(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        result = real_sink_parquet(self, path, **kwargs)
+        # the other process finishes while this one writes, so the destination appears from nowhere.
+        # DataFrame.write_parquet() would re-enter the patched method
+        real_sink_parquet(theirs.lazy(), parquetpath)
+        return result
+
+    with mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished):
+        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
+    assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_replaces_an_outdated_file(tmp_path: Path) -> None:
+    """A file the caller asked to replace still gets replaced, since its data is out of date."""
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
+    assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_get_file_identity(tmp_path: Path) -> None:
+    """A file is the same file only while its device and inode are unchanged."""
+    filepath = tmp_path / "cache"
+    assert at.misc.get_file_identity(filepath) is None
+
+    filepath.write_text("first", encoding="utf-8")
+    identity = at.misc.get_file_identity(filepath)
+    assert at.misc.get_file_identity(filepath) == identity
+
+    # rewriting in place keeps the file, but a rename onto the path makes it a different one
+    filepath.write_text("second", encoding="utf-8")
+    assert at.misc.get_file_identity(filepath) == identity
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("third", encoding="utf-8")
+    replacement.replace(filepath)
+    assert at.misc.get_file_identity(filepath) != identity
+
+
 # --- general.py --------------------------------------------------------------------------------
 
 

@@ -402,15 +402,33 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
     print(f"Created gif: {giffile}")
 
 
+def get_file_identity(filepath: Path) -> tuple[int, int] | None:
+    """Return the device and inode numbers of a file, or None if it does not exist.
+
+    Two stats of one path give the same pair only if it is still the same file. A rename onto the path
+    gives a different pair, which no comparison of names or modification times can detect reliably.
+    """
+    try:
+        filestat = filepath.stat()
+    except FileNotFoundError:
+        return None
+
+    return (filestat.st_dev, filestat.st_ino)
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     compression_level: int = 10,
 ) -> None:
-    """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
+    """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
 
-    If a concurrent process wrote the destination first, it is atomically overwritten by this equally-valid replacement.
+    A parquet file that another process wrote while this one worked is kept, and this copy of the same data
+    is discarded. polars opens a parquet file again by its path between reading the metadata and reading the
+    row groups, so a rename onto a path that already holds a complete file corrupts every scan in progress:
+    the second file gets read with the offsets of the first. A file the caller asked to replace, because the
+    data it holds is out of date, is still replaced.
 
     The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
     keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
@@ -419,15 +437,19 @@ def write_parquet_atomic(
     import os
     import tempfile
 
+    # the file this call was asked to replace, if any. A different one at the end of the write belongs to
+    # another process, which read the same inputs and thus wrote the same data
+    outdatedfile = get_file_identity(parquetfilepath)
+
     fd, partialfilename = tempfile.mkstemp(
         dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
     )
     os.close(fd)
     partialfilepath = Path(partialfilename)
-    # mkstemp creates the file 0600, and replace() carries that mode onto the destination, so a cache written
-    # into a group-shared model directory would be unreadable to everyone but its author. Reuse the mode the
-    # destination already has, or else the read/write bits of the directory holding it — reading the process
-    # umask would need a get-and-restore that is not safe against other threads.
+    # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
+    # cache written into a group-shared model directory would be unreadable to everyone but its author.
+    # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
+    # reading the process umask would need a get-and-restore that is not safe against other threads.
     destmode = (
         parquetfilepath.stat().st_mode if parquetfilepath.is_file() else parquetfilepath.parent.stat().st_mode & 0o666
     )
@@ -436,6 +458,16 @@ def write_parquet_atomic(
         pldf.lazy().sink_parquet(
             partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
         )
-        partialfilepath.replace(parquetfilepath)
+        try:
+            # gives the file a second name, and fails if that name is taken, thus the destination appears
+            # complete in one step and no reader of it ever sees a different file at the same path
+            os.link(partialfilepath, parquetfilepath)
+        except FileExistsError:
+            if get_file_identity(parquetfilepath) == outdatedfile:
+                partialfilepath.replace(parquetfilepath)
+        except OSError:
+            # a file system without hard links cannot make the destination in one step, thus accept the
+            # rename and the scans that it can break
+            partialfilepath.replace(parquetfilepath)
     finally:
         partialfilepath.unlink(missing_ok=True)
