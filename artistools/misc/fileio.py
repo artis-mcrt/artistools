@@ -426,41 +426,34 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
 
     An empty destination takes the new file, the file whose identity is outdatedfile is replaced, and any
     other file is kept: it is a rival's fresh replacement, built from the same inputs. The identity check
-    and the rename happen under an exclusive lock file. Without it, two writers that both found the same
+    and the rename happen under an exclusive flock. Without it, two writers that both found the same
     out-of-date file could both pass the check, and the second rename would replace the first writer's
-    fresh file while a reader scans it. A writer that finds the lock taken waits: returning at once would
-    let this writer's caller read the out-of-date file in the moment before the holder's rename lands.
+    fresh file while a reader scans it. A writer that finds the lock taken waits for the holder, and the
+    operating system releases the lock of a holder that dies, so the lock needs no age heuristic that
+    could steal it from a paused but live writer.
+
+    The lock file stays in place once created. Removing it while a rival waits on it would hand out a
+    second lock on a new inode, and two writers would hold the lock at once. The dot prefix keeps it out
+    of the globs that find the parquet files, like the .partial file.
     """
-    import time
-
-    # the dot prefix keeps the lock out of the globs that find the parquet files, like the .partial file
-    lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-
-    while True:
-        identity = get_file_identity(destpath)
-        if identity is not None and identity != outdatedfile:
-            # another writer has put the same fresh data in place
-            return
-
-        try:
-            lockfd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            # the lock is held for the duration of one rename, so an old lock belongs to a process that
-            # died while it held it: remove it, and take over the replacement on the next pass
-            with contextlib.suppress(FileNotFoundError):
-                if time.time() - lockpath.stat().st_mtime > 10.0:
-                    lockpath.unlink(missing_ok=True)
-            time.sleep(0.010)
-            continue
-
-        try:
-            identity = get_file_identity(destpath)
-            if identity is None or identity == outdatedfile:
-                newfilepath.replace(destpath)
-        finally:
-            os.close(lockfd)
-            lockpath.unlink(missing_ok=True)
+    try:
+        import fcntl
+    except ImportError:
+        # a platform without flock gets the unlocked check. Two simultaneous replacements of one
+        # out-of-date file can then race, which the identity check narrows but cannot close
+        if get_file_identity(destpath) in {None, outdatedfile}:
+            newfilepath.replace(destpath)
         return
+
+    lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
+    lockfd = os.open(lockpath, os.O_CREAT | os.O_WRONLY, 0o666)
+    try:
+        fcntl.flock(lockfd, fcntl.LOCK_EX)
+        identity = get_file_identity(destpath)
+        if identity is None or identity == outdatedfile:
+            newfilepath.replace(destpath)
+    finally:
+        os.close(lockfd)
 
 
 def write_parquet_atomic(

@@ -525,54 +525,28 @@ def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) 
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
 
-def test_replace_outdated_file_rechecks_under_the_lock(tmp_path: Path) -> None:
-    """The identity is checked again under the lock, where a rival's rename can no longer interleave.
-
-    The first check alone is the race: both writers can pass it before either renames. Here it is forced to
-    pass, as it does for a writer that checked just before the rival's rename landed.
-    """
-    destpath = tmp_path / "cache"
-    destpath.write_text("outdated", encoding="utf-8")
-    outdated = at.misc.get_file_identity(destpath)
-
-    first = tmp_path / "first"
-    first.write_text("first replacement", encoding="utf-8")
-    fileio.replace_outdated_file(first, destpath, outdated)
-
-    second = tmp_path / "second"
-    second.write_text("second replacement", encoding="utf-8")
-    real_get_file_identity = fileio.get_file_identity
-    with mock.patch.object(fileio, "get_file_identity", side_effect=[outdated, real_get_file_identity(destpath)]):
-        fileio.replace_outdated_file(second, destpath, outdated)
-
-    assert destpath.read_text(encoding="utf-8") == "first replacement"
-
-
 def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None:
     """A writer that finds the replacement lock taken waits, so its caller reads the holder's fresh file.
 
     Returning at once would let the caller open the out-of-date file in the moment before the holder's
-    rename lands.
+    rename lands. The wait is the blocking flock call, so the holder's rename is simulated inside it.
     """
     destpath = tmp_path / "cache"
     destpath.write_text("outdated", encoding="utf-8")
     outdated = at.misc.get_file_identity(destpath)
-    lockpath = tmp_path / ".cache.replace-lock"
-    lockpath.touch()
 
     holders_file = tmp_path / "holders_replacement"
     holders_file.write_text("holders replacement", encoding="utf-8")
 
-    def holder_finishes(_seconds: float) -> None:
+    def holder_finishes_first(_fd: int, _operation: int) -> None:
         holders_file.replace(destpath)
-        lockpath.unlink()
 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
-    with mock.patch("time.sleep", side_effect=holder_finishes) as mocksleep:
+    with mock.patch("fcntl.flock", side_effect=holder_finishes_first) as mockflock:
         fileio.replace_outdated_file(replacement, destpath, outdated)
 
-    assert mocksleep.call_count == 1, "the writer must wait while the lock is held"
+    assert mockflock.call_count == 1
     assert destpath.read_text(encoding="utf-8") == "holders replacement"
 
 
@@ -618,21 +592,25 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
     assert pl.read_parquet(parquetpath)["a"].to_list() == [7, 8, 9]
 
 
-def test_replace_outdated_file_takes_over_from_a_dead_lock_holder(tmp_path: Path) -> None:
-    """A lock older than the moment its holder could hold it belongs to a dead process and is removed."""
+def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> None:
+    """A lock file that no process holds does not block: the flock, not the file, is the lock.
+
+    The operating system releases the flock of a holder that dies, so a leftover file from an earlier
+    replacement carries no lock. The file stays in place: removing it while a rival waits on it would
+    hand out a second lock on a new inode.
+    """
     destpath = tmp_path / "cache"
     destpath.write_text("outdated", encoding="utf-8")
     outdated = at.misc.get_file_identity(destpath)
     lockpath = tmp_path / ".cache.replace-lock"
     lockpath.touch()
-    os.utime(lockpath, (0.0, 0.0))
 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
     fileio.replace_outdated_file(replacement, destpath, outdated)
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
-    assert not lockpath.exists()
+    assert lockpath.exists()
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
