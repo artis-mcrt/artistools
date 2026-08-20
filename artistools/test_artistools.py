@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -1121,6 +1122,65 @@ def test_get_series_colors_knows_the_value_of_a_cycle_colour() -> None:
 
     assert at.plottools.get_series_colors([False, False], [cyclecolors[0]]) == [cyclecolors[0], "C1"]
     assert at.plottools.get_series_colors([False, False], [cyclecolors[1]]) == [cyclecolors[1], "C0"]
+
+
+def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
+    """A cycle colour must leave the cycle whatever name the user gave it, not only its exact hex string."""
+    at.set_mpl_style()
+    firstcyclecolor = mplcolors.to_hex(plt.rcParams["axes.prop_cycle"].by_key()["color"][0])
+    assert firstcyclecolor == mplcolors.to_hex("tab:blue")
+
+    for spelling in ("tab:blue", firstcyclecolor.upper()):
+        colors = at.plottools.get_series_colors([False, False], [spelling])
+        assert colors[0] == spelling
+        # the second series used to be handed C0, drawing both series in the same blue
+        assert mplcolors.to_hex(colors[1]) != firstcyclecolor
+
+    # a grey that the user asked for is also matched by value, so the next reference series steps over it
+    assert at.plottools.get_series_colors([True, True], ["#000000"]) == ["#000000", "0.4"]
+
+
+def test_set_axis_properties_log_scale_keeps_the_data_in_view() -> None:
+    """A log scale must be set before the limits, so an unrequested limit does not freeze the linear view.
+
+    set_ylim turns autoscaling off even when both sides are None, so applying it first left the log axis with
+    the linearly padded limits, whose lower bound is negative and therefore off the axis entirely.
+    """
+    _fig, ax = plt.subplots()
+    ax.plot([1.0, 10.0], [1.0, 1000.0])
+
+    at.plottools.set_axis_properties(ax, argparse.Namespace(logscaley=True, ymin=None, ymax=None))
+
+    ymin, ymax = ax.get_ylim()
+    assert ymin > 0.0, ymin
+    assert ymin < 1.0, ymin
+    assert ymax > 1000.0, ymax
+
+
+def test_set_axis_properties_applies_the_requested_limits() -> None:
+    """A limit that the user did give must still be applied, on either side and on either axis."""
+    _fig, ax = plt.subplots()
+    ax.plot([1.0, 10.0], [1.0, 1000.0])
+
+    at.plottools.set_axis_properties(ax, argparse.Namespace(ymin=None, ymax=500.0, xmin=2.0, xmax=None))
+
+    assert np.isclose(ax.get_ylim()[1], 500.0)
+    assert np.isclose(ax.get_xlim()[0], 2.0)
+    # the side that was not given stays fitted to the data rather than falling back to the default view
+    assert ax.get_ylim()[0] <= 1.0
+    assert ax.get_xlim()[1] >= 10.0
+
+
+def test_iter_axes_flattens_a_subplot_grid() -> None:
+    """One axes and a grid of axes both become a flat list, so the callers need no isinstance dance."""
+    _fig, singleax = plt.subplots()
+    assert at.plottools.iter_axes(singleax) == [singleax]
+
+    _fig, axes = plt.subplots(nrows=2, ncols=3)
+    assert at.plottools.iter_axes(axes.flatten()) == list(axes.flatten())
+
+    # iterating a 2D array yields its rows, which are arrays rather than axes
+    assert at.plottools.iter_axes(axes) == list(axes.flatten())
 
 
 def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:

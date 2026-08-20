@@ -478,8 +478,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
             title += f", mgi = {args.modelgridindex[0]}"
         elif args.x == "velocity":
             title += f", {timedayslist} days"
-        titleaxis = ax if isinstance(ax, mplax.Axes) else ax[-1]
-        titleaxis.set_title(title)
+        at.plottools.iter_axes(ax)[-1].set_title(title)
 
     at.plottools.set_axis_properties(ax, args)
 

@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import os
 import shlex
 import sys
 import typing as t
@@ -402,40 +403,118 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
     print(f"Created gif: {giffile}")
 
 
+def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
+    """Return the device and inode numbers of a file, or None if it does not exist.
+
+    Two stats of one path give the same pair only if it is still the same file. A rename onto the path
+    gives a different pair, which no comparison of names or modification times can detect reliably. A
+    caller that already holds a stat result passes it, so the identity describes that same snapshot.
+    """
+    if isinstance(file, os.stat_result):
+        return (file.st_dev, file.st_ino)
+
+    try:
+        filestat = file.stat()
+    except FileNotFoundError:
+        return None
+
+    return (filestat.st_dev, filestat.st_ino)
+
+
+def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple[int, int] | None) -> None:
+    """Install newfilepath at destpath, unless a file other than the given out-of-date one is there.
+
+    An empty destination takes the new file, the file whose identity is outdatedfile is replaced, and any
+    other file is kept: it is a rival's fresh replacement, built from the same inputs. The identity check
+    and the rename happen under an exclusive flock. Without it, two writers that both found the same
+    out-of-date file could both pass the check, and the second rename would replace the first writer's
+    fresh file while a reader scans it. A writer that finds the lock taken waits for the holder, and the
+    operating system releases the lock of a holder that dies, so the lock needs no age heuristic that
+    could steal it from a paused but live writer.
+
+    The lock file stays in place once created. Removing it while a rival waits on it would hand out a
+    second lock on a new inode, and two writers would hold the lock at once. The dot prefix keeps it out
+    of the globs that find the parquet files, like the .partial file.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        # a platform without flock gets the unlocked check. Two simultaneous replacements of one
+        # out-of-date file can then race, which the identity check narrows but cannot close
+        if get_file_identity(destpath) in {None, outdatedfile}:
+            newfilepath.replace(destpath)
+        return
+
+    lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
+    # flock locks a read-only descriptor, so a different user regenerating a cache in a shared model
+    # directory needs only read access to the lock file. The chmod grants that under a restrictive umask,
+    # and fails harmlessly for a user who does not own the lock
+    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    with contextlib.suppress(OSError):
+        lockpath.chmod(0o666)
+    try:
+        fcntl.flock(lockfd, fcntl.LOCK_EX)
+        identity = get_file_identity(destpath)
+        if identity is None or identity == outdatedfile:
+            newfilepath.replace(destpath)
+    finally:
+        os.close(lockfd)
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     compression_level: int = 10,
+    replaces: tuple[int, int] | None = None,
 ) -> None:
-    """Write a zstd-compressed parquet file via a temporary file and an atomic replace, so a partial write is never mistaken for a complete file.
+    """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
 
-    If a concurrent process wrote the destination first, it is atomically overwritten by this equally-valid replacement.
+    A parquet file that another process wrote while this one worked is kept, and this copy of the same data
+    is discarded. polars opens a parquet file again by its path between reading the metadata and reading the
+    row groups, so a rename onto a path that already holds a complete file corrupts every scan in progress:
+    the second file gets read with the offsets of the first.
+
+    replaces is the get_file_identity() of the file this write replaces, taken from the same stat snapshot
+    that showed the caller its data was out of date. Only that exact file is replaced. The moment the write
+    started is too late to take it: a rival that finished its own replacement first would be snapshotted as
+    the file to replace, and its fresh file would be renamed over while a reader scans it.
 
     The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
     keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
     """
-    import os
     import tempfile
+
+    try:
+        deststat: os.stat_result | None = parquetfilepath.stat()
+    except FileNotFoundError:
+        deststat = None
 
     fd, partialfilename = tempfile.mkstemp(
         dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
     )
     os.close(fd)
     partialfilepath = Path(partialfilename)
-    # mkstemp creates the file 0600, and replace() carries that mode onto the destination, so a cache written
-    # into a group-shared model directory would be unreadable to everyone but its author. Reuse the mode the
-    # destination already has, or else the read/write bits of the directory holding it — reading the process
-    # umask would need a get-and-restore that is not safe against other threads.
-    destmode = (
-        parquetfilepath.stat().st_mode if parquetfilepath.is_file() else parquetfilepath.parent.stat().st_mode & 0o666
-    )
+    # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
+    # cache written into a group-shared model directory would be unreadable to everyone but its author.
+    # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
+    # reading the process umask would need a get-and-restore that is not safe against other threads.
+    destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(
             partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
         )
-        partialfilepath.replace(parquetfilepath)
+        try:
+            # gives the file a second name, and fails if that name is taken, thus the destination appears
+            # complete in one step and no reader of it ever sees a different file at the same path
+            os.link(partialfilepath, parquetfilepath)
+        except FileExistsError:
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
+        except OSError:
+            # a file system without hard links cannot make the destination appear in one step, but the
+            # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
     finally:
         partialfilepath.unlink(missing_ok=True)

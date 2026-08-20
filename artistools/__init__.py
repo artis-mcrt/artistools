@@ -104,6 +104,7 @@ from artistools.misc import get_deposition as get_deposition
 from artistools.misc import get_dirbin_labels as get_dirbin_labels
 from artistools.misc import get_dirbins as get_dirbins
 from artistools.misc import get_escaped_arrivalrange as get_escaped_arrivalrange
+from artistools.misc import get_file_identity as get_file_identity
 from artistools.misc import get_file_metadata as get_file_metadata
 from artistools.misc import get_filterfunc as get_filterfunc
 from artistools.misc import get_grid_mapping as get_grid_mapping
@@ -115,6 +116,7 @@ from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_phi_bins as get_phi_bins
 from artistools.misc import get_runfolders as get_runfolders
+from artistools.misc import get_series_label as get_series_label
 from artistools.misc import get_time_range as get_time_range
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_time as get_timestep_time

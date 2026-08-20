@@ -19,6 +19,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import Mbol_sun
 from artistools.misc import path_is_artis_model
 from artistools.misc.fileio import find_compressed
 
@@ -26,8 +27,36 @@ from artistools.misc.fileio import find_compressed
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
 
 
-def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
-    """Read an ARTIS light curve file."""
+def derived_lum_unit_cols() -> list[pl.Expr]:
+    """Return the expressions adding the bolometric magnitude and erg/s columns to a luminosity in Lsun.
+
+    Every loader must produce the same set of unit columns, since the plotting code selects one of them by name.
+    """
+    return [
+        (Mbol_sun - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
+        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
+    ]
+
+
+def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating[t.Any]]) -> npt.NDArray[np.floating[t.Any]]:
+    """Return the bolometric magnitude of a luminosity in solar luminosities.
+
+    A zero or negative luminosity has no magnitude, so it becomes inf or nan rather than warning.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return Mbol_sun - (2.5 * np.log10(lum_lsun))
+
+
+def readfile(
+    filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
+) -> dict[int, pl.LazyFrame]:
+    """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.
+
+    The averaging belongs here rather than to the caller because the magnitude column is not linear in the
+    bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the
+    magnitudes, where a single dark bin sends the whole averaged bin to inf.
+    """
+    at.check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
@@ -35,9 +64,6 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
-    ).with_columns(
-        (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-        (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
@@ -49,7 +75,17 @@ def readfile(filepath: str | Path) -> dict[int, pl.LazyFrame]:
         if lcdata[-1].select(pl.col("time_days").n_unique() < pl.len()).collect().item():
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
-    return lcdata
+    if average_over_phi:
+        lcdata = at.average_direction_bins(lcdata, overangle="phi")
+
+    if average_over_theta:
+        lcdata = at.average_direction_bins(lcdata, overangle="theta")
+
+    # after the averaging, never before it: a magnitude is not linear in the bin contributions, so the mean
+    # of the magnitudes of the bins is not the magnitude of their mean luminosity
+    unitcols = derived_lum_unit_cols()
+
+    return {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdata.items()}
 
 
 def get_from_packets(
@@ -178,13 +214,7 @@ def get_from_packets(
             )
 
         lcdata[dirbin] = (
-            lcdata[dirbin]
-            .rename({"tmid_days": "time_days"})
-            .drop("twidth_days")
-            .with_columns(
-                (4.74 - (2.5 * pl.col("luminosity_Lsun").log10())).alias("mag"),
-                (cs.ends_with("_Lsun") * Lsun_to_erg_per_s).name.replace("_Lsun", "_erg/s"),
-            )
+            lcdata[dirbin].rename({"tmid_days": "time_days"}).drop("twidth_days").with_columns(derived_lum_unit_cols())
         )
 
     return lcdata
@@ -209,6 +239,7 @@ def generate_band_lightcurve_data(
     args: argparse.Namespace | None = None,
     dirbin: int = -1,
     modelnumber: int | None = None,  # ruff:ignore[unused-function-argument]
+    filternames: Sequence[str] | None = None,
     **kwargs: t.Any,
 ) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
@@ -248,12 +279,14 @@ def generate_band_lightcurve_data(
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
     filters_dict = {}
-    if not args.filter:
-        args.filter = ["B"]
+    if filternames is None:
+        # the colour evolution plot integrates the bands of every filter pair at once, so it names them here
+        # rather than by assigning args.filter, which also selects the subplot layout and the plot type
+        if not args.filter:
+            args.filter = ["B"]
+        filternames = args.filter
 
-    filters_list = args.filter
-
-    for filter_name in filters_list:
+    for filter_name in filternames:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
                 Path(modelpath),
@@ -273,7 +306,7 @@ def generate_band_lightcurve_data(
 
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
-    for filter_name in filters_list:
+    for filter_name in filternames:
         if filter_name == "bol":
             continue
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
@@ -352,9 +385,7 @@ def bolometric_magnitude(
                 )[angle].collect()
             integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
-            Mbol_sun = 4.74
-            with np.errstate(divide="ignore"):
-                magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / Lsun_to_erg_per_s))
+            magnitude = float(lum_lsun_to_mag(np.asarray(integrated_luminosity / Lsun_to_erg_per_s)))
             magnitudes.append(magnitude)
             times.append(time)
 

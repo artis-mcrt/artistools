@@ -12,8 +12,10 @@ from artistools.misc.cliutils import add_timedays_arg as add_timedays_arg
 from artistools.misc.cliutils import add_timeminmax_args as add_timeminmax_args
 from artistools.misc.cliutils import add_timestep_arg as add_timestep_arg
 from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
+from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
+from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
@@ -39,6 +41,7 @@ from artistools.misc.dirbins import split_multitable_dataframe as split_multitab
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
+from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model

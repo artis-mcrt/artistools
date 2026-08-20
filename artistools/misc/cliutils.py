@@ -177,6 +177,21 @@ def add_axis_limit_args(
         parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
+def color_arg(value: str) -> str:
+    """Return a colour the user asked for, rejecting one matplotlib cannot parse.
+
+    The colours are compared and resolved long before anything is drawn, so a typo caught here names the
+    argument that caused it instead of surfacing from inside a plotting helper.
+    """
+    import matplotlib.colors as mplcolors
+
+    if not mplcolors.is_color_like(value):
+        msg = f"not a matplotlib color: {value}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return value
+
+
 def add_series_style_args(
     parser: argparse.ArgumentParser,
     *,
@@ -191,6 +206,7 @@ def add_series_style_args(
         "-color",
         "-colors",
         dest="color",
+        type=color_arg,
         default=list(colordefault) if colordefault else [],
         nargs="*",
         help="List of line colors",
@@ -342,6 +358,18 @@ def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[
         assert len(listout) == requiredlength
         list_sequence.append(listout)
     return list_sequence
+
+
+def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:
+    """Return the -label value for one series, or fallback when the user gave none for it.
+
+    trim_or_pad pads the list with None, so an entry can be missing either as a None or, when the series
+    count is not the model path count, by running off the end. An empty label is not a missing one:
+    matplotlib gives no legend entry to a series labelled "", which is how one is left out of the legend.
+    """
+    label = labels[index] if 0 <= index < len(labels) else None
+
+    return fallback if label is None else label
 
 
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:

@@ -14,6 +14,7 @@ import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
@@ -27,6 +28,7 @@ from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import add_axis_limit_args
 from artistools.misc import add_figscale_args
@@ -35,13 +37,156 @@ from artistools.misc import add_maxpacketfiles_arg
 from artistools.misc import add_modelpath_arg
 from artistools.misc import add_outputfile_arg
 from artistools.misc import add_series_style_args
+from artistools.misc import color_arg
+from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_series_colors
+from artistools.plottools import get_unused_colors
+from artistools.plottools import iter_axes
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_prop_cycle_unusedcolors
+
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
+
+type LumUnit = t.Literal["mag", "Lsun", "erg/s"]
+
+
+def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
+    """Return the luminosity unit that the command-line arguments select for the y axis.
+
+    This is the single source of truth for the unit choice: the light curve column to plot, the conversion
+    applied to reference and deposition data, and the y axis label are all derived from it.
+    """
+    if args.magnitude:
+        return "mag"
+
+    return "Lsun" if args.Lsun else "erg/s"
+
+
+def get_plot_lum_column(lumunit: LumUnit) -> str:
+    """Return the light curve dataframe column holding the luminosity in the y axis units."""
+    return "mag" if lumunit == "mag" else f"luminosity_{lumunit}"
+
+
+def shows_deposition(args: argparse.Namespace) -> bool:
+    """Return whether the command-line arguments ask for deposition rates on the light curve axis.
+
+    Every deposition flag puts the gamma and beta curves on that axis. Asking is not drawing, though: the y
+    axis label follows whether a model actually contributed curves, not this.
+    """
+    return bool(args.plotdeposition or args.plotalphadeposition or args.plotthermalisation)
+
+
+def convert_lum_lsun_to_plotunits(
+    lum_lsun: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
+) -> npt.NDArray[np.floating[t.Any]]:
+    """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
+    if lumunit == "mag":
+        return lum_lsun_to_mag(lum_lsun)
+
+    return lum_lsun if lumunit == "Lsun" else lum_lsun * Lsun_to_erg_per_s
+
+
+def convert_lum_ergs_to_plotunits(
+    lum_erg_per_s: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
+) -> npt.NDArray[np.floating[t.Any]]:
+    """Convert a luminosity in erg/s to the y axis units: bolometric magnitude, Lsun, or erg/s."""
+    if lumunit == "erg/s":
+        return lum_erg_per_s
+
+    return convert_lum_lsun_to_plotunits(lum_erg_per_s / Lsun_to_erg_per_s, lumunit)
+
+
+def get_reflightcurve_yerr(
+    lum_erg_per_s: npt.NDArray[np.floating[t.Any]],
+    errminus_erg_per_s: npt.NDArray[np.floating[t.Any]],
+    errplus_erg_per_s: npt.NDArray[np.floating[t.Any]],
+    lumunit: LumUnit,
+) -> tuple[list[npt.NDArray[np.floating[t.Any]]], npt.NDArray[np.bool_]]:
+    """Return the [lower, upper] error bar sizes in the y axis units, and which faint sides are unbounded.
+
+    A magnitude bar whose luminosity reaches zero has no faintest magnitude. Putting NaN there makes
+    matplotlib drop the whole bar, including the finite bright half, so that side is given zero length and
+    the point is flagged instead: the caller marks it with an arrow.
+    """
+    if lumunit != "mag":
+        # the conversion is a simple scaling, so it applies to the error sizes directly
+        return [
+            convert_lum_ergs_to_plotunits(errminus_erg_per_s, lumunit),
+            convert_lum_ergs_to_plotunits(errplus_erg_per_s, lumunit),
+        ], np.zeros(len(lum_erg_per_s), dtype=np.bool_)
+
+    # a magnitude gets smaller as the luminosity gets larger, so the error bars swap sides and become asymmetric
+    mag = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
+    hasmag = np.isfinite(mag)
+    unbounded = (errminus_erg_per_s >= lum_erg_per_s) & hasmag
+    lum_faintest = np.where(unbounded, lum_erg_per_s, lum_erg_per_s - errminus_erg_per_s)
+
+    with np.errstate(invalid="ignore"):
+        yerr = [
+            mag - convert_lum_ergs_to_plotunits(lum_erg_per_s + errplus_erg_per_s, lumunit),
+            convert_lum_ergs_to_plotunits(lum_faintest, lumunit) - mag,
+        ]
+
+    # a non-positive luminosity has no magnitude to draw a bar around, and inf bounds make matplotlib warn
+    return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
+
+
+def plot_bol_reflightcurve(
+    axis: mplax.Axes, lightcurvefilename: str | Path, lumunit: LumUnit, color: str, label: str | None = None
+) -> str:
+    """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
+
+    Return the label used in the plot legend, which comes from the file metadata unless label is given.
+    """
+    dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(lightcurvefilename)
+    # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
+    plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
+    lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
+    time_days = dflightcurve["time_days"].to_numpy()
+    yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
+
+    if {"luminosity_errminus_erg/s", "luminosity_errplus_erg/s"}.issubset(dflightcurve.columns):
+        yerr, unbounded = get_reflightcurve_yerr(
+            lum_erg_per_s,
+            dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
+            dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
+            lumunit,
+        )
+        axis.errorbar(time_days, yvalues, yerr=yerr, fmt="o", capsize=3, label=plotlabel, color=color, zorder=0)
+        if unbounded.any():
+            # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
+            # second, zero-length bar whose arrow head sits on the point the bar above already reaches
+            limitbars = axis.errorbar(
+                time_days[unbounded],
+                yvalues[unbounded],
+                yerr=np.zeros(int(unbounded.sum())),
+                lolims=True,
+                fmt="none",
+                color=color,
+                zorder=0,
+            )
+            # matplotlib picks the direction of the arrow from the orientation of the axis as it is now, and
+            # a magnitude axis is inverted only after every series is drawn, so point it at the faint side.
+            # The cast is for the marker constant, which matplotlib types as an int that its own setter rejects
+            caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
+            for capline in limitbars.lines[1]:
+                capline.set_marker(caretdown)
+    else:
+        axis.scatter(time_days, yvalues, label=plotlabel, color=color, zorder=0)
+
+    return plotlabel
+
+
+def get_model_folder(modelpath: str | Path) -> Path:
+    """Return the model folder, whether modelpath names the folder itself or a file inside it."""
+    path = Path(modelpath)
+
+    return path.parent if path.is_file() else path
 
 
 def plot_deposition_thermalisation(
@@ -50,119 +195,78 @@ def plot_deposition_thermalisation(
     modelpath: str | Path,
     modelname: str,
     args: argparse.Namespace,
-    **plotkwargs: t.Any,
+    linewidth: float | str | None = None,
 ) -> None:
-    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given."""
+    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given.
+
+    Every curve below appends its own suffix to modelname and picks its own linestyle and colour, so the line
+    width is the only style the caller sets: passing the rest would reach matplotlib twice.
+    """
+    lumunit = get_plot_lum_unit(args)
+
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
 
-        model_mass_grams = dfmodel.select("mass_g").sum().collect().item()
+        # one collect for both sums: get_modeldata returns a plan, so a second one re-derives every column
+        model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     depdata = at.get_deposition(modelpath).collect()
 
     at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
     color_gamma = at.plottools.get_next_color(axis)
-
-    axis.plot(
-        depdata["tmid_days"],
-        depdata["gammadep_Lsun"] * Lsun_to_erg_per_s,
-        **plotkwargs,
-        label=plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
-        linestyle="dashed",
-        color=color_gamma,
+    color_beta = at.plottools.get_next_color(axis)
+    # the alpha curves are drawn only on request, so their colour is taken only then: consuming it anyway
+    # would step the next model's deposition curves along the cycle for a curve that is never drawn
+    color_alpha: str | None = (
+        at.plottools.get_next_color(axis) if args.plotalphadeposition or args.plotthermalisation else None
     )
 
-    color_beta = at.plottools.get_next_color(axis)
+    depositioncurves: list[tuple[str, str, str, str | None]] = [
+        ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
+        ("eps_elec_Lsun", r" $\dot{E}_{rad,\beta^-}$", "dotted", color_beta),
+        ("elecdep_Lsun", r" $\dot{E}_{dep,\beta^-}$", "dashed", color_beta),
+    ]
 
-    if "eps_elec_Lsun" in depdata:
+    if args.plotalphadeposition:
+        depositioncurves += [
+            ("eps_alpha_ana_Lsun", r" $\dot{E}_{rad,\alpha}$ analytical", "solid", color_alpha),
+            ("eps_alpha_Lsun", r" $\dot{E}_{rad,\alpha}$", "dashed", color_alpha),
+            ("alphadep_Lsun", r" $\dot{E}_{dep,\alpha}$", "dotted", color_alpha),
+        ]
+
+    # an older deposition.out has only the gamma columns, so skip any curve whose column is absent
+    for depcol, labelsuffix, curvelinestyle, curvecolor in depositioncurves:
+        if depcol not in depdata:
+            continue
         axis.plot(
             depdata["tmid_days"],
-            depdata["eps_elec_Lsun"] * Lsun_to_erg_per_s,
-            **plotkwargs,
-            label=plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
-            linestyle="dotted",
-            color=color_beta,
-        )
-
-    if "elecdep_Lsun" in depdata:
-        axis.plot(
-            depdata["tmid_days"],
-            depdata["elecdep_Lsun"] * Lsun_to_erg_per_s,
-            **plotkwargs,
-            label=plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
-            linestyle="dashed",
-            color=color_beta,
-        )
-
-    # color_alpha = axis._get_lines.get_next_color()
-    color_alpha = "C1"
-
-    plotalphadep = False
-    if plotalphadep:
-        if "eps_alpha_ana_Lsun" in depdata:
-            axis.plot(
-                depdata["tmid_days"],
-                depdata["eps_alpha_ana_Lsun"] * Lsun_to_erg_per_s,
-                **plotkwargs,
-                label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
-                linestyle="solid",
-                color=color_alpha,
-            )
-
-        if "eps_alpha_Lsun" in depdata:
-            axis.plot(
-                depdata["tmid_days"],
-                depdata["eps_alpha_Lsun"] * Lsun_to_erg_per_s,
-                **plotkwargs,
-                label=plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
-                linestyle="dashed",
-                color=color_alpha,
-            )
-
-        axis.plot(
-            depdata["tmid_days"],
-            depdata["alphadep_Lsun"] * Lsun_to_erg_per_s,
-            **plotkwargs,
-            label=plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
-            linestyle="dotted",
-            color=color_alpha,
+            convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), lumunit),
+            linewidth=linewidth,
+            label=modelname + labelsuffix,
+            linestyle=curvelinestyle,
+            color=curvecolor,
         )
 
     if args.plotthermalisation:
         assert axistherm is not None
-        f_gamma = depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"]
-        axistherm.plot(
-            depdata["tmid_days"],
-            f_gamma,
-            **plotkwargs,
-            label=modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
-            linestyle="solid",
-            color=color_gamma,
-        )
-
-        f_beta = depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"]
-        axistherm.plot(
-            depdata["tmid_days"],
-            f_beta,
-            **plotkwargs,
-            label=modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
-            linestyle="solid",
-            color=color_beta,
-        )
-
-        f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            f_alpha,
-            **plotkwargs,
-            label=modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
-            linestyle="solid",
-            color=color_alpha,
-        )
-
-        ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
+        # an older deposition.out has only the gamma columns, so skip any ratio whose columns are absent
+        thermalisation_ratios = [
+            ("gammadep_Lsun", "eps_gamma_Lsun", r"\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}", color_gamma),
+            ("elecdep_Lsun", "eps_elec_Lsun", r"\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}", color_beta),
+            ("alphadep_Lsun", "eps_alpha_Lsun", r"\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}", color_alpha),
+        ]
+        for depcol, epscol, ratiolabel, ratiocolor in thermalisation_ratios:
+            if depcol not in depdata or epscol not in depdata:
+                continue
+            axistherm.plot(
+                depdata["tmid_days"],
+                depdata[depcol] / depdata[epscol],
+                linewidth=linewidth,
+                label=modelname + rf" $\left({ratiolabel}\right)$",
+                linestyle="solid",
+                color=ratiocolor,
+            )
 
         print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
@@ -172,53 +276,34 @@ def plot_deposition_thermalisation(
         m5 = model_mass_grams / (5e-3 * Msun_to_g)  # M / (5e-3 Msun)
         v2 = ejecta_v / (0.2 * C_cm_per_s)  # ejecta_v / (0.2c)
 
+        def barnes_f_charged(t_ineff: float) -> list[float]:
+            """Return the Barnes et al (2016) equation 32 thermalisation efficiency of a charged particle."""
+            return [math.log(1 + 2 * (t / t_ineff) ** 2) / (2 * (t / t_ineff) ** 2) for t in depdata["tmid_days"]]
+
         # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
         t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
-        # Barnes et al (2016) equation 33
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_gamma,
-            **plotkwargs,
-            label=r"Barnes+2016 $f_\gamma$",
-            linestyle="dashed",
-            color=color_gamma,
-        )
-
         e0_beta_mev = 0.5
         # Barnes et al (2016) equation 20
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        # Barnes et al (2016) equation 32
-        barnes_f_beta = [
-            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2) for t in depdata["tmid_days"]
-        ]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_beta,
-            **plotkwargs,
-            label=r"Barnes+2016 $f_\beta$",
-            linestyle="dashed",
-            color=color_beta,
-        )
-
         e0_alpha_mev = 6.0
         # Barnes et al (2016) equation 25 times equation 16 for t_peak
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        # Barnes et al (2016) equation 32
-        barnes_f_alpha = [
-            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2) for t in depdata["tmid_days"]
-        ]
 
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_alpha,
-            **plotkwargs,
-            label=r"Barnes+2016 $f_\alpha$",
-            linestyle="dashed",
-            color=color_alpha,
-        )
+        barnes_curves = [
+            # Barnes et al (2016) equation 33 for the gamma rays, equation 32 for the charged particles
+            ([1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]], r"\gamma", color_gamma),
+            (barnes_f_charged(t_ineff_beta), r"\beta", color_beta),
+            (barnes_f_charged(t_ineff_alpha), r"\alpha", color_alpha),
+        ]
+        for barnes_f, symbol, curvecolor in barnes_curves:
+            axistherm.plot(
+                depdata["tmid_days"],
+                barnes_f,
+                linewidth=linewidth,
+                label=rf"Barnes+2016 $f_{symbol}$",
+                linestyle="dashed",
+                color=curvecolor,
+            )
 
 
 def plot_artis_lightcurve(
@@ -229,7 +314,6 @@ def plot_artis_lightcurve(
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
-    axistherm: mplax.Axes | None = None,
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -246,11 +330,10 @@ def plot_artis_lightcurve(
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
 
-    lcfilename = None
-    modelpath = Path(modelpath)
-    if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
-        lcfilename = Path(modelpath).parts[-1]
-        modelpath = Path(modelpath).parent
+    # handle e.g. modelpath = 'modelpath/light_curve.out'
+    inputpath = Path(modelpath)
+    lcfilename = inputpath.name if inputpath.is_file() else None
+    modelpath = inputpath.parent if lcfilename else inputpath
 
     if not modelpath.is_dir():
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
@@ -306,13 +389,12 @@ def plot_artis_lightcurve(
             print(f"WARNING: Skipping because {lcfilename} does not exist")
             return None
 
-        lcdataframes = at.lightcurve.readfile(lcpath)
+        lcdataframes = at.lightcurve.readfile(
+            lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        )
 
-        if average_over_phi:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi")
-
-        if average_over_theta:
-            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
+    lumunit = get_plot_lum_unit(args)
+    ycolumn = get_plot_lum_column(lumunit)
 
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
@@ -405,14 +487,6 @@ def plot_artis_lightcurve(
         if pellet_nucname is not None:
             plotkwargs["color"] = None
 
-        if args.magnitude:
-            # convert to bol magnitude
-            ycolumn = "mag"
-        elif args.Lsun:
-            ycolumn = "luminosity_Lsun"
-        else:
-            ycolumn = "luminosity_erg/s"
-
         if (
             args.average_over_phi_angle
             and dirbin % at.get_viewingdirection_costhetabincount() == 0
@@ -478,7 +552,7 @@ def plot_artis_lightcurve(
             print(lcdata)
 
         if args.plotcmf:
-            assert not args.magnitude, "Cannot plot cmf luminosity if magnitude is selected"
+            assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
             plotkwargs["linewidth"] = 1
             if not linelabel_is_custom:
                 assert label_with_tags is not None
@@ -492,12 +566,20 @@ def plot_artis_lightcurve(
                 **plotkwargs,
             )
 
-    if args.plotdeposition or args.plotthermalisation:
-        plot_deposition_thermalisation(
-            axis, axistherm, modelpath, label=linelabel, args=args, modelname=linelabel, **plotkwargs
-        )
-
     return lcdataframes
+
+
+def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
+    """Point the magnitude axis downwards, so that a brighter series is drawn higher.
+
+    invert_yaxis() toggles rather than sets, so calling it once per plotted series flips the axis back and
+    forth instead of inverting it. Inverting a shared y axis already inverts the rest of the grid, which the
+    check per axes skips over rather than undoing, so this does not rely on the subplots sharing one axis.
+    """
+    for axis in iter_axes(ax):
+        ymin, ymax = axis.get_ylim()
+        if ymin < ymax:
+            axis.invert_yaxis()
 
 
 def make_lightcurve_plot(
@@ -516,6 +598,8 @@ def make_lightcurve_plot(
     if "figwidthscale" not in args:
         args.figwidthscale = 1.0
 
+    lumunit = get_plot_lum_unit(args)
+
     figwidth = args.figscale * 5.0 * args.figwidthscale
     figheight = args.figscale * 5.0 * (0.25 + 0.4)
     fig, axis = plt.subplots(
@@ -526,17 +610,6 @@ def make_lightcurve_plot(
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
     axis.margins(x=0.0)
-    if args.magnitude:
-        axis.invert_yaxis()
-
-    if args.timemin is not None:
-        axis.set_xlim(xmin=args.timemin)
-    if args.timemax is not None:
-        axis.set_xlim(xmax=args.timemax)
-    if args.ymin is not None:
-        axis.set_ylim(ymin=args.ymin)
-    if args.ymax is not None:
-        axis.set_ylim(ymax=args.ymax)
 
     if args.plotthermalisation:
         figtherm, axistherm = plt.subplots(
@@ -549,50 +622,25 @@ def make_lightcurve_plot(
 
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")
-        if args.timemin is not None:
-            axistherm.set_xlim(left=args.timemin)
-        if args.timemax is not None:
-            axistherm.set_xlim(right=args.timemax)
-        axistherm.set_ylim(bottom=0.0)
     else:
         axistherm = None
 
     set_prop_cycle_unusedcolors([axis], [*args.color, *args.refspeccolors])
 
     plottedsomething = False
+    plotteddeposition = False
     for lcindex, modelpath in enumerate(modelpaths):
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
 
-            dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
-            lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
-            color = args.color[lcindex]
-            if (
-                "luminosity_errminus_erg/s" in dflightcurve.columns
-                and "luminosity_errplus_erg/s" in dflightcurve.columns
-            ):
-                axis.errorbar(
-                    dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
-                    yerr=[dflightcurve["luminosity_errminus_erg/s"], dflightcurve["luminosity_errplus_erg/s"]],
-                    fmt="o",
-                    capsize=3,
-                    label=lightcurvelabel,
-                    color=color,
-                    zorder=0,
-                )
-            else:
-                axis.scatter(
-                    dflightcurve["time_days"],
-                    dflightcurve["luminosity_erg/s"],
-                    label=lightcurvelabel,
-                    color=color,
-                    zorder=0,
-                )
+            lightcurvelabel = plot_bol_reflightcurve(
+                axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
+            )
             print(f"====> {lightcurvelabel}")
             plottedsomething = True
 
         else:
+            plottedthismodel = False
             dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types: list[str] = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
@@ -635,7 +683,6 @@ def make_lightcurve_plot(
                         escape_type=escape_type,
                         frompackets=frompackets,
                         maxpacketfiles=maxpacketfiles,
-                        axistherm=axistherm,
                         directionbins=dirbin,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
@@ -649,22 +696,28 @@ def make_lightcurve_plot(
                         color=args.color[lcindex],
                         linelabel=args.label[lcindex],
                     )
-                    plottedsomething = plottedsomething or (lcdataframes is not None)
+                    plottedthismodel = plottedthismodel or (lcdataframes is not None)
+
+            plottedsomething = plottedsomething or plottedthismodel
+
+            if plottedthismodel and shows_deposition(args):
+                # the rates belong to the model, not to one escape type or pellet nuclide, and the style
+                # comes from the command line rather than from whatever a series left in its plot kwargs
+                plot_deposition_thermalisation(
+                    axis,
+                    axistherm,
+                    get_model_folder(modelpath),
+                    modelname=get_series_label(args.label, lcindex, at.get_model_name(modelpath)),
+                    args=args,
+                    linewidth=args.linewidth[lcindex] or None,
+                )
+                plotteddeposition = True
 
         print()
 
     if args.reflightcurves:
         for refindex, bolreflightcurve in enumerate(args.reflightcurves):
-            if args.Lsun:
-                print("Check units - trying to plot ref light curve in erg/s")
-                sys.exit(1)
-            bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
-            axis.scatter(
-                bollightcurve_data["time_days"],
-                bollightcurve_data["luminosity_erg/s"],
-                label=metadata.get("label", bolreflightcurve),
-                color=args.refspeccolors[refindex],
-            )
+            plot_bol_reflightcurve(axis, bolreflightcurve, lumunit, color=args.refspeccolors[refindex])
             plottedsomething = True
 
     assert plottedsomething, "No light curve was plotted"
@@ -679,13 +732,18 @@ def make_lightcurve_plot(
 
     axis.set_xlabel(r"Time [days]")
 
-    if args.magnitude:
-        axis.set_ylabel("Absolute Bolometric Magnitude")
+    if lumunit == "mag":
+        # the gamma-ray light curve and the deposition rates are converted onto this same magnitude axis, so
+        # the label must name what is drawn rather than always claiming a bolometric luminosity
+        ylabel = r"Absolute $\gamma$-ray Magnitude" if showgamma and not showuvoir else "Absolute Bolometric Magnitude"
+        if plotteddeposition:
+            ylabel += r" ($L$ or $\dot{E}$)"
+        axis.set_ylabel(ylabel)
     else:
-        str_units = r" [{}$\mathrm{{L}}_\odot$]" if args.Lsun else " [{}erg/s]"
+        str_units = r" [{}$\mathrm{{L}}_\odot$]" if lumunit == "Lsun" else " [{}erg/s]"
         if args.logscaley:
             str_units = str_units.replace("{}", "")
-        if args.plotdeposition:
+        if plotteddeposition:
             yvarname = r"$L$ or $\dot{{E}}$"
         elif showgamma and not showuvoir:
             yvarname = r"$\mathrm{{L}}_\gamma$"
@@ -707,11 +765,21 @@ def make_lightcurve_plot(
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
-    if args.logscalex:
-        axis.set_xscale("log")
+    # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
+    # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
+    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    if lumunit == "mag":
+        # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
+        # applied before a one-sided limit is lost
+        invert_magnitude_yaxis(axis)
 
-    if args.logscaley:
-        axis.set_yscale("log")
+    if args.plotthermalisation:
+        assert axistherm is not None
+        # the second figure covers the same times as the first, so take its range rather than re-deriving it
+        axistherm.set_xlim(axis.get_xlim())
+        # a thermalisation efficiency is a ratio, so keep the physical range rather than letting a
+        # near-zero denominator at one timestep rescale every curve into the bottom of the panel
+        axistherm.set_ylim(0.0, 1.0)
 
     if args.show:
         plt.show()
@@ -777,12 +845,11 @@ def get_linelabel(
     args: argparse.Namespace,
 ) -> str:
     """Return the legend label for one series, from the model name and viewing angle."""
+    serieslabel = get_series_label(args.label, modelnumber, modelname)
     if angle is not None and angle != -1:
         assert angle_definition is not None
-        return angle_definition[angle] if args.nomodelname else f"{modelname} {angle_definition[angle]}"
-    if args.label:
-        return str(args.label[modelnumber])
-    return modelname
+        return angle_definition[angle] if args.nomodelname else f"{serieslabel} {angle_definition[angle]}"
+    return serieslabel
 
 
 def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
@@ -791,9 +858,7 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
         return
 
     if args.subplots:
-        assert not isinstance(ax, mplax.Axes)
-        axis = ax[args.legendsubplotnumber]
-        assert isinstance(axis, mplax.Axes)
+        axis = iter_axes(ax)[args.legendsubplotnumber]
         axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
@@ -815,9 +880,8 @@ def set_lightcurve_plot_labels(
 ) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot.
 
-    The caller states which kind of plot this is rather than it being read back off args: colour_evolution_plot
-    assigns args.filter before it asks for labels, so sniffing args.filter here labels a colour plot as a
-    band plot.
+    The caller states which kind of plot this is rather than it being read back off args, which cannot tell a
+    colour plot from a band plot on its own.
     """
     if colour_evolution:
         ylabel = r"$\Delta$m"
@@ -909,7 +973,7 @@ def make_colorbar_viewingangles(
             cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
         else:
             assert ax is not None
-            firstaxis = ax if isinstance(ax, mplax.Axes) else next(iter(ax))
+            firstaxis = iter_axes(ax)[0]
             axisfigure = firstaxis.get_figure()
             assert axisfigure is not None
             cbar = axisfigure.colorbar(scaledmap, ax=ax)
@@ -927,6 +991,11 @@ def make_band_lightcurves_plot(
     if args.labelfontsize is None:
         args.labelfontsize = 22
     fig, ax = create_axes(args)
+    axes = iter_axes(ax)
+
+    # a model with several direction bins takes its line colours from the cycle, so keep the cycle clear of
+    # the colours that other series were given
+    set_prop_cycle_unusedcolors(axes, [*args.color, *args.refspeccolors])
 
     plotkwargs: dict[str, t.Any] = {}
 
@@ -936,16 +1005,18 @@ def make_band_lightcurves_plot(
         )
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    first_band_name = None
+    # every model is asked for the same bands, so one list serves the loader, the reference curves, the
+    # y axis label and the output file name. main() dispatches here only when -filter has a value
+    bandnames: list[str] = list(args.filter)
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, dirbin in enumerate(dirbins):
+        for dirbin in dirbins:
             modelname = at.get_model_name(modelpath)
             print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin, modelnumber=modelnumber
+                modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
             )
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -953,10 +1024,7 @@ def make_band_lightcurves_plot(
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
-                axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
-                assert isinstance(axis, mplax.Axes)
-                if first_band_name is None:
-                    first_band_name = band_name
+                axis = axes[plotnumber]
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
@@ -999,23 +1067,10 @@ def make_band_lightcurves_plot(
                         verticalalignment="top",
                     )
 
-                if args.reflightcurves and modelnumber == 0:
-                    if len(dirbins) > 1 and index > 0:
-                        print("already plotted reflightcurve")
-                    else:
-                        assert isinstance(ax, mplax.Axes)
-                        for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_lightcurve_from_refdata(
-                                list(band_lightcurve_data.keys()),
-                                reflightcurve,
-                                args.refspeccolors[i],
-                                args.refspecmarkers[i],
-                                ax,
-                                plotnumber,
-                            )
-
-                if len(dirbins) == 1:
-                    plotkwargs["color"] = args.color[modelnumber]
+                # only the first direction bin can take the model's single -color entry, as on the bolometric
+                # figure; the rest take a colour each from the cycle, which set_prop_cycle_unusedcolors has
+                # kept clear of the assigned colours. plotkwargs is reused, so always assign it
+                plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
 
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
@@ -1024,32 +1079,47 @@ def make_band_lightcurves_plot(
                         dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
                     )
 
-                if args.linestyle:
-                    plotkwargs["linestyle"] = args.linestyle[modelnumber]
+                plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
 
+    # once for the whole figure: the helper draws every band of a reference file onto its own panel, so
+    # calling it per band drew each reference curve once per band and re-read the file each time. It also
+    # asserted a single axes, which a figure with more than one band never has
+    for refindex, reflightcurve in enumerate(args.reflightcurves):
+        plot_lightcurve_from_refdata(
+            bandnames, reflightcurve, args.refspeccolors[refindex], args.refspecmarkers[refindex], ax
+        )
+
     at.set_mpl_style()
 
-    ax = at.plottools.set_axis_properties(ax, args)
-    fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=first_band_name)
+    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
 
-    if args.filter and len(band_lightcurve_data) == 1:
-        args.outputfile = Path(outputfolder, f"plot{first_band_name}lightcurves.pdf")
+    if args.filter and len(bandnames) == 1:
+        args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
+    invert_magnitude_yaxis(ax)
+
     if args.show:
         plt.show()
 
-    firstaxis = ax if isinstance(ax, mplax.Axes) else ax[0]
-    assert isinstance(firstaxis, mplax.Axes)
-    ymin, ymax = firstaxis.get_ylim()
-    if ymin < ymax:
-        firstaxis.invert_yaxis()
-
     save_figure(fig, args.outputfile, format="pdf")
+
+
+def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
+    """Return the colours to hand out to the direction bins of a colour evolution plot.
+
+    A direction bin must not repeat the colour that a whole model was given, since both go on the same axes.
+    The whole map is the fallback for the case where every one of its colours was assigned to a series: a bin
+    has to be drawn in some colour, and there is none left that no series holds.
+    """
+    tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+
+    return get_unused_colors(tab20colors, seriescolors) or tab20colors
 
 
 def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
@@ -1057,11 +1127,13 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     if args.labelfontsize is None:
         args.labelfontsize = 24
     angle_counter = 0
-    color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    color_list = get_dirbin_palette([*args.color, *args.refspeccolors])
 
     fig, ax = create_axes(args)
+    axes = iter_axes(ax)
 
-    plotkwargs: dict[str, t.Any] = {}
+    # the filter pairs share bands, so integrate the bands of every pair once per direction bin
+    bandnames = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
@@ -1069,79 +1141,70 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-        for index, dirbin in enumerate(dirbins):
+        for dirbin in dirbins:
+            if len(dirbins) > 1:
+                # -color has one colour per model, which cannot distinguish a model's direction bins, so take a
+                # colour per bin from the colour map instead, wrapping around when it runs out. The colour is
+                # chosen once per bin, so a bin keeps its colour across the subplots of the filter pairs.
+                dirbincolor = color_list[angle_counter % len(color_list)]
+                angle_counter += 1
+            else:
+                dirbincolor = args.color[modelnumber]
+
+            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                modelpath, args, dirbin=dirbin, modelnumber=modelnumber, filternames=bandnames
+            )
+
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
-                args.filter = filter_names
-                band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, dirbin=dirbin, modelnumber=modelnumber
-                )
-
                 plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
-
-                plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
 
-                if args.color and args.plotviewingangle:
-                    print(
-                        "WARNING: -color argument will not work with viewing angles for colour evolution plots,"
-                        "colours are taken from color_list array instead"
-                    )
-                    # plotkwargs["color"] = color_list[angle_counter]  # index instead of angle_counter??
-                    angle_counter += 1
-                elif args.plotviewingangle:
-                    plotkwargs["color"] = color_list[angle_counter]
-                    angle_counter += 1
-                elif args.color:
-                    plotkwargs["color"] = args.color[modelnumber]
-                if args.linestyle:
-                    plotkwargs["linestyle"] = args.linestyle[modelnumber]
-
-                if args.reflightcurves and modelnumber == 0:
-                    if len(dirbins) > 1 and index > 0:
-                        print("already plotted reflightcurve")
-                    else:
-                        for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_color_evolution_from_data(
-                                filter_names,
-                                reflightcurve,
-                                args.refspeccolors[i],
-                                args.refspecmarkers[i],
-                                ax,
-                                plotnumber,
-                                args,
-                            )
-
-                curax = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
-                curax.plot(plot_times, colour_delta_mag, linewidth=4 if args.subplots else 3, **plotkwargs)
-
-                assert isinstance(curax, mplax.Axes)
-                curax.invert_yaxis()
-                curax.annotate(
-                    f"{filter_names[0]}-{filter_names[1]}",
-                    xy=(1.0, 1.0),
-                    xycoords="axes fraction",
-                    textcoords="offset points",
-                    xytext=(-30, -30),
-                    horizontalalignment="right",
-                    verticalalignment="top",
-                    fontsize="x-large",
+                axes[plotnumber].plot(
+                    plot_times,
+                    colour_delta_mag,
+                    label=get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args),
+                    color=dirbincolor,
+                    linestyle=args.linestyle[modelnumber],
+                    linewidth=4 if args.subplots else 3,
                 )
 
-            # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
-            # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
-            # tmax_B = at.match_closest_time(tmax_B, plot_times)
-            # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
-            #       f'{diff[plot_times.index(tmax_B)]}')
+    # once for the whole figure, as on the band plot: the reference data does not depend on the models or
+    # their direction bins, so drawing it inside those loops re-read each file once per model per pair
+    for refindex, reflightcurve in enumerate(args.reflightcurves):
+        for plotnumber, filters in enumerate(args.colour_evolution):
+            plot_color_evolution_from_data(
+                filters.split("-"),
+                reflightcurve,
+                args.refspeccolors[refindex],
+                args.refspecmarkers[refindex],
+                ax,
+                plotnumber,
+                args,
+            )
+
+    for plotnumber, filters in enumerate(args.colour_evolution):
+        axes[plotnumber].annotate(
+            filters,
+            xy=(1.0, 1.0),
+            xycoords="axes fraction",
+            textcoords="offset points",
+            xytext=(-30, -30),
+            horizontalalignment="right",
+            verticalalignment="top",
+            fontsize="x-large",
+        )
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
-    ax = at.plottools.set_axis_properties(ax, args)
+    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     set_lightcurveplot_legend(ax, args)
 
-    args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
+    invert_magnitude_yaxis(ax)
+
+    args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
     if args.show:
         plt.show()
@@ -1168,21 +1231,20 @@ def plot_lightcurve_from_refdata(
     color: t.Any,
     marker: t.Any,
     ax: npt.NDArray[t.Any] | mplax.Axes,
-    plotnumber: int,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     from extinction import apply
     from extinction import ccm89
 
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    linename = metadata["label"] if plotnumber == 0 else None
+    linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = {}
+    axes = iter_axes(ax)
     for axnumber, filter_name_raw in enumerate(filter_names):
-        axis = ax if isinstance(ax, mplax.Axes) else ax[axnumber]
-        assert isinstance(axis, mplax.Axes)
+        axis = axes[axnumber]
         if filter_name_raw == "bol":
             continue
         with Path(filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
@@ -1281,8 +1343,7 @@ def plot_color_evolution_from_data(
     merge_dataframes = filter_data[0].join(
         filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
     )
-    axis = ax if isinstance(ax, mplax.Axes) else ax[plotnumber]
-    assert isinstance(axis, mplax.Axes)
+    axis = iter_axes(ax)[plotnumber]
     axis.plot(
         merge_dataframes["time"],
         merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
@@ -1352,7 +1413,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot the entire light curve including partially accumulated parts (light travel time effects)",
     )
 
-    parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
+    parser.add_argument(
+        "--plotdeposition", action="store_true", help="Plot the gamma-ray and positron deposition rates"
+    )
+
+    parser.add_argument(
+        "--plotalphadeposition",
+        action="store_true",
+        help="Also plot the alpha decay energy release and deposition rates (implies --plotdeposition)",
+    )
 
     parser.add_argument(
         "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
@@ -1421,7 +1490,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-refspeccolors", default=[], nargs="*", help="Set a list of colors for the reference light curves"
+        "-refspeccolors",
+        type=color_arg,
+        default=[],
+        nargs="*",
+        help="Set a list of colors for the reference light curves",
     )
 
     parser.add_argument(

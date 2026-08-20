@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
@@ -17,6 +18,8 @@ from artistools.misc import print_saved
 
 if t.TYPE_CHECKING:
     from pathlib import Path
+
+    import matplotlib.typing as mplt
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -286,6 +289,16 @@ glasbey_category20_nogreys = [
 refseries_colors = ("0.0", "0.4", "0.6", "0.7")
 
 
+def get_assigned_colors(seriescolors: Sequence[str | None]) -> set[str]:
+    """Return the hex values of the colours that series were given.
+
+    Comparing by value is the single rule for "a series already has this colour", so that the name "C0",
+    the alias "tab:blue" and the value "#1F77B4" all match the first colour of the cycle. A transparent
+    series holds no colour, and to_hex would report it as black.
+    """
+    return {mplcolors.to_hex(color) for color in seriescolors if color and mplcolors.to_rgba(color)[3] > 0.0}
+
+
 def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | None] = ()) -> list[str]:
     """Return the plot colour of each data series.
 
@@ -293,13 +306,13 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     The other series, and the reference series after the greys, get the colours of the matplotlib cycle.
     The code steps over a colour that the user asked for, thus two series do not get one colour.
     """
-    askedfor = {color for color in usercolors if color}
+    askedfor = get_assigned_colors(usercolors)
     cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    # the colours of the cycle that no series has, by either the name CN or the colour value
-    freecycleindices = [
-        i for i in range(len(cyclecolors)) if f"C{i}" not in askedfor and cyclecolors[i] not in askedfor
-    ] or list(range(max(len(cyclecolors), 1)))
+    # the colours of the cycle that no series has, by value rather than by spelling
+    freecycleindices = [i for i, color in enumerate(cyclecolors) if mplcolors.to_hex(color) not in askedfor] or list(
+        range(max(len(cyclecolors), 1))
+    )
 
     colors: list[str] = []
     refindex = 0
@@ -311,7 +324,7 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
             continue
 
         # step over a colour that the user asked for, thus two series do not get one colour
-        while isref and refindex < len(refseries_colors) and refseries_colors[refindex] in askedfor:
+        while isref and refindex < len(refseries_colors) and mplcolors.to_hex(refseries_colors[refindex]) in askedfor:
             refindex += 1
 
         if isref and refindex < len(refseries_colors):
@@ -324,17 +337,22 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
-def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
-    """Remove the colours of seriescolors from the colour cycle of each axis.
+def get_unused_colors(
+    palette: Sequence["mplt.ColorType"], seriescolors: Sequence[str | None]
+) -> list["mplt.ColorType"]:
+    """Return the colours of palette that no series in seriescolors was given.
 
-    A series that gets its colour from the cycle, e.g. an extra direction bin, then does not
-    repeat the colour of another series.
+    A series that takes its colour from the palette, e.g. an extra direction bin, then does not
+    repeat the colour of another series. Colours are compared by value, so "C0" matches "#1f77b4".
     """
-    colors = [
-        color
-        for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"])
-        if f"C{i}" not in seriescolors and color not in seriescolors
-    ]
+    assignedcolors = get_assigned_colors(seriescolors)
+
+    return [color for color in palette if mplcolors.to_hex(color) not in assignedcolors]
+
+
+def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
+    """Remove the colours of seriescolors from the colour cycle of each axis."""
+    colors = get_unused_colors(plt.rcParams["axes.prop_cycle"].by_key()["color"], seriescolors)
     if colors:
         for axis in axes:
             axis.set_prop_cycle(color=colors)
@@ -428,15 +446,58 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Namespace) -> t.Any:
-    """Apply the standard tick, minor tick, and font size settings to one or more axes."""
+def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
+    """Return a flat list of the axes, whether the figure has a single axes or a grid of them.
+
+    Iterating a 2D array of axes yields its rows, so the rows are flattened rather than returned as they are.
+    """
+    if isinstance(ax, mplax.Axes):
+        return [ax]
+
+    return [axis for item in ax for axis in iter_axes(item)]
+
+
+def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> float | None:
+    """Return a plot range limit, or None when a log axis cannot show it.
+
+    matplotlib ignores a non-positive limit on a log scale, but warns in terms of neither the axis nor the
+    argument that asked for it.
+    """
+    if limit is not None and logscale and limit <= 0.0:
+        print(f"WARNING: ignoring {argname} {limit}, which a log axis cannot show")
+        return None
+
+    return limit
+
+
+def set_axis_properties(
+    ax: Iterable[mplax.Axes] | mplax.Axes,
+    args: argparse.Namespace,
+    xlimits: tuple[float | None, float | None, str] | None = None,
+) -> t.Any:
+    """Apply the standard tick, minor tick, and font size settings to one or more axes.
+
+    A command whose x range has its own argument name, e.g. the -timemin/-timemax of the light curve
+    commands, passes it as xlimits=(min, max, "-timemin") rather than copying the values onto args.xmin:
+    a copied value would also reach every other reader of args.xmin, and a warning about it would name an
+    argument that the user did not give.
+    """
     if "subplots" not in args:
         args.subplots = False
     if "labelfontsize" not in args:
         args.labelfontsize = 18
 
-    for axis in ax if isinstance(ax, Iterable) else [ax]:
-        assert isinstance(axis, mplax.Axes)
+    if xlimits is None:
+        xlimits = (getattr(args, "xmin", None), getattr(args, "xmax", None), "-xmin")
+
+    logscalex, logscaley = getattr(args, "logscalex", False), getattr(args, "logscaley", False)
+    ymin = log_axis_limit(getattr(args, "ymin", None), logscale=logscaley, argname="-ymin")
+    ymax = log_axis_limit(getattr(args, "ymax", None), logscale=logscaley, argname="-ymax")
+    xargname = xlimits[2]
+    xmin = log_axis_limit(xlimits[0], logscale=logscalex, argname=xargname)
+    xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
+
+    for axis in iter_axes(ax):
         axis.minorticks_on()
         for which, ticklength in (("minor", 5), ("major", 8)):
             axis.tick_params(
@@ -450,15 +511,18 @@ def set_axis_properties(ax: Iterable[mplax.Axes] | mplax.Axes, args: argparse.Na
                 direction="in",
             )
 
-        if "ymin" in args or "ymax" in args:
-            axis.set_ylim(args.ymin, args.ymax)
-        if "xmin" in args or "xmax" in args:
-            axis.set_xlim(args.xmin, args.xmax)
-
-        if getattr(args, "logscalex", False):
+        # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
+        # padding on a log axis. A limit of None on both sides is left alone for the same reason
+        if logscalex:
             axis.set_xscale("log")
-        if getattr(args, "logscaley", False):
+        if logscaley:
             axis.set_yscale("log")
+
+        if ymin is not None or ymax is not None:
+            axis.set_ylim(ymin, ymax)
+
+        if xmin is not None or xmax is not None:
+            axis.set_xlim(xmin, xmax)
 
     return ax
 

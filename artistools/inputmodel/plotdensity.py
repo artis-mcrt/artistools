@@ -67,8 +67,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.color, args.label = at.trim_or_pad(len(args.modelpath), args.color, args.label)
     args.label = [
-        at.get_model_name(modelpath) if label is None else label
-        for modelpath, label in zip(args.modelpath, args.label, strict=True)
+        at.get_series_label(args.label, index, at.get_model_name(modelpath))
+        for index, modelpath in enumerate(args.modelpath)
     ]
 
     max_vmax_on_c = float("-inf")

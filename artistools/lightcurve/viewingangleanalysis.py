@@ -16,54 +16,8 @@ from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.misc import get_series_label
 from artistools.plottools import save_figure
-
-_base_colours = [
-    "k",
-    "tab:blue",
-    "tab:red",
-    "tab:green",
-    "purple",
-    "tab:orange",
-    "tab:pink",
-    "tab:gray",
-    "gold",
-    "tab:cyan",
-    "darkblue",
-    "bisque",
-    "yellow",
-]
-
-# the first cycle inserts five extra unique colours before bisque, then the 13-colour base repeats
-define_colours_list = [
-    *_base_colours[:11],
-    "darkgreen",
-    "maroon",
-    "mediumvioletred",
-    "saddlebrown",
-    "darkslategrey",
-    *_base_colours[11:],
-    *(_base_colours * 7),
-]
-
-define_colours_list2 = [
-    "gray",
-    "lightblue",
-    "pink",
-    "yellowgreen",
-    "mediumorchid",
-    "sandybrown",
-    "plum",
-    "lightgray",
-    "wheat",
-    "paleturquoise",
-    "royalblue",
-    "springgreen",
-    "r",
-    "deeppink",
-    "sandybrown",
-    "teal",
-]
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
@@ -111,6 +65,15 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     return dirbins, dirbin_definition
 
 
+def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
+    """Return whether the command-line arguments ask for the angle-averaged peak magnitude data."""
+    return bool(
+        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+        or args.make_viewing_angle_peakmag_risetime_scatter_plot
+        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
+    )
+
+
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
@@ -137,11 +100,7 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
                 comments="",
             )
 
-    elif (
-        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
+    elif wants_angle_averaged_data(args):
         args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
         args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
         args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
@@ -162,11 +121,7 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
 
 def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argparse.Namespace) -> None:
     """Write the angle-averaged peak magnitude, rise time, and decline rate of every model to a text file."""
-    if (
-        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
+    if wants_angle_averaged_data(args):
         np.savetxt(
             f"{band_name}band_{modelnames[0]}_angle_averaged_all_models_data.txt",
             np.c_[
@@ -367,20 +322,16 @@ def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tu
     plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
-    elif args.color:
-        plotkwargsviewingangles["color"] = args.color[modelnumber]
     else:
-        plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
+        plotkwargsviewingangles["color"] = args.color[modelnumber]
 
     plotkwargsangleaveraged = {
         "marker": "o",
         "zorder": 10,
         "edgecolor": "k",
         "s": 120,
-        "color": args.color[modelnumber] if args.color else define_colours_list[modelnumber],
+        "color": args.color[modelnumber],
     }
-    if args.colorbarcostheta or args.colorbarphi:
-        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
 
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
@@ -406,10 +357,13 @@ def update_plotkwargs_for_viewingangle_colorbar(
 
 def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argparse.Namespace) -> None:
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
+    # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
+    # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
+    if args.ymin is not None or args.ymax is not None:
+        axis.set_ylim(args.ymin, args.ymax)
     if not args.colouratpeak:
-        axis.invert_yaxis()
-    axis.set_xlim(args.xmin, args.xmax)
-    axis.set_ylim(args.ymin, args.ymax)
+        # after the limits: set_ylim re-sorts the pair it is given, so an inversion applied first is lost
+        at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
     axis.minorticks_on()
     axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
     axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
@@ -438,19 +392,17 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
+        # the error bars below use the angle-averaged x value whether or not its point is drawn
         if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
             xvalues_viewingangles = band_delta_m15_viewing_angles
+            xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
         if args.make_viewing_angle_peakmag_risetime_scatter_plot:
             xvalues_viewingangles = band_risetime_viewing_angles
+            xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
 
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
 
         if not args.noangleaveraged:
-            if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-                xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
-            if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-                xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
-
             p0 = ax.scatter(
                 xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii], **plotkwargsangleaveraged
             )
@@ -458,18 +410,16 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         else:
             args.plotvalues.append((a0, a0))
         if not args.noerrorbars:
-            ecolor = args.color or define_colours_list
-
             ax.errorbar(
                 xvalues_angleaveraged,
                 args.band_peakmag_angle_averaged_polyfit[ii],
                 xerr=np.std(xvalues_viewingangles),
                 yerr=np.std(band_peak_mag_viewing_angles),
-                ecolor=ecolor[ii],
+                ecolor=args.color[ii],
                 capsize=2,
             )
 
-    linelabels = args.label or modelnames
+    linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
@@ -603,6 +553,16 @@ def peakmag_risetime_declinerate_init(
     modelpaths: list[str | Path] | list[Path] | list[str], args: argparse.Namespace
 ) -> None:
     """Fit every model's band light curves and store the peak magnitudes, rise times, and decline rates on args."""
+    if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file and wants_angle_averaged_data(args):
+        # writing the per-direction-bin files takes the branch that never measures the angle-averaged
+        # values, so the two steps of the workflow cannot run at once. Say so before reading any spectra
+        msg = (
+            "The angle-averaged peak magnitudes are not measured while"
+            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file writes the per-direction-bin data."
+            " Write the data in one run, then plot it in another."
+        )
+        raise ValueError(msg)
+
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
     args.band_risetime_polyfit = []
@@ -618,6 +578,9 @@ def peakmag_risetime_declinerate_init(
     modelnames = []  # save names of models
 
     for modelnumber, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+        # one entry per model, matching the per-model style lists and the one data file written per model
+        modelnames.append(modelname)
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
         if not args.filter:
@@ -631,8 +594,6 @@ def peakmag_risetime_declinerate_init(
             dirbins = [-1]
 
         for dirbin in dirbins:
-            modelname = at.get_model_name(modelpath)
-            modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
@@ -707,8 +668,8 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
             angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
-        lumattime = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_Lsun").collect().item(0, 0)
-        brightness = lumattime * at.constants.Lsun_to_erg_per_s
+        # readfile derives the erg/s column, so it does not have to be converted here again
+        brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").collect().item(0, 0)
         if args.colorbarphi:
             xvalues = int(angleindex / 10)
             xlabels = costheta_viewing_angle_bins

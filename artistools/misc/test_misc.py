@@ -8,6 +8,7 @@ import argparse
 import gzip
 import io
 import lzma
+import math
 import os
 import subprocess
 import sys
@@ -23,6 +24,7 @@ import yaml
 
 import artistools as at
 from artistools.misc import dirbins
+from artistools.misc import fileio
 
 
 def _write_timesteps_out(modeldir: Path) -> None:
@@ -434,9 +436,203 @@ def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) 
     assert privatepath.stat().st_mode & 0o777 == 0o600
 
     privatepath.chmod(0o640)
-    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath)
+    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath, replaces=at.get_file_identity(privatepath))
     assert privatepath.stat().st_mode & 0o777 == 0o640
     assert pl.read_parquet(privatepath)["a"].item() == 2
+
+
+def test_write_parquet_atomic_keeps_a_concurrently_written_file(tmp_path: Path) -> None:
+    """A cache another process finished first is kept, because a reader may already be streaming it.
+
+    polars opens a parquet file again by its path between reading the metadata and reading the row groups,
+    so renaming a second copy of the same data onto the path makes every scan in progress read the new file
+    with the offsets of the old one.
+    """
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    theirs = pl.DataFrame({"a": [1, 2, 3]})
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def sink_parquet_after_another_process_finished(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        result = real_sink_parquet(self, path, **kwargs)
+        # the other process finishes while this one writes, so the destination appears from nowhere.
+        # DataFrame.write_parquet() would re-enter the patched method
+        real_sink_parquet(theirs.lazy(), parquetpath)
+        return result
+
+    with mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished):
+        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
+    assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_replaces_an_outdated_file(tmp_path: Path) -> None:
+    """The file whose identity the caller passes as replaces gets replaced, since its data is out of date."""
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=at.get_file_identity(parquetpath))
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
+    assert list(tmp_path.glob("*.partial*")) == []
+
+    # without replaces, an existing file is kept: this write does not claim to supersede anything
+    at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath)
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
+
+
+def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Path) -> None:
+    """A rival that already replaced the out-of-date file is kept, whenever this writer started.
+
+    The identity comes from the stat that showed the caller its cache was out of date. Taking it at the
+    start of the write instead would snapshot the rival's fresh file as the one to replace, and rename over
+    it while a reader scans it.
+    """
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
+    outdated = at.get_file_identity(parquetpath)
+
+    # the rival reads the same inputs and finishes its replacement first
+    pl.DataFrame({"a": [4, 5, 6]}).write_parquet(tmp_path / "rival")
+    (tmp_path / "rival").replace(parquetpath)
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=outdated)
+
+    assert at.get_file_identity(parquetpath) != outdated, "the rival's file must still be in place"
+    assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) -> None:
+    """The second of two writers that found the same out-of-date file must not replace the first's file.
+
+    Both writers pass the identity check taken before their own write, so only the re-check under the lock
+    separates "still the out-of-date file" from "already the other writer's fresh replacement".
+    """
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+
+    # the first writer replaces the out-of-date file, changing its identity
+    first = tmp_path / "first"
+    first.write_text("first replacement", encoding="utf-8")
+    fileio.replace_outdated_file(first, destpath, outdated)
+    assert destpath.read_text(encoding="utf-8") == "first replacement"
+
+    # the second writer still holds the identity of the file both of them found out of date
+    second = tmp_path / "second"
+    second.write_text("second replacement", encoding="utf-8")
+    fileio.replace_outdated_file(second, destpath, outdated)
+    assert destpath.read_text(encoding="utf-8") == "first replacement"
+
+
+def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None:
+    """A writer that finds the replacement lock taken waits, so its caller reads the holder's fresh file.
+
+    Returning at once would let the caller open the out-of-date file in the moment before the holder's
+    rename lands. The wait is the blocking flock call, so the holder's rename is simulated inside it.
+    """
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+
+    holders_file = tmp_path / "holders_replacement"
+    holders_file.write_text("holders replacement", encoding="utf-8")
+
+    def holder_finishes_first(_fd: int, _operation: int) -> None:
+        holders_file.replace(destpath)
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+    with mock.patch("fcntl.flock", side_effect=holder_finishes_first) as mockflock:
+        fileio.replace_outdated_file(replacement, destpath, outdated)
+
+    assert mockflock.call_count == 1
+    assert destpath.read_text(encoding="utf-8") == "holders replacement"
+
+
+def test_replace_outdated_file_installs_at_an_empty_destination(tmp_path: Path) -> None:
+    """An empty destination takes the new file, so a file system without hard links can still create it."""
+    destpath = tmp_path / "cache"
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+
+    fileio.replace_outdated_file(replacement, destpath, None)
+
+    assert destpath.read_text(encoding="utf-8") == "replacement"
+
+    # a file that is already there is kept when this write does not claim to replace anything
+    another = tmp_path / "another"
+    another.write_text("another", encoding="utf-8")
+    fileio.replace_outdated_file(another, destpath, None)
+    assert destpath.read_text(encoding="utf-8") == "replacement"
+
+
+def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_path: Path) -> None:
+    """A file system that rejects hard links gets the same locked identity rule, not a bare rename."""
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    theirs = pl.DataFrame({"a": [1, 2, 3]})
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+
+    def sink_parquet_after_another_process_finished(self: pl.LazyFrame, path: t.Any, **kwargs: t.Any) -> t.Any:
+        result = real_sink_parquet(self, path, **kwargs)
+        real_sink_parquet(theirs.lazy(), parquetpath)
+        return result
+
+    with (
+        mock.patch.object(fileio.os, "link", side_effect=OSError),
+        mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished),
+    ):
+        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
+
+    # the fallback still replaces the file the caller found out of date
+    with mock.patch.object(fileio.os, "link", side_effect=OSError):
+        at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.get_file_identity(parquetpath))
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [7, 8, 9]
+
+
+def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> None:
+    """A lock file that no process holds does not block: the flock, not the file, is the lock.
+
+    The operating system releases the flock of a holder that dies, so a leftover file from an earlier
+    replacement carries no lock. The file stays in place: removing it while a rival waits on it would
+    hand out a second lock on a new inode.
+    """
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+    lockpath = tmp_path / ".cache.replace-lock"
+    lockpath.touch()
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+    fileio.replace_outdated_file(replacement, destpath, outdated)
+
+    assert destpath.read_text(encoding="utf-8") == "replacement"
+    assert lockpath.exists()
+    # a different user in a shared model directory needs to open and flock the lock, which takes only read
+    # access: the lock is opened read-only and made world-readable whatever the umask
+    assert lockpath.stat().st_mode & 0o444 == 0o444
+
+
+def test_get_file_identity(tmp_path: Path) -> None:
+    """A file is the same file only while its device and inode are unchanged."""
+    filepath = tmp_path / "cache"
+    assert at.misc.get_file_identity(filepath) is None
+
+    filepath.write_text("first", encoding="utf-8")
+    identity = at.misc.get_file_identity(filepath)
+    assert at.misc.get_file_identity(filepath) == identity
+
+    # rewriting in place keeps the file, but a rename onto the path makes it a different one
+    filepath.write_text("second", encoding="utf-8")
+    assert at.misc.get_file_identity(filepath) == identity
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("third", encoding="utf-8")
+    replacement.replace(filepath)
+    assert at.misc.get_file_identity(filepath) != identity
 
 
 # --- general.py --------------------------------------------------------------------------------
@@ -675,6 +871,39 @@ def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatc
         assert averaged_phi[start_bin].collect()["value"].to_list() == pytest.approx([expected, expected])
 
 
+def test_average_direction_bins_averages_every_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every column is averaged, so a column that is not linear in the bins must be derived afterwards.
+
+    This is why readfile() derives the magnitude only once the bins are averaged: the mean of the
+    magnitudes of the bins is not the magnitude of their mean luminosity.
+    """
+    nphibins = 4
+    ncosthetabins = 3
+
+    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: nphibins)
+    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: ncosthetabins)
+
+    # one bin of every group is dark, so the mean of the logs is -inf while the log of the mean is finite
+    logcol = (pl.col("value").log10()).alias("logvalue")
+    dirbindataframes = {
+        dirbin: pl.DataFrame({"timestep": [0], "value": [float(dirbin % nphibins)]}).with_columns(logcol)
+        for dirbin in range(nphibins * ncosthetabins)
+    }
+
+    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="phi")
+
+    meanvalue = sum(range(nphibins)) / nphibins
+    for start_bin in (0, 4, 8):
+        row = averaged[start_bin].collect()
+        assert row["value"].item() == pytest.approx(meanvalue)
+        # the column carried through the averaging holds the mean of the logs, which the dark bin sends to -inf
+        assert row["logvalue"].item() == -math.inf
+        # deriving it from the averaged value instead gives the finite answer that a caller wants
+        assert averaged[start_bin].with_columns(logcol).collect()["logvalue"].item() == pytest.approx(
+            math.log10(meanvalue)
+        )
+
+
 def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyPatch) -> None:
     """Averaging a second time must raise instead of a bare KeyError for the bins that no longer exist."""
     nphibins = 4
@@ -794,3 +1023,19 @@ def test_drop_trailing_null_column() -> None:
     assert at.drop_trailing_null_column(
         pl.LazyFrame({"a": [], "b": []}, schema=emptyschema)
     ).collect_schema().names() == ["a", "b"]
+
+
+def test_get_series_label() -> None:
+    """A series is named by its -label entry, or by the fallback when the user gave none for it."""
+    assert at.get_series_label(["A", "B"], 1, "modelname") == "B"
+    assert at.get_series_label([None, "B"], 0, "modelname") == "modelname"
+
+    # trim_or_pad sizes the list to the model paths, so a per-series index can run off the end
+    assert at.get_series_label(["A"], 3, "modelname") == "modelname"
+
+    # a sentinel index such as the -1 this codebase uses for a direction bin must not wrap to the last label
+    assert at.get_series_label(["A", "B"], -1, "modelname") == "modelname"
+
+    # an empty label is a series deliberately left out of the legend, not a missing one
+    # the return type is str, so falsy is the empty string rather than the model name
+    assert not at.get_series_label([""], 0, "modelname")
