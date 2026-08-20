@@ -44,7 +44,6 @@ extras = [
 [package.dev-dependencies]
 dev = [
     { name = "imageio" },
-    { name = "mypy" },
     { name = "prek" },
     { name = "pynonthermal" },
     { name = "pyrefly" },
@@ -83,7 +82,6 @@ provides-extras = ["extras"]
 [package.metadata.requires-dev]
 dev = [
     { name = "imageio", specifier = ">=2.37.3" },
-    { name = "mypy", specifier = ">=2.3.0" },
     { name = "prek", specifier = ">=0.4.12" },
     { name = "pynonthermal", specifier = ">=2026.4.27" },
     { name = "pyrefly", specifier = ">=1.2.0" },

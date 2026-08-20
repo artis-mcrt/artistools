@@ -61,10 +61,6 @@ jobs:
               if: always()
               run: uv run -- pyrefly check --output-format github
 
-            - name: Run mypy
-              if: always()
-              run: uv run -- mypy
-
             # refurb runs mypy internally, which hits an internal error walking the pyvista
             # sources, so keep it to this project's own files
             - name: Run refurb
