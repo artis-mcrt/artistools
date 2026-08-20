@@ -1276,7 +1276,8 @@ def run_set_scatterplot_plot_params(
 
     viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
 
-    return axis.get_xlim()[1], *axis.get_ylim()
+    ymin, ymax = axis.get_ylim()
+    return axis.get_xlim()[1], ymin, ymax
 
 
 def test_set_scatterplot_plot_params_without_xmin() -> None:
