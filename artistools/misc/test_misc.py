@@ -436,7 +436,7 @@ def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) 
     assert privatepath.stat().st_mode & 0o777 == 0o600
 
     privatepath.chmod(0o640)
-    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath)
+    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath, replaces=at.get_file_identity(privatepath))
     assert privatepath.stat().st_mode & 0o777 == 0o640
     assert pl.read_parquet(privatepath)["a"].item() == 2
 
@@ -467,13 +467,38 @@ def test_write_parquet_atomic_keeps_a_concurrently_written_file(tmp_path: Path) 
 
 
 def test_write_parquet_atomic_replaces_an_outdated_file(tmp_path: Path) -> None:
-    """A file the caller asked to replace still gets replaced, since its data is out of date."""
+    """The file whose identity the caller passes as replaces gets replaced, since its data is out of date."""
     parquetpath = tmp_path / "batch.out.parquet.tmp"
     pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
 
-    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=at.get_file_identity(parquetpath))
 
     assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
+    assert list(tmp_path.glob("*.partial*")) == []
+
+    # without replaces, an existing file is kept: this write does not claim to supersede anything
+    at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath)
+    assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
+
+
+def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Path) -> None:
+    """A rival that already replaced the out-of-date file is kept, whenever this writer started.
+
+    The identity comes from the stat that showed the caller its cache was out of date. Taking it at the
+    start of the write instead would snapshot the rival's fresh file as the one to replace, and rename over
+    it while a reader scans it.
+    """
+    parquetpath = tmp_path / "batch.out.parquet.tmp"
+    pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
+    outdated = at.get_file_identity(parquetpath)
+
+    # the rival reads the same inputs and finishes its replacement first
+    pl.DataFrame({"a": [4, 5, 6]}).write_parquet(tmp_path / "rival")
+    (tmp_path / "rival").replace(parquetpath)
+
+    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=outdated)
+
+    assert at.get_file_identity(parquetpath) != outdated, "the rival's file must still be in place"
     assert list(tmp_path.glob("*.partial*")) == []
 
 

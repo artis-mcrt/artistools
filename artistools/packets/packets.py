@@ -403,8 +403,10 @@ def get_packets_rankbatch_parquetfile(
     ]
 
     conversion_needed = True
+    outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
-        parquet_mtime = parquetfilepath.stat().st_mtime
+        parquetstat = parquetfilepath.stat()
+        parquet_mtime = parquetstat.st_mtime
         # only the last rank's file is checked, on the assumption that a run writes all of its ranks together. An
         # individually-updated earlier file will not invalidate the cached parquet
         if text_filepath := at.firstexisting_or_none(
@@ -415,6 +417,9 @@ def get_packets_rankbatch_parquetfile(
             if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
                 conversion_needed = False
             else:
+                # the identity comes from the stat that showed the file is outdated, so only that exact
+                # file can be replaced by this rank's rewrite
+                outdatedparquet = at.get_file_identity(parquetstat)
                 # leave the outdated file in place: write_parquet_atomic() puts the new one at the path in
                 # one step, so the path always resolves to a complete parquet. Deleting it first opens a
                 # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
@@ -490,7 +495,7 @@ def get_packets_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        at.write_parquet_atomic(pldf_batch, parquetfilepath, compression_level=12)
+        at.write_parquet_atomic(pldf_batch, parquetfilepath, compression_level=12, replaces=outdatedparquet)
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
 
     return parquetfilepath

@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import os
 import shlex
 import sys
 import typing as t
@@ -402,14 +403,18 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
     print(f"Created gif: {giffile}")
 
 
-def get_file_identity(filepath: Path) -> tuple[int, int] | None:
+def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
     """Return the device and inode numbers of a file, or None if it does not exist.
 
     Two stats of one path give the same pair only if it is still the same file. A rename onto the path
-    gives a different pair, which no comparison of names or modification times can detect reliably.
+    gives a different pair, which no comparison of names or modification times can detect reliably. A
+    caller that already holds a stat result passes it, so the identity describes that same snapshot.
     """
+    if isinstance(file, os.stat_result):
+        return (file.st_dev, file.st_ino)
+
     try:
-        filestat = filepath.stat()
+        filestat = file.stat()
     except FileNotFoundError:
         return None
 
@@ -425,8 +430,11 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
     is installing an equally valid replacement built from the same inputs, and returning at once would let
     this writer's caller read the out-of-date file in the moment before the holder's rename lands.
     """
-    import os
     import time
+
+    if outdatedfile is None:
+        # this write does not replace anything, so a file that appeared at the destination is kept
+        return
 
     # the dot prefix keeps the lock out of the globs that find the parquet files, like the .partial file
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
@@ -461,32 +469,30 @@ def write_parquet_atomic(
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     compression_level: int = 10,
+    replaces: tuple[int, int] | None = None,
 ) -> None:
     """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
 
     A parquet file that another process wrote while this one worked is kept, and this copy of the same data
     is discarded. polars opens a parquet file again by its path between reading the metadata and reading the
     row groups, so a rename onto a path that already holds a complete file corrupts every scan in progress:
-    the second file gets read with the offsets of the first. A file the caller asked to replace, because the
-    data it holds is out of date, is still replaced.
+    the second file gets read with the offsets of the first.
+
+    replaces is the get_file_identity() of the file this write replaces, taken from the same stat snapshot
+    that showed the caller its data was out of date. Only that exact file is replaced. The moment the write
+    started is too late to take it: a rival that finished its own replacement first would be snapshotted as
+    the file to replace, and its fresh file would be renamed over while a reader scans it.
 
     The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
     keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
     """
-    import os
     import tempfile
 
-    # one snapshot of the destination serves the mode and the identity below: the function's whole premise
-    # is that the path can change while it works, so two stats could describe two different files
     try:
         deststat: os.stat_result | None = parquetfilepath.stat()
     except FileNotFoundError:
         deststat = None
-
-    # the file this call was asked to replace, if any. A different one at the end of the write belongs to
-    # another process, which read the same inputs and thus wrote the same data
-    outdatedfile = (deststat.st_dev, deststat.st_ino) if deststat else None
 
     fd, partialfilename = tempfile.mkstemp(
         dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
@@ -508,7 +514,7 @@ def write_parquet_atomic(
             # complete in one step and no reader of it ever sees a different file at the same path
             os.link(partialfilepath, parquetfilepath)
         except FileExistsError:
-            replace_outdated_file(partialfilepath, parquetfilepath, outdatedfile)
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
         except OSError:
             # a file system without hard links cannot make the destination in one step, thus accept the
             # rename and the scans that it can break

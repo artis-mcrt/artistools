@@ -17,6 +17,9 @@ from polars import selectors as cs
 import artistools as at
 from artistools.constants import K_B_ev_per_K
 
+if t.TYPE_CHECKING:
+    import os
+
 
 def get_variableunits(key: str) -> str | None:
     """Return the unit string for an estimator variable, or None if it is dimensionless or unknown."""
@@ -108,12 +111,19 @@ def get_estimators_rankbatch_parquetfile(
     )
     assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
 
-    if not parquetfilepath.exists():
+    parquetstat: os.stat_result | None = None
+    with contextlib.suppress(FileNotFoundError):
+        parquetstat = parquetfilepath.stat()
+
+    outdatedparquet: tuple[int, int] | None = None
+    if parquetstat is None:
         generate_parquet = True
-    elif textsource_mtime and textsource_mtime > parquetfilepath.stat().st_mtime:
-        # leave the stale file in place: write_parquet_atomic() swaps the new one in with a rename, so the path
-        # always resolves to a complete parquet. Deleting it first opens a window in which a concurrent reader
-        # finds it missing or half-swapped
+    elif textsource_mtime and textsource_mtime > parquetstat.st_mtime:
+        # leave the stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
+        # the path always resolves to a complete parquet. Deleting it first opens a window in which a
+        # concurrent reader finds it missing or half-swapped. The identity comes from the stat that showed
+        # the file is stale, so only that exact file can be replaced by this rewrite
+        outdatedparquet = at.get_file_identity(parquetstat)
         print(
             f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files."
             " File will be regenerated..."
@@ -155,6 +165,7 @@ def get_estimators_rankbatch_parquetfile(
                 "batch_rank_max": str(max(batch_mpiranks)),
                 "batchindex": str(batchindex),
             },
+            replaces=outdatedparquet,
         )
 
         print(f"took {time.perf_counter() - time_start:.1f} s.")

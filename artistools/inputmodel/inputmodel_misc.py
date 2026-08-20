@@ -1,6 +1,7 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
 import calendar
+import contextlib
 import datetime
 import errno
 import gc
@@ -25,6 +26,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
+from artistools.misc import get_file_identity
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
@@ -420,7 +422,9 @@ def get_modeldata(
 
     textsource_mtime = Path(textfilepath).stat().st_mtime
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
-    hadcachefile = parquetfilepath.is_file()
+    # the identity of the cache that a rewrite replaces, from the same moment as the existence check
+    outdatedparquet = get_file_identity(parquetfilepath)
+    hadcachefile = outdatedparquet is not None
 
     cached = read_model_parquet_cache(parquetfilepath, textsource_mtime, printwarningsonly=printwarningsonly)
     dfmodel: pl.LazyFrame | None = None
@@ -441,6 +445,7 @@ def get_modeldata(
             write_parquet_atomic(
                 dfmodel,
                 parquetfilepath,
+                replaces=outdatedparquet,
                 metadata={
                     "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                     "textsource_mtime": str(textsource_mtime),
@@ -1006,12 +1011,15 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
     parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    # leave a stale cache in place rather than deleting it: write_parquet_atomic() swaps the new one in with a
-    # rename, so the path always resolves to a complete parquet even while another process is regenerating it
-    cache_is_current = (
-        parquetfilepath.is_file() and Path(textfilepath).stat().st_mtime <= parquetfilepath.stat().st_mtime
-    )
-    if parquetfilepath.is_file() and not cache_is_current:
+    # leave a stale cache in place rather than deleting it: write_parquet_atomic() puts the new one at the
+    # path in one step, so the path always resolves to a complete parquet while another process regenerates it
+    parquetstat: os.stat_result | None = None
+    with contextlib.suppress(FileNotFoundError):
+        parquetstat = parquetfilepath.stat()
+    cache_is_current = parquetstat is not None and Path(textfilepath).stat().st_mtime <= parquetstat.st_mtime
+    # the identity comes from the stat that showed the cache is out of date, so only that file is replaced
+    outdatedparquet = get_file_identity(parquetstat) if parquetstat and not cache_is_current else None
+    if parquetstat is not None and not cache_is_current:
         print(f"{textfilepath} has been modified after {parquetfilepath}. Regenerating out of date parquet file.")
 
     if cache_is_current:
@@ -1033,7 +1041,7 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         mebibyte = 1024 * 1024
         if textfilepath.stat().st_size > 2 * mebibyte:
             print(f"Saving {parquetfilepath}")
-            write_parquet_atomic(abundancedata, parquetfilepath, compression_level=8)
+            write_parquet_atomic(abundancedata, parquetfilepath, compression_level=8, replaces=outdatedparquet)
             print("  Done.")
             del abundancedata
             gc.collect()

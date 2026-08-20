@@ -1,3 +1,4 @@
+import contextlib
 import io
 import string
 import time
@@ -19,9 +20,13 @@ import artistools as at
 from artistools.commands import get_path
 from artistools.constants import hc_in_ev_angstrom
 from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 from artistools.misc.fileio import zopen_unshadowed
+
+if t.TYPE_CHECKING:
+    import os
 
 
 def parse_adata(
@@ -713,7 +718,12 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = firstexisting("linestat.out", folder=modelpath)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
-    if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
+    parquetstat: os.stat_result | None = None
+    with contextlib.suppress(FileNotFoundError):
+        parquetstat = parquetfile.stat()
+    if parquetstat is None or parquetstat.st_mtime < textfile.stat().st_mtime:
+        # the identity comes from the stat that showed the cache is out of date, so only that file is replaced
+        outdatedparquet = get_file_identity(parquetstat) if parquetstat else None
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
@@ -728,7 +738,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             .with_row_index(name="lineindex")
             .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
         )
-        write_parquet_atomic(pldf, parquetfile, compression_level=8)
+        write_parquet_atomic(pldf, parquetfile, compression_level=8, replaces=outdatedparquet)
         print(f"Wrote {parquetfile}")
     else:
         print(f"Reading {parquetfile}")

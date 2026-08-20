@@ -104,6 +104,7 @@ from artistools.misc import get_deposition as get_deposition
 from artistools.misc import get_dirbin_labels as get_dirbin_labels
 from artistools.misc import get_dirbins as get_dirbins
 from artistools.misc import get_escaped_arrivalrange as get_escaped_arrivalrange
+from artistools.misc import get_file_identity as get_file_identity
 from artistools.misc import get_file_metadata as get_file_metadata
 from artistools.misc import get_filterfunc as get_filterfunc
 from artistools.misc import get_grid_mapping as get_grid_mapping
