@@ -499,17 +499,9 @@ def set_axis_properties(
 
     for axis in iter_axes(ax):
         axis.minorticks_on()
-        for which, ticklength in (("minor", 5), ("major", 8)):
-            axis.tick_params(
-                axis="both",
-                which=which,
-                top=True,
-                right=True,
-                length=ticklength,
-                width=2,
-                labelsize=args.labelfontsize,
-                direction="in",
-            )
+        # the tick length and the tick width come from the artistools matplotlibrc. These axes then match
+        # the spectra figures, which set no tick style of their own
+        axis.tick_params(axis="both", which="both", top=True, right=True, labelsize=args.labelfontsize, direction="in")
 
         # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
         # padding on a log axis. A limit of None on both sides is left alone for the same reason
