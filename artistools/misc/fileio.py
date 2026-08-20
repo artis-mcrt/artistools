@@ -421,33 +421,39 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
 
     The identity check and the rename happen under an exclusive lock file. Without it, two writers that
     both found the same out-of-date file could both pass the check, and the second rename would replace the
-    first writer's fresh file while a reader scans it. A writer that finds the lock taken leaves the
-    destination alone: the holder is installing an equally valid replacement built from the same inputs.
+    first writer's fresh file while a reader scans it. A writer that finds the lock taken waits: the holder
+    is installing an equally valid replacement built from the same inputs, and returning at once would let
+    this writer's caller read the out-of-date file in the moment before the holder's rename lands.
     """
     import os
     import time
 
-    if get_file_identity(destpath) != outdatedfile:
-        return
-
     # the dot prefix keeps the lock out of the globs that find the parquet files, like the .partial file
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-    try:
-        lockfd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        # the lock is held for the duration of one rename, so an old lock belongs to a process that died
-        # while it held it: remove it, and a later call replaces the out-of-date file
-        with contextlib.suppress(FileNotFoundError):
-            if time.time() - lockpath.stat().st_mtime > 60.0:
-                lockpath.unlink(missing_ok=True)
-        return
 
-    try:
-        if get_file_identity(destpath) == outdatedfile:
-            newfilepath.replace(destpath)
-    finally:
-        os.close(lockfd)
-        lockpath.unlink(missing_ok=True)
+    while True:
+        if get_file_identity(destpath) != outdatedfile:
+            # another writer has replaced the out-of-date file with the same fresh data
+            return
+
+        try:
+            lockfd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            # the lock is held for the duration of one rename, so an old lock belongs to a process that
+            # died while it held it: remove it, and take over the replacement on the next pass
+            with contextlib.suppress(FileNotFoundError):
+                if time.time() - lockpath.stat().st_mtime > 10.0:
+                    lockpath.unlink(missing_ok=True)
+            time.sleep(0.010)
+            continue
+
+        try:
+            if get_file_identity(destpath) == outdatedfile:
+                newfilepath.replace(destpath)
+        finally:
+            os.close(lockfd)
+            lockpath.unlink(missing_ok=True)
+        return
 
 
 def write_parquet_atomic(

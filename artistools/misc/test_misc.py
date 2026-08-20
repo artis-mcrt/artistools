@@ -523,27 +523,49 @@ def test_replace_outdated_file_rechecks_under_the_lock(tmp_path: Path) -> None:
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
 
-def test_replace_outdated_file_defers_to_the_lock_holder(tmp_path: Path) -> None:
-    """A writer that finds the replacement lock taken leaves the destination to the holder."""
+def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None:
+    """A writer that finds the replacement lock taken waits, so its caller reads the holder's fresh file.
+
+    Returning at once would let the caller open the out-of-date file in the moment before the holder's
+    rename lands.
+    """
     destpath = tmp_path / "cache"
     destpath.write_text("outdated", encoding="utf-8")
     outdated = at.misc.get_file_identity(destpath)
     lockpath = tmp_path / ".cache.replace-lock"
     lockpath.touch()
 
+    holders_file = tmp_path / "holders_replacement"
+    holders_file.write_text("holders replacement", encoding="utf-8")
+
+    def holder_finishes(_seconds: float) -> None:
+        holders_file.replace(destpath)
+        lockpath.unlink()
+
+    replacement = tmp_path / "replacement"
+    replacement.write_text("replacement", encoding="utf-8")
+    with mock.patch("time.sleep", side_effect=holder_finishes) as mocksleep:
+        fileio.replace_outdated_file(replacement, destpath, outdated)
+
+    assert mocksleep.call_count == 1, "the writer must wait while the lock is held"
+    assert destpath.read_text(encoding="utf-8") == "holders replacement"
+
+
+def test_replace_outdated_file_takes_over_from_a_dead_lock_holder(tmp_path: Path) -> None:
+    """A lock older than the moment its holder could hold it belongs to a dead process and is removed."""
+    destpath = tmp_path / "cache"
+    destpath.write_text("outdated", encoding="utf-8")
+    outdated = at.misc.get_file_identity(destpath)
+    lockpath = tmp_path / ".cache.replace-lock"
+    lockpath.touch()
+    os.utime(lockpath, (0.0, 0.0))
+
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
     fileio.replace_outdated_file(replacement, destpath, outdated)
 
-    assert destpath.read_text(encoding="utf-8") == "outdated"
-    assert lockpath.exists(), "a fresh lock belongs to a live writer and must be left in place"
-
-    # a lock older than the holder could possibly hold it belongs to a dead process and is removed
-    os.utime(lockpath, (0.0, 0.0))
-    fileio.replace_outdated_file(replacement, destpath, outdated)
-    assert not lockpath.exists()
-    fileio.replace_outdated_file(replacement, destpath, outdated)
     assert destpath.read_text(encoding="utf-8") == "replacement"
+    assert not lockpath.exists()
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
