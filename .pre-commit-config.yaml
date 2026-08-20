@@ -47,14 +47,14 @@ repos:
           - id: ruff-format
 
     - repo: https://github.com/astral-sh/uv-pre-commit
-      rev: 0.12.4
+      rev: 0.12.5
       hooks:
           - id: uv-lock
           - id: uv-sync
             args: [--frozen, --all-extras, --no-install-project]
 
     - repo: https://github.com/astral-sh/ty-pre-commit
-      rev: v0.0.71
+      rev: v0.0.73
       hooks:
           - id: ty
             name: ty
