@@ -12,9 +12,13 @@ savefig.format:    pdf
 
 xtick.direction: in
 xtick.top:         True
+xtick.major.size:  6.0     # major tick size in points
+xtick.minor.size:  3.0     # minor tick size in points
 
 ytick.direction: in
 ytick.right:         True
+ytick.major.size:  6.0     # major tick size in points
+ytick.minor.size:  3.0     # minor tick size in points
 
 axes.linewidth:     1.0     # edge linewidth
 
