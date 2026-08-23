@@ -833,6 +833,14 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
     if args.frompackets:
+        use_time: t.Literal["escape", "emission", "arrival"]
+        if args.use_escapetime:
+            use_time = "escape"
+        elif args.use_emissiontime:
+            use_time = "emission"
+        else:
+            use_time = "arrival"
+
         if args.groupby in {"nuc", "nucmass"}:
             emtypecolumn = "pellet_nucindex"
         elif args.use_thermalemissiontype:
@@ -862,6 +870,7 @@ def make_emissionabsorption_plot(
                 maxpacketfiles=args.maxpacketfiles,
                 filterfunc=filterfunc,
                 groupby=args.groupby,
+                use_time=use_time,
                 fixedionlist=args.fixedionlist,
                 maxseriescount=args.maxseriescount + 20,
                 gamma=args.gamma,

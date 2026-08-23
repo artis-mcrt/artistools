@@ -387,6 +387,130 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     assert max(diff) / integrated_flux_specout < 1e-10
 
 
+@pytest.mark.parametrize(
+    ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
+)
+@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+def test_spectra_contribution_plot_forwards_packet_time(
+    mockgetcontributions: mock.MagicMock,
+    tmp_path: Path,
+    use_emissiontime: bool,
+    use_escapetime: bool,
+    expected_use_time: str,
+) -> None:
+    """The contribution plot must use the packet time that the command selects."""
+    contribution_list: list[atspectra.FluxContributionTuple] = []
+    mockgetcontributions.return_value = (contribution_list, np.zeros(2), np.array([4000.0, 5000.0]))
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=tmp_path / f"contributions_{expected_use_time}.pdf",
+        timemin=290.0,
+        timemax=320.0,
+        emissionabsorption=True,
+        use_emissiontime=use_emissiontime,
+        use_escapetime=use_escapetime,
+    )
+
+    assert mockgetcontributions.call_args.kwargs["use_time"] == expected_use_time
+
+
+def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gamma packet selection must use the decay time and not the radiation packet emission time."""
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0],
+        "t_arrive_d": [1.0, 3.0],
+        "tdecay": [1.0 * at.constants.day_to_s, 3.0 * at.constants.day_to_s],
+        "em_time": [3.0 * at.constants.day_to_s, 1.0 * at.constants.day_to_s],
+        "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 2,
+    })
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    dfspectrum = atspectra.get_from_packets(
+        modelpath=Path(),
+        timelowdays=0.5,
+        timehighdays=1.5,
+        lambda_bin_edges=np.array([4000.0, 5000.0, 6000.0]),
+        use_time="emission",
+        gamma=True,
+        directionbins=[-1],
+    )[-1].collect()
+
+    integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
+    expected_flux = 1.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
+    assert np.isclose(integrated_flux, expected_flux)
+
+
+def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Contribution spectra must use the same escape-time packet set and energy as the total spectrum."""
+    nu_rf = at.constants.c_ang_per_s / 5000.0
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0],
+        "e_cmf": [10.0, 20.0],
+        "t_arrive_d": [1.5, 3.0],
+        "escape_time": [3.0 * at.constants.day_to_s, 1.5 * at.constants.day_to_s],
+        "pellet_nucindex": [0, 0],
+        "nu_rf": [nu_rf, nu_rf],
+    })
+    lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    def get_escape_surface_gamma(_modelpath: Path | str) -> float:
+        return 1.0
+
+    def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+        del modelpath
+        return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
+
+    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "_get_escape_surface_gamma", get_escape_surface_gamma)
+    monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
+
+    dfspectrum = atspectra.get_from_packets(
+        modelpath=Path(),
+        timelowdays=1.0,
+        timehighdays=2.0,
+        lambda_bin_edges=lambda_bin_edges,
+        use_time="escape",
+        directionbins=[-1],
+    )[-1].collect()
+    contributions, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
+        modelpath=Path(),
+        timelowdays=1.0,
+        timehighdays=2.0,
+        lambda_bin_edges=lambda_bin_edges,
+        getabsorption=False,
+        groupby="nuc",
+        use_time="escape",
+        emtypecolumn="pellet_nucindex",
+    )
+
+    assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
+    assert np.array_equal(array_lambda, dfspectrum["lambda_angstroms"].to_numpy())
+    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())
+
+
+def test_spectra_escape_time_with_3d_model() -> None:
+    """Escape-time spectra must get the outer velocity from metadata for a 3D model."""
+    dfspectrum = atspectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=3.0,
+        timehighdays=8.0,
+        lambda_bin_edges=np.linspace(3500.0, 8000.0, 101),
+        use_time="escape",
+        directionbins=[-1],
+    )[-1].collect()
+
+    assert dfspectrum["f_lambda"].is_finite().all()
+    assert dfspectrum["f_lambda"].sum() > 0.0
+
+
 @pytest.mark.benchmark
 def test_spectra_timeseries_subplots() -> None:
     timedayslist = [295, 300]

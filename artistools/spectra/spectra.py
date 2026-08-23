@@ -485,6 +485,49 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
+@lru_cache(maxsize=16)
+def _get_escape_surface_gamma(modelpath: Path | str) -> float:
+    """Return the Lorentz factor correction at the outer model boundary."""
+    from artistools.inputmodel import get_modeldata
+
+    _, modelmeta = get_modeldata(modelpath)
+    vmax_beta = float(modelmeta["vmax_cmps"]) / const.C_cm_per_s
+    return math.sqrt(1 - vmax_beta**2)
+
+
+def _filter_packets_by_time(
+    dfpackets: pl.LazyFrame,
+    modelpath: Path | str,
+    timelowdays: float,
+    timehighdays: float,
+    use_time: t.Literal["arrival", "emission", "escape"],
+    gamma: bool,
+) -> tuple[pl.LazyFrame, float | None]:
+    """Filter packets with the selected time and return the escape correction when applicable."""
+    if use_time == "arrival":
+        return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays)), None
+
+    if use_time == "escape":
+        escapesurfacegamma = _get_escape_surface_gamma(modelpath)
+        return (
+            dfpackets.filter(
+                (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
+            ),
+            escapesurfacegamma,
+        )
+
+    col_emit_time = "tdecay" if gamma else "em_time"
+    mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * const.day_to_s).mean()
+    return (
+        dfpackets.filter(
+            pl.col(col_emit_time).is_between(
+                timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
+            )
+        ),
+        None,
+    )
+
+
 def get_from_packets(
     modelpath: Path | str,
     timelowdays: float,
@@ -500,6 +543,7 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     directionbins: Sequence[int] | None = None,
     gamma: bool = False,
+    packets_are_time_filtered: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Return a spectrum dataframe. The packets files are the input.
 
@@ -507,6 +551,9 @@ def get_from_packets(
     A query for each direction bin has a cost. Thus a caller that needs one bin must request one bin.
     """
     assert use_time in {"arrival", "emission", "escape"}
+    if directionbins_are_vpkt_observers and use_time != "arrival":
+        msg = "Virtual packet spectra support only observer arrival time"
+        raise ValueError(msg)
 
     if nu_column == "absorption_freq":
         nu_column = "nu_absorbed"
@@ -554,7 +601,9 @@ def get_from_packets(
             dirbin_spectra[vspecindex] = (
                 atpackets
                 .bin_and_sum(
-                    dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)),
+                    dfpackets
+                    if packets_are_time_filtered
+                    else dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)),
                     bincol=lambda_column,
                     bins=lambda_bin_edges.tolist(),
                     sumcols=[energy_column],
@@ -577,38 +626,17 @@ def get_from_packets(
                     .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
                 )
 
-        assert use_time == "arrival"
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
-        if use_time == "arrival":
-            dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
-
-        elif use_time == "escape":
-            from artistools.inputmodel import get_modeldata
-
-            dfmodel, _ = get_modeldata(modelpath)
-            vmax_beta = (
-                dfmodel.select(pl.col("vel_r_max_kmps").max() * const.km_to_cm / const.C_cm_per_s).collect().item()
-            )
-            escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
-
-            dfpackets = dfpackets.filter(
-                (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
-            )
-
-        elif use_time == "emission":
-            # We bin packets according to the emission time, but we shift times so we're still centered around the observer arrival time.
-            # This makes easier to directly compare specta between emission time (no relative light travel time effects) and the standard arrival time
-            col_emit_time = "tdecay" if gamma else "em_time"
-            mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * const.day_to_s).mean()
-
-            dfpackets = dfpackets.filter(
-                pl.col(col_emit_time).is_between(
-                    timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
-                )
+        if packets_are_time_filtered:
+            if use_time == "escape":
+                escapesurfacegamma = _get_escape_surface_gamma(modelpath)
+        else:
+            dfpackets, escapesurfacegamma = _filter_packets_by_time(
+                dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
             )
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
@@ -1279,6 +1307,7 @@ def get_flux_contributions_from_packets(
     groupby selects whether the packets are grouped by ion, line, nuclide, or nuclide mass.
     """
     assert groupby in {"ion", "line", "nuc", "nucmass"}
+    assert use_time in {"arrival", "emission", "escape"}
     assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
     if getabsorption and groupby == "nuc":
         # A nuclide emits a packet, but a nuclide does not absorb a packet.
@@ -1297,11 +1326,15 @@ def get_flux_contributions_from_packets(
         assert groupby in {"nuc", "nucmass"}
         assert emtypecolumn == "pellet_nucindex"
 
+    if directionbins_are_vpkt_observers and use_time != "arrival":
+        msg = "Virtual packet contributions support only observer arrival time"
+        raise ValueError(msg)
+
     if directionbin is None:
         directionbin = -1
 
-    cols = {"e_rf"}
-    cols.add({"arrival": "t_arrive_d", "emission": "em_time", "escape": "escape_time"}[use_time])
+    energy_column = "e_cmf" if use_time == "escape" else "e_rf"
+    cols = {energy_column}
 
     nu_min = const.c_ang_per_s / lambda_bin_edges[-1]
     nu_max = const.c_ang_per_s / lambda_bin_edges[0]
@@ -1327,7 +1360,7 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
-        lzdfpackets = lzdfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
+        lzdfpackets, _ = _filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         lzdfpackets, _ = atpackets.filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
@@ -1453,18 +1486,18 @@ def get_flux_contributions_from_packets(
 
     del dfpackets, dflines
 
-    group_e_rf_sum: dict[str, float] = {}
+    group_energy_sum: dict[str, float] = {}
     for groups in (emissiongroups, absorptiongroups):
         for groupname, dfgroup in groups.items():
-            group_e_rf_sum[groupname] = group_e_rf_sum.get(groupname, 0.0) + float(dfgroup["e_rf"].sum())
+            group_energy_sum[groupname] = group_energy_sum.get(groupname, 0.0) + float(dfgroup[energy_column].sum())
 
-    allgroupnames = list(group_e_rf_sum)
+    allgroupnames = list(group_energy_sum)
 
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
         print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     def sortkey(groupname: str) -> tuple[int, float | int]:
-        grouptotal = group_e_rf_sum[groupname]
+        grouptotal = group_energy_sum[groupname]
 
         if fixedionlist is None:
             return (0, -grouptotal)
@@ -1519,6 +1552,7 @@ def get_flux_contributions_from_packets(
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
                     gamma=gamma,
+                    packets_are_time_filtered=True,
                 )[directionbin].select("lambda_angstroms", "f_lambda")
                 for dfpkts in emissiongroups.values()
             ]),
@@ -1542,6 +1576,8 @@ def get_flux_contributions_from_packets(
                     directionbins=[directionbin],
                     average_over_phi=average_over_phi,
                     average_over_theta=average_over_theta,
+                    gamma=gamma,
+                    packets_are_time_filtered=True,
                 )[directionbin].select("lambda_angstroms", "f_lambda")
                 for dfpkts in absorptiongroups.values()
             ]),
