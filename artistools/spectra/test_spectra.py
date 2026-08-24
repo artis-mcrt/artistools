@@ -469,7 +469,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch) 
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
     monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
-    monkeypatch.setattr(atspectra, "_get_escape_surface_gamma", get_escape_surface_gamma)
+    monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
 
     dfspectrum = atspectra.get_from_packets(

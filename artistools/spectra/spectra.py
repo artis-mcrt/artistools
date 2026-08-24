@@ -486,7 +486,7 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
 
 
 @lru_cache(maxsize=16)
-def _get_escape_surface_gamma(modelpath: Path | str) -> float:
+def get_escape_surface_gamma(modelpath: Path | str) -> float:
     """Return the Lorentz factor correction at the outer model boundary."""
     from artistools.inputmodel import get_modeldata
 
@@ -495,7 +495,7 @@ def _get_escape_surface_gamma(modelpath: Path | str) -> float:
     return math.sqrt(1 - vmax_beta**2)
 
 
-def _filter_packets_by_time(
+def filter_packets_by_time(
     dfpackets: pl.LazyFrame,
     modelpath: Path | str,
     timelowdays: float,
@@ -508,7 +508,7 @@ def _filter_packets_by_time(
         return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays)), None
 
     if use_time == "escape":
-        escapesurfacegamma = _get_escape_surface_gamma(modelpath)
+        escapesurfacegamma = get_escape_surface_gamma(modelpath)
         return (
             dfpackets.filter(
                 (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
@@ -633,9 +633,9 @@ def get_from_packets(
 
         if packets_are_time_filtered:
             if use_time == "escape":
-                escapesurfacegamma = _get_escape_surface_gamma(modelpath)
+                escapesurfacegamma = get_escape_surface_gamma(modelpath)
         else:
-            dfpackets, escapesurfacegamma = _filter_packets_by_time(
+            dfpackets, escapesurfacegamma = filter_packets_by_time(
                 dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
             )
 
@@ -1360,7 +1360,7 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
-        lzdfpackets, _ = _filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        lzdfpackets, _ = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         lzdfpackets, _ = atpackets.filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
