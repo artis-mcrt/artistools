@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.14,<2.0"]
+requires = ["maturin>=1.15,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -43,14 +43,14 @@ license = "MIT"
 license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
-    "argcomplete>=3.6.3",
-    "extinction>=0.4.7",
+    "argcomplete>=3.7.2",
+    "extinction>=0.4.9",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.6",
+    "numpy>=2.5.2",
     "polars>=1.43.2",
-    "pyyaml>=6.0.2",
+    "pyyaml>=6.0.3",
     "rich>=15.0.0",
-    "tqdm>=4.67.3",
+    "tqdm>=4.70.0",
     "zstandard>=0.25.0;python_version<'3.14'",
 ]
 
@@ -58,25 +58,25 @@ dependencies = [
 # adding a package here also needs an entry in `ignore-missing-imports` under [tool.pyrefly]
 extras = [
     "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
-    "imageio>=2.37.3",
-    "plotly>=6.7.0",
+    "imageio>=2.37.4",
+    "plotly>=6.9.0",
     "pypdf>=6.16.2",
-    "pynonthermal>=2026.4.27",
-    "pyvista>=0.47.1;python_version<'3.15'", # not compatible with 3.15 yet
+    "pynonthermal>=2026.8.9",
+    "pyvista>=0.48.4;python_version<'3.15'", # not compatible with 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
-    "imageio>=2.37.3",
-    "prek>=0.4.12",
-    "pynonthermal>=2026.4.27",
+    "imageio>=2.37.4",
+    "prek>=0.4.14",
+    "pynonthermal>=2026.8.9",
     "pyrefly>=1.2.0",
-    "pytest>=9.0.3",
-    "pytest-codspeed>=4.4.0",
+    "pytest>=9.1.1",
+    "pytest-codspeed>=5.0.3",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "refurb>=2.2.0",
-    "ruff>=0.16.1,<0.17",
+    "refurb>=2.3.1",
+    "ruff>=0.16.4,<0.17",
     "ty>=0.0.74",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
