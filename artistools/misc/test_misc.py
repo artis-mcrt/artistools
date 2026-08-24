@@ -274,21 +274,24 @@ def test_read_wsv_whitespace_runs(tmp_path: Path) -> None:
     assert dfnbsp.columns == ["ion", "pop"]
     assert dfnbsp["ion"].to_list() == ["Fe\u00a0II"]
 
-    # a comment can hold a byte that is not valid UTF-8, and the numbers must still parse
-    (tmp_path / "latin1.txt").write_bytes(b"colA colB\n1 2   # 30\xb0C\n3 4\n")
+    # a compressed file gives the same result, including an xz file, which polars cannot read itself
+    with lzma.open(tmp_path / "whitespace_xz.txt.xz", "wb") as f:
+        f.write(filepath.read_bytes())
+    pltest.assert_frame_equal(at.read_wsv(tmp_path / "whitespace_xz.txt"), df)
+
+
+def test_read_wsv_invalid_utf8(tmp_path: Path) -> None:
+    """A byte that is not valid UTF-8 stops the read, unless a comment holds it."""
+    # a comment of a file from a different source can hold e.g. a degree sign in Latin-1
+    (tmp_path / "latin1comment.txt").write_bytes(b"colA colB\n1 2   # 30\xb0C\n3 4\n")
     pltest.assert_frame_equal(
-        at.read_wsv(tmp_path / "latin1.txt", comment_prefix="#"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
+        at.read_wsv(tmp_path / "latin1comment.txt", comment_prefix="#"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
     )
 
     # the same byte in the data of a column gives an error, and not a value that holds bad text
     (tmp_path / "latin1data.txt").write_bytes(b"colA colB\n1 2\n3 4\xb0\n")
     with pytest.raises(pl.exceptions.ComputeError):
         at.read_wsv(tmp_path / "latin1data.txt", comment_prefix="#")
-
-    # a compressed file gives the same result, including an xz file, which polars cannot read itself
-    with lzma.open(tmp_path / "whitespace_xz.txt.xz", "wb") as f:
-        f.write(filepath.read_bytes())
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "whitespace_xz.txt"), df)
 
 
 def test_read_wsv_no_data(tmp_path: Path) -> None:

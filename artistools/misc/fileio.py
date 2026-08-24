@@ -149,12 +149,15 @@ def polars_error_note(filepath: Path) -> Generator[None]:
 def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "utf8-lossy"] = "utf8") -> pl.LazyFrame:
     """Return a lazy frame with one string column named "line" that holds each line of a text file.
 
-    The function drops the first skip_rows lines. The name of the file gives the compression format, which
-    can be zstd, gzip, or xz. polars_source selects the format. This function cannot call zopenpl, because
-    zopenpl searches for a compressed sibling, and read_wsv has already resolved the path without one.
+    The function drops the first skip_rows lines. polars_source selects the compression format. The caller
+    gives a path that it has resolved, thus this function must not search for a compressed sibling.
     """
+    with contextlib.ExitStack() as stack:
+        source = polars_source(filepath, mode="rb")
+        if not isinstance(source, Path):
+            # polars reads a file object when it makes the plan, thus the file can close after that
+            stack.enter_context(source)
 
-    def scan(source: Path | t.IO[bytes]) -> pl.LazyFrame:
         return pl.scan_csv(
             source,
             # the ASCII unit separator, which an ARTIS text file never holds, so that each line stays
@@ -168,15 +171,6 @@ def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "
             infer_schema_length=0,
             skip_rows=skip_rows,
         )
-
-    source = polars_source(filepath, mode="rb")
-    if isinstance(source, Path):
-        return scan(source)
-
-    # polars reads a file object when it makes the plan, thus the file can close before the query runs,
-    # and the decompressed text needs no copy of its own
-    with source:
-        return scan(source)
 
 
 def normalised_lines(
@@ -192,8 +186,9 @@ def normalised_lines(
     """
     line = pl.col("line")
     if comment_prefix:
-        # a comment can start anywhere on a line, thus remove the prefix and every character after it
-        line = line.str.replace(re.escape(comment_prefix) + ".*", "")
+        # a comment can start anywhere on a line, thus keep the text before the first prefix only. split
+        # takes the prefix as text, thus no escape of a regular expression character is necessary
+        line = line.str.split(comment_prefix).list.first()
 
     return (
         scan_lines(filepath, skip_rows=skip_rows, encoding=encoding)
@@ -211,33 +206,27 @@ def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str
     valid UTF-8 raises an error, unless the comment step removes the text that holds it.
     """
 
-    def sink(encoding: t.Literal["utf8", "utf8-lossy"]) -> io.BytesIO:
+    def sink(lflines: pl.LazyFrame) -> io.BytesIO:
         normalised = io.BytesIO()
-        normalised_lines(filepath, skip_rows, comment_prefix, encoding).sink_csv(
-            normalised, include_header=False, quote_style="never"
-        )
+        lflines.sink_csv(normalised, include_header=False, quote_style="never")
         # sink_csv leaves the buffer at the end, thus rewind it for the reader
         normalised.seek(0)
 
         return normalised
 
     try:
-        return sink("utf8")
+        return sink(normalised_lines(filepath, skip_rows, comment_prefix))
     except pl.exceptions.ComputeError:
         # a comment of a file from a different source can hold a byte that is not valid UTF-8, e.g. a
         # degree sign in Latin-1. Read the file again and replace each such byte
-        normalised = sink("utf8-lossy")
+        normalised = sink(normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy"))
 
         # a replacement character that survives the comment step comes from the data of a column. Such a
-        # file is unreadable, thus give the caller the first error and not a column that holds bad text
-        badlines = (
-            normalised_lines(filepath, skip_rows, comment_prefix, "utf8-lossy")
-            .filter(pl.col("line").str.contains("\ufffd", literal=True))
-            .select(pl.len())
-            .collect()
-            .item()
-        )
-        if badlines > 0:
+        # file is unreadable, thus give the caller the first error and not a column that holds bad text.
+        # re.search reads the buffer where it lies, thus the search costs no copy of it
+        with normalised.getbuffer() as view:
+            holdsbadtext = re.search("\ufffd".encode(), view) is not None
+        if holdsbadtext:
             raise
 
         return normalised
@@ -333,7 +322,13 @@ def read_wsv(
             # so pay for a full-file schema inference pass
             return parse(infer_schema_length=None)
 
-        return parse(infer_schema_length=None) if sample_missed_numeric_column(dfout) else dfout
+        if not sample_missed_numeric_column(dfout):
+            return dfout
+
+        # a frame of a wide file is large, thus drop this one before the next parse makes another
+        del dfout
+
+        return parse(infer_schema_length=None)
 
     with polars_error_note(filepath):
         dfout = parse_with_inference_fallback()
