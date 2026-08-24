@@ -40,7 +40,7 @@ repos:
           - id: yamlfmt
 
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.16.3
+      rev: v0.16.4
       hooks:
           - id: ruff-check
             args: [--fix]
@@ -54,7 +54,7 @@ repos:
             args: [--frozen, --all-extras, --no-install-project]
 
     - repo: https://github.com/astral-sh/ty-pre-commit
-      rev: v0.0.73
+      rev: v0.0.74
       hooks:
           - id: ty
             name: ty
