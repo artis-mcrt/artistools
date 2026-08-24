@@ -599,14 +599,14 @@ def get_ionstring(
 
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
-    filepath = Path(modelpath, "nuclides.out")
-    if not filepath.is_file():
-        msg = f"File {filepath} not found"
+    filepath = at.firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True)
+    if filepath is None:
+        msg = f"File nuclides.out not found in {modelpath}"
         raise FileNotFoundError(msg)
 
     dfnuclides = (
         pl
-        .scan_csv(filepath, separator=" ", has_header=True)
+        .scan_csv(at.polars_source(filepath), separator=" ", has_header=True)
         .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
         .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
         .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
@@ -650,7 +650,7 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
 
     dfboundfree = (
         pl.scan_csv(
-            bflistpath,
+            at.polars_source(bflistpath),
             skip_rows=1,
             has_header=False,
             separator=" ",

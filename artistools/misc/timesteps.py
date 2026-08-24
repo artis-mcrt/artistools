@@ -12,8 +12,8 @@ import polars as pl
 from artistools.constants import C_cm_per_s
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import zopen
-from artistools.misc.fileio import zopenpl
+from artistools.misc.fileio import polars_source
+from artistools.misc.fileio import read_wsv
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
 
@@ -45,18 +45,15 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
 
     ts_mids = get_timestep_times(modelpath, loc="mid")
 
-    with zopen(depfilepath) as fdep:
-        line = fdep.readline()
-        if line.startswith("#"):
-            skiprows = 1
-            columns = line.lstrip("#").split()
-        else:
-            skiprows = 0
-            columns = ["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"]
-
-    depdata = pl.scan_csv(
-        zopenpl(depfilepath), separator=" ", skip_rows=skiprows, has_header=False, new_columns=columns
-    )
+    # read_wsv takes the column names from the header comment of the file, and keeps the names below
+    # when the file has no such comment
+    depdata = read_wsv(
+        depfilepath,
+        has_header=False,
+        comment_prefix="#",
+        header_from_comment=True,
+        new_columns=["tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"],
+    ).lazy()
 
     if "ts" in depdata.collect_schema().names():
         depdata = depdata.rename({"ts": "timestep"})
@@ -101,7 +98,7 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     if tsfilepath is not None:
         return (
             pl
-            .scan_csv(zopenpl(tsfilepath), has_header=True, separator=" ")
+            .scan_csv(polars_source(tsfilepath), has_header=True, separator=" ")
             .rename(lambda column_name: column_name.removeprefix("#"))
             .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
         )

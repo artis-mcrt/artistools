@@ -295,7 +295,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
 
     try:
         dfpackets = pl.read_csv(
-            at.zopenpl(packetsfiletext),
+            at.polars_source(packetsfiletext),
             separator=" ",
             has_header=False,
             comment_prefix="#",
@@ -344,10 +344,10 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
     vpacketsfiletext = Path(vpacketsfiletext)
     mpirank = int(vpacketsfiletext.name.split("_")[-1].split(".")[0])
 
-    # the caller resolves the path with tryzipped=True, so read through zopenpl to handle the .xz case
-    # that polars cannot open from a path
+    # the caller resolves the path with tryzipped=True, thus polars_source only has to open the
+    # .xz case, which polars cannot read from a path
     dfvpackets = pl.read_csv(
-        at.zopenpl(vpacketsfiletext),
+        at.polars_source(vpacketsfiletext),
         separator=" ",
         has_header=False,
         comment_prefix="#",

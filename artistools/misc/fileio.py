@@ -113,12 +113,13 @@ def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any
     return filepath.open(encoding=encoding)
 
 
-def polars_source(filepath: Path, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Return the path of a file that polars reads itself, or a file object that decompresses it.
 
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
-    The caller gives an existing path. Use zopenpl instead to also find a compressed sibling.
+    The caller gives the name of a file that exists. Use zopenpl to also find a compressed sibling.
     """
+    filepath = Path(filename)
     if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
         return filepath
 

@@ -12,10 +12,11 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import polars_source
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
-from artistools.misc.fileio import zopenpl
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -50,7 +51,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
     dfgrid = pl.read_csv(
-        zopenpl(filename),
+        polars_source(filename),
         separator=" ",
         has_header=False,
         comment_prefix="#",
@@ -99,7 +100,7 @@ def get_wid_init_at_tmodel(
 def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specdata = pl.read_csv(
-        firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True),
+        polars_source(firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)),
         separator=" ",
         has_header=False,
         skip_rows=1,
@@ -336,9 +337,9 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 @lru_cache(maxsize=16)
 def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
-    filerankassignments = Path(modelpath, "modelgridrankassignments.out")
-    if filerankassignments.is_file():
-        return pl.scan_csv(filerankassignments, has_header=True, separator=" ").rename(
+    filerankassignments = firstexisting_or_none("modelgridrankassignments.out", folder=modelpath, tryzipped=True)
+    if filerankassignments is not None:
+        return pl.scan_csv(polars_source(filerankassignments), has_header=True, separator=" ").rename(
             lambda column_name: column_name.removeprefix("#")
         )
     return None

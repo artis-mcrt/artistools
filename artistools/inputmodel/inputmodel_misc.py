@@ -27,6 +27,7 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
 from artistools.misc import get_file_identity
+from artistools.misc import polars_source
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
@@ -142,7 +143,7 @@ def read_modelfile_text(
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
         dfmodel = pl.read_csv(
-            filename,
+            polars_source(filename),
             separator=" ",
             new_columns=columns,
             n_rows=npts_model,

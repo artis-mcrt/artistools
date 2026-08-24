@@ -22,6 +22,7 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.misc.fileio import scan_lines
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -188,9 +189,8 @@ def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
     """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
-    with get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename).open(
-        encoding="utf-8"
-    ) as trajfile:
+    trajpath = get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename)
+    with trajpath.open(encoding="utf-8") as trajfile:
         try:
             _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
         except ValueError as exc:
@@ -198,22 +198,20 @@ def get_trajectory_timestepfile_nuc_abund(
             print(msg)
             raise ValueError(msg) from exc
 
-        t_model_init_seconds = float(str_t_model_init_seconds)
+    t_model_init_seconds = float(str_t_model_init_seconds)
 
-        trajfile.seek(0)
-        dfnucabund = (
-            pl
-            .read_csv(trajfile, separator="\n", skip_rows=1, has_header=False, new_columns=["data"], n_threads=1)
-            .lazy()
-            .select(
-                pl.col("data").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
-                pl.col("data").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
-                pl.col("data").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
-            )
-            .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
-            .drop("log10abund")
-            .collect()
+    # the columns of this file have a fixed width, thus each line goes to str.slice and not to a parser
+    dfnucabund = (
+        scan_lines(trajpath, skip_rows=1)
+        .select(
+            pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
+            pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
+            pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
         )
+        .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
+        .drop("log10abund")
+        .collect()
+    )
 
     return dfnucabund, t_model_init_seconds
 
@@ -297,7 +295,7 @@ def get_trajectory_abund_q(
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
     """Return the mass fraction that each trajectory particle contributes to each grid cell."""
     return pl.read_csv(
-        at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True),
+        at.polars_source(at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)),
         has_header=True,
         separator=" ",
         schema_overrides={

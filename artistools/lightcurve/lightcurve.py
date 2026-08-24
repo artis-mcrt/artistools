@@ -60,6 +60,7 @@ def readfile(
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
+        # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
         at.zopenpl(filepath),
         separator=" ",
         has_header=False,
