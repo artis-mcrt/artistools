@@ -638,21 +638,21 @@ def test_get_file_identity(tmp_path: Path) -> None:
 # --- general.py --------------------------------------------------------------------------------
 
 
-def test_df_filter_minmax_bounded() -> None:
+def test_df_filter_minmax_bracketed() -> None:
     df = pl.DataFrame({"x": list(range(11))})  # 0..10
 
     # both bounds: keep the interior plus the nearest exterior row on each side (for interpolation)
-    bounded = at.misc.df_filter_minmax_bounded(df, "x", 2.5, 7.5).collect()
+    bounded = at.misc.df_filter_minmax_bracketed(df, "x", 2.5, 7.5).collect()
     assert bounded["x"].to_list() == [2, 3, 4, 5, 6, 7, 8]
 
     # no bounds is a pass-through
-    unbounded = at.misc.df_filter_minmax_bounded(df, "x", None, None).collect()
+    unbounded = at.misc.df_filter_minmax_bracketed(df, "x", None, None).collect()
     assert unbounded["x"].to_list() == list(range(11))
 
     # single-sided bounds
-    minonly = at.misc.df_filter_minmax_bounded(df, "x", 2.5, None).collect()
+    minonly = at.misc.df_filter_minmax_bracketed(df, "x", 2.5, None).collect()
     assert minonly["x"].to_list() == [2, 3, 4, 5, 6, 7, 8, 9, 10]
-    maxonly = at.misc.df_filter_minmax_bounded(df, "x", None, 7.5).collect()
+    maxonly = at.misc.df_filter_minmax_bracketed(df, "x", None, 7.5).collect()
     assert maxonly["x"].to_list() == [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
 

@@ -35,7 +35,7 @@ from artistools.misc import add_timedays_arg
 from artistools.misc import add_timeminmax_args
 from artistools.misc import add_timestep_arg
 from artistools.misc import add_viewingangle_args
-from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
@@ -554,7 +554,7 @@ def plot_artis_spectrum(
         dirbin_dfspec = zip(
             directionbins,
             pl.collect_all([
-                df_filter_minmax_bounded(
+                df_filter_minmax_bracketed(
                     atspectra.get_dfspectrum_x_y_with_units(
                         viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
                     ).sort("x"),

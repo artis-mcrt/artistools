@@ -108,7 +108,7 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    dftimesteps_selected = at.misc.df_filter_minmax_bounded(
+    dftimesteps_selected = at.misc.df_filter_minmax_bracketed(
         at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
@@ -329,11 +329,16 @@ def generate_band_lightcurve_data(
 
                 # interpolate the coarser-sampled series onto the finer wavelength grid before multiplying,
                 # with zero contribution outside the sampled range
-                if len(wavelength_from_spectrum) > len(wavefilter):
-                    integrand = flux * np.interp(
-                        wavelength_from_spectrum, wavefilter, transmission, left=0.0, right=0.0
+                spectrum_in_filter = np.logical_and(
+                    wavelength_from_spectrum >= wavefilter_min, wavelength_from_spectrum <= wavefilter_max
+                )
+                wavelength_in_filter = wavelength_from_spectrum[spectrum_in_filter]
+                flux_in_filter = flux[spectrum_in_filter]
+                if len(wavelength_in_filter) > len(wavefilter):
+                    integrand = flux_in_filter * np.interp(
+                        wavelength_in_filter, wavefilter, transmission, left=0.0, right=0.0
                     )
-                    integration_grid = wavelength_from_spectrum
+                    integration_grid = wavelength_in_filter
                 else:
                     integrand = (
                         np.interp(wavefilter, wavelength_from_spectrum, flux, left=0.0, right=0.0) * transmission
@@ -429,7 +434,7 @@ def get_spectrum_in_filter_range(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the wavelengths and fluxes of the spectrum at one timestep, restricted to a filter's wavelength range."""
+    """Return the spectrum rows that bracket a filter wavelength range."""
     spectrum = at.spectra.get_spectrum_at_time(
         Path(modelpath),
         timestep=timestep,
@@ -441,14 +446,13 @@ def get_spectrum_in_filter_range(
     )
     assert spectrum is not None
 
-    wavelength_from_spectrum: list[float] = []
-    flux: list[float] = []
-    for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"], strict=True):
-        if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
-            wavelength_from_spectrum.append(wavelength)
-            flux.append(flambda)
-
-    return np.array(wavelength_from_spectrum), np.array(flux)
+    spectrum_bracketed = (
+        at.misc
+        .df_filter_minmax_bracketed(spectrum, "lambda_angstroms", wavefilter_min, wavefilter_max)
+        .select("lambda_angstroms", "f_lambda")
+        .collect()
+    )
+    return spectrum_bracketed["lambda_angstroms"].to_numpy(), spectrum_bracketed["f_lambda"].to_numpy()
 
 
 def get_band_lightcurve(
