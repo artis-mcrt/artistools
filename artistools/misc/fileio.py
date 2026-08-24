@@ -155,7 +155,9 @@ def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
             # a byte that is not valid UTF-8 must not stop the read. The ARTIS files are ASCII, but a
             # comment of a file from a different source can hold e.g. a degree sign in Latin-1
             encoding="utf8-lossy",
-            schema={"line": pl.String},
+            new_columns=["line"],
+            # a line is text, thus polars must not spend a pass on the type of the column
+            infer_schema_length=0,
             skip_rows=skip_rows,
         )
 
