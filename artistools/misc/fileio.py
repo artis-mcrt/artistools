@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import re
 import shlex
 import sys
 import typing as t
@@ -126,6 +127,52 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
     return Path(filename)
 
 
+def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
+    """Return a lazy frame with one string column named "line" that holds each line of a text file.
+
+    The first skip_rows lines are dropped. The file can be zstd, gzip, or xz compressed. polars reads
+    zstd and gzip itself. An xz file is decompressed into memory first, because polars cannot read it.
+    """
+    csvargs: dict[str, t.Any] = {
+        # a character that an ARTIS text file never holds, so that each line stays one field
+        "separator": "\x01",
+        "has_header": False,
+        "quote_char": None,
+        "schema": {"line": pl.String},
+        "skip_rows": skip_rows,
+    }
+
+    if filepath.suffix in COMPRESSED_EXTENSIONS and filepath.suffix not in POLARS_READABLE_EXTENSIONS:
+        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            return pl.read_csv(fin.read(), **csvargs).lazy()
+
+    return pl.scan_csv(filepath, **csvargs)
+
+
+def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
+    """Return the lines of a text file with each run of whitespace collapsed to a single space.
+
+    The first skip_rows lines are dropped, text from comment_prefix to the end of a line is removed, and a
+    blank line is omitted. A CSV parser can then read the result with a single space as the separator.
+    """
+    line = pl.col("line")
+    if comment_prefix:
+        # a comment can start anywhere on a line, thus remove the prefix and every character after it
+        line = line.str.replace(re.escape(comment_prefix) + ".*", "")
+
+    normalised = io.BytesIO()
+    # a run of spaces, tabs, or carriage returns between two fields must act as a single separator.
+    # sink_csv writes the lines as the query gives them, thus the whole file never sits in memory twice
+    (
+        scan_lines(filepath, skip_rows=skip_rows)
+        .select(line.str.replace_all(r"\s+", " ").str.strip_chars().alias("line"))
+        .filter(pl.col("line").str.len_bytes() > 0)
+        .sink_csv(normalised, include_header=False, quote_style="never")
+    )
+
+    return normalised
+
+
 def read_wsv(
     filename: Path | str,
     *,
@@ -137,21 +184,20 @@ def read_wsv(
     skip_rows: int = 0,
     schema_overrides: t.Mapping[str, pl.DataType | type[pl.DataType]] | None = None,
 ) -> pl.DataFrame:
-    """Read a whitespace-separated text file into a DataFrame, treating any run of spaces or tabs as one separator.
+    """Read a whitespace-separated text file into a DataFrame, treating any run of whitespace as one separator.
 
     Use this instead of pl.read_csv(separator=" ") for files whose columns are aligned with variable amounts of
-    whitespace. Text from comment_prefix to the end of a line is removed, blank lines are dropped, and the file may
-    be compressed (.zst/.gz/.xz; a compressed sibling of the given name is read only when the named file itself
-    does not exist). A column that starts with integers but later contains floats is read as floats, at the cost
-    of a second parse with full-file schema inference. Not-a-number tokens such as "nan" and "NA" become nulls
-    rather than making the column a string column.
+    whitespace. A run of spaces, tabs, or carriage returns between two fields acts as a single separator. Text
+    from comment_prefix to the end of a line is removed, blank lines are dropped, and the file may be compressed
+    (.zst/.gz/.xz; a compressed sibling of the given name is read only when the named file itself does not
+    exist). A column that starts with integers but later contains floats is read as floats, at the cost of a
+    second parse with full-file schema inference. Not-a-number tokens such as "nan" and "NA" become nulls rather
+    than making the column a string column.
 
     When columns is given, only those columns are parsed and returned (in the given order), which saves memory
     on wide files. When header_from_comment is set and the first line is a comment, its words (after
     comment_prefix) become the column names, covering files whose header line is written as a comment.
     """
-    from artistools import rustext
-
     filepath = Path(filename)
     if not filepath.is_file():
         # fall back to a compressed sibling only when the named file itself does not exist, so a freshly
@@ -170,7 +216,7 @@ def read_wsv(
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
             has_header = False
 
-    normalized = rustext.read_wsv_normalized(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
+    normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
 
     # polars projects by ascending column index and names the projected columns positionally, so
     # translate a name-based projection of a headerless read into that form
@@ -181,8 +227,11 @@ def read_wsv(
         projected_new_columns = [new_columns[i] for i in projected_indices]
 
     def parse(infer_schema_length: int | None) -> pl.DataFrame:
+        # the buffer is read more than once when the first schema turns out to be wrong
+        normalised.seek(0)
+
         return pl.read_csv(
-            normalized,
+            normalised,
             separator=" ",
             has_header=has_header,
             new_columns=projected_new_columns,

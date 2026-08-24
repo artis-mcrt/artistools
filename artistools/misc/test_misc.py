@@ -259,6 +259,23 @@ def test_read_wsv(tmp_path: Path) -> None:
     assert dfprojected["c"].to_list() == ["x", "y"]
 
 
+def test_read_wsv_whitespace_runs(tmp_path: Path) -> None:
+    """A run of spaces, tabs, and carriage returns between two fields acts as a single separator."""
+    filepath = tmp_path / "whitespace.txt"
+    filepath.write_bytes(b"a\t\tb   c\r\n 1 \t 2\t\t\t3 \r\n\t \r\n4\t5     6\n")
+
+    df = at.read_wsv(filepath)
+    pltest.assert_frame_equal(df, pl.DataFrame({"a": [1, 4], "b": [2, 5], "c": [3, 6]}))
+
+    # a line of whitespace only holds no field, thus it must not become a row of nulls
+    assert df.height == 2
+
+    # a compressed file gives the same result, including an xz file, which polars cannot read itself
+    with lzma.open(tmp_path / "whitespace_xz.txt.xz", "wb") as f:
+        f.write(filepath.read_bytes())
+    pltest.assert_frame_equal(at.read_wsv(tmp_path / "whitespace_xz.txt"), df)
+
+
 def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
     """A freshly written uncompressed file must win over a stale compressed sibling of the same name."""
     (tmp_path / "f.txt").write_text("v\n2\n", encoding="utf-8")
