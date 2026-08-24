@@ -146,7 +146,7 @@ def polars_error_note(filepath: Path) -> Generator[None]:
         raise
 
 
-def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
+def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "utf8-lossy"] = "utf8") -> pl.LazyFrame:
     """Return a lazy frame with one string column named "line" that holds each line of a text file.
 
     The function drops the first skip_rows lines. The name of the file gives the compression format, which
@@ -162,9 +162,7 @@ def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
             separator="\x1f",
             has_header=False,
             quote_char=None,
-            # a byte that is not valid UTF-8 must not stop the read. The ARTIS files are ASCII, but a
-            # comment of a file from a different source can hold e.g. a degree sign in Latin-1
-            encoding="utf8-lossy",
+            encoding=encoding,
             new_columns=["line"],
             # a line is text, thus polars must not spend a pass on the type of the column
             infer_schema_length=0,
@@ -181,31 +179,68 @@ def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
         return scan(source)
 
 
-def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
+def normalised_lines(
+    filepath: Path,
+    skip_rows: int = 0,
+    comment_prefix: str | None = None,
+    encoding: t.Literal["utf8", "utf8-lossy"] = "utf8",
+) -> pl.LazyFrame:
     """Return the lines of a text file with each run of whitespace collapsed to a single space.
 
     The function drops the first skip_rows lines, removes the text from comment_prefix to the end of a line,
-    and drops a blank line. A CSV parser can then read the buffer with a single space as the separator. The
-    buffer is at position zero.
+    and drops a blank line.
     """
     line = pl.col("line")
     if comment_prefix:
         # a comment can start anywhere on a line, thus remove the prefix and every character after it
         line = line.str.replace(re.escape(comment_prefix) + ".*", "")
 
-    normalised = io.BytesIO()
-    # the class holds each ASCII whitespace character that a line can contain. The Unicode class \s would
-    # also split a field that holds a no-break space, which the columns of an ARTIS file must keep
-    (
-        scan_lines(filepath, skip_rows=skip_rows)
+    return (
+        scan_lines(filepath, skip_rows=skip_rows, encoding=encoding)
+        # the class holds each ASCII whitespace character that a line can contain. The Unicode class \s
+        # would also split a field that holds a no-break space, which an ARTIS column must keep
         .select(line.str.replace_all(r"[ \t\r\x0b\x0c]+", " ").str.strip_chars(" "))
         .filter(pl.col("line").str.len_bytes() > 0)
-        .sink_csv(normalised, include_header=False, quote_style="never")
     )
-    # sink_csv leaves the buffer at the end, thus rewind it for the reader
-    normalised.seek(0)
 
-    return normalised
+
+def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
+    """Return a buffer of the normalised lines of a text file, which a CSV parser can read.
+
+    The separator of the buffer is a single space, and the buffer is at position zero. A byte that is not
+    valid UTF-8 raises an error, unless the comment step removes the text that holds it.
+    """
+
+    def sink(encoding: t.Literal["utf8", "utf8-lossy"]) -> io.BytesIO:
+        normalised = io.BytesIO()
+        normalised_lines(filepath, skip_rows, comment_prefix, encoding).sink_csv(
+            normalised, include_header=False, quote_style="never"
+        )
+        # sink_csv leaves the buffer at the end, thus rewind it for the reader
+        normalised.seek(0)
+
+        return normalised
+
+    try:
+        return sink("utf8")
+    except pl.exceptions.ComputeError:
+        # a comment of a file from a different source can hold a byte that is not valid UTF-8, e.g. a
+        # degree sign in Latin-1. Read the file again and replace each such byte
+        normalised = sink("utf8-lossy")
+
+        # a replacement character that survives the comment step comes from the data of a column. Such a
+        # file is unreadable, thus give the caller the first error and not a column that holds bad text
+        badlines = (
+            normalised_lines(filepath, skip_rows, comment_prefix, "utf8-lossy")
+            .filter(pl.col("line").str.contains("\ufffd", literal=True))
+            .select(pl.len())
+            .collect()
+            .item()
+        )
+        if badlines > 0:
+            raise
+
+        return normalised
 
 
 def read_wsv(
