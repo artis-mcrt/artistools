@@ -197,7 +197,7 @@ def plot_qdot(
 ) -> None:
     """Plot the ARTIS radioactive heating rate against the rate from the nuclear network trajectories."""
     try:
-        depdata = at.misc.df_filter_minmax_bounded(
+        depdata = at.misc.df_filter_minmax_bracketed(
             at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
         ).collect()
 
@@ -619,7 +619,7 @@ def plot_qdot_abund_modelcells(
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
     print(f"model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
-    dftimesteps = at.misc.df_filter_minmax_bounded(
+    dftimesteps = at.misc.df_filter_minmax_bracketed(
         at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 

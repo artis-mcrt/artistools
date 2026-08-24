@@ -26,7 +26,7 @@ from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
-from artistools.misc import df_filter_minmax_bounded
+from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
@@ -281,7 +281,7 @@ def get_lambda_bin_edges(
         lambda_min_plot, lambda_max_plot = convert_xlimits_to_lambda_range(xmin_plot, xmax_plot, xunit)
         lambda_bin_edges_fullrange = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
         lambda_bin_edges = (
-            df_filter_minmax_bounded(
+            df_filter_minmax_bracketed(
                 pl.LazyFrame({
                     "lambda_bin_lower": lambda_bin_edges_fullrange[:-1],
                     "lambda_bin_upper": lambda_bin_edges_fullrange[1:],

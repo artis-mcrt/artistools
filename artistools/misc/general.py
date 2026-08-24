@@ -13,10 +13,10 @@ import numpy.typing as npt
 import polars as pl
 
 
-def df_filter_minmax_bounded(
+def df_filter_minmax_bracketed(
     df: pl.LazyFrame | pl.DataFrame, colname: str, minval: float | None, maxval: float | None
 ) -> pl.LazyFrame:
-    """Filter a DataFrame to selects rows where the value in colname is between minval and maxval, and also include the closest exterior rows if xmin/xmax are between two rows. This enables linear interpolation at xmin and xmax (if the surrounding values existed in the DataFrame)."""
+    """Filter rows by bounds and include the nearest exterior row at each bound for interpolation."""
     df = df.lazy()
     if minval is maxval is None:
         return df

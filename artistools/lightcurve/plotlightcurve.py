@@ -412,7 +412,7 @@ def plot_artis_lightcurve(
         zip(
             dirbins,
             pl.collect_all(
-                at.misc.df_filter_minmax_bounded(
+                at.misc.df_filter_minmax_bracketed(
                     lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
                 )
                 for dirbin in dirbins
@@ -657,7 +657,7 @@ def make_lightcurve_plot(
                         )
                         top_nuclides = (
                             at.misc
-                            .df_filter_minmax_bounded(
+                            .df_filter_minmax_bracketed(
                                 dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
                                 "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
                                 args.timemin,
