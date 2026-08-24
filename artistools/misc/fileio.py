@@ -127,33 +127,53 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
     return Path(filename)
 
 
+@contextlib.contextmanager
+def polars_error_note(filepath: Path) -> Generator[None]:
+    """Name the file in a polars error, because the parser sees a path or in-memory bytes only."""
+    try:
+        yield
+    except pl.exceptions.PolarsError as exc:
+        exc.add_note(f"while reading {filepath}")
+        raise
+
+
 def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
     """Return a lazy frame with one string column named "line" that holds each line of a text file.
 
-    The first skip_rows lines are dropped. The file can be zstd, gzip, or xz compressed. polars reads
-    zstd and gzip itself. An xz file is decompressed into memory first, because polars cannot read it.
+    The function drops the first skip_rows lines. The name of the file gives the compression format, which
+    can be zstd, gzip, or xz. polars reads a zstd file and a gzip file itself.
     """
-    csvargs: dict[str, t.Any] = {
-        # a character that an ARTIS text file never holds, so that each line stays one field
-        "separator": "\x01",
-        "has_header": False,
-        "quote_char": None,
-        "schema": {"line": pl.String},
-        "skip_rows": skip_rows,
-    }
+
+    def scan(source: Path | t.IO[bytes]) -> pl.LazyFrame:
+        return pl.scan_csv(
+            source,
+            # the ASCII unit separator, which an ARTIS text file never holds, so that each line stays
+            # one field. artisatomic reads a line in the same way, with the same separator
+            separator="\x1f",
+            has_header=False,
+            quote_char=None,
+            # a byte that is not valid UTF-8 must not stop the read. The ARTIS files are ASCII, but a
+            # comment of a file from a different source can hold e.g. a degree sign in Latin-1
+            encoding="utf8-lossy",
+            schema={"line": pl.String},
+            skip_rows=skip_rows,
+        )
 
     if filepath.suffix in COMPRESSED_EXTENSIONS and filepath.suffix not in POLARS_READABLE_EXTENSIONS:
+        # polars cannot read an xz file. It reads a file object when it makes the plan, thus the file can
+        # close before the query runs, and the decompressed text needs no copy of its own
         with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            return pl.read_csv(fin.read(), **csvargs).lazy()
+            return scan(fin)
 
-    return pl.scan_csv(filepath, **csvargs)
+    return scan(filepath)
 
 
 def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
     """Return the lines of a text file with each run of whitespace collapsed to a single space.
 
-    The first skip_rows lines are dropped, text from comment_prefix to the end of a line is removed, and a
-    blank line is omitted. A CSV parser can then read the result with a single space as the separator.
+    The function drops the first skip_rows lines, removes the text from comment_prefix to the end of a line,
+    and drops a blank line. A CSV parser can then read the buffer with a single space as the separator. The
+    buffer is at position zero.
     """
     line = pl.col("line")
     if comment_prefix:
@@ -161,14 +181,16 @@ def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str
         line = line.str.replace(re.escape(comment_prefix) + ".*", "")
 
     normalised = io.BytesIO()
-    # a run of spaces, tabs, or carriage returns between two fields must act as a single separator.
-    # sink_csv writes the lines as the query gives them, thus the whole file never sits in memory twice
+    # the class holds each ASCII whitespace character that a line can contain. The Unicode class \s would
+    # also split a field that holds a no-break space, which the columns of an ARTIS file must keep
     (
         scan_lines(filepath, skip_rows=skip_rows)
-        .select(line.str.replace_all(r"\s+", " ").str.strip_chars().alias("line"))
+        .select(line.str.replace_all(r"[ \t\r\x0b\x0c]+", " ").str.strip_chars(" "))
         .filter(pl.col("line").str.len_bytes() > 0)
         .sink_csv(normalised, include_header=False, quote_style="never")
     )
+    # sink_csv leaves the buffer at the end, thus rewind it for the reader
+    normalised.seek(0)
 
     return normalised
 
@@ -184,19 +206,19 @@ def read_wsv(
     skip_rows: int = 0,
     schema_overrides: t.Mapping[str, pl.DataType | type[pl.DataType]] | None = None,
 ) -> pl.DataFrame:
-    """Read a whitespace-separated text file into a DataFrame, treating any run of whitespace as one separator.
+    """Read a whitespace-separated text file into a DataFrame, where any run of whitespace is one separator.
 
-    Use this instead of pl.read_csv(separator=" ") for files whose columns are aligned with variable amounts of
-    whitespace. A run of spaces, tabs, or carriage returns between two fields acts as a single separator. Text
-    from comment_prefix to the end of a line is removed, blank lines are dropped, and the file may be compressed
-    (.zst/.gz/.xz; a compressed sibling of the given name is read only when the named file itself does not
-    exist). A column that starts with integers but later contains floats is read as floats, at the cost of a
-    second parse with full-file schema inference. Not-a-number tokens such as "nan" and "NA" become nulls rather
-    than making the column a string column.
+    Use this instead of pl.read_csv(separator=" ") for a file whose columns are aligned with variable amounts
+    of whitespace. A run of spaces, tabs, or carriage returns between two fields acts as a single separator.
+    The function removes the text from comment_prefix to the end of a line, and it drops a blank line. The
+    file can be compressed (.zst/.gz/.xz). The function reads a compressed sibling of the given name only
+    when the named file does not exist. A column that starts with integers and later holds a float becomes a
+    float column, at the cost of a second parse with a full-file schema inference. A not-a-number token, e.g.
+    "nan" or "NA", becomes null, and it does not make the column a string column.
 
-    When columns is given, only those columns are parsed and returned (in the given order), which saves memory
-    on wide files. When header_from_comment is set and the first line is a comment, its words (after
-    comment_prefix) become the column names, covering files whose header line is written as a comment.
+    When columns is given, the function parses and returns only those columns, in the given order, which
+    saves memory on a wide file. When header_from_comment is set and the first line is a comment, its words
+    (after comment_prefix) become the column names. This covers a file whose header line is a comment.
     """
     filepath = Path(filename)
     if not filepath.is_file():
@@ -216,7 +238,8 @@ def read_wsv(
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
             has_header = False
 
-    normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
+    with polars_error_note(filepath):
+        normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
 
     # polars projects by ascending column index and names the projected columns positionally, so
     # translate a name-based projection of a headerless read into that form
@@ -227,7 +250,7 @@ def read_wsv(
         projected_new_columns = [new_columns[i] for i in projected_indices]
 
     def parse(infer_schema_length: int | None) -> pl.DataFrame:
-        # the buffer is read more than once when the first schema turns out to be wrong
+        # this function runs again when the first schema turns out to be wrong, thus rewind the buffer
         normalised.seek(0)
 
         return pl.read_csv(
@@ -264,12 +287,8 @@ def read_wsv(
 
         return parse(infer_schema_length=None) if sample_missed_numeric_column(dfout) else dfout
 
-    try:
+    with polars_error_note(filepath):
         dfout = parse_with_inference_fallback()
-    except pl.exceptions.PolarsError as exc:
-        # the parser sees only in-memory bytes, so name the file for it
-        exc.add_note(f"while reading {filepath}")
-        raise
 
     # restore the caller's requested column order, which index-based projection may have changed
     return dfout.select(list(columns)) if columns is not None else dfout

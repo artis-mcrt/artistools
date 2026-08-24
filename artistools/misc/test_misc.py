@@ -260,20 +260,42 @@ def test_read_wsv(tmp_path: Path) -> None:
 
 
 def test_read_wsv_whitespace_runs(tmp_path: Path) -> None:
-    """A run of spaces, tabs, and carriage returns between two fields acts as a single separator."""
+    """A run of ASCII whitespace between two fields acts as a single separator."""
     filepath = tmp_path / "whitespace.txt"
-    filepath.write_bytes(b"a\t\tb   c\r\n 1 \t 2\t\t\t3 \r\n\t \r\n4\t5     6\n")
+    # line 3 holds whitespace only, and line 5 holds a carriage return between two fields
+    filepath.write_bytes(b"a\t\tb   c\r\n 1 \t 2\t\t\t3 \r\n\t \r\n4\t5     6\r\n7 8\r9\n")
 
     df = at.read_wsv(filepath)
-    pltest.assert_frame_equal(df, pl.DataFrame({"a": [1, 4], "b": [2, 5], "c": [3, 6]}))
+    pltest.assert_frame_equal(df, pl.DataFrame({"a": [1, 4, 7], "b": [2, 5, 8], "c": [3, 6, 9]}))
 
-    # a line of whitespace only holds no field, thus it must not become a row of nulls
-    assert df.height == 2
+    # a no-break space is not ASCII whitespace, thus it must stay inside its field
+    (tmp_path / "nbsp.txt").write_bytes("ion pop\nFe\u00a0II 1.0\n".encode())
+    dfnbsp = at.read_wsv(tmp_path / "nbsp.txt")
+    assert dfnbsp.columns == ["ion", "pop"]
+    assert dfnbsp["ion"].to_list() == ["Fe\u00a0II"]
+
+    # a comment can hold a byte that is not valid UTF-8, and the numbers must still parse
+    (tmp_path / "latin1.txt").write_bytes(b"colA colB\n1 2   # 30\xb0C\n3 4\n")
+    pltest.assert_frame_equal(
+        at.read_wsv(tmp_path / "latin1.txt", comment_prefix="#"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
+    )
 
     # a compressed file gives the same result, including an xz file, which polars cannot read itself
     with lzma.open(tmp_path / "whitespace_xz.txt.xz", "wb") as f:
         f.write(filepath.read_bytes())
     pltest.assert_frame_equal(at.read_wsv(tmp_path / "whitespace_xz.txt"), df)
+
+
+def test_read_wsv_no_data(tmp_path: Path) -> None:
+    """A file that holds no data raises a polars error that names the file."""
+    for filename, contents in (("empty.txt", b""), ("comments.txt", b"# only a comment\n")):
+        filepath = tmp_path / filename
+        filepath.write_bytes(contents)
+
+        with pytest.raises(pl.exceptions.PolarsError) as excinfo:
+            at.read_wsv(filepath, comment_prefix="#")
+
+        assert any(str(filepath) in note for note in excinfo.value.__notes__ or [])
 
 
 def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
