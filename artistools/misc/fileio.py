@@ -90,27 +90,28 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
-def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any:
+def zopen_unshadowed(filename: Path | str, encoding: str | None = None, errors: str | None = None) -> t.Any:
     """Open filename, falling back to a compressed sibling only when the named file does not exist.
 
     Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
-    same precedence read_wsv uses, and is what a plain Path.open call is replaced by.
+    same precedence read_wsv uses, and is what a plain Path.open call is replaced by. The errors argument
+    takes the value that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
         if found is None:
             # let open() raise the FileNotFoundError naming the file the caller actually asked for
-            return filepath.open(encoding=encoding)
+            return filepath.open(encoding=encoding, errors=errors)
         ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding)
+        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding, errors=errors)
 
     # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
     # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding)
+        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding, errors=errors)
 
-    return filepath.open(encoding=encoding)
+    return filepath.open(encoding=encoding, errors=errors)
 
 
 def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
@@ -301,7 +302,9 @@ def read_wsv(
         assert comment_prefix is not None
         # filepath was already resolved with unshadowed precedence above, so zopen would undo that by
         # re-running find_compressed and reading the header out of a stale compressed sibling
-        with zopen_unshadowed(filepath) as fin:
+        # the comment holds the column names, and it can hold a byte that is not valid UTF-8, thus
+        # replace such a byte here as the read of the lines below also does
+        with zopen_unshadowed(filepath, errors="replace") as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()

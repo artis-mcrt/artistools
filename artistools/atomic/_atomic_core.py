@@ -599,7 +599,7 @@ def get_ionstring(
 
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
-    filepath = at.firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True)
+    filepath = at.firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True, search_subfolders=False)
     if filepath is None:
         msg = f"File nuclides.out not found in {modelpath}"
         raise FileNotFoundError(msg)

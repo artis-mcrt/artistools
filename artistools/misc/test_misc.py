@@ -288,6 +288,12 @@ def test_read_wsv_invalid_utf8(tmp_path: Path) -> None:
         at.read_wsv(tmp_path / "latin1comment.txt", comment_prefix="#"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
     )
 
+    # the header comment holds the column names, thus it must take a bad byte as the other comments do
+    (tmp_path / "latin1header.txt").write_bytes(b"# t_days mag_30\xb0C\n1.0 2.0\n")
+    dfheader = at.read_wsv(tmp_path / "latin1header.txt", header_from_comment=True, comment_prefix="#")
+    assert dfheader.columns == ["t_days", "mag_30\ufffdC"]
+    assert dfheader["t_days"].to_list() == [1.0]
+
     # the same byte in the data of a column gives an error, and not a value that holds bad text
     (tmp_path / "latin1data.txt").write_bytes(b"colA colB\n1 2\n3 4\xb0\n")
     with pytest.raises(pl.exceptions.ComputeError):
