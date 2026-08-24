@@ -293,6 +293,12 @@ def test_read_wsv_invalid_utf8(tmp_path: Path) -> None:
     with pytest.raises(pl.exceptions.ComputeError):
         at.read_wsv(tmp_path / "latin1data.txt", comment_prefix="#")
 
+    # a column can hold the replacement character as data, even when a comment holds a bad byte. The
+    # check reads the bytes, thus it tells the two apart
+    (tmp_path / "mixed.txt").write_bytes("colA name\n1 x\ufffdy  # 30".encode() + b"\xb0C\n2 z\n")
+    dfmixed = at.read_wsv(tmp_path / "mixed.txt", comment_prefix="#")
+    assert dfmixed["name"].to_list() == ["x\ufffdy", "z"]
+
 
 def test_read_wsv_no_data(tmp_path: Path) -> None:
     """A file that holds no data raises a polars error that names the file."""

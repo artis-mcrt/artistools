@@ -199,6 +199,41 @@ def normalised_lines(
     )
 
 
+def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
+    """Return True if each byte that no comment holds is valid UTF-8.
+
+    The function reads the bytes of the file and answers at the byte level, as the reader of an earlier
+    version did. A decoder cannot answer it, because a decoder replaces every bad byte, and a file can
+    also hold the replacement character as data. This costs a read of the whole file, thus call it only
+    after a strict read has failed.
+    """
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            data: bytes = fin.read()
+    else:
+        data = filepath.read_bytes()
+
+    start = 0
+    for _ in range(skip_rows):
+        endofline = data.find(b"\n", start)
+        if endofline < 0:
+            # the file holds no line after the skipped ones
+            return True
+
+        start = endofline + 1
+
+    data = data[start:]
+    if comment_prefix:
+        data = re.sub(re.escape(comment_prefix.encode()) + rb"[^\n]*", b"", data)
+
+    try:
+        data.decode()
+    except UnicodeDecodeError:
+        return False
+
+    return True
+
+
 def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
     """Return a buffer of the normalised lines of a text file, which a CSV parser can read.
 
@@ -217,19 +252,15 @@ def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str
     try:
         return sink(normalised_lines(filepath, skip_rows, comment_prefix))
     except pl.exceptions.ComputeError:
-        # a comment of a file from a different source can hold a byte that is not valid UTF-8, e.g. a
-        # degree sign in Latin-1. Read the file again and replace each such byte
-        normalised = sink(normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy"))
-
-        # a replacement character that survives the comment step comes from the data of a column. Such a
-        # file is unreadable, thus give the caller the first error and not a column that holds bad text.
-        # re.search reads the buffer where it lies, thus the search costs no copy of it
-        with normalised.getbuffer() as view:
-            holdsbadtext = re.search("\ufffd".encode(), view) is not None
-        if holdsbadtext:
+        # polars decodes a line before the comment step removes it, thus a comment that holds a byte
+        # which is not valid UTF-8 stops the read. Such a comment is common in a file from a different
+        # source, e.g. a degree sign in Latin-1. Give the caller the first error if a column holds such
+        # a byte, because the values of that column would be text that no reader can trust
+        if not bytes_outside_comments_are_utf8(filepath, skip_rows, comment_prefix):
             raise
 
-        return normalised
+        # only a comment holds a bad byte, thus read the file again and replace each one
+        return sink(normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy"))
 
 
 def read_wsv(
