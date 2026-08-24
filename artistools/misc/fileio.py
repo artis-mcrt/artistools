@@ -113,16 +113,25 @@ def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any
     return filepath.open(encoding=encoding)
 
 
+def polars_source(filepath: Path, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+    """Return the path of a file that polars reads itself, or a file object that decompresses it.
+
+    polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
+    The caller gives an existing path. Use zopenpl instead to also find a compressed sibling.
+    """
+    if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
+        return filepath
+
+    # get_decompress_open() erases the three backends' differing signatures to Any, so the file
+    # object is Any by design and the annotation says so rather than leaving it implicit
+    fileobj: t.Any = get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
+    return fileobj
+
+
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     if found := find_compressed(filename):
-        ext, filepath = found
-        if ext in POLARS_READABLE_EXTENSIONS:
-            return filepath
-        # get_decompress_open() erases the three backends' differing signatures to Any, so the file
-        # object is Any by design and the annotation says so rather than leaving it implicit
-        fileobj: t.Any = get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
-        return fileobj
+        return polars_source(found[1], mode=mode, encoding=encoding)
 
     return Path(filename)
 
@@ -141,7 +150,8 @@ def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
     """Return a lazy frame with one string column named "line" that holds each line of a text file.
 
     The function drops the first skip_rows lines. The name of the file gives the compression format, which
-    can be zstd, gzip, or xz. polars reads a zstd file and a gzip file itself.
+    can be zstd, gzip, or xz. polars_source selects the format. This function cannot call zopenpl, because
+    zopenpl searches for a compressed sibling, and read_wsv has already resolved the path without one.
     """
 
     def scan(source: Path | t.IO[bytes]) -> pl.LazyFrame:
@@ -161,13 +171,14 @@ def scan_lines(filepath: Path, skip_rows: int = 0) -> pl.LazyFrame:
             skip_rows=skip_rows,
         )
 
-    if filepath.suffix in COMPRESSED_EXTENSIONS and filepath.suffix not in POLARS_READABLE_EXTENSIONS:
-        # polars cannot read an xz file. It reads a file object when it makes the plan, thus the file can
-        # close before the query runs, and the decompressed text needs no copy of its own
-        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            return scan(fin)
+    source = polars_source(filepath, mode="rb")
+    if isinstance(source, Path):
+        return scan(source)
 
-    return scan(filepath)
+    # polars reads a file object when it makes the plan, thus the file can close before the query runs,
+    # and the decompressed text needs no copy of its own
+    with source:
+        return scan(source)
 
 
 def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
