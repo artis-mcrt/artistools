@@ -38,10 +38,10 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
+from artistools.misc import polars_source
 from artistools.misc import print_saved
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
-from artistools.misc import zopenpl
 
 
 class FluxContributionTuple(t.NamedTuple):
@@ -697,7 +697,7 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
 
     return (
         pl
-        .scan_csv(zopenpl(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        .scan_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
     )
@@ -718,7 +718,7 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
 
     print(f"Reading {specfilename} (in read_spec_res)")
     res_specdata_in = drop_trailing_null_column(
-        pl.read_csv(zopenpl(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
+        pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
     )
 
     res_specdata = split_multitable_dataframe(res_specdata_in)
@@ -757,9 +757,9 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pl.scan_csv(zopenpl(emabsfilename), separator=" ", has_header=False, infer_schema_length=0).with_columns(
-        pl.all().cast(pl.Float32, strict=True)
-    )
+    dfemabs = pl.scan_csv(
+        polars_source(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
+    ).with_columns(pl.all().cast(pl.Float32, strict=True))
 
     return drop_trailing_null_column(dfemabs)
 
@@ -852,7 +852,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = drop_trailing_null_column(
-            pl.read_csv(zopenpl(vspecpolpath), separator=" ", has_header=False)
+            pl.read_csv(polars_source(vspecpolpath), separator=" ", has_header=False)
         )
 
         vspecpol_data = {k: v.collect() for k, v in split_multitable_dataframe(vspecpol_data_alldirs).items()}
@@ -916,9 +916,9 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
     )
 
     print(f"Reading {specfilename}")
-    specdata = pl.scan_csv(zopenpl(specfilename), separator=" ", has_header=True, infer_schema=False).with_columns(
-        pl.all().cast(pl.Float64)
-    )
+    specdata = pl.scan_csv(
+        polars_source(specfilename), separator=" ", has_header=True, infer_schema=False
+    ).with_columns(pl.all().cast(pl.Float64))
 
     return split_dataframe_stokesparams(specdata)
 
@@ -936,7 +936,7 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
         specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
     print(f"Reading {specfilename}")
-    specdata = pl.read_csv(zopenpl(specfilename), separator=" ", has_header=True)
+    specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
 

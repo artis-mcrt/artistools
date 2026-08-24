@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import re
 import shlex
 import sys
 import typing as t
@@ -89,41 +90,179 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
-def zopen_unshadowed(filename: Path | str, encoding: str | None = None) -> t.Any:
+def zopen_unshadowed(filename: Path | str, encoding: str | None = None, errors: str | None = None) -> t.Any:
     """Open filename, falling back to a compressed sibling only when the named file does not exist.
 
     Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
-    same precedence read_wsv uses, and is what a plain Path.open call is replaced by.
+    same precedence read_wsv uses, and is what a plain Path.open call is replaced by. The errors argument
+    takes the value that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
         if found is None:
             # let open() raise the FileNotFoundError naming the file the caller actually asked for
-            return filepath.open(encoding=encoding)
+            return filepath.open(encoding=encoding, errors=errors)
         ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding)
+        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding, errors=errors)
 
     # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
     # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding)
+        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding, errors=errors)
 
-    return filepath.open(encoding=encoding)
+    return filepath.open(encoding=encoding, errors=errors)
+
+
+def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+    """Return the path of a file that polars reads itself, or a file object that decompresses it.
+
+    polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
+    The caller gives the name of a file that exists. Use zopenpl to also find a compressed sibling.
+    """
+    filepath = Path(filename)
+    if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
+        return filepath
+
+    # get_decompress_open() erases the three backends' differing signatures to Any, so the file
+    # object is Any by design and the annotation says so rather than leaving it implicit
+    fileobj: t.Any = get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
+    return fileobj
 
 
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
     """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
     if found := find_compressed(filename):
-        ext, filepath = found
-        if ext in POLARS_READABLE_EXTENSIONS:
-            return filepath
-        # get_decompress_open() erases the three backends' differing signatures to Any, so the file
-        # object is Any by design and the annotation says so rather than leaving it implicit
-        fileobj: t.Any = get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
-        return fileobj
+        return polars_source(found[1], mode=mode, encoding=encoding)
 
     return Path(filename)
+
+
+@contextlib.contextmanager
+def polars_error_note(filepath: Path) -> Generator[None]:
+    """Name the file in a polars error, because the parser sees a path or in-memory bytes only."""
+    try:
+        yield
+    except pl.exceptions.PolarsError as exc:
+        exc.add_note(f"while reading {filepath}")
+        raise
+
+
+def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "utf8-lossy"] = "utf8") -> pl.LazyFrame:
+    """Return a lazy frame with one string column named "line" that holds each line of a text file.
+
+    The function drops the first skip_rows lines. polars_source selects the compression format. The caller
+    gives a path that it has resolved, thus this function must not search for a compressed sibling.
+    """
+    with contextlib.ExitStack() as stack:
+        source = polars_source(filepath, mode="rb")
+        if not isinstance(source, Path):
+            # polars reads a file object when it makes the plan, thus the file can close after that
+            stack.enter_context(source)
+
+        return pl.scan_csv(
+            source,
+            # the ASCII unit separator, which an ARTIS text file never holds, so that each line stays
+            # one field. artisatomic reads a line in the same way, with the same separator
+            separator="\x1f",
+            has_header=False,
+            quote_char=None,
+            encoding=encoding,
+            new_columns=["line"],
+            # a line is text, thus polars must not spend a pass on the type of the column
+            infer_schema_length=0,
+            skip_rows=skip_rows,
+        )
+
+
+def normalised_lines(
+    filepath: Path,
+    skip_rows: int = 0,
+    comment_prefix: str | None = None,
+    encoding: t.Literal["utf8", "utf8-lossy"] = "utf8",
+) -> pl.LazyFrame:
+    """Return the lines of a text file with each run of whitespace collapsed to a single space.
+
+    The function drops the first skip_rows lines, removes the text from comment_prefix to the end of a line,
+    and drops a blank line.
+    """
+    line = pl.col("line")
+    if comment_prefix:
+        # a comment can start anywhere on a line, thus keep the text before the first prefix only. split
+        # takes the prefix as text, thus no escape of a regular expression character is necessary
+        line = line.str.split(comment_prefix).list.first()
+
+    return (
+        scan_lines(filepath, skip_rows=skip_rows, encoding=encoding)
+        # the class holds each ASCII whitespace character that a line can contain. The Unicode class \s
+        # would also split a field that holds a no-break space, which an ARTIS column must keep
+        .select(line.str.replace_all(r"[ \t\r\x0b\x0c]+", " ").str.strip_chars(" "))
+        .filter(pl.col("line").str.len_bytes() > 0)
+    )
+
+
+def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
+    """Return True if each byte that no comment holds is valid UTF-8.
+
+    The function reads the bytes of the file and answers at the byte level, as the reader of an earlier
+    version did. A decoder cannot answer it, because a decoder replaces every bad byte, and a file can
+    also hold the replacement character as data. This costs a read of the whole file, thus call it only
+    after a strict read has failed.
+    """
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            data: bytes = fin.read()
+    else:
+        data = filepath.read_bytes()
+
+    start = 0
+    for _ in range(skip_rows):
+        endofline = data.find(b"\n", start)
+        if endofline < 0:
+            # the file holds no line after the skipped ones
+            return True
+
+        start = endofline + 1
+
+    data = data[start:]
+    if comment_prefix:
+        data = re.sub(re.escape(comment_prefix.encode()) + rb"[^\n]*", b"", data)
+
+    try:
+        data.decode()
+    except UnicodeDecodeError:
+        return False
+
+    return True
+
+
+def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
+    """Return a buffer of the normalised lines of a text file, which a CSV parser can read.
+
+    The separator of the buffer is a single space, and the buffer is at position zero. A byte that is not
+    valid UTF-8 raises an error, unless the comment step removes the text that holds it.
+    """
+
+    def sink(lflines: pl.LazyFrame) -> io.BytesIO:
+        normalised = io.BytesIO()
+        lflines.sink_csv(normalised, include_header=False, quote_style="never")
+        # sink_csv leaves the buffer at the end, thus rewind it for the reader
+        normalised.seek(0)
+
+        return normalised
+
+    try:
+        return sink(normalised_lines(filepath, skip_rows, comment_prefix))
+    except pl.exceptions.ComputeError:
+        # polars decodes a line before the comment step removes it, thus a comment that holds a byte
+        # which is not valid UTF-8 stops the read. Such a comment is common in a file from a different
+        # source, e.g. a degree sign in Latin-1. Give the caller the first error if a column holds such
+        # a byte, because the values of that column would be text that no reader can trust
+        if not bytes_outside_comments_are_utf8(filepath, skip_rows, comment_prefix):
+            raise
+
+        # only a comment holds a bad byte, thus read the file again and replace each one
+        return sink(normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy"))
 
 
 def read_wsv(
@@ -137,21 +276,20 @@ def read_wsv(
     skip_rows: int = 0,
     schema_overrides: t.Mapping[str, pl.DataType | type[pl.DataType]] | None = None,
 ) -> pl.DataFrame:
-    """Read a whitespace-separated text file into a DataFrame, treating any run of spaces or tabs as one separator.
+    """Read a whitespace-separated text file into a DataFrame, where any run of whitespace is one separator.
 
-    Use this instead of pl.read_csv(separator=" ") for files whose columns are aligned with variable amounts of
-    whitespace. Text from comment_prefix to the end of a line is removed, blank lines are dropped, and the file may
-    be compressed (.zst/.gz/.xz; a compressed sibling of the given name is read only when the named file itself
-    does not exist). A column that starts with integers but later contains floats is read as floats, at the cost
-    of a second parse with full-file schema inference. Not-a-number tokens such as "nan" and "NA" become nulls
-    rather than making the column a string column.
+    Use this instead of pl.read_csv(separator=" ") for a file whose columns are aligned with variable amounts
+    of whitespace. A run of spaces, tabs, or carriage returns between two fields acts as a single separator.
+    The function removes the text from comment_prefix to the end of a line, and it drops a blank line. The
+    file can be compressed (.zst/.gz/.xz). The function reads a compressed sibling of the given name only
+    when the named file does not exist. A column that starts with integers and later holds a float becomes a
+    float column, at the cost of a second parse with a full-file schema inference. A not-a-number token, e.g.
+    "nan" or "NA", becomes null, and it does not make the column a string column.
 
-    When columns is given, only those columns are parsed and returned (in the given order), which saves memory
-    on wide files. When header_from_comment is set and the first line is a comment, its words (after
-    comment_prefix) become the column names, covering files whose header line is written as a comment.
+    When columns is given, the function parses and returns only those columns, in the given order, which
+    saves memory on a wide file. When header_from_comment is set and the first line is a comment, its words
+    (after comment_prefix) become the column names. This covers a file whose header line is a comment.
     """
-    from artistools import rustext
-
     filepath = Path(filename)
     if not filepath.is_file():
         # fall back to a compressed sibling only when the named file itself does not exist, so a freshly
@@ -164,13 +302,16 @@ def read_wsv(
         assert comment_prefix is not None
         # filepath was already resolved with unshadowed precedence above, so zopen would undo that by
         # re-running find_compressed and reading the header out of a stale compressed sibling
-        with zopen_unshadowed(filepath) as fin:
+        # the comment holds the column names, and it can hold a byte that is not valid UTF-8, thus
+        # replace such a byte here as the read of the lines below also does
+        with zopen_unshadowed(filepath, errors="replace") as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
             has_header = False
 
-    normalized = rustext.read_wsv_normalized(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
+    with polars_error_note(filepath):
+        normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
 
     # polars projects by ascending column index and names the projected columns positionally, so
     # translate a name-based projection of a headerless read into that form
@@ -181,8 +322,11 @@ def read_wsv(
         projected_new_columns = [new_columns[i] for i in projected_indices]
 
     def parse(infer_schema_length: int | None) -> pl.DataFrame:
+        # this function runs again when the first schema turns out to be wrong, thus rewind the buffer
+        normalised.seek(0)
+
         return pl.read_csv(
-            normalized,
+            normalised,
             separator=" ",
             has_header=has_header,
             new_columns=projected_new_columns,
@@ -213,14 +357,16 @@ def read_wsv(
             # so pay for a full-file schema inference pass
             return parse(infer_schema_length=None)
 
-        return parse(infer_schema_length=None) if sample_missed_numeric_column(dfout) else dfout
+        if not sample_missed_numeric_column(dfout):
+            return dfout
 
-    try:
+        # a frame of a wide file is large, thus drop this one before the next parse makes another
+        del dfout
+
+        return parse(infer_schema_length=None)
+
+    with polars_error_note(filepath):
         dfout = parse_with_inference_fallback()
-    except pl.exceptions.PolarsError as exc:
-        # the parser sees only in-memory bytes, so name the file for it
-        exc.add_note(f"while reading {filepath}")
-        raise
 
     # restore the caller's requested column order, which index-based projection may have changed
     return dfout.select(list(columns)) if columns is not None else dfout

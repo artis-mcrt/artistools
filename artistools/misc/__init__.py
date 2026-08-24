@@ -45,6 +45,7 @@ from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
+from artistools.misc.fileio import polars_source as polars_source
 from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
