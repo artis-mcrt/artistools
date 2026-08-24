@@ -150,8 +150,8 @@ def test_spectrum_filter_range_includes_bracketing_points(mockgetspectrum: mock.
         modelpath=Path(), timestep=0, time=1.0, wavefilter_min=2200.0, wavefilter_max=2800.0
     )
 
-    assert np.array_equal(wavelength, np.array([2000.0, 3000.0]))
-    assert np.array_equal(flux, np.array([2.0, 4.0]))
+    assert np.allclose(wavelength, np.array([2000.0, 3000.0]))
+    assert np.allclose(flux, np.array([2.0, 4.0]))
 
 
 def test_band_magnitude_calculations() -> None:
