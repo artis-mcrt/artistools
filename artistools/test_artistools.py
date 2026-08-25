@@ -147,7 +147,9 @@ def test_shared_cli_args_consistent() -> None:
                 assert "-ts" in flags, label
             elif dest == "timedays" and "-timedays" in flags:
                 assert "-time" in flags, label
-                assert "-t" not in flags, label
+                # argparse reads "-timestep 30" as "-t imestep" unless -timestep is declared too
+                if "-t" in flags:
+                    assert any("-timestep" in f for f in flagsbycommand[command].values()), label
             elif dest == "maxpacketfiles":
                 assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
                 assert action.type is int, label

@@ -73,7 +73,7 @@ def test_add_cli_arg_helpers() -> None:
         "model2",
         "-ts",
         "45-65",
-        "-time",
+        "-t",
         "50-100",
         "-colors",
         "red",

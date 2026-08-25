@@ -3,7 +3,6 @@
 
 import argparse
 import math
-import sys
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -39,6 +38,7 @@ from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
 from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
@@ -1560,7 +1560,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make scatter plot of light curve brightness at a given time (requires timedays)",
     )
 
-    addarg_timedays(parser, helptext="Time in days to plot")
+    addarg_timestep(parser, helptext="Timestep, or a range e.g. 20-30, to plot")
+
+    addarg_timedays(parser, helptext="Time in days, or a range e.g. 2.2-2.8, to plot")
 
     parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
 
@@ -1595,6 +1597,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.modelpath = at.normalize_path_list(args.modelpath)
 
     modelpaths = args.modelpath
+
+    # -timedays takes a range like 2.2-2.8, and -timestep selects the same range by timestep number.
+    # Both narrow the plotted time range, which -timemin and -timemax give directly.
+    if args.timestep is not None or (args.timedays is not None and "-" in str(args.timedays)):
+        _, _, rangemin, rangemax = at.get_time_range(
+            modelpaths[0],
+            timestep_range_str=args.timestep,
+            timedays_range_str=None if args.timestep is not None else args.timedays,
+        )
+        if args.timemin is None:
+            args.timemin = rangemin
+        if args.timemax is None:
+            args.timemax = rangemax
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
@@ -1651,8 +1666,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.brightnessattime:
         if args.timedays is None:
-            print("Specify timedays")
-            sys.exit(1)
+            at.exit_with_error("specify a single time with -timedays")
+        # this plot takes one time rather than a range
+        args.timedays = float(args.timedays)
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:

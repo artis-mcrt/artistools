@@ -740,7 +740,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     #                     help='Paths to ARTIS folders')
 
     timegroup = parser.add_mutually_exclusive_group()
-    timegroup.add_argument("-timedays", "-time", help="Time in days to plot")
+    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
 
     timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 

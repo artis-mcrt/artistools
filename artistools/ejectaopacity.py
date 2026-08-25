@@ -152,7 +152,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # mutex with time in days:
     timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
-    timegroup.add_argument("-timedays", "-time", help="Time in days to select.")
+    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to select.")
 
     at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(

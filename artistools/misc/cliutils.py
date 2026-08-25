@@ -157,11 +157,16 @@ def addarg_timedays(
     *,
     kind: t.Literal["rangestr", "str", "float"] = "rangestr",
     helptext: str | None = None,
+    short_alias: bool = True,
 ) -> None:
-    """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value."""
-    # no "-t" alias: argparse reads an unknown "-timestep" on a parser that has "-t" as "-t imestep",
-    # which reports an invalid value for an argument that the user never named
-    flags = ("-timedays", "-time")
+    """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value.
+
+    A command that takes no -timestep passes short_alias=False. argparse joins a value to a single-dash
+    flag, thus "-timestep 30" on such a parser reads as "-t imestep" and reports an invalid value for an
+    argument that the user never named. A command that declares -timestep matches it exactly, thus "-t"
+    is safe there. test_shared_cli_args_consistent holds this rule.
+    """
+    flags = ("-timedays", "-time", "-t") if short_alias else ("-timedays", "-time")
     if kind == "rangestr":
         parser.add_argument(
             *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
