@@ -941,3 +941,33 @@ def test_listvariables_names_the_units_of_a_group_whose_members_differ(capsys: p
     # the model snapshot columns disagree, thus each of them carries its own units
     assert "kinetic_en_erg [erg]" in out
     assert "logrho [log10(g/cm^3)]" in out
+
+
+def test_summarise_nuclides_replaces_a_long_family() -> None:
+    """A family of more than MAXSPECIES_LISTED nuclides gives a summary, and names the flag for the rest."""
+    from artistools.estimators.estimators import MAXSPECIES_LISTED
+    from artistools.estimators.estimators import summarise_columns
+
+    nuclides = [f"nniso_Fe{massnum}" for massnum in range(40, 40 + MAXSPECIES_LISTED + 5)]
+    listing = summarise_columns(nuclides)
+    assert "nuclides of 1 elements" in listing
+    assert "--listnuclides" in listing
+    assert "Fe56" not in listing
+
+    # the same family with every nuclide named
+    full = summarise_columns(nuclides, fullnuclides=True)
+    assert "Fe56" in full
+    assert "--listnuclides" not in full
+
+
+def test_summarise_columns_keeps_a_family_of_elements_whole() -> None:
+    """A family of bare element symbols is short, thus it stays whole however many elements it holds."""
+    from artistools.estimators.estimators import MAXSPECIES_LISTED
+    from artistools.estimators.estimators import summarise_columns
+
+    elements = [f"nnelement_{sym}" for sym in at.get_elsymbolslist()[1 : MAXSPECIES_LISTED + 20]]
+    listing = summarise_columns(elements)
+
+    assert "nuclides" not in listing
+    assert "--listnuclides" not in listing
+    assert "Fe" in listing

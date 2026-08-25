@@ -208,7 +208,21 @@ def format_units(name: str) -> str:
     return f" [{units}]" if units else ""
 
 
-def summarise_columns(columns: Collection[str]) -> str:
+# Above this count, a family of nuclides gives a summary rather than every name. A kilonova model holds
+# more than 2000 of them, which no terminal can show.
+MAXSPECIES_LISTED = 60
+
+
+def summarise_nuclides(species: Collection[str]) -> str:
+    """Return one line that gives the number of nuclides and the elements that they cover."""
+    symbols = {name.removesuffix("_otherstable").rstrip(string.digits) for name in species}
+    known = sorted((one for one in symbols if one in at.get_elsymbolslist()), key=at.get_atomic_number)
+    across = f", {known[0]} to {known[-1]}" if known else ""
+
+    return f"{len(species)} nuclides of {len(symbols)} elements{across}. For a full list pass --listnuclides"
+
+
+def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -> str:
     """Return a listing of the estimator columns, with each family and each group on one line."""
     families: dict[str, list[str]] = defaultdict(list)
     groups: dict[str, list[str]] = defaultdict(list)
@@ -266,11 +280,16 @@ def summarise_columns(columns: Collection[str]) -> str:
         ])
 
     for family in sorted(families):
-        lines.extend([
-            "",
-            f"  {family}_<species>  ({len(families[family])}){format_units(family)}:",
-            wrap(summarise_ions(families[family])),
-        ])
+        species = families[family]
+        listing = summarise_ions(species)
+        # summarise_ions gives back the plain names when the species are nuclides and not ions, thus a
+        # family of thousands of nuclides would fill the terminal. A family of bare element symbols stays
+        # whole, because 83 of them take three lines and no name of them is a nuclide
+        nuclides = [one for one in species if one not in at.get_elsymbolslist()]
+        if not fullnuclides and nuclides and len(species) > MAXSPECIES_LISTED and listing == ", ".join(sorted(species)):
+            listing = summarise_nuclides(species)
+
+        lines.extend(["", f"  {family}_<species>  ({len(species)}){format_units(family)}:", wrap(listing)])
 
     return "\n".join(lines)
 

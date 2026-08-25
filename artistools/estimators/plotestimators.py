@@ -1241,6 +1241,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--listnuclides",
+        action="store_true",
+        help="List the estimator variables as --listvariables does, and name every nuclide of a family",
+    )
+
+    parser.add_argument(
         "-plotlist",
         "-plot",
         "-p",
@@ -1349,7 +1355,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.other_axis1 = axes[0]
         args.other_axis2 = axes[1]
 
-    if not args.listvariables:
+    if not (args.listvariables or args.listnuclides):
         print(
             f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
             f"({args.timemin:.1f} to {args.timemax:.1f}d)"
@@ -1431,8 +1437,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimatorcolumns = estimators.collect_schema().names()
 
-    if args.listvariables:
-        print(summarise_columns(estimatorcolumns))
+    if args.listvariables or args.listnuclides:
+        print(summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
         return
 
     if usingdefaultplotlist:
