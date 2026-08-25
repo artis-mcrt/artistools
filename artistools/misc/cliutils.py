@@ -397,6 +397,23 @@ def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def check_time_selection(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Stop when the arguments name a time range in more than one way.
+
+    get_time_range cannot make this test. A caller assigns the times that it returns back onto its own
+    arguments, thus a second call for a second model path would read its own output as a second range.
+    A default counts as absent, e.g. plottransitions gives -timestep a default of 70.
+    """
+    given = [
+        name
+        for name in ("timestep", "timedays", "timemin", "timemax")
+        if hasattr(args, name) and getattr(args, name) != parser.get_default(name)
+    ]
+    if "timestep" in given and len(given) > 1:
+        others = ", ".join(f"-{name}" for name in given if name != "timestep")
+        exit_with_error(f"specify only one of -timestep and {others}")
+
+
 def parse_cli_args(
     addargsfunc: Callable[[argparse.ArgumentParser], None],
     description: str | None,
@@ -418,7 +435,10 @@ def parse_cli_args(
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
-    return parser.parse_args([] if kwargs else argsraw)
+    args = parser.parse_args([] if kwargs else argsraw)
+    check_time_selection(parser, args)
+
+    return args
 
 
 def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | str) -> Path:

@@ -11,9 +11,11 @@ import time
 import typing as t
 from collections import defaultdict
 from collections.abc import Collection
+from collections.abc import Mapping
 from collections.abc import Sequence
 from itertools import batched
 from pathlib import Path
+from types import MappingProxyType
 
 import polars as pl
 from polars import selectors as cs
@@ -28,14 +30,19 @@ if t.TYPE_CHECKING:
 
 # Units by the end of a name. A derived column takes its units from its end and not from its start, e.g.
 # vel_r_min_kmps and init_kinetic_en_erg. These are tried before the prefixes below.
-UNITS_BY_SUFFIX: dict[str, str] = {"_kmps": "km/s", "_on_c": "c", "_en_erg": "erg", "_days": "days"}
+UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
+    "_kmps": "km/s",
+    "_on_c": "c",
+    "_en_erg": "erg",
+    "_days": "days",
+})
 
 # Suffixes that make a variant of the same quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
 # vel_r_mid_kmps. The listing names the variants one time rather than once for each base name.
 VARIANT_SUFFIXES = ("", "_on_c", "_kmps")
 
 
-VARIABLEUNITS: dict[str, str] = {
+VARIABLEUNITS: Mapping[str, str] = MappingProxyType({
     "time": "days",
     "tdays": "days",
     "gamma_NT": "s^-1",
@@ -74,7 +81,7 @@ VARIABLEUNITS: dict[str, str] = {
     "beta": "v/c",
     **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
     **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
-}
+})
 
 
 def get_units(name: str, *, latex: bool = True) -> str | None:
@@ -120,7 +127,7 @@ def get_variablelongunits(key: str) -> str | None:
 # each group rather than one line for each column. A longer prefix wins, thus emission_ana_ beats emission_.
 # Columns that carry no unit. get_units returns None both for these and for a name that it does
 # not know, thus the listing needs this map to tell the two apart.
-DIMENSIONLESS: dict[str, str] = {
+DIMENSIONLESS: Mapping[str, str] = MappingProxyType({
     "W": "dilution factor",
     "Ye": "electrons per nucleon",
     "grey_depth": "grey optical depth",
@@ -130,17 +137,17 @@ DIMENSIONLESS: dict[str, str] = {
     "thick": "flag",
     "timestep": "index",
     "titeration": "index",
-}
+})
 
 
-PREFIX_GROUPS: dict[str, str] = {
+PREFIX_GROUPS: Mapping[str, str] = MappingProxyType({
     "cooling_": "cooling rate of each process",
     "deposition_": "energy deposition rate of each particle",
     "emission_ana_": "analytic energy emission rate of each particle",
     "heating_": "heating rate of each process",
     "init_": "value of the model snapshot model.txt, before the first timestep",
     "vel_": "velocity coordinates of the cell",
-}
+})
 
 
 def parse_species(suffix: str) -> str | None:
@@ -180,6 +187,18 @@ def split_species_suffix(colname: str) -> tuple[str, str] | None:
     return None
 
 
+def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
+    """Split a sorted sequence of integers into the runs that have no gap."""
+    runs: list[list[int]] = []
+    for number in numbers:
+        if runs and number == runs[-1][-1] + 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+
+    return runs
+
+
 def summarise_ions(species: Collection[str]) -> str:
     """Return a compact listing of ions, e.g. "Fe I-V", or the plain names when they are not all ions."""
     stages: dict[str, list[int]] = defaultdict(list)
@@ -190,11 +209,14 @@ def summarise_ions(species: Collection[str]) -> str:
             return ", ".join(sorted(species))
         stages[elsymbol].append(stagenumber)
 
+    romans = at.roman_numerals
     parts = []
     for elsymbol in sorted(stages):
-        low, high = min(stages[elsymbol]), max(stages[elsymbol])
-        romans = at.roman_numerals
-        parts.append(f"{elsymbol} {romans[low]}" if low == high else f"{elsymbol} {romans[low]}-{romans[high]}")
+        # a gap must break the range, e.g. Fe I and Fe III without Fe II give "Fe I, Fe III". One range
+        # from the lowest to the highest stage would name nnion_Fe_II, which the model does not hold
+        for run in contiguous_runs(sorted(set(stages[elsymbol]))):
+            low, high = run[0], run[-1]
+            parts.append(f"{elsymbol} {romans[low]}" if low == high else f"{elsymbol} {romans[low]}-{romans[high]}")
 
     return ", ".join(parts)
 

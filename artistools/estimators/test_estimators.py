@@ -1016,3 +1016,33 @@ def test_listvariables_heading_names_the_kind_of_each_family(capsys: pytest.Capt
     from artistools.estimators.estimators import summarise_columns
 
     assert "nniso_<nuclide>" in summarise_columns(["nniso_Fe56", "nniso_Ni_otherstable"])
+
+
+def test_summarise_ions_breaks_a_range_at_a_gap() -> None:
+    """A missing ion stage must break the range, so that the listing names no absent column."""
+    from artistools.estimators.estimators import summarise_ions
+
+    # Fe I and Fe III without Fe II: one range would name nnion_Fe_II, which the model does not hold
+    assert summarise_ions(["Fe I", "Fe III"]) == "Fe I, Fe III"
+    assert summarise_ions(["Fe I", "Fe II", "Fe IV", "Fe V"]) == "Fe I-II, Fe IV-V"
+
+    # a run with no gap keeps its compact form
+    assert summarise_ions(["Fe I", "Fe II", "Fe III"]) == "Fe I-III"
+    assert summarise_ions(["Fe III"]) == "Fe III"
+
+
+def test_estimator_lookup_tables_are_read_only() -> None:
+    """AGENTS.md forbids mutable state at module level, thus each lookup table is a read-only view."""
+    import artistools.commands
+    from artistools.estimators import estimators
+
+    for table in (
+        estimators.VARIABLEUNITS,
+        estimators.UNITS_BY_SUFFIX,
+        estimators.DIMENSIONLESS,
+        estimators.PREFIX_GROUPS,
+        artistools.commands.COMMANDGROUPS,
+    ):
+        with pytest.raises(TypeError):
+            # the type forbids this too, which is the point: the table is read-only at run time as well
+            table["newkey"] = "newvalue"  # ty:ignore[invalid-assignment]  # pyrefly: ignore[unsupported-operation]

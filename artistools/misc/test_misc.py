@@ -1114,3 +1114,32 @@ def test_shorten_middle_keeps_both_ends() -> None:
     # a name that fits stays whole, and no maximum length leaves it alone
     assert at.misc.modelinfo.shorten_middle("testmodel", 50) == "testmodel"
     assert at.misc.modelinfo.shorten_middle(name, None) == name
+
+
+def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
+    """A command must not take -timestep together with -timedays or -timemin/-timemax."""
+    import artistools.spectra.plotspectra
+
+    parser = argparse.ArgumentParser()
+    artistools.spectra.plotspectra.addargs(parser)
+
+    conflicting = parser.parse_args([".", "-timestep", "40", "-timemin", "100", "-timemax", "200"])
+    with pytest.raises(SystemExit) as excinfo:
+        at.misc.check_time_selection(parser, conflicting)
+    assert excinfo.value.code == 1
+
+    # each way on its own is accepted
+    for argsraw in ([".", "-timestep", "40"], [".", "-timedays", "300"], [".", "-timemin", "290", "-timemax", "310"]):
+        at.misc.check_time_selection(parser, parser.parse_args(argsraw))
+
+
+def test_check_time_selection_counts_a_default_as_absent() -> None:
+    """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
+    import artistools.transitions
+
+    parser = argparse.ArgumentParser()
+    artistools.transitions.addargs(parser)
+    assert parser.get_default("timestep") is not None, "this test needs a command whose -timestep has a default"
+
+    # the user named only -timedays, thus the default timestep must not raise
+    at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))

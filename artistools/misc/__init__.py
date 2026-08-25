@@ -20,6 +20,7 @@ from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
+from artistools.misc.cliutils import check_time_selection as check_time_selection
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list

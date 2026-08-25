@@ -60,6 +60,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Parse and run an artistools subcommand."""
     import argcomplete
 
+    from artistools.misc import check_time_selection
+
     parser = build_parser()
 
     argcomplete.autocomplete(parser)
@@ -71,6 +73,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if func is None:
         parser.print_help()
         return
+
+    if (argparser := getattr(args, "argparser", None)) is not None:
+        check_time_selection(argparser, args)
 
     try:
         run_command(func, args)

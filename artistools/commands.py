@@ -5,7 +5,9 @@ import dataclasses as dc
 import importlib
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 if t.TYPE_CHECKING:
     from collections.abc import Generator
@@ -50,7 +52,7 @@ type CommandTree = dict[str, CommandSpec | CommandTree]
 
 # The --help listing shows the top-level commands under these headings, in this order. A command that no
 # tuple names appears under the last heading, thus a new command is still listed.
-COMMANDGROUPS: dict[str, tuple[str, ...]] = {
+COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "plot commands": (
         "comparetogsinetwork",
         "leptontransport",
@@ -81,7 +83,7 @@ COMMANDGROUPS: dict[str, tuple[str, ...]] = {
         "writespectra",
     ),
     "other commands": ("completions", "describeinputmodel", "getpath", "version"),
-}
+})
 
 subcommandtree: CommandTree = {
     "comparetogsinetwork": CommandSpec(
@@ -240,7 +242,7 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     if all(sub.dest not in groupofcommand for sub in subactions):
         return None
 
-    lastheading = next(reversed(COMMANDGROUPS))
+    lastheading = list(COMMANDGROUPS)[-1]
     grouped: dict[str, list[argparse.Action]] = {heading: [] for heading in COMMANDGROUPS}
     for sub in subactions:
         grouped[groupofcommand.get(sub.dest, lastheading)].append(sub)
@@ -332,7 +334,10 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
             )
             submodule = importlib.import_module(f"artistools.{spec.module}")
             submodule.addargs(subparser)
-            subparser.set_defaults(func=getattr(submodule, spec.funcname))
+            # __main__ tests the arguments against the defaults of this parser, thus it needs the parser
+            # itself. parse_cli_args cannot make that test, because it returns at once for a parsed
+            # namespace, which is what the dispatcher gives it
+            subparser.set_defaults(func=getattr(submodule, spec.funcname), argparser=subparser)
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
