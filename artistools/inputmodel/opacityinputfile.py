@@ -51,7 +51,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
         fYe.write(f"{griddata.height}\n")
-        # write both missing and NaN electron fractions as zero, like the pandas na_rep this replaces
+        # ARTIS needs a number in every field, thus write a missing and a NaN electron fraction as zero
         griddata.select("inputcellid", pl.col("cellYe").cast(pl.Float64).fill_null(0.0).fill_nan(0.0)).write_csv(
             fYe, separator="\t", include_header=False, float_precision=10
         )

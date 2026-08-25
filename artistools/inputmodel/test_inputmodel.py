@@ -1545,7 +1545,7 @@ def test_get_trajectory_abund_q() -> None:
         (101, 162): 2.626364863419118e-18,
         (102, 159): 2.0727160885628824e-18,
         (102, 161): 4.2496685570656285e-20,
-        # the Qdot integration reads time/s at float64 precision (an earlier pandas reader downcast it to float32)
+        # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
         "q": 5737336759237193.0,
     }
 

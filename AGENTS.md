@@ -95,13 +95,13 @@ The configuration gives each ruff rule by **name** and not by code (`"any-type"`
 
 ## Polars
 
-Use polars (`import polars as pl`) for all new dataframe code. The code keeps pandas only where an external interface makes it necessary. Do not write new pandas code. Do not convert a polars dataframe to pandas and back to run a Python loop. If a function needs a pandas input, write that function again as a polars expression or a polars join.
+Use polars (`import polars as pl`) for all dataframe code. The package has no pandas dependency. Do not add one.
 
 - There is no `.group_by().filter()`. Do the aggregation first, then apply the filter.
 - In an expression, write a column as `pl.col("colname")` and a literal as `pl.lit(...)`.
 - A `None` value and a `float("nan")` value are different. `None` shows that the value is not available.
 - Use a native expression in place of `.map_elements()`, which is slow and prevents the optimisation of the query. If no expression can do the same operation, always give `return_dtype`.
-- Do not read a dataframe one row at a time. In pandas, `.iterrows()`, `.itertuples()`, and `.apply(..., axis=1)` do the same as `.map_elements()`, but more slowly. Use a vectorised expression, a join, or `dict(zip(df["a"], df["b"], strict=True))`. To put a flat array of cells on a 3D grid, use `arr.reshape((nx, ny, nz), order="F")` with `np.linspace`. Do not write nested loops over `nx`, `ny`, and `nz`.
+- Do not read a dataframe one row at a time. Use a vectorised expression, a join, or `dict(zip(df["a"], df["b"], strict=True))`. To put a flat array of cells on a 3D grid, use `arr.reshape((nx, ny, nz), order="F")` with `np.linspace`. Do not write nested loops over `nx`, `ny`, and `nz`.
 - Use lazy evaluation. Build a `pl.LazyFrame` pipeline, accept a `pl.LazyFrame` in an internal function, and call `.collect()` one time at the end. Do not call `.collect()` in a loop over cells, timesteps, or ions, because this runs the full query again at each step. Call `.collect()` before the loop, then index the `pl.DataFrame`.
 - Give the `on=` argument and the `how=` argument for each join.
 - A method returns a new dataframe. There is no in-place operation, thus you must use the value that the method returns.
@@ -122,7 +122,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 Add a new subcommand to `subcommandtree` in `artistools/commands.py`. Do not add a new console script. The CLI cannot find a module that has the `addargs` and `main` functions but no entry in `subcommandtree`. Such a module becomes incorrect, because no user and no test calls it. Add the entry or delete the module, but do not add more code to it.
 
-Put the code that reads the data in functions that are separate from the plot code. A test can then call `main(argsraw=[], **kwargs)` for both parts. The `main` function must parse the arguments and then make a small number of calls. Keep it below approximately 50 lines.
+Put the code that reads the data in functions that are separate from the plot code. A test can then call `main(argsraw=[], **kwargs)` for both parts. The `main` function must parse the arguments and then make a small number of calls. No rule limits the number of lines in a function. Let the structure of the code set the length.
 
 A `main` function can already contain the data code, the physics code, and the plot code. Move the part that you change into a new function. Do not add more code to `main`.
 
@@ -152,7 +152,7 @@ Use the shared functions to build a parser and to find a path. Do not write this
 - Write the cache of a parsed text file as parquet with `at.write_parquet_atomic`. This function writes a temporary file, then changes its name. Thus a run that stops early cannot leave a corrupt cache.
 - Use `at.parallel_map`. Do not make a multiprocessing pool directly. This function selects threads or processes, because the GIL can be on or off.
 - Read a compressed ARTIS output file with `at.zopen` for text, or give polars a source with `at.polars_source`. `at.polars_source` takes the path of a file that exists, e.g. the path that `at.firstexisting` returns. Use `at.zopenpl` when the caller gives a name that can need a compressed sibling. Do not write your own code for the `.gz`, `.xz`, and `.zst` formats. A reader that is faster is permitted: give the measurements in the commit message.
-- Do not add rows to a dataframe in a loop. A repeated `pl.concat` or `pd.concat` call has a cost of O(n²) for n steps. The pandas operation `.loc[key] = ...` has the same cost. Collect the parts in a list, then concatenate them one time after the loop.
+- Do not add rows to a dataframe in a loop. A repeated `pl.concat` call has a cost of O(n²) for n steps. Collect the parts in a list, then concatenate them one time after the loop.
 - Use the lazy scanner that reads a full run, e.g. `at.scan_estimators`. The eager reader `at.estimators.read_estimators` operates on one cell, and it is very slow for many cells and timesteps. Do not call an eager reader in a loop over the cells.
 
 ## Repository rules

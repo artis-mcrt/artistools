@@ -615,7 +615,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     metadata = at.get_file_metadata(filepath)
 
     data_path = Path(at.get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
-    # like the pandas comment="#" this replaces, cut each line at a "#" anywhere, not only at line starts
+    # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
     csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in data_path.read_text(encoding="utf-8").splitlines())
     lightcurve_data = pl.read_csv(csvtext.encode())
     if lightcurve_data.width == 1:
