@@ -454,7 +454,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
             axis, modelpaths, timedays, ion_stage, ionlevels, Z, levelconfignames, args=args
         )
 
-    labelfontsize = 20
+    # the axis label size comes from the artistools matplotlibrc
+    labelfontsize = None
     if args.x == "time":
         xlabel = "Time Since Explosion [days]"
     elif args.x == "velocity":
@@ -766,7 +767,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 
-    addarg_figscale(parser, figscaledefault=1.6)
+    addarg_figscale(parser, figscaledefault=1.4)
 
     parser.add_argument(
         "--departuremode", action="store_true", help="Show departure coefficients instead of populations"

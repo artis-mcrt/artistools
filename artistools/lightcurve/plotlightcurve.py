@@ -40,6 +40,7 @@ from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_yscale
 from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
@@ -717,12 +718,10 @@ def make_lightcurve_plot(
     assert plottedsomething, "No light curve was plotted"
 
     if not args.nolegend:
-        axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
+        axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1)
         if args.plotthermalisation:
             assert axistherm is not None
-            axistherm.legend(
-                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
-            )
+            axistherm.legend(loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
 
     axis.set_xlabel(r"Time [days]")
 
@@ -843,16 +842,10 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[np.object_], args: ar
 
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
+        axis.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
-        ax.legend(
-            loc=args.legendposition,
-            frameon=args.legendframeon,
-            fontsize="small",
-            ncol=args.ncolslegend,
-            handlelength=0.7,
-        )
+        ax.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(
@@ -1333,7 +1326,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
 
-    addarg_figscale(parser, figscaledefault=1.8, include_figwidthscale=True)
+    addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
@@ -1434,6 +1427,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
 
+    addarg_yscale(parser)
+
+    # the older spelling of "-yscale log"
     parser.add_argument("--logscaley", action="store_true", help="Use log scale for vertical axis")
 
     parser.add_argument(
@@ -1608,6 +1604,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.modelpath = at.normalize_path_list(args.modelpath)
 
     modelpaths = args.modelpath
+
+    at.misc.resolve_yscale(args)
 
     apply_time_range_args(args, modelpaths[0])
 

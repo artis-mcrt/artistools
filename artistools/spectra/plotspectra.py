@@ -809,7 +809,9 @@ def make_spectrum_plot(
         #     )
 
         if args.stokesparam == "I" and not args.logscaley:
-            axis.set_ylim(bottom=0.0)
+            # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
+            _, datatop = axis.get_ylim()
+            axis.set_ylim(bottom=0.0, top=datatop * 1.05)
 
         set_plot_title(axis, args.title, args)
 
@@ -1426,7 +1428,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    addarg_figscale(parser, figscaledefault=1.8, include_figwidthscale=True)
+    addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 

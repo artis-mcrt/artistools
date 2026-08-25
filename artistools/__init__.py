@@ -96,6 +96,7 @@ from artistools.misc import addarg_timedays as addarg_timedays
 from artistools.misc import addarg_timeminmax as addarg_timeminmax
 from artistools.misc import addarg_timestep as addarg_timestep
 from artistools.misc import addarg_viewingangle as addarg_viewingangle
+from artistools.misc import addarg_yscale as addarg_yscale
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import check_averaging_angles as check_averaging_angles
 from artistools.misc import drop_trailing_null_column as drop_trailing_null_column
@@ -153,6 +154,7 @@ from artistools.misc import read_wsv as read_wsv
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import require_action as require_action
 from artistools.misc import resolve_outputfile as resolve_outputfile
+from artistools.misc import resolve_yscale as resolve_yscale
 from artistools.misc import savgol_filter as savgol_filter
 from artistools.misc import set_args_from_dict as set_args_from_dict
 from artistools.misc import split_multitable_dataframe as split_multitable_dataframe

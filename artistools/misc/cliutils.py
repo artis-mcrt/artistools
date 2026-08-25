@@ -318,6 +318,36 @@ def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
     parser.add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
 
 
+def addarg_yscale(parser: argparse.ArgumentParser) -> None:
+    """Add the -yscale argument that selects the scale of the vertical axis.
+
+    "auto" leaves the choice to the command, which keeps --logscaley working. "lin" means "linear".
+    """
+    parser.add_argument(
+        "-yscale",
+        choices=["log", "linear", "lin", "auto"],
+        default="auto",
+        help="Scale of the vertical axis. auto lets the command choose",
+    )
+
+
+def resolve_yscale(args: argparse.Namespace) -> None:
+    """Set args.logscaley from -yscale, which every plot helper reads.
+
+    --logscaley is the older spelling of "-yscale log". Two arguments that ask for a different scale
+    get a message rather than a silent precedence.
+    """
+    yscale = getattr(args, "yscale", "auto")
+    if yscale == "auto":
+        return
+
+    wantlog = yscale == "log"
+    if getattr(args, "logscaley", False) and not wantlog:
+        exit_with_error(f"specify only one of --logscaley and -yscale {yscale}")
+
+    args.logscaley = wantlog
+
+
 def addarg_notitle(parser: argparse.ArgumentParser) -> None:
     """Add the --notitle argument that suppresses the plot title (set_plot_title reads this dest)."""
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")

@@ -18,6 +18,7 @@ from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
+from artistools.misc.cliutils import addarg_yscale as addarg_yscale
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
@@ -30,6 +31,7 @@ from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
 from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
+from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
