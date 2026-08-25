@@ -294,7 +294,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    save_figure(fig, outpath, format="pdf")
+    save_figure(fig, outpath, format="pdf", show=args.show)
 
 
 def plot_reference_spectrum(

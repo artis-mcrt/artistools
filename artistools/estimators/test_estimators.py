@@ -818,8 +818,9 @@ def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.
         plotlist=[["TR", [f"{prefix}yscale", "lin"]], ["rho", [f"{prefix}yscale", "log"]]],
     )
 
-    out = capsys.readouterr().out
-    assert "is not a plot directive" not in out
+    # exit_with_error writes to the standard error and then raises SystemExit, thus a rejected directive
+    # would already have ended this test. Read the scale that the directive asked for instead
+    assert not capsys.readouterr().err
 
 
 def test_estimator_xmin_directive_reaches_every_subplot(capsys: pytest.CaptureFixture[str]) -> None:
@@ -832,7 +833,7 @@ def test_estimator_xmin_directive_reaches_every_subplot(capsys: pytest.CaptureFi
         plotlist=[["TR"], ["rho", ["xmin", 260.0], ["xmax", 300.0]]],
     )
 
-    assert "is not a plot directive" not in capsys.readouterr().out
+    assert not capsys.readouterr().err
 
 
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:

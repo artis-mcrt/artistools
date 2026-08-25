@@ -23,6 +23,7 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel.inputmodel_misc import backup_existing_file
 from artistools.misc.fileio import scan_lines
 
 
@@ -396,9 +397,7 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    if gridcontribpath.is_file():
-        oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
-        print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
+    backup_existing_file(gridcontribpath)
 
     dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
 

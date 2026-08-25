@@ -419,11 +419,10 @@ def save_figure(fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False
 def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
     """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
     if outputfile:
-        fig.savefig(outputfile)
-        print_saved(outputfile)
+        save_figure(fig, outputfile)
     else:
         plt.show()
-    plt.close(fig)
+        plt.close(fig)
 
 
 def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:

@@ -187,7 +187,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )
-    addarg_timedays(parser, kind="float", helptext="Time in days to plot (plotspectrum)")
+    # this command declares no -timestep, thus the -t alias would read that word as a value
+    addarg_timedays(parser, kind="float", short_alias=False, helptext="Time in days to plot (plotspectrum)")
     parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
     parser.add_argument("-modelname", help="Model name in the viewing angle filenames (widthluminosity)")
     parser.add_argument(

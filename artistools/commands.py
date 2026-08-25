@@ -225,11 +225,6 @@ subcommandtree: CommandTree = {
 class CommandGroupHeading(argparse.Action):
     """A pseudo action that carries a heading into the help listing of the top-level commands."""
 
-    @t.override
-    def __call__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Never run, because this action only holds a heading."""
-        raise NotImplementedError
-
 
 def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[argparse.Action]] | None":
     """Return the top-level subcommands keyed by the heading of COMMANDGROUPS.

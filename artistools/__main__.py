@@ -75,7 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if (argparser := getattr(args, "argparser", None)) is not None:
-        check_time_selection(argparser, args)
+        check_time_selection(argparser, args, argsraw)
 
     try:
         run_command(func, args)

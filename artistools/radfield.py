@@ -349,7 +349,9 @@ def plot_celltimestep(
 
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
-    axis.set_ylim(bottom=0.0, top=ymax)
+    # the parser accepts -ymin and -ymax, thus the axis must take what the user asked for. A radiation
+    # field is not negative, thus zero is the default bottom
+    axis.set_ylim(bottom=args.ymin if args.ymin is not None else 0.0, top=args.ymax if args.ymax is not None else ymax)
 
     at.plottools.set_exponent_label(axis)
 

@@ -758,8 +758,10 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         else:
                             plot_nne_te_bars(axis, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex])
 
-            if tmid == times_days[-1] and not args.nolegend:
-                axis.legend(
+            if tmid == times_days[-1]:
+                set_legend(
+                    axis,
+                    args,
                     loc="best",
                     frameon=False,
                     handlelength=1,

@@ -51,7 +51,6 @@ VARIABLEUNITS: Mapping[str, str] = MappingProxyType({
     "Alpha_R*nne": "s^-1",
     "RRC_LTE_Nahar": "cm$^3$/s",
     "gamma_R": "s^-1",
-    "gamma_R_bfest": "s^-1",
     "TR": "K",
     "Te": "K",
     "TJ": "K",
@@ -68,10 +67,8 @@ VARIABLEUNITS: Mapping[str, str] = MappingProxyType({
     "cooling": "erg/s/cm$^3$",
     "rho": "g/cm$^3$",
     "logrho": "log10(g/cm$^3$)",
-    "init_rho": "g/cm$^3$",
-    "init_logrho": "log10(g/cm$^3$)",
     "init_X": "mass fraction",
-    "kinetic_en_erg": "erg",
+    # the radial variant init_kinetic_en_erg_r ends in _r, thus no suffix rule reaches it
     "init_kinetic_en_erg": "erg",
     "mass": "g",
     "volume": "cm$^3$",
@@ -79,8 +76,6 @@ VARIABLEUNITS: Mapping[str, str] = MappingProxyType({
     "velocity": "km/s",
     "vel": "cm/s",
     "beta": "v/c",
-    **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
-    **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
 })
 
 
@@ -245,7 +240,7 @@ def species_placeholder(species: Collection[str]) -> str:
     """
     kinds = {"ion" if " " in name else "element" if name in at.get_elsymbolslist() else "nuclide" for name in species}
 
-    return " or ".join(sorted(kinds)) if kinds else "species"
+    return " or ".join(sorted(kinds))
 
 
 def summarise_nuclides(species: Collection[str]) -> str:
@@ -308,10 +303,7 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
             # each variant gives the same quantity in one unit, thus the heading names them in order and
             # the base names stay bare
             names = ", ".join(f"{prefix}<name>{one}" for one in variants)
-            headingunits = " " + ", ".join(
-                format_units(prefix + next(base for base, found in bases.items() if one in found) + one).strip()
-                for one in variants
-            )
+            headingunits = " " + ", ".join(format_units(prefix + next(iter(bases)) + one).strip() for one in variants)
             memberlist = sorted(bases)
         else:
             names = f"{prefix}<name>"
@@ -352,8 +344,8 @@ def get_varname_formatted(varname: str) -> str:
         "Te": r"T$_{\rm e}$",
         "TR": r"T$_{\rm R}$",
         "TJ": r"T$_{\rm J}$",
-        "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
-        "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
+        "gamma_NT": r"$\Gamma_{\rm non-thermal}$",
+        "gamma_R_bfest": r"$\Gamma_{\rm phot}$",
         "heating_dep/total_dep": "Heating fraction",
         # the horizontal axis variables. Without an entry here they keep the lower-case name that -x takes
         "velocity": "Velocity",

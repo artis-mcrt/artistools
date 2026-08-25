@@ -50,6 +50,7 @@ from artistools.plottools import get_figsize
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
+from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 colors_tab10 = [
@@ -525,7 +526,7 @@ def is_valid_ion(ionstr: str) -> bool:
 
 
 def could_be_ion(plotvar: t.Any) -> bool:
-    """Return True if plotvar could be part of an ion population plot, i.e. an ion/element/atomic number or a plot directive."""
+    """Return True when plotvar can name part of an ion population plot: an ion, an element, or an atomic number."""
     # lists are plot directives and bare integers are atomic numbers
     if isinstance(plotvar, (list, int)):
         return True
@@ -533,8 +534,9 @@ def could_be_ion(plotvar: t.Any) -> bool:
     if not isinstance(plotvar, str):
         return False
 
-    # a string that is an integer is an atomic number
-    return plotvar.isdigit() or "=" in plotvar or get_iontuple(plotvar)[0] >= 1
+    # get_iontuple reads a digit string as an atomic number, and normalise_plotitems has already taken
+    # every "key=value" directive out of the list that reaches here
+    return get_iontuple(plotvar)[0] >= 1
 
 
 def default_plotitem_has_data(
@@ -991,17 +993,17 @@ def plot_subplot(
         if seriestype == "ymin":
             # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here
             # would leave the other side at the value it held before the data arrived
-            ymin = float(params) if isinstance(params, str) else params
+            ymin = float(params)
 
         elif seriestype == "ymax":
-            ymax = float(params) if isinstance(params, str) else params
+            ymax = float(params)
 
         elif seriestype == "xmin":
             # the subplots share one horizontal axis, thus this reaches all of them
-            ax.set_xlim(left=float(params) if isinstance(params, str) else params)
+            ax.set_xlim(left=float(params))
 
         elif seriestype == "xmax":
-            ax.set_xlim(right=float(params) if isinstance(params, str) else params)
+            ax.set_xlim(right=float(params))
 
         elif seriestype == "yscale":
             # the scale must be set before the data, so that the axis autoscales in the right space.
@@ -1090,7 +1092,8 @@ def plot_subplot(
     # data of this model would give an empty panel, thus test each one against the data range first.
     # set_ylim also accepts a bottom above the top, which turns the axis upside down and stays that way
     # through a later autoscale, thus the test has to come before the call and not after it.
-    quantity = ax.get_ylabel() or "data"
+    # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
+    quantity = ax.get_ylabel().translate(str.maketrans("", "", "$\\{}")) or "data"
     datarange = get_data_range(ax)
     if ymin is not None:
         if datarange is None or ymin < datarange[1]:
@@ -1104,8 +1107,8 @@ def plot_subplot(
         else:
             print(f"WARNING: every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
-    if showlegend and not args.nolegend:
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
+    if showlegend:
+        set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
 
 
 def make_figure(

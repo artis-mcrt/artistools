@@ -457,7 +457,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=(5.0 * 2 * cols, 5.0 * 0.85 * rows),
+        figsize=get_figsize(args, rows=rows, cols=cols, aspect=0.85, offset=0.0),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
 

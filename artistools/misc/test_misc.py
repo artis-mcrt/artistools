@@ -1133,6 +1133,23 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw))
 
 
+def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
+    """A value that the user typed counts, even when it is the same as the default of the parser."""
+    import artistools.transitions
+
+    parser = argparse.ArgumentParser()
+    artistools.transitions.addargs(parser)
+    default = parser.get_default("timestep")
+    assert default is not None, "this test needs a command whose -timestep has a default"
+
+    # the user names both, and the timestep happens to be the default, thus a test of the value alone
+    # would miss the conflict
+    argsraw = ["-timestep", str(default), "-timedays", "300"]
+    with pytest.raises(SystemExit) as excinfo:
+        at.misc.check_time_selection(parser, parser.parse_args(argsraw), argsraw)
+    assert excinfo.value.code == 1
+
+
 def test_check_time_selection_counts_a_default_as_absent() -> None:
     """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
     import artistools.transitions

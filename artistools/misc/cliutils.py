@@ -137,8 +137,6 @@ def addarg_modelgridindex(
         parser.add_argument(*flags, type=int, default=default, help=helptext)
     elif kind == "append":
         parser.add_argument(*flags, action="append", default=default, help=helptext)
-    elif kind == "list":
-        parser.add_argument(*flags, nargs="*", default=default, help=helptext)
     else:
         parser.add_argument(*flags, default=default, help=helptext)
 
@@ -397,18 +395,35 @@ def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def check_time_selection(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+def check_time_selection(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, argsraw: "Sequence[str] | None" = None
+) -> None:
     """Stop when the arguments name a time range in more than one way.
 
     get_time_range cannot make this test. A caller assigns the times that it returns back onto its own
     arguments, thus a second call for a second model path would read its own output as a second range.
-    A default counts as absent, e.g. plottransitions gives -timestep a default of 70.
+
+    The test reads the arguments that the user wrote, because a value can be the same as the default of
+    the parser: plottransitions gives -timestep a default of 70, and a user can also type that value. A
+    keyword argument of the API becomes a default, thus a value that differs from the default counts too.
     """
-    given = [
-        name
-        for name in ("timestep", "timedays", "timemin", "timemax")
-        if hasattr(args, name) and getattr(args, name) != parser.get_default(name)
-    ]
+    argstrings = list(sys.argv[1:] if argsraw is None else argsraw)
+    flagsofdest = {
+        action.dest: action.option_strings
+        for action in parser._actions  # ruff:ignore[private-member-access]
+    }
+
+    def wasgiven(dest: str) -> bool:
+        if not hasattr(args, dest):
+            return False
+
+        flags = flagsofdest.get(dest, [])
+        if any(flag in argstrings or any(one.startswith(f"{flag}=") for one in argstrings) for flag in flags):
+            return True
+
+        return bool(getattr(args, dest) != parser.get_default(dest))
+
+    given = [name for name in ("timestep", "timedays", "timemin", "timemax") if wasgiven(name)]
     if "timestep" in given and len(given) > 1:
         others = ", ".join(f"-{name}" for name in given if name != "timestep")
         exit_with_error(f"specify only one of -timestep and {others}")
@@ -436,7 +451,7 @@ def parse_cli_args(
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
     args = parser.parse_args([] if kwargs else argsraw)
-    check_time_selection(parser, args)
+    check_time_selection(parser, args, [] if kwargs else argsraw)
 
     return args
 

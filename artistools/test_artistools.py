@@ -1260,3 +1260,13 @@ def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
     """A compressed ARTIS output file is a model, and not a reference data file."""
     assert all(at.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
     assert not at.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
+
+
+@mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
+def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) -> None:
+    """Plotradfield adds -ymin, thus the axis must start there and not at the hard-coded zero."""
+    at.radfield.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14)
+
+    bottoms = [callargs.kwargs["bottom"] for callargs in mocksetylim.call_args_list if "bottom" in callargs.kwargs]
+    assert bottoms, "the command must set the bottom of the axis"
+    assert 1e-14 in bottoms, f"the requested -ymin is missing from {bottoms}"
