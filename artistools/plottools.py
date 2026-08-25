@@ -1,6 +1,7 @@
 """Matplotlib-related plotting functions."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -499,6 +500,28 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
     def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
+
+
+def prune_log_ticks(axis: mplaxis.Axis, *, fraction: float = 0.04, minticks: int = 3) -> None:
+    """Remove the major ticks of a log axis that sit against either end.
+
+    Stacked subplots put the lowest label of one axes beside the highest label of the axes below, and the
+    outer labels touch the title and the axis label of the figure. MaxNLocator has a prune argument, but
+    LogLocator has none, thus this drops the locations within fraction of the axis length of each end.
+
+    A log axis of many decades carries few major ticks. Thus this leaves the ticks unchanged rather than
+    keep fewer than minticks of them.
+    """
+    lo, hi = axis.get_view_interval()
+    if lo <= 0.0 or hi <= lo:
+        return
+
+    loglo, loghi = math.log10(lo), math.log10(hi)
+    margin = fraction * (loghi - loglo)
+    inview = [loc for loc in axis.get_majorticklocs() if loc > 0.0 and loglo <= math.log10(loc) <= loghi]
+    keep = [loc for loc in inview if loglo + margin < math.log10(loc) < loghi - margin]
+    if minticks <= len(keep) < len(inview):
+        axis.set_major_locator(mplticker.FixedLocator(keep))
 
 
 def set_exponent_label(axis: mplax.Axes) -> None:

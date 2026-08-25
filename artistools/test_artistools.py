@@ -1184,6 +1184,35 @@ def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
     assert at.plottools.get_series_colors([True, True], ["#000000"]) == ["#000000", "0.4"]
 
 
+def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
+    """A tick at the very top or bottom of a log axis goes, and a tick well inside it stays."""
+    _fig, ax = plt.subplots()
+    ax.set_yscale("log")
+    ax.set_ylim(1e-10, 1e3)
+
+    before = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
+    assert min(before) == pytest.approx(1e-10), "the test needs a tick at the lower end"
+
+    at.plottools.prune_log_ticks(ax.yaxis)
+
+    after = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
+    assert min(after) > 1e-10
+    assert set(after) < set(before)
+    assert set(after) == {loc for loc in before if loc > 1e-10}
+
+
+def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
+    """A log axis of few major ticks keeps them all, rather than end with too few to read."""
+    _fig, ax = plt.subplots()
+    ax.set_yscale("log")
+    ax.set_ylim(1e-30, 1e2)
+
+    before = list(ax.yaxis.get_majorticklocs())
+    at.plottools.prune_log_ticks(ax.yaxis, minticks=len(before))
+
+    assert list(ax.yaxis.get_majorticklocs()) == before
+
+
 def test_set_axis_properties_log_scale_keeps_the_data_in_view() -> None:
     """A log scale must be set before the limits, so an unrequested limit does not freeze the linear view.
 
