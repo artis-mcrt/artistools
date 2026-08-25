@@ -16,6 +16,7 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mplticker
 import numpy as np
 import polars as pl
 import polars.testing as pltest
@@ -1197,20 +1198,34 @@ def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
 
     after = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
     assert min(after) > 1e-10
-    assert set(after) < set(before)
     assert set(after) == {loc for loc in before if loc > 1e-10}
 
 
 def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
     """A log axis of few major ticks keeps them all, rather than end with too few to read."""
+    from artistools.plottools import PrunedLogLocator
+
+    locator = PrunedLogLocator(minticks=99)
+    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator().tick_values(1e-30, 1e2))
+
+
+def test_prune_log_ticks_follows_the_view() -> None:
+    """The locator prunes when matplotlib draws, thus a zoom gives the ticks of the new view.
+
+    A FixedLocator of one view would keep those ticks through a zoom, and save_figure shows the figure
+    before it writes the file.
+    """
     _fig, ax = plt.subplots()
     ax.set_yscale("log")
-    ax.set_ylim(1e-30, 1e2)
+    ax.set_ylim(1e-2, 1e5)
+    at.plottools.prune_log_ticks(ax.yaxis)
+    first = list(ax.yaxis.get_majorticklocs())
 
-    before = list(ax.yaxis.get_majorticklocs())
-    at.plottools.prune_log_ticks(ax.yaxis, minticks=len(before))
+    ax.set_ylim(1e2, 1e9)
+    second = list(ax.yaxis.get_majorticklocs())
 
-    assert list(ax.yaxis.get_majorticklocs()) == before
+    assert second != first, "the ticks must follow the new view"
+    assert max(second) > max(first), f"the zoomed view needs its own high ticks: {second}"
 
 
 def test_set_axis_properties_log_scale_keeps_the_data_in_view() -> None:

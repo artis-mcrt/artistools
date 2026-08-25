@@ -501,31 +501,45 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def prune_log_ticks(axis: mplaxis.Axis, *, fraction: float = 0.04, minticks: int = 3) -> None:
-    """Remove the major ticks of a log axis that sit against either end.
+class PrunedLogLocator(mplticker.LogLocator):
+    """Place the major ticks of a log axis, but leave out the ones against either end.
 
     Stacked subplots put the lowest label of one axes beside the highest label of the axes below, and the
-    outer labels touch the title and the axis label of the figure. MaxNLocator has a prune argument, but
-    LogLocator has none, thus this drops the locations within fraction of the axis length of each end.
+    outer labels touch the title and the axis label of the figure. MaxNLocator takes a prune argument and
+    LogLocator takes none, thus this drops the locations within a fraction of the axis length of each end.
 
-    A log axis of many decades carries few major ticks. Thus this leaves the ticks unchanged rather than
-    keep fewer than minticks of them.
+    It prunes each time that matplotlib draws, thus the ticks follow the view. A FixedLocator of the
+    locations of one view would keep them through a zoom, and save_figure shows the figure before it
+    writes the file, so a zoom in that window would otherwise reach the file with the wrong ticks.
     """
-    # a linear axis of positive limits would otherwise get a margin that is wrong, because this
-    # measures the margin in decades
-    if axis.get_scale() != "log":
-        return
 
-    lo, hi = axis.get_view_interval()
-    if lo <= 0.0 or hi <= lo:
-        return
+    def __init__(self, *args: t.Any, fraction: float = 0.04, minticks: int = 3, **kwargs: t.Any) -> None:
+        """Take the margin as a fraction of the axis length, and the fewest ticks to leave."""
+        super().__init__(*args, **kwargs)
+        self.fraction = fraction
+        self.minticks = minticks
 
-    loglo, loghi = math.log10(lo), math.log10(hi)
-    margin = fraction * (loghi - loglo)
-    inview = [loc for loc in axis.get_majorticklocs() if loc > 0.0 and loglo <= math.log10(loc) <= loghi]
-    keep = [loc for loc in inview if loglo + margin < math.log10(loc) < loghi - margin]
-    if minticks <= len(keep) < len(inview):
-        axis.set_major_locator(mplticker.FixedLocator(keep))
+    @t.override
+    def tick_values(self, vmin: float, vmax: float) -> t.Any:
+        """Return the tick locations of the view, without the ones against either end."""
+        ticks = super().tick_values(vmin, vmax)
+        low, high = min(vmin, vmax), max(vmin, vmax)
+        if low <= 0.0 or high <= low:
+            return ticks
+
+        loglow, loghigh = math.log10(low), math.log10(high)
+        margin = self.fraction * (loghigh - loglow)
+        inview = [loc for loc in ticks if loc > 0.0 and loglow <= math.log10(loc) <= loghigh]
+        keep = [loc for loc in inview if loglow + margin < math.log10(loc) < loghigh - margin]
+
+        # a log axis of many decades carries few major ticks, thus keep them all rather than leave too few
+        return keep if self.minticks <= len(keep) < len(inview) else ticks
+
+
+def prune_log_ticks(axis: mplaxis.Axis) -> None:
+    """Give a log axis a locator that leaves out the ticks against either end."""
+    if axis.get_scale() == "log":
+        axis.set_major_locator(PrunedLogLocator())
 
 
 def set_exponent_label(axis: mplax.Axes) -> None:
@@ -598,6 +612,11 @@ def set_axis_properties(
         # the tick direction, the top and right ticks, the minor ticks and the default label size all
         # come from the artistools matplotlibrc, thus only a command that asks for a different label
         # size sets one here
+
+        # a log axis of a stack of subplots needs its end ticks pruned. A command that sets the scale
+        # after this call, e.g. plotestimators, asks for prune_log_ticks itself
+        prune_log_ticks(axis.yaxis)
+
         if labelfontsize is not None:
             axis.tick_params(axis="both", which="both", labelsize=labelfontsize)
 

@@ -751,9 +751,6 @@ def make_singletimestep_plot(
     # minor tick for each level, thus it keeps its own locator
     for ax in axes:
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
-        # the population axis spans many decades, thus drop the labels that would touch the neighbouring
-        # subplot, the figure title, or the axis label below
-        at.plottools.prune_log_ticks(ax.yaxis)
 
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
