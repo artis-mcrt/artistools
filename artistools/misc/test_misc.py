@@ -1099,3 +1099,18 @@ def test_get_series_label() -> None:
     # an empty label is a series deliberately left out of the legend, not a missing one
     # the return type is str, so falsy is the empty string rather than the model name
     assert not at.get_series_label([""], 0, "modelname")
+
+
+def test_shorten_middle_keeps_both_ends() -> None:
+    """A long run folder name keeps the model at the start and the run details at the end."""
+    name = "w7_outercut_20260816_150_410d_2e9pkt_develop_3dgrid50_virgo"
+    short = at.misc.modelinfo.shorten_middle(name, 50)
+
+    assert len(short) == 50
+    assert short.startswith("w7_outercut")
+    assert short.endswith("virgo")
+    assert "..." in short
+
+    # a name that fits stays whole, and no maximum length leaves it alone
+    assert at.misc.modelinfo.shorten_middle("testmodel", 50) == "testmodel"
+    assert at.misc.modelinfo.shorten_middle(name, None) == name

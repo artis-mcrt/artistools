@@ -113,6 +113,23 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
 
 
 @lru_cache(maxsize=8)
+def shorten_middle(text: str, maxlen: int | None) -> str:
+    """Return text of no more than maxlen characters, with the middle replaced by an ellipsis.
+
+    The name of a run folder carries the model at the start and the date, the packet count, and the
+    machine at the end. Thus a cut of either end alone loses what the reader needs most.
+    """
+    if maxlen is None or len(text) <= maxlen:
+        return text
+
+    if maxlen <= 3:
+        return text[:maxlen]
+
+    keep = maxlen - 3
+    head = (keep + 1) // 2
+    return f"{text[:head]}...{text[len(text) - (keep - head) :]}"
+
+
 def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
@@ -132,7 +149,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
             return f.readline().strip()
     except FileNotFoundError:
         foldername = Path(modelpath).name
-        return foldername if (maxlen is None or len(foldername) <= maxlen) else f"...{foldername[-maxlen:]}"
+        return shorten_middle(foldername, maxlen)
 
 
 @lru_cache(maxsize=8)

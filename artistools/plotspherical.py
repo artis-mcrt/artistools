@@ -291,7 +291,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
-    addarg_figscale(parser)
+    addarg_figscale(parser, figscaledefault=1.4)
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 

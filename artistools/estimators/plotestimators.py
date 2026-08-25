@@ -1197,12 +1197,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-labelfontsize",
         type=float,
-        default=10,
-        help="Font size of the tick labels. The default is smaller than for the other plot commands, "
-        "because this command stacks one subplot per requested quantity",
+        default=None,
+        help="Font size of the tick labels. The default comes from the artistools matplotlibrc.",
     )
 
-    addarg_figscale(parser, include_figwidthscale=True)
+    addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
     # deprecated spelling of -figwidthscale kept as a hidden alias
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
