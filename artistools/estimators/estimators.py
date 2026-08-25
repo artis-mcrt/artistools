@@ -5,7 +5,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import contextlib
 import datetime
-import re
+import string
 import textwrap
 import time
 import typing as t
@@ -62,23 +62,53 @@ def get_variablelongunits(key: str) -> str | None:
     )
 
 
+# Columns that share a prefix, with a description of what the group holds. The listing gives one line for
+# each group rather than one line for each column. A longer prefix wins, thus emission_ana_ beats emission_.
+PREFIX_GROUPS: dict[str, str] = {
+    "cooling_": "cooling rate of each process",
+    "deposition_": "energy deposition rate of each particle",
+    "emission_ana_": "analytic energy emission rate of each particle",
+    "heating_": "heating rate of each process",
+    "init_": "value of the model snapshot model.txt, before the first timestep",
+    "vel_": "velocity coordinates of the cell",
+}
+
+
+def parse_species(suffix: str) -> str | None:
+    """Return the species that the suffix names, or None when it names no element, ion, or isotope."""
+    elsymbol, sep, rest = suffix.partition("_")
+    if elsymbol not in at.get_elsymbolslist():
+        # an isotope joins the mass number to the symbol, e.g. Ni56
+        stem = suffix.rstrip(string.digits)
+        return suffix if not sep and stem != suffix and stem in at.get_elsymbolslist() else None
+
+    if not sep:
+        return elsymbol
+
+    # an ion stage takes a space, e.g. nnion_Fe_II names the ion "Fe II"
+    if at.decode_roman_numeral(rest) > 0:
+        return f"{elsymbol} {rest}"
+
+    # any other suffix keeps its underscore, because that is how the column name joins it
+    return suffix if rest == "otherstable" else None
+
+
 def split_species_suffix(colname: str) -> tuple[str, str] | None:
     """Return the family and the species of a column such as nnion_Fe_II, or None when it has no species.
 
     The families that name one species for each column are the largest part of the estimator columns, thus
     a listing that repeats every one of them is hard to read.
+
+    Each split of the name is tried, from the longest suffix to the shortest. One regular expression is
+    not enough, because a symbol such as C or V is also a Roman numeral: in init_X_C the first reading
+    takes X as the element and _C as the ion stage, and that reading has to give way to init_X and C.
     """
-    match = re.fullmatch(r"(?P<family>.+?)_(?P<elsymbol>[A-Z][a-z]?)(?P<rest>|_[IVXLC]+|[0-9]+|_otherstable)", colname)
-    if match is None or match["elsymbol"] not in at.get_elsymbolslist():
-        return None
+    parts = colname.split("_")
+    for index in range(1, len(parts)):
+        if species := parse_species("_".join(parts[index:])):
+            return ("_".join(parts[:index]), species)
 
-    rest = match["rest"]
-    # an ion stage takes a space, e.g. nnion_Fe_II names the ion "Fe II". Any other suffix keeps its
-    # underscore, because it joins the element symbol in the column name, e.g. nniso_Fe_otherstable
-    if at.decode_roman_numeral(rest.removeprefix("_")) > 0:
-        return (match["family"], f"{match['elsymbol']} {rest.removeprefix('_')}")
-
-    return (match["family"], match["elsymbol"] + rest)
+    return None
 
 
 def summarise_ions(species: Collection[str]) -> str:
@@ -101,27 +131,38 @@ def summarise_ions(species: Collection[str]) -> str:
 
 
 def summarise_columns(columns: Collection[str]) -> str:
-    """Return a listing of the estimator columns, with each per-species family on one line."""
+    """Return a listing of the estimator columns, with each family and each group on one line."""
     families: dict[str, list[str]] = defaultdict(list)
+    groups: dict[str, list[str]] = defaultdict(list)
     plain: list[str] = []
+    prefixes = sorted(PREFIX_GROUPS, key=len, reverse=True)
     for colname in columns:
         if split := split_species_suffix(colname):
             families[split[0]].append(split[1])
+        elif prefix := next((name for name in prefixes if colname.startswith(name)), None):
+            groups[prefix].append(colname.removeprefix(prefix))
         else:
             plain.append(colname)
+
+    def wrap(text: str) -> str:
+        return textwrap.fill(text, width=110, initial_indent="    ", subsequent_indent="    ")
 
     lines = [
         f"{len(columns)} estimator variables:",
         "",
-        textwrap.fill(", ".join(sorted(plain)), width=110, initial_indent="  ", subsequent_indent="    "),
+        f"  ({len(plain)}): one value for each cell and timestep",
+        wrap(", ".join(sorted(plain))),
     ]
-    for family in sorted(families):
-        species = families[family]
+
+    for prefix in sorted(groups):
         lines.extend([
             "",
-            f"  {family}_<species>  ({len(species)}):",
-            textwrap.fill(summarise_ions(species), width=110, initial_indent="    ", subsequent_indent="    "),
+            f"  {prefix}<name>  ({len(groups[prefix])}): {PREFIX_GROUPS[prefix]}",
+            wrap(", ".join(sorted(groups[prefix]))),
         ])
+
+    for family in sorted(families):
+        lines.extend(["", f"  {family}_<species>  ({len(families[family])}):", wrap(summarise_ions(families[family]))])
 
     return "\n".join(lines)
 

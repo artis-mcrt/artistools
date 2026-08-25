@@ -831,6 +831,41 @@ def test_estimator_xmin_directive_reaches_every_subplot(capsys: pytest.CaptureFi
     assert "is not a plot directive" not in capsys.readouterr().out
 
 
+def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:
+    """C, V, I, X, and L are element symbols and Roman numerals, thus one reading of a name is not enough.
+
+    In init_X_C the first reading takes X as the element and _C as the ion stage. That reading has to give
+    way to the family init_X and the element C.
+    """
+    from artistools.estimators.estimators import split_species_suffix
+
+    assert split_species_suffix("init_X_C") == ("init_X", "C")
+    assert split_species_suffix("init_X_V") == ("init_X", "V")
+    assert split_species_suffix("init_X_Al") == ("init_X", "Al")
+
+    # a suffix that names no element stays out of a species family
+    assert split_species_suffix("init_X_Fegroup") is None
+
+
+def test_estimator_listvariables_describes_each_prefix_group(capsys: pytest.CaptureFixture[str]) -> None:
+    """A group of columns that share a prefix appears one time, with a description of the group."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
+
+    out = capsys.readouterr().out
+    # the test model has no deposition columns, thus this checks the groups that it does have
+    for prefix, description in (
+        ("cooling_<name>", "cooling rate"),
+        ("heating_<name>", "heating rate"),
+        ("init_<name>", "model snapshot"),
+        ("vel_<name>", "velocity coordinates"),
+    ):
+        assert prefix in out, prefix
+        assert description in out, description
+
+    # the group names each member one time, thus no member appears with its prefix
+    assert "cooling_adiabatic" not in out
+
+
 def test_split_species_suffix_rebuilds_the_column_name() -> None:
     """Each family and species of the listing must join back into the column name that it came from."""
     from artistools.estimators.estimators import split_species_suffix
