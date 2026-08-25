@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.plottools import save_figure
 
 
@@ -156,7 +157,7 @@ def append_cell_to_output(
 ) -> None:
     """Append one cell to the 1D model output lines and to the density and abundance plot series."""
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = dist / float(t_model) / day_to_s / 1.0e5
+    velocity = dist / float(t_model) / day_to_s / km_to_cm
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "

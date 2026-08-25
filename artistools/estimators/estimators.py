@@ -16,6 +16,7 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import K_B_ev_per_K
+from artistools.misc import path_is_codecomparison
 
 if t.TYPE_CHECKING:
     import os
@@ -210,6 +211,18 @@ def join_cell_modeldata(
     ), modelmeta
 
 
+def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> pl.LazyFrame:
+    """Return a LazyFrame of the estimators of a back-end that reads into a dict keyed by (timestep, cell).
+
+    The index columns take the same dtype as the ARTIS file reader gives them, so that a join with the model
+    data matches on either path.
+    """
+    return pl.LazyFrame(
+        [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
+        orient="row",
+    ).with_columns(pl.col("timestep").cast(pl.Int32), pl.col("modelgridindex").cast(pl.Int32))
+
+
 def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     """Add quantities derived from the estimator columns that were read from file."""
     colnames = pldflazy.collect_schema().names()
@@ -231,7 +244,9 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     # a selector that matches nothing makes this a no-op, so no guard is needed here
     pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_", "nnion_", "nniso_").fill_null(0))
 
-    if any(col.startswith("nnelement_") for col in colnames):
+    # a back-end that read a real total number density from file keeps it. Deriving nntot there would
+    # replace it with a sum over only the elements that the back-end happened to supply.
+    if "nntot" not in colnames and any(col.startswith("nnelement_") for col in colnames):
         pldflazy = pldflazy.with_columns(nntot=pl.sum_horizontal(cs.starts_with("nnelement_")))
 
     return pldflazy
@@ -243,6 +258,7 @@ def scan_estimators(
     timestep: int | Sequence[int] | None = None,
     join_modeldata: bool = False,
     verbose: bool = False,
+    classicartis: bool = False,
 ) -> pl.LazyFrame:
     """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
@@ -267,17 +283,19 @@ def scan_estimators(
 
     # a codecomparison path has no ARTIS run folders to scan, so build the frame from the reference file and
     # fall through to the shared filter/derive/join tail rather than returning early and skipping it
-    is_codecomparison = not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison"
+    is_codecomparison = path_is_codecomparison(modelpath)
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     if is_codecomparison:
-        estimators = at.codecomparison.read_reference_estimators(
-            modelpath, timestep=timestep, modelgridindex=modelgridindex
+        pldflazy = lazyframe_from_estimator_dict(
+            at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         )
-        pldflazy = pl.LazyFrame(
-            [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
-            orient="row",
-        )
+    elif classicartis:
+        from artistools.estimators.estimators_classic import read_classic_estimators
+
+        estimatorsdict = read_classic_estimators(modelpath)
+        assert estimatorsdict is not None
+        pldflazy = lazyframe_from_estimator_dict(estimatorsdict)
     else:
         pldflazy = _scan_artis_estimators(
             modelpath, match_modelgridindex=match_modelgridindex, match_timestep=match_timestep, verbose=verbose

@@ -109,6 +109,30 @@ def addarg_outputpath(
     parser.add_argument("-outputpath", "-o", **kwargs)
 
 
+def addarg_modelgridindex(
+    parser: argparse.ArgumentParser,
+    *,
+    kind: t.Literal["rangestr", "int", "append", "list"] = "int",
+    default: t.Any = None,
+    helptext: str | None = None,
+) -> None:
+    """Add the -modelgridindex/-cell/-mgi argument that selects the model grid cell or cells.
+
+    A command that plots one cell takes kind="int". A command that reads several cells takes a range
+    string such as 3-7, which parse_range_list expands. Every command offers the same three flags.
+    """
+    flags = ("-modelgridindex", "-cell", "-mgi")
+    helptext = helptext or "Model grid cell to plot"
+    if kind == "int":
+        parser.add_argument(*flags, type=int, default=default, help=helptext)
+    elif kind == "append":
+        parser.add_argument(*flags, action="append", default=default, help=helptext)
+    elif kind == "list":
+        parser.add_argument(*flags, nargs="*", default=default, help=helptext)
+    else:
+        parser.add_argument(*flags, default=default, help=helptext)
+
+
 def addarg_timestep(
     parser: argparse.ArgumentParser,
     *,
@@ -135,7 +159,9 @@ def addarg_timedays(
     helptext: str | None = None,
 ) -> None:
     """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value."""
-    flags = ("-timedays", "-time", "-t")
+    # no "-t" alias: argparse reads an unknown "-timestep" on a parser that has "-t" as "-t imestep",
+    # which reports an invalid value for an argument that the user never named
+    flags = ("-timedays", "-time")
     if kind == "rangestr":
         parser.add_argument(
             *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
@@ -167,11 +193,18 @@ def addarg_axislimits(
     xmaxhelp: str = "Plot range: maximum x value",
     include_x: bool = True,
     include_y: bool = True,
+    wavelength_aliases: bool = False,
 ) -> None:
-    """Add the -xmin/-xmax and -ymin/-ymax plot range arguments."""
+    """Add the -xmin/-xmax and -ymin/-ymax plot range arguments.
+
+    A command whose x axis is a wavelength in Angstroms takes wavelength_aliases, which adds the
+    -lambdamin and -lambdamax spellings of the same arguments.
+    """
     if include_x:
-        parser.add_argument("-xmin", type=xlimtype, default=xmindefault, help=xminhelp)
-        parser.add_argument("-xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
+        xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
+        xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
+        parser.add_argument(*xminflags, dest="xmin", type=xlimtype, default=xmindefault, help=xminhelp)
+        parser.add_argument(*xmaxflags, dest="xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
     if include_y:
         parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
         parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
@@ -239,6 +272,55 @@ def addarg_filter(parser: argparse.ArgumentParser) -> None:
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
     )
+
+
+def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helptext: str) -> None:
+    """Add the positional action argument that selects what the subcommand does."""
+    parser.add_argument(
+        "action",
+        # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores
+        # argsraw as soon as any keyword argument is given
+        nargs="?",
+        default=None,
+        choices=choices,
+        help=helptext,
+    )
+
+
+def exit_with_error(message: str) -> t.NoReturn:
+    """Print an error message and stop with a failing exit status.
+
+    A mistake in the arguments earns a message rather than a traceback, and a script that runs the
+    command sees that it failed.
+    """
+    print(f"ERROR: {message}")
+    raise SystemExit(1)
+
+
+def require_action(args: argparse.Namespace) -> None:
+    """Stop with an error message when the caller gave no action."""
+    if args.action is None:
+        exit_with_error("no action given. Run with --help to see the available actions.")
+
+
+def addarg_show(parser: argparse.ArgumentParser) -> None:
+    """Add the --show argument that opens the figure in a window before it is saved."""
+    parser.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
+
+
+def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
+    """Add the -dpi argument setting the resolution of a raster output file."""
+    parser.add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
+
+
+def addarg_notitle(parser: argparse.ArgumentParser) -> None:
+    """Add the --notitle argument that suppresses the plot title (set_plot_title reads this dest)."""
+    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+
+
+def addarg_nolegend(parser: argparse.ArgumentParser) -> None:
+    """Add the --nolegend argument that suppresses the plot legend."""
+    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
 
 def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:

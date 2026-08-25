@@ -340,7 +340,6 @@ def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
     """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = list(range(at.get_viewingdirectionbincount()))
@@ -348,7 +347,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     for angle in angles:
         colorindex: t.Any
         _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargsviewingangles, args
+            angle, scaledmap, plotkwargsviewingangles, args
         )
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles["color"] = colors
@@ -370,9 +369,8 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
     fig.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
-        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
+        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
@@ -584,8 +582,7 @@ def peakmag_risetime_declinerate_init(
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
         if not args.filter:
-            lcname = "light_curve_res.out" if args.plotviewingangle else "light_curve.out"
-            lcpath = at.firstexisting(lcname, folder=modelpath, tryzipped=True)
+            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=args.plotviewingangle)
             lcdataframes = at.lightcurve.readfile(lcpath)
 
         # check if doing viewing angle stuff, and if so define which data to use
@@ -655,7 +652,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
+    lcdataframes = at.lightcurve.readfile(at.lightcurve.find_lightcurve_file(modelpath, directionresolved=True))
 
     timetoplot = at.match_closest_time(
         reftime=args.timedays, searchtimes=lcdataframes[0].collect()["time_days"].to_list()
@@ -665,7 +662,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     for angleindex, lcdata in lcdataframes.items():
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+            angle, scaledmap, plotkwargs, args
         )
 
         # readfile derives the erg/s column, so it does not have to be converted here again
@@ -680,7 +677,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         axis.scatter(xvalues, brightness, **plotkwargs)
         axis.set_xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
 
-    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig, axis)
+    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, fig, axis)
 
     axis.set_xlabel("Angle bin")
     axis.set_ylabel("erg/s")

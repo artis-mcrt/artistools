@@ -22,10 +22,12 @@ from matplotlib.typing import MarkerType
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
+from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
 from artistools.plottools import save_figure
@@ -178,8 +180,8 @@ def get_line_luminosities_from_pops(
             levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
 
         # the shell velocities do not change with time, so take them out of the loop and scale the volume by t^3
-        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * 1e5
-        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * 1e5
+        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
+        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
         shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
 
         # the transition data is the same for every cell and timestep, so look it up once per line. An IndexError
@@ -787,7 +789,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
 
     parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
 
@@ -833,11 +835,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     #
     addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=50,
         xmaxdefault=450,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
+        wavelength_aliases=True,
     )
 
     parser.add_argument(

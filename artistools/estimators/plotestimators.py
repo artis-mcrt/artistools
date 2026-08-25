@@ -16,23 +16,32 @@ from pathlib import Path
 from types import MappingProxyType
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from matplotlib import ticker
 from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
+from artistools.plottools import save_figure
+from artistools.plottools import set_axis_properties
+from artistools.plottools import set_plot_title
 
 colors_tab10 = [
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
@@ -47,7 +56,7 @@ colors_tab10 = [
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
 ]
 
-# reserve colours for these elements. Immutable, because _get_unreserved_elemcolors() derives the rest of the
+# reserve colours for these elements. Immutable, because get_unreserved_elemcolors() derives the rest of the
 # palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
 elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = MappingProxyType({
     "Fe": colors_tab10[0],
@@ -88,23 +97,25 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     if elsymbol in elementcolors:
         return elementcolors[elsymbol]
 
-    palette = _get_unreserved_elemcolors()
+    palette = get_unreserved_elemcolors()
 
     return palette[atomic_number % len(palette)]
 
 
 @lru_cache(maxsize=1)
-def _get_unreserved_elemcolors() -> tuple[tuple[float, float, float, float], ...]:
-    """Return the colours available to elements with no reserved colour, in a stable order."""
+def get_unreserved_elemcolors() -> tuple[t.Any, ...]:
+    """Return the colours available to elements with no reserved colour, in a stable order.
+
+    get_unused_colors compares by value, thus a rounded copy of a reserved colour is also removed. A
+    comparison of the tuples let the rounded glasbey copies of the tab10 colours through, which gave
+    nitrogen the blue of iron and oxygen the orange of nickel in one figure.
+    """
+    from artistools.plottools import get_unused_colors
     from artistools.plottools import glasbey_category20_nogreys
 
-    reserved = set(elementcolors.values())
+    palette = [*colors_tab10, *glasbey_category20_nogreys]
 
-    return tuple(
-        rgba
-        for rgba in (*colors_tab10, *((r, g, b, 1.0) for r, g, b in glasbey_category20_nogreys))
-        if rgba not in reserved
-    )
+    return tuple(get_unused_colors(palette, [mc.to_hex(rgba) for rgba in elementcolors.values()]))
 
 
 def get_ylabel(variable: str) -> str:
@@ -115,8 +126,6 @@ def get_ylabel(variable: str) -> str:
 def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
     """Return the colour with its lightness scaled by amount, so related series can share a hue."""
     import colorsys
-
-    import matplotlib.colors as mc
 
     try:
         c = mc.cnames[color]
@@ -373,12 +382,12 @@ def plot_levelpop(
     """Plot the population of each level in params, either directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     elif seriestype == "levelpopulation":
         ax.set_ylabel("X$_{{i}}$ [{}/cm³]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     else:
         raise ValueError
+
+    at.plottools.set_exponent_label(ax)
 
     modeldata = at.inputmodel.get_modeldata(
         modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"]
@@ -589,7 +598,6 @@ def plot_multi_ion_series(
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""
     # if seriestype == 'populations':
-    #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
     plotted_something = False
 
@@ -785,7 +793,7 @@ def get_xlist(
         estimators = estimators.with_columns(xvalue=pl.col("tmid_days"))
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
-        scalefactor = 1e5 if xvariable == "velocity" else C_cm_per_s
+        scalefactor = km_to_cm if xvariable == "velocity" else C_cm_per_s
         estimators = estimators.with_columns(xvalue=(pl.col(velcolumn) / scalefactor))
     else:
         assert xvariable in estimators.collect_schema().names()
@@ -992,7 +1000,6 @@ def plot_subplot(
                     **plotkwargs,
                 )
 
-    ax.tick_params(right=True)
     if showlegend and not args.nolegend:
         ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
 
@@ -1022,9 +1029,6 @@ def make_figure(
 
     assert isinstance(axes, np.ndarray)
 
-    for ax in axes:
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
         axes[-1].set_xlabel(
             f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
@@ -1038,10 +1042,12 @@ def make_figure(
     xmin = args.xmin if args.xmin is not None else min(xlist)
     xmax = args.xmax if args.xmax is not None else max(xlist)
 
-    for ax, plotitems in zip(axes, plotlist, strict=False):
-        if xmin != xmax:
-            ax.set_xlim(left=xmin, right=xmax)
+    # the x range comes from the data when the user gives no -xmin/-xmax. A degenerate range goes to
+    # matplotlib as no limit at all, so that it keeps its own padding around the single value.
+    xlimits = (xmin, xmax, "-xmin") if xmin != xmax else (None, None, "-xmin")
+    set_axis_properties(axes, args, xlimits=xlimits)
 
+    for ax, plotitems in zip(axes, plotlist, strict=False):
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
@@ -1093,15 +1099,9 @@ def make_figure(
         assert isinstance(timestepslist, list)
         outfilename = str(args.outputfile).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
 
-    if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=10)
+    set_plot_title(axes[0], figure_title, args)
 
-    fig.savefig(outfilename, dpi=600)
-    at.print_saved(outfilename)
-
-    if args.show:
-        plt.show()
-    plt.close(fig)
+    save_figure(fig, outfilename, show=args.show, dpi=args.dpi)
 
     return outfilename
 
@@ -1112,9 +1112,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         parser, default=".", helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
 
-    parser.add_argument(
-        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
-    )
+    addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
 
     addarg_timestep(parser, helptext="Timestep number for internal structure plot")
 
@@ -1142,7 +1140,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
 
     parser.add_argument(
         "-plotlist",
@@ -1163,13 +1161,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
+
+    parser.add_argument(
+        "-labelfontsize",
+        type=float,
+        default=10,
+        help="Font size of the tick labels. The default is smaller than for the other plot commands, "
+        "because this command stacks one subplot per requested quantity",
+    )
 
     addarg_figscale(parser, include_figwidthscale=True)
     # deprecated spelling of -figwidthscale kept as a hidden alias
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
-    parser.add_argument("--show", action="store_true", help="Show plot before quitting")
+    addarg_show(parser)
+
+    addarg_dpi(parser, default=600)
 
     addarg_outputfile(parser, extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
 
@@ -1255,19 +1263,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelgridindex = list(dfselectedcells["inputcellid"])
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))
-    if args.classicartis:
-        import artistools.estimators.estimators_classic
-
-        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath)
-        assert estimatorsdict is not None
-        estimators = pl.LazyFrame(
-            [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()],
-            orient="row",
-        )
-    else:
-        estimators = at.estimators.scan_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
-        )
+    estimators = at.estimators.scan_estimators(
+        modelpath=modelpath,
+        modelgridindex=args.modelgridindex,
+        timestep=tuple(timesteps_included),
+        classicartis=args.classicartis,
+    )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise

@@ -220,10 +220,13 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "grid.dat": "b179427dc76e3b465d83fb303c866812fa9cb775114d1b8c45411dd36bf295b2",
             "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
         },
+        # the model and abundance files carry eight significant figures, and the vmax header nine, so
+        # that a model round-trips through the Float32 of the reader. Both checksums changed when
+        # write_artis_csv went from five significant figures to eight.
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-            "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
-            "model.txt": "e0deb71db1854a63ac126fba8de37cb195ec0fef9e419b84352c39e663f92327",
+            "abundances.txt": "3fa70e381e9d538d7c07d8447b3b8a23d34a2bcc996370b4b71990e42f219baf",
+            "model.txt": "c0af5ae9e2dda0cf27656f8488030dd03f016d53e3869c0fa4478a2ed1634d9c",
         },
     }
 

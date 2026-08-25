@@ -13,13 +13,18 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import C_cm_per_s
+from artistools.constants import hc_in_ev_cm
 from artistools.constants import K_B_ev_per_K
+from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
+from artistools.plottools import set_plot_title
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -36,7 +41,6 @@ class IonTuple(t.NamedTuple):
 
 def get_kurucz_transitions() -> tuple[pl.DataFrame, list[IonTuple]]:
     """Return the transitions from the bundled Kurucz gfall line list, and the ions they cover."""
-    hc_in_ev_cm = 0.0001239841984332003
 
     class KuruczTransitionTuple(t.NamedTuple):
         Z: int
@@ -139,7 +143,7 @@ def generate_ion_spectrum(
     flux = (transitions["flux_factor"] * transitions[popcolumn]).cast(pl.Float64).to_numpy()
 
     centre_index = np.round((lambda_angstroms - args.xmin) / plot_resolution).astype(np.int64)
-    sigma_angstroms = lambda_angstroms * args.sigma_v * 1e5 / C_cm_per_s
+    sigma_angstroms = lambda_angstroms * args.sigma_v * km_to_cm / C_cm_per_s
     sigma_gridpoints = np.ceil(sigma_angstroms / plot_resolution).astype(np.int64)
     halfwidth = (args.gaussian_window * sigma_gridpoints).astype(np.int64)
 
@@ -170,6 +174,7 @@ def make_plot(
     xmax: float,
     figure_title: str,
     outputfilename: str,
+    args: argparse.Namespace,
 ) -> None:
     """Plot one panel per ion plus a combined panel, and save the figure."""
     npanels = len(ionlist)
@@ -190,7 +195,7 @@ def make_plot(
 
     if figure_title:
         print(figure_title)
-        axes[0].set_title(figure_title, fontsize=10)
+    set_plot_title(axes[0], figure_title, args)
 
     yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
     for seriesindex, temperature in enumerate(temperature_list):
@@ -239,6 +244,11 @@ def make_plot(
     save_figure(fig, outputfilename, format="pdf")
 
 
+def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
+    """Return the LTE partition function of the ion at the excitation temperature."""
+    return pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item()
+
+
 def add_upper_lte_pop(
     dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
 ) -> pl.DataFrame:
@@ -258,14 +268,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=None)
 
+    addarg_notitle(parser)
+
     addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=3500,
         xmaxdefault=8000,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
         include_y=False,
+        wavelength_aliases=True,
     )
 
     parser.add_argument("-T", type=float, dest="T", default=[], nargs="*", help="Temperature in Kelvin")
@@ -282,7 +294,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, kind="int", default=70)
 
-    parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, default=0)
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
@@ -320,7 +332,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
-        modeldata = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))[0].collect()
+        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             print("no estimators")
@@ -364,8 +376,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
         if dfnltepops.is_empty():
-            print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
-            sys.exit(1)
+            at.exit_with_error(f"no NLTE populations for cell {modelgridindex} at timestep {timestep}")
 
         ionpopdict = {
             IonTuple(Z, ion_stage): float(
@@ -478,9 +489,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 pldflevels = ion["levels"]
                 assert isinstance(pldflevels, pl.DataFrame | pl.LazyFrame)
                 pldflevels = pldflevels.lazy().collect()
-                ltepartfunc = (
-                    pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item()
-                )
+                ltepartfunc = get_lte_partfunc(pldflevels, T_exc)
 
             else:
                 ltepartfunc = 1.0
@@ -522,15 +531,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 else:
                     T_exc = vardict[temperature]
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
-                    if args.atomicdatabase == "artis":
-                        ltepartfunc = (
-                            pldflevels
-                            .select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp())
-                            .sum()
-                            .item()
-                        )
-                    else:
-                        ltepartfunc = 1.0
+                    ltepartfunc = get_lte_partfunc(pldflevels, T_exc) if args.atomicdatabase == "artis" else 1.0
                     dftransitions = add_upper_lte_pop(
                         pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
                     )
@@ -600,6 +601,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.xmax,
         figure_title,
         outputfilename,
+        args,
     )
 
 

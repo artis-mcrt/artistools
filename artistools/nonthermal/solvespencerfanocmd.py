@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,6 +12,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import EV_to_erg
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
@@ -93,7 +93,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, kind="int")
 
-    parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, default=0)
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -146,12 +146,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections",
     )
 
-    parser.add_argument(
-        "-o",
-        action="store",
-        dest="outputfile",
-        default=defaultoutputfile,
-        help="Path/filename for PDF file if --makeplot is enabled",
+    at.addarg_outputfile(
+        parser, default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file if --makeplot is enabled"
     )
 
     parser.add_argument("-ostat", action="store", help="Path/filename for stats output")
@@ -181,8 +177,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.timedays:
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
         elif args.timestep is None:
-            print("A time or timestep must be specified.")
-            sys.exit()
+            at.exit_with_error("specify a time or a timestep, e.g. -timedays 250 or -timestep last")
 
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:
@@ -198,8 +193,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
         if dfpops.is_empty():
-            print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
-            raise AssertionError
+            at.exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]
         x_e = estim["nne"] / nntot

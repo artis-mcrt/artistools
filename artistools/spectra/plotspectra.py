@@ -26,17 +26,23 @@ from matplotlib.lines import Line2D
 import artistools.spectra as atspectra
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
@@ -51,14 +57,16 @@ from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
+from artistools.misc import path_is_codecomparison
 from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
-from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
+from artistools.plottools import set_exponent_label
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
@@ -69,12 +77,33 @@ if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 
 
+def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
+    """Return the reference spectrum path, or None when no such file exists.
+
+    The file is either at the given path or in the bundled data/refspectra folder, and a compressed
+    file with the same name is also accepted.
+    """
+    for folder in (Path(), Path(get_path("artistools_dir"), "data", "refspectra")):
+        if found := firstexisting_or_none(filename, folder=folder, tryzipped=True, search_subfolders=False):
+            return found
+
+    return None
+
+
 def find_reference_spectrum_file(filename: Path | str) -> Path:
     """Return the reference spectrum path, falling back to the bundled data/refspectra folder."""
     try:
         return firstexisting(filename, tryzipped=True)
     except FileNotFoundError:
         return firstexisting(filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True)
+
+
+def path_is_reference_spectrum(filepath: str | Path) -> bool:
+    """Return whether the path is a reference spectrum file and not an ARTIS model.
+
+    This mirrors path_is_reference_lightcurve, so that the two commands classify a path the same way.
+    """
+    return not path_is_artis_model(filepath) and find_reference_spectrum_file_or_none(filepath) is not None
 
 
 def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
@@ -225,7 +254,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         else f"{timeavg} days"
     )
 
-    fig, axis = plt.subplots()
+    fig, axis = plt.subplots(figsize=get_figsize(args))
 
     if args.binflux:
         new_lambda_angstroms = []
@@ -653,12 +682,7 @@ def make_spectrum_plot(
         # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
         # spectrum neither reads an unset variable nor re-writes the previous model's spectrum under its own name
         seriesdata: pl.DataFrame | None = None
-        if (
-            Path(specpath).is_file()
-            or Path(get_path("artistools_dir"), "data", "refspectra", specpath).is_file()
-            or Path(get_path("artistools_dir"), "data", "refspectra", f"{specpath!s}.xz").is_file()
-            or Path(get_path("artistools_dir"), "data", "refspectra", f"{specpath!s}.zst").is_file()
-        ):
+        if path_is_reference_spectrum(specpath):
             # reference spectrum
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
@@ -698,7 +722,7 @@ def make_spectrum_plot(
                         **plotkwargs,
                     )
             refspecindex += 1
-        elif not Path(specpath).exists() and Path(specpath).parts[0] == "codecomparison":
+        elif path_is_codecomparison(specpath):
             # timeavg = (args.timemin + args.timemax) / 2.
             (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays
@@ -1125,18 +1149,17 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
     if args.normalised and args.ymax is None:
         args.ymax = 1.10
     for index, axis in enumerate(axes):
-        if args.xmin is not None:
-            axis.set_xlim(left=args.xmin)
-        if args.xmax is not None:
-            axis.set_xlim(right=args.xmax)
-        if args.ymin is not None:
-            axis.set_ylim(bottom=args.ymin)
-        if args.ymax is not None:
-            axis.set_ylim(top=args.ymax)
+        # the scale goes on before the limits: a limit turns autoscaling off, so setting one first would
+        # lose the linear padding of a log axis. make_emissionabsorption_plot reads the x range back from
+        # the axes, thus the x limits have to be applied here rather than after the data is drawn.
         if args.logscalex:
             axis.set_xscale("log")
         if args.logscaley:
             axis.set_yscale("log")
+        if args.xmin is not None or args.xmax is not None:
+            axis.set_xlim(args.xmin, args.xmax)
+        if args.ymin is not None or args.ymax is not None:
+            axis.set_ylim(args.ymin, args.ymax)
 
         if not args.logscalex:
             axis.xaxis.set_major_locator(ticker.MaxNLocator(nbins="auto", steps=[1, 2, 2.5, 5, 10], prune="both"))
@@ -1150,12 +1173,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.An
         else:
             axis.set_ylabel(ylabel)
 
-        if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel()))
-            axis.yaxis.set_major_locator(
-                ticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune="both")
-            )
-            axis.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        if not args.logscaley:
+            set_exponent_label(axis)
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
 
@@ -1320,12 +1339,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="x (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
 
-    parser.add_argument(
-        "-xmin", "-lambdamin", dest="xmin", type=float, default=None, help="Plot range: minimum x range"
-    )
-
-    parser.add_argument(
-        "-xmax", "-lambdamax", dest="xmax", type=float, default=None, help="Plot range: maximum x range"
+    addarg_axislimits(
+        parser,
+        include_y=False,
+        wavelength_aliases=True,
+        xminhelp="Plot range: minimum x range",
+        xmaxhelp="Plot range: maximum x range",
     )
 
     xbinsizegroup = parser.add_mutually_exclusive_group()
@@ -1413,13 +1432,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hideother", action="store_true", help="Hide other contributions")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
 
     parser.add_argument("-title", type=str, default=None, help="Custom plot title text")
 
     parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
 
     parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
 
@@ -1431,7 +1450,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_outputfile(parser, helptext="path/filename for PDF file")
 
-    parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
+    addarg_dpi(parser)
+
+    addarg_show(parser)
 
     parser.add_argument(
         "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files"
@@ -1514,12 +1535,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
     args.color = get_series_colors(
-        [not path_is_artis_model(filepath) for filepath in args.specpath], makelist(args.color)
+        [path_is_reference_spectrum(filepath) for filepath in args.specpath], makelist(args.color)
     )
 
     if args.distmpc is None:
         for filepath in args.specpath:
-            if not path_is_artis_model(filepath):
+            if path_is_reference_spectrum(filepath):
                 fullfilepath = find_reference_spectrum_file(filepath)
                 args.distmpc = get_file_metadata(fullfilepath).get("dist_mpc")
                 if args.distmpc is not None:

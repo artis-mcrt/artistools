@@ -9,7 +9,6 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
@@ -35,13 +34,17 @@ from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
+from artistools.misc import addarg_timedays
 from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
+from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
@@ -317,7 +320,6 @@ def plot_artis_lightcurve(
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    usedegrees: bool = False,
     args: argparse.Namespace | None = None,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
@@ -352,7 +354,7 @@ def plot_artis_lightcurve(
     print(f" modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
-        axis.set_title(args.title if isinstance(args.title, str) else linelabel)
+        at.plottools.set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
 
     if directionbins is None:
         directionbins = [-1]
@@ -375,18 +377,18 @@ def plot_artis_lightcurve(
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
         if lcfilename is None:
-            lcfilename = (
-                "light_curve_res.out"
-                if directionbins != [-1]
-                else "gamma_light_curve.out"
-                if escape_type == "TYPE_GAMMA"
-                else "light_curve.out"
-            )
+            lcfilename = None
 
         try:
-            lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+            lcpath = (
+                at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+                if lcfilename is not None
+                else at.lightcurve.find_lightcurve_file(
+                    modelpath, directionresolved=directionbins != [-1], gamma=escape_type == "TYPE_GAMMA"
+                )
+            )
         except FileNotFoundError:
-            print(f"WARNING: Skipping because {lcfilename} does not exist")
+            print(f"WARNING: Skipping because the light curve file of {modelpath} does not exist")
             return None
 
         lcdataframes = at.lightcurve.readfile(
@@ -405,7 +407,6 @@ def plot_artis_lightcurve(
     dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
     lcdataframes = dict(
@@ -471,9 +472,7 @@ def plot_artis_lightcurve(
                 if not linelabel_is_custom:
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
-                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
-                )
+                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
                 if args.average_over_phi_angle:
                     plotkwargs["color"] = "lightgrey"
             else:
@@ -686,7 +685,6 @@ def make_lightcurve_plot(
                         directionbins=dirbin,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
-                        usedegrees=args.usedegrees,
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
@@ -754,16 +752,12 @@ def make_lightcurve_plot(
 
         axis.set_ylabel(yvarname + str_units)
 
-        if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
-            axis.yaxis.set_major_locator(
-                mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
-            )
+        if not args.logscaley:
+            at.plottools.set_exponent_label(axis)
 
     if args.colorbarcostheta or args.colorbarphi:
-        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
-        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
+        make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
@@ -795,10 +789,6 @@ def make_lightcurve_plot(
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
     """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
-    if "labelfontsize" in args:
-        font = {"size": args.labelfontsize}
-        mpl.rc("font", **font)
-
     args.subplots = False  # TODO: set as command line arg
 
     if (args.filter and len(args.filter) > 1) or args.subplots:
@@ -814,12 +804,8 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         rows = 1
         cols = 1
 
-    if "figwidthscale" not in args:
-        args.figwidthscale = 1.0
-    if "figwidth" not in args:
-        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
-    if "figheight" not in args:
-        args.figheight = 5.0 * 1.1 * rows * 1.5
+    if "figwidth" not in args or "figheight" not in args:
+        args.figwidth, args.figheight = get_figsize(args, rows=rows, cols=cols, aspect=1.65, offset=0.0)
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -910,12 +896,7 @@ def make_colorbar_viewingangles_colormap() -> t.Any:
 
 
 def get_viewinganglecolor_for_colorbar(
-    angle: int,
-    costheta_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
-    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
-    scaledmap: t.Any,
-    plotkwargs: dict[str, t.Any],
-    args: argparse.Namespace,
+    angle: int, scaledmap: t.Any, plotkwargs: dict[str, t.Any], args: argparse.Namespace
 ) -> tuple[dict[str, t.Any], int]:
     """Set the series colour from the direction bin's cos(theta) or phi, and return the kwargs and the colour index."""
     nphibins = at.get_viewingdirection_phibincount()
@@ -935,7 +916,6 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
     scaledmap: t.Any,
     args: argparse.Namespace,
     fig: mplfig.Figure | None = None,
@@ -967,21 +947,19 @@ def make_colorbar_viewingangles(
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "ϕ bin"
 
-    hidecolorbar = False
-    if not hidecolorbar:
-        if fig:
-            cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
-        else:
-            assert ax is not None
-            firstaxis = iter_axes(ax)[0]
-            axisfigure = firstaxis.get_figure()
-            assert axisfigure is not None
-            cbar = axisfigure.colorbar(scaledmap, ax=ax)
-        if label:
-            cbar.set_label(label, rotation=0)
-        cbar.locator = mplticker.FixedLocator(ticklocs)
-        cbar.formatter = mplticker.FixedFormatter(ticklabels)
-        cbar.update_ticks()
+    if fig:
+        cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
+    else:
+        assert ax is not None
+        firstaxis = iter_axes(ax)[0]
+        axisfigure = firstaxis.get_figure()
+        assert axisfigure is not None
+        cbar = axisfigure.colorbar(scaledmap, ax=ax)
+    if label:
+        cbar.set_label(label, rotation=0)
+    cbar.locator = mplticker.FixedLocator(ticklocs)
+    cbar.formatter = mplticker.FixedFormatter(ticklabels)
+    cbar.update_ticks()
 
 
 def make_band_lightcurves_plot(
@@ -1000,9 +978,6 @@ def make_band_lightcurves_plot(
     plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
-            usedegrees=args.usedegrees
-        )
         scaledmap = make_colorbar_viewingangles_colormap()
 
     # every model is asked for the same bands, so one list serves the loader, the reference curves, the
@@ -1075,9 +1050,7 @@ def make_band_lightcurves_plot(
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
-                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
-                    )
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
@@ -1098,7 +1071,7 @@ def make_band_lightcurves_plot(
     set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
+        make_colorbar_viewingangles(scaledmap, args, fig=fig, ax=ax)
 
     if args.filter and len(bandnames) == 1:
         args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
@@ -1225,6 +1198,28 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 #     color='k'
 
 
+def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
+    """Return the reference wavelength of the band in Angstroms, from the filter transmission file."""
+    with (filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
+        return float(f.readlines()[2])
+
+
+def deredden_band_magnitudes(dfband: pl.DataFrame, lambda0: float, a_v: float, r_v: float) -> pl.DataFrame:
+    """Return the band data with the magnitudes corrected for reddening by the CCM89 extinction law.
+
+    ccm89 gives the extinction in magnitudes at the reference wavelength of the band, and an extinction in
+    magnitudes is additive, thus the correction is a subtraction. The earlier code turned the magnitudes
+    into fluxes, applied the law, and turned them back. That round trip cancels: the flux zero point and
+    the speed of light both divide out, which is why no such constant appears here.
+    """
+    from extinction import ccm89
+
+    wavelengths = np.full(dfband.height, lambda0, dtype=float)
+    extinction_mag = ccm89(wavelengths, a_v=a_v, r_v=r_v)
+
+    return dfband.with_columns(pl.Series("magnitude", dfband["magnitude"].to_numpy() - extinction_mag))
+
+
 def plot_lightcurve_from_refdata(
     filter_names: Sequence[str],
     lightcurvefilename: Path | str,
@@ -1233,9 +1228,6 @@ def plot_lightcurve_from_refdata(
     ax: npt.NDArray[t.Any] | mplax.Axes,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
-    from extinction import apply
-    from extinction import ccm89
-
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
@@ -1247,12 +1239,8 @@ def plot_lightcurve_from_refdata(
         axis = axes[axnumber]
         if filter_name_raw == "bol":
             continue
-        with Path(filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
-            lines = f.readlines()
-        lambda0 = float(lines[2])
+        lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
 
-        if filter_name_raw == "bol":
-            continue
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
         # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
@@ -1261,20 +1249,8 @@ def plot_lightcurve_from_refdata(
         if "a_v" in metadata or "e_bminusv" in metadata:
             print("Correcting for reddening")
 
-            clightinangstroms = 3e18
-            # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[filter_name].height, lambda0, dtype=float)
-
-            flux = (
-                clightinangstroms
-                / (lambda0**2)
-                * 10 ** -((filter_data[filter_name]["magnitude"].to_numpy() + 48.6) / 2.5)
-            )  # gs
-
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
-
-            filter_data[filter_name] = filter_data[filter_name].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
+            filter_data[filter_name] = deredden_band_magnitudes(
+                filter_data[filter_name], lambda0, metadata["a_v"], metadata["r_v"]
             )
         else:
             print("WARNING: did not correct for reddening")
@@ -1300,17 +1276,12 @@ def plot_color_evolution_from_data(
     args: argparse.Namespace,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89."""
-    from extinction import apply
-    from extinction import ccm89
-
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = []
     for i, filter_name_raw in enumerate(filter_names):
-        with (filterdir / Path(f"{filter_name_raw}.txt")).open(encoding="utf-8") as f:
-            lines = f.readlines()
-        lambda0 = float(lines[2])
+        lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
 
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data.append(lightcurve_from_data.filter(pl.col("band") == filter_name))
@@ -1322,17 +1293,7 @@ def plot_color_evolution_from_data(
             elif "a_v" not in metadata:
                 metadata["a_v"] = metadata["e_bminusv"] * metadata["r_v"]
 
-            clightinangstroms = 3e18
-            # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[i].height, lambda0, dtype=float)
-
-            flux = clightinangstroms / (lambda0**2) * 10 ** -((filter_data[i]["magnitude"].to_numpy() + 48.6) / 2.5)
-
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
-
-            filter_data[i] = filter_data[i].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
-            )
+            filter_data[i] = deredden_band_magnitudes(filter_data[i], lambda0, metadata["a_v"], metadata["r_v"])
 
     # for i in range(2):
     #     # if metadata['label'] == 'SN 2018byg':
@@ -1366,7 +1327,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_seriesstyle(parser)
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
 
     parser.add_argument(
         "-title",
@@ -1510,7 +1471,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Redshift to z = x. Expects array length of number modelpaths.If not to be redshifted then = 0.",
     )
 
-    parser.add_argument("--show", action="store_true", default=False, help="Show plot before saving")
+    addarg_show(parser)
 
     # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
     #                     help='Calculate band risetime, peak mag and delta m15 values for '
@@ -1599,7 +1560,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make scatter plot of light curve brightness at a given time (requires timedays)",
     )
 
-    parser.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to plot")
+    addarg_timedays(parser, helptext="Time in days to plot")
 
     parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
 

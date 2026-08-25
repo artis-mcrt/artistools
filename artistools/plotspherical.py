@@ -16,10 +16,12 @@ from artistools.constants import day_to_s
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
+from artistools.plottools import set_plot_title
 
 
 def plot_spherical(
@@ -291,7 +293,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
@@ -332,7 +334,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outformat = "png"
     elif args.timestep is not None:
         time_ranges = [
-            (tstarts[int(ts)], tends[int(ts)], f"timestep {ts}") for ts in at.parse_range_list(args.timestep)
+            (tstarts[ts], tends[ts], f"timestep {ts}")
+            for ts in at.parse_range_list(args.timestep, dictvars={"last": len(tstarts) - 1})
         ]
         outformat = args.format or "pdf"
     else:
@@ -363,10 +366,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             phireverse=args.phireverse,
         )
 
-        if not args.notitle:
-            axes[0].set_title(
-                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
-            )
+        set_plot_title(
+            axes[0], f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", args
+        )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
         outfilename = str(

@@ -13,6 +13,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
@@ -132,7 +133,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfmodel = pl.DataFrame(
         {
             "inputcellid": inputcellid,
-            "vel_r_max_kmps": rout / (a["time"] * day_to_s) / 1e5,
+            "vel_r_max_kmps": rout / (a["time"] * day_to_s) / km_to_cm,
             "logrho": np.log10(a["dens"]),
             "X_Fegroup": a["specfrac"][:, ige_index].sum(axis=1),
         }

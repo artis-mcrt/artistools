@@ -15,6 +15,9 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.misc import addarg_action
+from artistools.misc import require_action
+from artistools.plottools import save_or_show
 
 
 def _cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -237,12 +240,10 @@ def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument(
-        "action",
-        nargs="?",
-        default=None,
+    addarg_action(
+        parser,
         choices=["plotrate", "describe", "fromtrajectory"],
-        help=(
+        helptext=(
             "plotrate: plot the analytic nuclear heating power against time."
             " describe: report the total energy and rate from the written energy files."
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate."
@@ -257,9 +258,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot and inspect the ARTIS energy input files."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.action is None:
-        print("ERROR: no action given. Run with --help to see the available actions.")
-        raise SystemExit(1)
+    require_action(args)
 
     modelpath = Path(args.modelpath)
 
@@ -270,12 +269,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        if args.outputfile:
-            fig.savefig(args.outputfile)
-            at.print_saved(args.outputfile)
-        else:
-            plt.show()
-        plt.close(fig)
+        save_or_show(fig, args.outputfile)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

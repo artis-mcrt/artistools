@@ -11,6 +11,7 @@ import polars as pl
 
 import artistools as at
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_timestep
@@ -26,16 +27,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
     addarg_timestep(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
-    parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, default=0)
     parser.add_argument("element", nargs="?", default="Fe", help="Plotted element")
     addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=1000,
         xmaxdefault=15000,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
         include_y=False,
+        wavelength_aliases=True,
     )
     addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
@@ -48,8 +49,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
-        print(f"Could not find element '{args.element}'")
-        raise AssertionError
+        at.exit_with_error(f"could not find element '{args.element}'")
 
     timestepmin = args.timestep
 
@@ -59,12 +59,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not input_files:
         print("No macroatom files found")
-        raise FileNotFoundError
-
-    specfilename = Path(args.modelpath, "spec.out")
-
-    if not specfilename.is_file():
-        print(f"Could not find {specfilename}")
         raise FileNotFoundError
 
     outputfile = str(args.outputfile).format(args.modelgridindex, timestepmin, timestepmax)

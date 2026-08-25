@@ -12,6 +12,7 @@ import polars as pl
 from artistools.constants import C_cm_per_s
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source
 from artistools.misc.fileio import read_wsv
 from artistools.misc.modelinfo import get_inputparams
@@ -77,7 +78,7 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
-    if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
+    if path_is_codecomparison(modelpath):
         from artistools.codecomparison import get_timestep_times as cc_get_times
 
         return (
@@ -154,6 +155,13 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
+def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
+    """Return the timestep that a token names, resolving a keyword such as "last"."""
+    token = token.strip()
+
+    return dictvars[token] if token in dictvars else int(token)
+
+
 def get_time_range(
     modelpath: Path | str,
     timestep_range_str: str | None = None,
@@ -180,12 +188,23 @@ def get_time_range(
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
-        assert timemin is None
-        assert timemax is None
+        # a silent precedence hid the argument that the user gave and did not get, thus the combination
+        # is refused here, where every command that selects a time range passes through
+        given = [
+            name
+            for name, value in (("-timedays", timedays_range_str), ("-timemin", timemin), ("-timemax", timemax))
+            if value is not None
+        ]
+        if given:
+            msg = f"Specify only one of -timestep and {', '.join(given)}"
+            raise ValueError(msg)
+
+        # "last" names the final timestep, so that a command needs no arithmetic to ask for it
+        dictvars = {"last": len(tmids) - 1}
         if "-" in timestep_range_str:
-            timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
+            timestepmin, timestepmax = (parse_timestep_token(nts, dictvars) for nts in timestep_range_str.split("-"))
         else:
-            timestepmin = int(timestep_range_str)
+            timestepmin = parse_timestep_token(timestep_range_str, dictvars)
             timestepmax = timestepmin
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:

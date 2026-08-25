@@ -40,7 +40,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
 def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
     """Return the spherically averaged bolometric luminosity against time, read from light_curve.out."""
     # readfile keys the spherically averaged light curve as dirbin -1, and light_curve.out has no other bins
-    lcdata = at.lightcurve.readfile(modelpath / "light_curve.out")[-1].collect()
+    lcdata = at.lightcurve.readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1].collect()
 
     lightcurvedata = {"time": lcdata["time_days"], "lum (erg/s)": lcdata["luminosity_erg/s"]}
 

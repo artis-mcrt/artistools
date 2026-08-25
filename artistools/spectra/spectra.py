@@ -68,6 +68,7 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
     """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
+    from artistools.constants import c_ang_per_s
     from artistools.constants import h_erg_s
     from artistools.constants import h_ev_s
     from artistools.constants import megaparsec_to_cm
@@ -147,7 +148,8 @@ def get_dfspectrum_x_y_with_units(
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
             # [xunit/s/cm^2]
-            erg_to_angstrom = 1.986454e-8
+            # the wavelength of a one erg photon, i.e. Planck's constant times the speed of light
+            erg_to_angstrom = h_erg_s * c_ang_per_s
             xunit_per_erg = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
             dfspectrum = dfspectrum.with_columns(
                 y=(pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
@@ -689,17 +691,23 @@ def get_from_packets(
     return dirbin_spectra
 
 
-@lru_cache(maxsize=16)
+# maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
+# scan would hold only the query plan, thus each collect by a caller would parse the file again.
+@lru_cache(maxsize=2)
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set."""
+    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+
+    Callers must not mutate the returned frame, which is shared between calls.
+    """
     specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
     return (
         pl
-        .scan_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        .read_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
+        .lazy()
     )
 
 
@@ -1535,55 +1543,37 @@ def get_flux_contributions_from_packets(
     contribution_list = []
     # These are the bin centres of each group spectrum. An empty selection thus also gives the correct axis.
     array_lambda = get_binned_lambda_frame(lambda_bin_edges).select("lambda_angstroms").collect().to_series().to_numpy()
-    group_em_specs = dict(
-        zip(
-            emissiongroups.keys(),
-            pl.collect_all([
-                get_from_packets(
-                    modelpath=modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    fluxfilterfunc=filterfunc,
-                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    directionbins=[directionbin],
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    gamma=gamma,
-                    packets_are_time_filtered=True,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
-                for dfpkts in emissiongroups.values()
-            ]),
-            strict=True,
+
+    def group_spectra(groups: dict[str, pl.DataFrame], dirbin: int, **extraargs: t.Any) -> dict[str, pl.DataFrame]:
+        """Return the binned spectrum of each group, collecting every group in one pass."""
+        return dict(
+            zip(
+                groups.keys(),
+                pl.collect_all([
+                    get_from_packets(
+                        modelpath=modelpath,
+                        timelowdays=timelowdays,
+                        timehighdays=timehighdays,
+                        lambda_bin_edges=lambda_bin_edges,
+                        use_time=use_time,
+                        fluxfilterfunc=filterfunc,
+                        nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                        directionbins=[dirbin],
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
+                        gamma=gamma,
+                        packets_are_time_filtered=True,
+                        **extraargs,
+                    )[dirbin].select("lambda_angstroms", "f_lambda")
+                    for dfpkts in groups.values()
+                ]),
+                strict=True,
+            )
         )
-    )
-    group_abs_specs = dict(
-        zip(
-            absorptiongroups.keys(),
-            pl.collect_all([
-                get_from_packets(
-                    modelpath=modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    nu_column="absorption_freq",
-                    fluxfilterfunc=filterfunc,
-                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    directionbins=[directionbin],
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    gamma=gamma,
-                    packets_are_time_filtered=True,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
-                for dfpkts in absorptiongroups.values()
-            ]),
-            strict=True,
-        )
-    )
+
+    group_em_specs = group_spectra(emissiongroups, directionbin)
+    group_abs_specs = group_spectra(absorptiongroups, directionbin, nu_column="absorption_freq")
     for groupname in allgroupnames:
         array_flambda_emission = (
             group_em_specs[groupname]["f_lambda"].to_numpy()
@@ -1653,16 +1643,15 @@ def sort_and_reduce_flux_contribution_list(
     import matplotlib.pyplot as plt
 
     from artistools.plottools import glasbey_category20_nogreys
+    from artistools.plottools import remove_greys
 
     tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    rgb_candidates: list[tuple[float, float, float]] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    rgb_candidates: list[mplt.ColorType] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    # the first ten glasbey colours repeat the tab10 colours that tab20 already supplies, and skipping
+    # them keeps the order of every series that a published figure already used
     rgb_candidates.extend(glasbey_category20_nogreys[10:])
 
-    color_list: list[mplt.ColorType] = [
-        rgb
-        for rgb in rgb_candidates
-        if rgb[0] != rgb[1] or rgb[1] != rgb[2] or rgb[0] != rgb[2]  # remove greys
-    ]
+    color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)

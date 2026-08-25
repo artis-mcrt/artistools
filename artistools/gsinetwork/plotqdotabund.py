@@ -18,7 +18,9 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_outputpath
@@ -115,7 +117,6 @@ def get_artis_abund_sequences(
 ) -> dict[int, pl.DataFrame]:
     """Return the ARTIS abundance of each species against time, for each model cell in mgiplotlist."""
     arr_abund_artis: dict[int, pl.DataFrame] = {}
-    MH = 1.67352e-24  # g
 
     with contextlib.suppress(FileNotFoundError):
         estimators_lazy = at.estimators.scan_estimators(
@@ -149,7 +150,7 @@ def get_artis_abund_sequences(
             for striso in allisotopes_in_df
         ).with_columns([
             (
-                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH / pl.col("rho"))
+                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho"))
                 + pl.col(f"offset_{striso}")
             ).alias(f"X_{striso}")
             for striso in allisotopes_in_df
@@ -441,21 +442,15 @@ def get_particledata(
         )
         heatcols = ["hbeta", "halpha", "hspof"]
         dfheating = at.read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
-        # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
-        # because of Fortran output
-        dfheating = dfheating.with_columns(
-            pl
-            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-            .otherwise(cs.by_dtype(pl.String))
-            .cast(pl.Float32)
-        )
+        dfheating = dfheating.with_columns(fix_fortran_exponents(pl.Float64))
 
         nstep_timesec: dict[int, float] = dict(dfheating.select("#count", "time/s").iter_rows())
 
         particledata = particledata.with_columns(
             pl.Series(
-                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
+                # a time outside the network range gets NaN rather than the clamped end value, which
+                # would draw a flat plateau that looks like data
+                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col], left=np.nan, right=np.nan)],
                 dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
             ).alias(col)
             for col in heatcols
@@ -477,7 +472,9 @@ def get_particledata(
                         traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
                     )
                 )
-                assert math.isclose(traj_time_s, nstep_timesec[nts])
+                at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
+                    particleid, traj_time_s, nstep_timesec[nts]
+                )
                 for strnuc, Z, N in arr_strnuc_z_n:
                     if N is None:
                         # sum over all isotopes of this element

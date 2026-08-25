@@ -17,9 +17,12 @@ import polars as pl
 from matplotlib import ticker
 
 import artistools as at
+from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.plottools import save_figure
 
@@ -437,7 +440,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=(5.0 * 2 * cols, 5.0 * 0.85 * rows),
+        figsize=at.plottools.get_figsize(args, rows=rows, cols=cols, aspect=0.85, offset=0.0),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
 
@@ -466,20 +469,21 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
                 ymin, _ = axis.get_ylim()
                 _, xmax = axis.get_xlim()
                 axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
-        ax[0].legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
+        at.plottools.set_legend(ax[0], args, loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
         assert isinstance(ax, mplax.Axes)
-        ax.legend(loc="best", frameon=True, fontsize="x-small", ncol=1)
+        at.plottools.set_legend(ax, args, loc="best", frameon=True, fontsize="x-small", ncol=1)
         ax.set_yscale("log")
 
-    if not args.notitle:
-        title = f"Z={Z}, ion_stage={ion_stage}"
-        if args.x == "time":
-            title += f", mgi = {args.modelgridindex[0]}"
-        elif args.x == "velocity":
-            title += f", {timedayslist} days"
-        at.plottools.iter_axes(ax)[-1].set_title(title)
+    title = f"Z={Z}, ion_stage={ion_stage}"
+    if args.x == "time":
+        title += f", mgi = {args.modelgridindex[0]}"
+    elif args.x == "velocity":
+        title += f", {timedayslist} days"
+    at.plottools.set_plot_title(at.plottools.iter_axes(ax)[-1], title, args)
 
+    if args.labelfontsize is None:
+        args.labelfontsize = 18
     at.plottools.set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
@@ -619,7 +623,7 @@ def make_singletimestep_plot(
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
     lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
     velocity_kmps_of_mgi = {
-        mgi: vel_r_mid / 1e5
+        mgi: vel_r_mid / km_to_cm
         for mgi, vel_r_mid in lzmodeldata
         .filter(pl.col("modelgridindex").is_in(mgilist))
         .select(["modelgridindex", "vel_r_mid"])
@@ -681,8 +685,7 @@ def make_singletimestep_plot(
             subplot_title += f" {time_days:.0f}d"
         subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{{-3}}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
-        if not args.notitle:
-            axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
+        at.plottools.set_plot_title(axes[mgifirstaxindex], subplot_title, args)
 
         for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
             lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
@@ -702,19 +705,7 @@ def make_singletimestep_plot(
                 lastsubplot=lastsubplot,
             )
 
-            # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
-            #             horizontalalignment='right', verticalalignment='top', fontsize=12)
-            ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
-
             ax.set_xlim(left=-1)
-            if args.xmin is not None:
-                ax.set_xlim(left=args.xmin)
-            if args.xmax is not None:
-                ax.set_xlim(right=args.xmax)
-            if args.ymin is not None:
-                ax.set_ylim(bottom=args.ymin)
-            if args.ymax is not None:
-                ax.set_ylim(top=args.ymax)
 
             if not args.nolegend and prev_ion_stage != ion_stage:
                 ax.legend(loc="best", handlelength=1, frameon=True, numpoints=1, edgecolor="0.93", facecolor="0.93")
@@ -723,6 +714,14 @@ def make_singletimestep_plot(
 
     if args.x == "index":
         axes[-1].set_xlabel(r"Level index")
+
+    if args.labelfontsize is None:
+        args.labelfontsize = 10
+    at.plottools.set_axis_properties(axes, args)
+    # after set_axis_properties, which turns the automatic minor ticks on: a level index axis wants one
+    # minor tick for each level, thus it keeps its own locator
+    for ax in axes:
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
@@ -741,16 +740,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     #                     help='Paths to ARTIS folders')
 
     timegroup = parser.add_mutually_exclusive_group()
-    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
+    timegroup.add_argument("-timedays", "-time", help="Time in days to plot")
 
     timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to plot")
 
     cellgroup = parser.add_mutually_exclusive_group()
-    cellgroup.add_argument("-modelgridindex", "-cell", nargs="?", default=[], help="Plotted modelgrid cell(s)")
+    # a mutually exclusive group, thus the flags are spelled out rather than taken from addarg_modelgridindex
+    cellgroup.add_argument(
+        "-modelgridindex", "-cell", "-mgi", default=[], help="Plotted model grid cell, or a range e.g. 3-7"
+    )
 
-    cellgroup.add_argument("-velocity", "-v", nargs="?", default=[], type=float, help="Specify cell by velocity")
+    cellgroup.add_argument("-velocity", "-v", default=[], type=float, nargs="*", help="Specify cell by velocity")
 
     parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
 
@@ -778,9 +780,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hide-lte-tr", action="store_true", help="Hide LTE populations at T=T_R")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
+
+    parser.add_argument(
+        "-labelfontsize",
+        type=float,
+        default=None,
+        help="Font size of the tick labels. Defaults to 10 for the level population plots, whose subplots are "
+        "short, and to 18 for the time and velocity plots",
+    )
 
     addarg_axislimits(parser)
 
@@ -798,12 +808,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath = at.normalize_path_list(args.modelpath)
 
         if not args.ion_stages:
-            msg = "Please specify ion_stage"
-            raise ValueError(msg)
+            at.exit_with_error("specify an ion stage with -ion_stages, e.g. -ion_stages 2")
 
         if not args.levels:
-            msg = "Please specify levels"
-            raise ValueError(msg)
+            at.exit_with_error("specify the levels to plot with -levels, e.g. -levels 0 1 2")
 
     if args.timedays:
         if "-" in args.timedays:
@@ -837,7 +845,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
-    mgilist = [int(mgi) for mgi in args.modelgridindex]
+    mgilist = [mgi for cellarg in args.modelgridindex for mgi in at.parse_range_list(str(cellarg))]
     mgilist.extend(
         mgi
         for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]

@@ -10,6 +10,8 @@ import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.misc import addarg_action
+from artistools.misc import require_action
 
 
 def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
@@ -76,12 +78,10 @@ def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument(
-        "action",
-        nargs="?",
-        default=None,
+    addarg_action(
+        parser,
         choices=["uniform", "describe"],
-        help=(
+        helptext=(
             "uniform: write an opacity.txt with the same opacity in every cell."
             " describe: report the opacities in an existing opacity.txt."
         ),
@@ -95,9 +95,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Write or inspect an ARTIS grey opacity.txt."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.action is None:
-        print("ERROR: no action given. Run with --help to see the available actions.")
-        raise SystemExit(1)
+    require_action(args)
 
     modelpath = Path(args.modelpath)
 

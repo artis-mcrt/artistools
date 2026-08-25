@@ -11,8 +11,10 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import day_to_s
+from artistools.constants import h_ev_s
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
@@ -117,7 +119,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
     path = Path(path)
-    if not path.exists() and path.parts[0] == "codecomparison":
+    if path_is_codecomparison(path):
         return str(path)
 
     abspath = path.resolve()
@@ -176,7 +178,7 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
-        MeV_in_Hz = 2.417989242084918e20
+        MeV_in_Hz = 1e6 / h_ev_s
         params["nusyn_min"], params["nusyn_max"] = (
             float(x) * MeV_in_Hz for x in readnoncommentline(inputfile).split("#")[0].split()
         )

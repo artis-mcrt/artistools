@@ -1,18 +1,25 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
+from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
+from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
 from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
+from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridindex
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
+from artistools.misc.cliutils import addarg_nolegend as addarg_nolegend
+from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_outputfile as addarg_outputfile
 from artistools.misc.cliutils import addarg_outputpath as addarg_outputpath
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
+from artistools.misc.cliutils import addarg_show as addarg_show
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import color_arg as color_arg
+from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
@@ -21,6 +28,7 @@ from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
+from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
@@ -45,6 +53,7 @@ from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
+from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
 from artistools.misc.fileio import polars_source as polars_source
 from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import read_wsv as read_wsv
@@ -53,7 +62,6 @@ from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_gif as write_gif
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
 from artistools.misc.fileio import zopen as zopen
-from artistools.misc.fileio import zopen_unshadowed as zopen_unshadowed
 from artistools.misc.fileio import zopenpl as zopenpl
 from artistools.misc.general import df_filter_minmax_bracketed as df_filter_minmax_bracketed
 from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap

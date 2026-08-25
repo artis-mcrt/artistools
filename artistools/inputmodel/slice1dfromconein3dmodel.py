@@ -12,6 +12,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_outputpath
 
@@ -47,26 +48,14 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.Dat
     dfmodel = pldfmodel
     args.t_model = modelmeta["t_model_init_days"]
 
-    if args.positive_axis:
-        print("using positive axis")
-        cone = dfmodel.filter(
-            pl.col(f"pos_{args.sliceaxis}_mid")
-            >= (
-                1.0
-                / (np.tan(theta))
-                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
-            )
-        )
-    else:
-        print("using negative axis")
-        cone = dfmodel.filter(
-            pl.col(f"pos_{args.sliceaxis}_mid")
-            <= -(
-                1.0
-                / (np.tan(theta))
-                * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
-            )
-        )
+    print(f"using {'positive' if args.positive_axis else 'negative'} axis")
+    radial = (
+        1.0
+        / (np.tan(theta))
+        * (pl.col(f"pos_{args.other_axis2}_mid") ** 2 + pl.col(f"pos_{args.other_axis1}_mid") ** 2).sqrt()
+    )
+    axiscol = pl.col(f"pos_{args.sliceaxis}_mid")
+    cone = dfmodel.filter(axiscol >= radial if args.positive_axis else axiscol <= -radial)
 
     return cone.collect()
 
@@ -195,7 +184,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
 
         # Combine all bin results into a single DataFrame
         slice1d = pl.DataFrame(shellrows)
-        slice1d = slice1d.with_columns(pl.col("r_bin_max_boundary") / (args.t_model * day_to_s * 1e5)).rename({
+        slice1d = slice1d.with_columns(pl.col("r_bin_max_boundary") / (args.t_model * day_to_s * km_to_cm)).rename({
             "r_bin_max_boundary": "vel_r_max_kmps"
         })
 
@@ -205,7 +194,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         slice1d = (
             # Convert positions to velocities
             slice1d
-            .with_columns(pl.col(f"pos_{args.sliceaxis}_min") / (args.t_model * day_to_s * 1e5))
+            .with_columns(pl.col(f"pos_{args.sliceaxis}_min") / (args.t_model * day_to_s * km_to_cm))
             .rename({f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
             # Remove columns we don't need
             .drop("inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min")
@@ -280,9 +269,9 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone["pos_z_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
-    y = cone["pos_y_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
-    z = cone["pos_x_min"] / 1e5 / (args.t_model * day_to_s) / 1e3
+    x = cone["pos_z_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
+    y = cone["pos_y_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
+    z = cone["pos_x_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
 

@@ -73,7 +73,7 @@ def test_add_cli_arg_helpers() -> None:
         "model2",
         "-ts",
         "45-65",
-        "-t",
+        "-time",
         "50-100",
         "-colors",
         "red",
@@ -196,31 +196,32 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read().decode("utf-8") == "xz contents\n"
 
 
-def test_zopen_unshadowed(tmp_path: Path) -> None:
+def test_zopen_does_not_let_a_stale_compressed_sibling_shadow_a_named_file(tmp_path: Path) -> None:
     """A stale compressed sibling never shadows a freshly written uncompressed file."""
     (tmp_path / "both.txt").write_text("fresh contents\n")
     with gzip.open(tmp_path / "both.txt.gz", "wt", encoding="utf-8") as f:
         f.write("stale contents\n")
 
-    # zopen prefers the compressed sibling, which is why the plain-open call sites need the other helper
+    # the named file wins, thus re-running the simulation is enough to change what a plot shows
     with at.zopen(tmp_path / "both.txt") as f:
-        assert f.read() == "stale contents\n"
-
-    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
         assert f.read() == "fresh contents\n"
+
+    # zopenpl applies the same precedence, so the two readers never disagree about which file to read
+    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt"
 
     # with the plain file gone, the compressed sibling is used after all
     (tmp_path / "both.txt").unlink()
-    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+    with at.zopen(tmp_path / "both.txt") as f:
         assert f.read() == "stale contents\n"
+    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt.gz"
 
     # a compressed file addressed by its own name is decompressed, not opened raw
-    with at.zopen_unshadowed(tmp_path / "both.txt.gz") as f:
+    with at.zopen(tmp_path / "both.txt.gz") as f:
         assert f.read() == "stale contents\n"
 
     # a name with no file and no compressed sibling reports the name the caller asked for
     with pytest.raises(FileNotFoundError):
-        at.zopen_unshadowed(tmp_path / "absent.txt")
+        at.zopen(tmp_path / "absent.txt")
 
 
 def test_read_wsv(tmp_path: Path) -> None:

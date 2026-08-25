@@ -12,6 +12,11 @@ hc_in_ev_angstrom = 12398.419843320025  # Planck constant times speed of light [
 K_B_ev_per_K = 8.617333262145179e-05  # Boltzmann constant [eV / K]
 K_B_erg_per_K = 1.38064852e-16  # Boltzmann constant [erg / K]
 
+amu_g = 1.66053906892e-24  # Atomic mass unit [g] (CODATA)
+# Mass of the hydrogen atom [g]. ARTIS uses this value to define its nniso number densities, thus a
+# conversion between nniso and a mass fraction must use the same value and not the atomic mass unit.
+MH_g = 1.67352e-24
+
 EV_to_erg = 1.6021772e-12  # Electronvolt [erg]
 MEV_to_erg = 1.6021772e-6  # Megaelectronvolt [erg]
 

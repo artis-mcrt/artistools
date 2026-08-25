@@ -18,10 +18,11 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.misc import path_is_artis_model
-from artistools.misc.fileio import find_compressed
+from artistools.misc.fileio import firstexisting_or_none
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -556,7 +557,7 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
         msg = f"a flat cosmology with Om0={Om0} stops expanding at z={zturnaround}, so z={z} has no distance"
         raise ValueError(msg)
 
-    dist_hubble_mpc = (C_cm_per_s / 1e5) / H0  # c in km/s over H0 in km/s/Mpc
+    dist_hubble_mpc = (C_cm_per_s / km_to_cm) / H0  # c in km/s over H0 in km/s/Mpc
 
     # de Sitter: a matter-free universe expands with E(z) = 1, making the comoving distance exactly (c/H0) z
     if Om0 == 0.0:
@@ -644,15 +645,26 @@ def find_bol_reflightcurve_file(lightcurvefilename: str | Path) -> Path | None:
     """
     bundledfolder = Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves")
     for folder in (Path(), bundledfolder):
-        filepath = Path(folder, lightcurvefilename)
-        if filepath.is_file():
-            return filepath
-
-        compressedfile = find_compressed(filepath)
-        if compressedfile is not None:
-            return compressedfile[1]
+        if found := firstexisting_or_none(lightcurvefilename, folder=folder, tryzipped=True, search_subfolders=False):
+            return found
 
     return None
+
+
+def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = False, gamma: bool = False) -> Path:
+    """Return the path of the ARTIS light curve output file, accepting a compressed file.
+
+    One owner of the file name, so that every command reads the same file for the same request and
+    reports the same message when it is absent.
+    """
+    if directionresolved:
+        lcfilename = "light_curve_res.out"
+    elif gamma:
+        lcfilename = "gamma_light_curve.out"
+    else:
+        lcfilename = "light_curve.out"
+
+    return at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
 
 
 def path_is_reference_lightcurve(filepath: str | Path) -> bool:

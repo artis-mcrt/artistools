@@ -82,10 +82,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 raise ValueError(msg)
 
             dfelabundances = at.inputmodel.get_initelemabundances(modelpath)
-            dfgridcontributions = (
-                at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-                if Path(modelpath, "gridcontributions.txt").is_file()
-                else None
+            dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(
+                modelpath
             )
 
             (dfmodel_out, dfelabundances_out, _, modelmeta_out) = at.inputmodel.dimension_reduce_model(

@@ -99,7 +99,8 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
-        with snapshotinfofile.open("rt", encoding="utf-8") as fsnapshotinfo:
+        # the glob above accepts a compressed info file, thus the read has to accept one too
+        with at.zopen(snapshotinfofile, encoding="utf-8") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
@@ -279,11 +280,7 @@ def makemodelfromgriddata(
     if getattr(args, "getcellopacityfromYe", False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
 
-    dfgridcontributions = (
-        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-        if Path(gridfolderpath, "gridcontributions.txt").is_file()
-        else None
-    )
+    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(gridfolderpath)
 
     dfmodel = dfmodel.sort("inputcellid")
     assert dfmodel.schema["inputcellid"].is_integer()

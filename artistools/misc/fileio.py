@@ -80,38 +80,26 @@ def get_decompress_open(ext: str) -> t.Any:
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.zst, filename.gz or filename.xz."""
-    if found := find_compressed(filename):
-        ext, filepath = found
-        return get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.Any:
+    """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
-    # open() can raise file not found if this file doesn't exist
-    return Path(filename).open(mode=mode, encoding=encoding)
-
-
-def zopen_unshadowed(filename: Path | str, encoding: str | None = None, errors: str | None = None) -> t.Any:
-    """Open filename, falling back to a compressed sibling only when the named file does not exist.
-
-    Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
-    same precedence read_wsv uses, and is what a plain Path.open call is replaced by. The errors argument
-    takes the value that the open functions take, e.g. "replace" for a file that holds a bad byte.
+    The named file wins, thus a stale compressed copy never shadows a file that a run has just written.
+    This is the same precedence that read_wsv and firstexisting use. The errors argument takes the value
+    that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
         if found is None:
             # let open() raise the FileNotFoundError naming the file the caller actually asked for
-            return filepath.open(encoding=encoding, errors=errors)
+            return filepath.open(mode=mode, encoding=encoding, errors=errors)
         ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding, errors=errors)
+        return get_decompress_open(ext)(foundpath, mode=mode, encoding=encoding, errors=errors)
 
-    # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
-    # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding, errors=errors)
+        return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding, errors=errors)
 
-    return filepath.open(encoding=encoding, errors=errors)
+    return filepath.open(mode=mode, encoding=encoding, errors=errors)
 
 
 def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
@@ -131,11 +119,16 @@ def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = 
 
 
 def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
-    """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
-    if found := find_compressed(filename):
+    """Return a polars source for filename, or for a compressed sibling when the named file does not exist.
+
+    The named file wins, for the same reason as in zopen. If polars can read the file directly, this
+    returns a Path rather than a file object.
+    """
+    filepath = Path(filename)
+    if not filepath.is_file() and (found := find_compressed(filename)):
         return polars_source(found[1], mode=mode, encoding=encoding)
 
-    return Path(filename)
+    return polars_source(filepath, mode=mode, encoding=encoding)
 
 
 @contextlib.contextmanager
@@ -304,7 +297,7 @@ def read_wsv(
         # re-running find_compressed and reading the header out of a stale compressed sibling
         # the comment holds the column names, and it can hold a byte that is not valid UTF-8, thus
         # replace such a byte here as the read of the lines below also does
-        with zopen_unshadowed(filepath, errors="replace") as fin:
+        with zopen(filepath, errors="replace") as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
@@ -458,6 +451,17 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     filepath = Path(filepath)
 
     return filepath.is_dir() or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
+
+
+def path_is_codecomparison(filepath: Path | str) -> bool:
+    """Return whether the path is a virtual codecomparison path and not a real folder on disk.
+
+    A codecomparison path has the form "codecomparison/<model>/<code>". It names a data set of the
+    radiative transfer code comparison workshop, thus no such folder exists.
+    """
+    filepath = Path(filepath)
+
+    return not filepath.exists() and filepath.parts[0] == "codecomparison"
 
 
 def readnoncommentline(file: io.TextIOBase) -> str:

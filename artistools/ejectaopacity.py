@@ -152,7 +152,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # mutex with time in days:
     timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
-    timegroup.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to select.")
+    timegroup.add_argument("-timedays", "-time", help="Time in days to select.")
 
     at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
@@ -160,14 +160,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show the binned opacities for each cell (can be very large).",
     )
-    parser.add_argument(
-        "-modelgridindex",
-        "-mgi",
-        "-cell",
-        type=int,
-        default=None,
-        help="Model grid index (cell) to select. If not specified, all cells are processed.",
-    )
+    at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed.")
 
     parser.add_argument(
         "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities."
@@ -185,11 +178,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.timedays is not None:
-        assert args.timestep is None, "Cannot specify both timestep and timedays. Please specify only one of them."
+        if args.timestep is not None:
+            at.exit_with_error("specify only one of -timestep and -timedays")
         timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
     else:
         timestep = args.timestep
-        assert timestep is not None, "Please specify either -timestep or -timedays."
+        if timestep is None:
+            at.exit_with_error("specify a time or a timestep, e.g. -timedays 250 or -timestep 30")
 
     dfestimators = (
         at.estimators

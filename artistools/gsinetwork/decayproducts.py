@@ -13,18 +13,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-import polars.selectors as cs
 
 import artistools as at
 from artistools.commands import get_path
+from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
-amu_g = 1.66e-24
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -205,15 +205,7 @@ def process_trajectory(
             )
         )
         .select("#count", "hbeta", "htot")
-        .with_columns(
-            # repair Fortran triple-digit exponents like 1.735904-244 (missing "e"), which make a
-            # column parse as strings, then cast strictly so genuinely corrupt values still raise
-            pl
-            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-            .otherwise(cs.by_dtype(pl.String))
-            .cast(pl.Float64)
-        )
+        .with_columns(fix_fortran_exponents(pl.Float64))
         .join(
             at.read_wsv(
                 get_tar_member_extracted_path(
@@ -252,7 +244,7 @@ def process_trajectory(
     decay_powers |= {
         col: (
             np.array([
-                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
+                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else math.nan
                 for networktimestepindex in networktimestepindices
             ])
             * traj_mass_grams

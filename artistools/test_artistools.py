@@ -116,6 +116,9 @@ def test_shared_cli_args_consistent() -> None:
 
     parser = artistools.__main__.build_parser()
     actionsbycommand: dict[str, dict[str, argparse.Action]] = {}
+    # a dest can have more than one action, e.g. a deprecated hidden alias, so the flags of every action
+    # for that dest are collected together
+    flagsbycommand: dict[str, dict[str, set[str]]] = {}
 
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
@@ -124,28 +127,36 @@ def test_shared_cli_args_consistent() -> None:
                 for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":
-                actionsbycommand.setdefault(prefix.strip(), {})[action.dest] = action
+                command = prefix.strip()
+                flagsbycommand.setdefault(command, {}).setdefault(action.dest, set()).update(action.option_strings)
+                if action.option_strings and not all(flag.startswith("--") for flag in action.option_strings):
+                    actionsbycommand.setdefault(command, {})[action.dest] = action
+                else:
+                    actionsbycommand.setdefault(command, {}).setdefault(action.dest, action)
 
     collect(parser, "")
     assert len(actionsbycommand) > 30
 
     for command, actions in actionsbycommand.items():
         for dest, action in actions.items():
-            flags = set(action.option_strings)
+            flags = flagsbycommand[command][dest]
             label = f"{command}: {dest} {sorted(flags)}"
             if dest == "modelpath" and "-modelpath" in flags:
                 assert action.type is Path, label
             elif dest == "timestep" and "-timestep" in flags:
                 assert "-ts" in flags, label
             elif dest == "timedays" and "-timedays" in flags:
-                assert {"-time", "-t"} <= flags, label
+                assert "-time" in flags, label
+                assert "-t" not in flags, label
             elif dest == "maxpacketfiles":
                 assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
                 assert action.type is int, label
             elif dest == "figscale":
                 assert action.type is float, label
-            elif dest == "outputfile" and "-outputfile" in flags:
-                assert "-o" in flags, label
+            elif dest == "outputfile":
+                # both directions: a command that hand-rolls -o alone makes argparse read
+                # "-outputfile name" as "-o utputfile" plus a stray token
+                assert {"-outputfile", "-o"} <= flags, label
             elif dest == "filtersavgol":
                 assert action.nargs == 2, label
                 assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
@@ -296,7 +307,9 @@ def test_timestep_times() -> None:
 def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
-    assert dicthash == "1edcddd5d36cc2eaed94ad083dacfb95c6915b8fd4f62591e2b79ceca6885d1e", dicthash
+    # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
+    # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
+    assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
 
 
 def test_macroatom() -> None:

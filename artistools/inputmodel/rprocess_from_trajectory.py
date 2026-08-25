@@ -22,6 +22,7 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.misc.fileio import scan_lines
 
 
@@ -91,6 +92,21 @@ def _extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extr
 
         # a concurrent process may have extracted the same member first, but the contents are identical
         Path(tempdir, memberfilename).replace(path_extracted_file)
+
+
+def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
+    """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
+
+    Fortran writes a value like 1.735904-244 without the "e", thus the column parses as strings. The cast is
+    strict, thus a value that is corrupt for a different reason still raises.
+    """
+    return (
+        pl
+        .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+        .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
+        .otherwise(cs.by_dtype(pl.String))
+        .cast(dtype)
+    )
 
 
 def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
@@ -185,6 +201,19 @@ def get_closest_network_timesteps(
     raise AssertionError(msg)
 
 
+def check_traj_time_matches(particleid: int, traj_time_s: float, target_time_s: float) -> None:
+    """Raise when a network step time is not the time that the caller asked for.
+
+    The tolerance is wide because a network step lands near the target rather than on it, and because the
+    times are read from a text file at a precision the writer chose.
+    """
+    if not math.isclose(traj_time_s, target_time_s, rel_tol=0.2, abs_tol=1.0):
+        msg = (
+            f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {target_time_s} seconds"
+        )
+        raise AssertionError(msg)
+
+
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
@@ -275,9 +304,7 @@ def get_trajectory_abund_q(
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert math.isclose(massfractotal, 1.0, rel_tol=0.02)
-    if not math.isclose(traj_time_s, t_model_s, rel_tol=0.2, abs_tol=1.0):
-        msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
-        raise AssertionError(msg)
+    check_traj_time_matches(particleid, traj_time_s, t_model_s)
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
         (Z, N): massfrac / massfractotal for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].iter_rows()
@@ -290,6 +317,17 @@ def get_trajectory_abund_q(
         )
 
     return dict_traj_nuc_abund
+
+
+def get_gridparticlecontributions_or_none(gridcontribpath: Path | str) -> pl.DataFrame | None:
+    """Return the particle contributions, or None when the grid folder holds no contributions file.
+
+    A caller that tested for the plain file itself could not see a compressed one, and so skipped the
+    loader that would have found it.
+    """
+    contribfile = at.firstexisting_or_none("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)
+
+    return None if contribfile is None else get_gridparticlecontributions(gridcontribpath)
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
@@ -531,7 +569,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
             / 3.0
             * math.pi
             * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-            * (1e5 * t_model_init_seconds_in) ** 3
+            * (km_to_cm * t_model_init_seconds_in) ** 3
         )
         .with_columns(
             # now replace the density at the input time with the density at required time
@@ -541,7 +579,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
                 / 3.0
                 * math.pi
                 * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-                * (1e5 * t_model_init_seconds) ** 3
+                * (km_to_cm * t_model_init_seconds) ** 3
             )
         )
     )

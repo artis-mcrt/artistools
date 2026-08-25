@@ -17,7 +17,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
     """
     atomic_composition = {}
 
-    with at.zopen_unshadowed(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
+    with at.zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         ioncount = 0
         Z = None
         for row in foutput:
@@ -46,11 +46,9 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
             outdict[f"nnion_{ionstr}"] = value_thision
             i += 1
 
-            elpop = outdict.get(f"nnelement_{atomic_number}", 0)
-            outdict[f"nnelement_{atomic_number}"] = elpop + value_thision
-
-            totalpop = outdict.get("nntot", 0)
-            outdict["nntot"] = totalpop + value_thision
+            elsymbol = at.get_elsymbol(atomic_number)
+            elpop = outdict.get(f"nnelement_{elsymbol}", 0)
+            outdict[f"nnelement_{elsymbol}"] = elpop + value_thision
 
 
 def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
@@ -62,14 +60,16 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     for folder in folderlist_all:
         outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
         if outputfile is not None:
-            with at.zopen_unshadowed(outputfile, encoding="utf-8") as output_0:
+            with at.zopen(outputfile, encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip(".\n").split(" ")[-1]
                     for line in output_0
                     if "[debug] update_packets: updating packet 0 for timestep" in line
                 ]
-            first_ts = timesteps_in_dir[0]
-            first_timesteps_in_dir[str(folder)] = int(first_ts)
+            # a log that records no packet update gives no first timestep, thus the folder is left out and
+            # the caller starts it at zero
+            if timesteps_in_dir:
+                first_timesteps_in_dir[str(folder)] = int(timesteps_in_dir[0])
 
     return first_timesteps_in_dir
 
@@ -77,8 +77,10 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
 def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
     """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
-    estimfiles = list(
-        itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))
+    # the trailing wildcard accepts a compressed file, which at.zopen below reads. The macroatom reader
+    # globs the same way.
+    estimfiles = sorted(
+        itertools.chain(Path(modelpath).glob("estimators_????.out*"), Path(modelpath).glob("*/estimators_????.out*"))
     )
     if not estimfiles:
         print("No estimator files found")
@@ -95,9 +97,13 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     for estfilepath in estimfiles:
         # If classic plots break it's probably getting first timestep here
         # Try either of the next two lines
-        timestep = first_timesteps_in_dir[str(estfilepath.parent)]  # get the starting timestep for the estfile
-        # timestep = first_timesteps_in_dir[str(estfile[:-20])]
-        # timestep = 0  # if the first timestep in the file is 0 then this is fine
+        # the run log gives the first timestep of the folder. A folder with no log starts at zero, which is
+        # correct when the run was not restarted.
+        if str(estfilepath.parent) in first_timesteps_in_dir:
+            timestep = first_timesteps_in_dir[str(estfilepath.parent)]
+        else:
+            print(f"WARNING: no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
+            timestep = 0
         with at.zopen(estfilepath) as estfile:
             modelgridindex = -1
             for line in estfile:

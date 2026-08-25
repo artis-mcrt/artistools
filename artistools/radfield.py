@@ -18,13 +18,17 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
+from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
+from artistools.plottools import set_plot_title
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -294,7 +298,7 @@ def plot_celltimestep(
         axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
     )
 
-    ymax = args.ymax if args.ymax >= 0 else max(ymax, ymax3)
+    ymax = args.ymax if args.ymax is not None else max(ymax, ymax3)
     try:
         specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
@@ -326,14 +330,13 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
     velocity_kmps = (
-        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
+        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / km_to_cm
     )
 
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
     # figure_title += '\ncell {modelgridindex} timestep {timestep}'
 
-    if not args.notitle:
-        axis.set_title(figure_title, fontsize=11)
+    set_plot_title(axis, figure_title, args)
 
     # axis.annotate(figure_title,
     #               xy=(0.02, 0.96), xycoords='axes fraction',
@@ -347,7 +350,7 @@ def plot_celltimestep(
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
 
-    axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
+    at.plottools.set_exponent_label(axis)
 
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
 
@@ -363,7 +366,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, kind="strappend")
 
-    parser.add_argument("-modelgridindex", "-cell", action="append", help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, kind="append", helptext="Model grid cell to plot, or a range e.g. 3-7")
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -373,19 +376,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=1000,
         xmaxdefault=20000,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
-        include_y=False,
+        wavelength_aliases=True,
     )
-
-    parser.add_argument("-ymax", type=int, default=-1, help="Plot range: maximum J_nu")
 
     parser.add_argument("--normalised", action="store_true", help="Normalise the spectra to their peak values")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 

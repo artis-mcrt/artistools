@@ -281,9 +281,13 @@ glasbey_category20 = [
     (0.345098, 0.745098, 0.556863),
 ]
 
-glasbey_category20_nogreys = [
-    color for color in glasbey_category20 if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]
-]
+
+def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
+    """Return the colours of palette that are not grey, i.e. those whose red, green and blue differ."""
+    return [color for color in palette if len(set(mplcolors.to_rgb(color))) > 1]
+
+
+glasbey_category20_nogreys = remove_greys(glasbey_category20)
 
 # the plot colours of the reference data series, in the order that the code uses them
 refseries_colors = ("0.0", "0.4", "0.6", "0.7")
@@ -337,6 +341,27 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
+def get_figsize(
+    args: argparse.Namespace, *, rows: int = 1, aspect: float = 0.4, offset: float = 0.25, cols: int = 1
+) -> tuple[float, float]:
+    """Return the figure size in inches that -figscale and -figwidthscale ask for.
+
+    The width of one column is 5 inches at a figure scale of 1. The height is the offset plus the aspect
+    ratio of each row. Only the commands that declare -figwidthscale scale the width separately.
+    """
+    figwidth = args.figscale * 5.0 * cols * getattr(args, "figwidthscale", 1.0)
+
+    return (figwidth, args.figscale * 5.0 * (offset + rows * aspect))
+
+
+def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> None:
+    """Draw the legend of the axes, unless -nolegend was given."""
+    if getattr(args, "nolegend", False):
+        return
+
+    ax.legend(**legendkwargs)
+
+
 def get_unused_colors(
     palette: Sequence["mplt.ColorType"], seriescolors: Sequence[str | None]
 ) -> list["mplt.ColorType"]:
@@ -347,7 +372,17 @@ def get_unused_colors(
     """
     assignedcolors = get_assigned_colors(seriescolors)
 
-    return [color for color in palette if mplcolors.to_hex(color) not in assignedcolors]
+    # a palette can hold one colour twice, e.g. a tab10 colour and the rounded glasbey copy of it, and
+    # handing the same colour to two series is the thing this function exists to prevent
+    unused: list[mplt.ColorType] = []
+    seen: set[str] = set()
+    for color in palette:
+        hexcolor = mplcolors.to_hex(color)
+        if hexcolor not in assignedcolors and hexcolor not in seen:
+            seen.add(hexcolor)
+            unused.append(color)
+
+    return unused
 
 
 def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
@@ -363,10 +398,27 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
-def save_figure(fig: mplfig.Figure, outpath: "Path | str", **savefig_kwargs: t.Any) -> None:
-    """Save the figure to outpath, report the path, and close the figure."""
+def save_figure(fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False, **savefig_kwargs: t.Any) -> None:
+    """Save the figure to outpath, report the path, and close the figure.
+
+    With show, the figure opens in a window first, thus a resize there reaches the saved file. This is
+    what the -show help text of every command promises.
+    """
+    if show:
+        plt.show()
+
     fig.savefig(outpath, **savefig_kwargs)
     print_saved(outpath)
+    plt.close(fig)
+
+
+def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
+    """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
+    if outputfile:
+        fig.savefig(outputfile)
+        print_saved(outputfile)
+    else:
+        plt.show()
     plt.close(fig)
 
 
@@ -409,7 +461,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
     def __init__(self, labeltemplate: str) -> None:
         """Store the axis label template, which must contain a placeholder for the exponent."""
-        assert "{" in labeltemplate
+        assert "{}" in labeltemplate
         self.labeltemplate = labeltemplate
 
         super().__init__(useOffset=False, useMathText=True)
@@ -444,6 +496,22 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
     def set_axis(self, axis: t.Any) -> None:
         super().set_axis(axis)
         self._set_formatted_label_text()
+
+
+def set_exponent_label(axis: mplax.Axes) -> None:
+    """Move the power-of-ten offset of the y axis into the axis label, when the label has a place for it.
+
+    The label carries a "{}" placeholder that ExponentLabelFormatter fills. A label without one keeps the
+    offset text that matplotlib draws above the axis.
+    """
+    if "{}" not in axis.get_ylabel():
+        return
+
+    axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel()))
+    axis.yaxis.set_major_locator(
+        mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune="both")
+    )
+    axis.yaxis.set_minor_locator(mplticker.AutoMinorLocator())
 
 
 def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
@@ -484,7 +552,9 @@ def set_axis_properties(
     """
     if "subplots" not in args:
         args.subplots = False
-    if "labelfontsize" not in args:
+    # a Namespace membership test matches the name, thus a parser default of None reached tick_params
+    # as labelsize=None, which is a silent no-op that left the rcParams size in place
+    if getattr(args, "labelfontsize", None) is None:
         args.labelfontsize = 18
 
     if xlimits is None:

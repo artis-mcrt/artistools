@@ -16,6 +16,7 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -207,7 +208,7 @@ def add_derived_columns_lazy(
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
 
-        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * 100000.0).collect().to_series().to_list())]
+        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
 
         def velocity_to_mgi(velcol: str) -> pl.Expr:
             return pl.col(velcol).cut(breaks=velbins).to_physical().cast(pl.Int32) - 1

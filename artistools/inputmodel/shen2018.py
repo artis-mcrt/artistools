@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import polars as pl
 
 import artistools as at
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 
 
@@ -42,8 +43,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         .with_columns(
             m_shell_grams=pl.col("m_enc_outer") - pl.col("m_enc_outer").shift(1, fill_value=0.0),
-            r_outer=pl.col("v_outer") * 1e5 * t_model_init_seconds,
-            r_inner=pl.col("v_outer").shift(1, fill_value=0.0) * 1e5 * t_model_init_seconds,
+            r_outer=pl.col("v_outer") * km_to_cm * t_model_init_seconds,
+            r_inner=pl.col("v_outer").shift(1, fill_value=0.0) * km_to_cm * t_model_init_seconds,
         )
         .with_columns(
             rho=pl.col("m_shell_grams") / (4.0 / 3.0 * math.pi * (pl.col("r_outer") ** 3 - pl.col("r_inner") ** 3)),
