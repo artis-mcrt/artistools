@@ -6,32 +6,16 @@ import importlib
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Mapping
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
 if t.TYPE_CHECKING:
     from collections.abc import Generator
 
-# top-level commands (one file installed per command)
-# we generally should phase this out except for a couple of main ones like at and artistools
-COMMANDS = [
-    "at",
-    "artistools",
-    "makeartismodel1dslicefromcone",
-    "makeartismodel",
-    "plotartisdensity",
-    "plotartisestimators",
-    "plotartislightcurve",
-    "plotartislinefluxes",
-    "plotartismacroatom",
-    "plotartisnltepops",
-    "plotartisnonthermal",
-    "plotartisradfield",
-    "plotartisspectrum",
-    "plotartistransitions",
-    "plotartisinitialcomposition",
-    "plotartisviewingangles",
-]
+# the console scripts that take a subcommand as their first argument. Every other console script names
+# its subcommand in the CommandSpec of that subcommand, thus get_script_subcommands finds it
+DISPATCHERSCRIPTS = ("at", "artistools")
 
 
 @dc.dataclass(frozen=True, slots=True)
@@ -46,6 +30,9 @@ class CommandSpec:
     helptext: str = ""
     aliases: tuple[str, ...] = ()
     hidden: bool = False
+
+    script: str = ""
+    """The per-command console script that runs this subcommand, e.g. plotartisestimators."""
 
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
@@ -135,9 +122,13 @@ subcommandtree: CommandTree = {
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
         ),
-        "makeartismodel": CommandSpec("inputmodel.makeartismodel", helptext="Tools to create an ARTIS input model."),
+        "makeartismodel": CommandSpec(
+            "inputmodel.makeartismodel", script="makeartismodel", helptext="Tools to create an ARTIS input model."
+        ),
         "makeartismodel1dslicefromcone": CommandSpec(
-            "inputmodel.slice1dfromconein3dmodel", helptext="Make a 1D model from a cone in a 3D model."
+            "inputmodel.slice1dfromconein3dmodel",
+            script="makeartismodel1dslicefromcone",
+            helptext="Make a 1D model from a cone in a 3D model.",
         ),
         "makeartismodelfromparticlegridmap": CommandSpec(
             "inputmodel.modelfromhydro", helptext="Create an ARTIS format model from grid.dat."
@@ -177,35 +168,61 @@ subcommandtree: CommandTree = {
         helptext="Map tracer particle trajectories to a Cartesian grid.",
         hidden=True,  # duplicate of "inputmodel maptogrid"
     ),
-    "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the radial density profile of an ARTIS model."),
+    "plotdensity": CommandSpec(
+        "inputmodel.plotdensity",
+        script="plotartisdensity",
+        helptext="Plot the radial density profile of an ARTIS model.",
+    ),
     "plotestimators": CommandSpec(
-        "estimators.plotestimators", helptext="Plot ARTIS estimators.", aliases=("estimators",)
+        "estimators.plotestimators",
+        script="plotartisestimators",
+        helptext="Plot ARTIS estimators.",
+        aliases=("estimators",),
     ),
     "plotinitialcomposition": CommandSpec(
-        "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."
+        "inputmodel.plotinitialcomposition",
+        script="plotartisinitialcomposition",
+        helptext="Plot ARTIS input model composition.",
     ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.packetsplots",
         helptext="Plot last packet interaction properties versus ejecta velocity for selected packets.",
     ),
     "plotlightcurves": CommandSpec(
-        "lightcurve.plotlightcurve", helptext="Plot ARTIS light curves.", aliases=("lc", "plotlightcurve")
+        "lightcurve.plotlightcurve",
+        script="plotartislightcurve",
+        helptext="Plot ARTIS light curves.",
+        aliases=("lc", "plotlightcurve"),
     ),
-    "plotlinefluxes": CommandSpec("linefluxes", helptext="Plot line flux ratios for comparisons to Floers."),
+    "plotlinefluxes": CommandSpec(
+        "linefluxes", script="plotartislinefluxes", helptext="Plot line flux ratios for comparisons to Floers."
+    ),
     "plotlogfiles": CommandSpec("logfiles", helptext="Plot per-rank stage durations from ARTIS log files."),
-    "plotmacroatom": CommandSpec("macroatom", helptext="Plot the macroatom transitions."),
-    "plotnltepops": CommandSpec("nltepops.plotnltepops", helptext="Plot ARTIS non-LTE populations."),
-    "plotradfield": CommandSpec("radfield", helptext="Plot the radiation field estimators."),
+    "plotmacroatom": CommandSpec("macroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."),
+    "plotnltepops": CommandSpec(
+        "nltepops.plotnltepops", script="plotartisnltepops", helptext="Plot ARTIS non-LTE populations."
+    ),
+    "plotradfield": CommandSpec(
+        "radfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
+    ),
     "plotspectra": CommandSpec(
-        "spectra.plotspectra", helptext="Plot spectra from ARTIS and reference data.", aliases=("spec",)
+        "spectra.plotspectra",
+        script="plotartisspectrum",
+        helptext="Plot spectra from ARTIS and reference data.",
+        aliases=("spec",),
     ),
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
-    "plottransitions": CommandSpec("transitions", helptext="Plot estimated spectra from bound-bound transitions."),
+    "plottransitions": CommandSpec(
+        "transitions", script="plotartistransitions", helptext="Plot estimated spectra from bound-bound transitions."
+    ),
     "plotviewingangles": CommandSpec(
-        "viewing_angles_visualization", helptext="Generate a 3D visualization of an ARTIS model."
+        "viewing_angles_visualization",
+        script="plotartisviewingangles",
+        helptext="Generate a 3D visualization of an ARTIS model.",
     ),
     "spencerfano": CommandSpec(
         "nonthermal.solvespencerfanocmd",
+        script="plotartisnonthermal",
         helptext="Solve the Spencer-Fano equation using data from an ARTIS cell at some timestep.",
     ),
     "version": CommandSpec("commands", funcname="show_version", helptext="Print the artistools version."),
@@ -297,6 +314,68 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add no command-line arguments (for subcommands that take none)."""
 
 
+@lru_cache(maxsize=1)
+def get_script_subcommands() -> Mapping[str, tuple[str, ...]]:
+    """Return the subcommand path of each per-command console script, e.g. plotartisestimators.
+
+    The CommandSpec of a subcommand names its script, thus the tree holds both and no second table
+    can fall out of step with it.
+    """
+    scripts: dict[str, tuple[str, ...]] = {}
+
+    def walk(tree: CommandTree, path: tuple[str, ...]) -> None:
+        for name, spec in tree.items():
+            if isinstance(spec, dict):
+                walk(spec, (*path, name))
+            elif spec.script:
+                if spec.script in scripts:
+                    msg = f"Console script {spec.script} names more than one subcommand"
+                    raise ValueError(msg)
+                scripts[spec.script] = (*path, name)
+
+    walk(subcommandtree, ())
+
+    return MappingProxyType(scripts)
+
+
+def get_subcommand_of_script(scriptname: str) -> tuple[str, ...]:
+    """Return the subcommand that a per-command console script stands for, or an empty tuple."""
+    return get_script_subcommands().get(scriptname, ())
+
+
+def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
+    """Add the arguments of one subcommand to a parser, and record how to run it."""
+    submodule = importlib.import_module(f"artistools.{spec.module}")
+    submodule.addargs(parser)
+    # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
+    # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
+    # what the dispatcher gives it
+    parser.set_defaults(func=getattr(submodule, spec.funcname), argparser=parser)
+
+
+def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
+    """Return a parser for the subcommand of a per-command console script, or None for another name.
+
+    A script such as plotartisestimators runs one subcommand. Thus its parser holds that command alone,
+    and it imports one module in place of every module of the tree. The usage text also gives the name
+    of the script and not the name of the subcommand.
+    """
+    words = get_subcommand_of_script(scriptname)
+    if not words:
+        return None
+
+    node: CommandSpec | CommandTree = subcommandtree
+    for word in words:
+        assert isinstance(node, dict)
+        node = node[word]
+
+    assert isinstance(node, CommandSpec)
+    parser = argparse.ArgumentParser(prog=scriptname, description=node.helptext, formatter_class=CustomArgHelpFormatter)
+    addcommandargs(parser, node)
+
+    return parser
+
+
 def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandTree) -> None:
     """Register the subcommands in the tree on the parser."""
 
@@ -327,12 +406,7 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
                 formatter_class=CustomArgHelpFormatter,
                 **addparserkwargs,
             )
-            submodule = importlib.import_module(f"artistools.{spec.module}")
-            submodule.addargs(subparser)
-            # __main__ tests the arguments against the defaults of this parser, thus it needs the parser
-            # itself. parse_cli_args cannot make that test, because it returns at once for a parsed
-            # namespace, which is what the dispatcher gives it
-            subparser.set_defaults(func=getattr(submodule, spec.funcname), argparser=subparser)
+            addcommandargs(subparser, spec)
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
@@ -358,7 +432,7 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unu
         f.write(strsplit)
         f.write("\n")
 
-        for command in COMMANDS:
+        for command in (*DISPATCHERSCRIPTS, *sorted(get_script_subcommands())):
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(f"\n{completecommand}")
 

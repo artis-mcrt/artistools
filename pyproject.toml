@@ -87,23 +87,25 @@ dev = [
 Repository = "https://github.com/artis-mcrt/artistools"
 Issues = "https://github.com/artis-mcrt/artistools/issues"
 
+# Every script runs the same dispatcher. The name that starts it gives the subcommand, which
+# get_subcommand_of_script reads from subcommandtree. Add a new script there and not here.
 [project.scripts]
 at = 'artistools.__main__:main'
 artistools = 'artistools.__main__:main'
-makeartismodel1dslicefromcone = 'artistools.inputmodel.slice1dfromconein3dmodel:main'
-makeartismodel = 'artistools.inputmodel.makeartismodel:main'
-plotartisdensity = 'artistools.inputmodel.plotdensity:main'
-plotartisestimators = 'artistools.estimators.plotestimators:main'
-plotartislightcurve = 'artistools.lightcurve.plotlightcurve:main'
-plotartislinefluxes = 'artistools.linefluxes:main'
-plotartismacroatom = 'artistools.macroatom:main'
-plotartisnltepops = 'artistools.nltepops.plotnltepops:main'
-plotartisnonthermal = 'artistools.nonthermal:main'
-plotartisradfield = 'artistools.radfield:main'
-plotartisspectrum = 'artistools.spectra.plotspectra:main'
-plotartistransitions = 'artistools.transitions:main'
-plotartisinitialcomposition = 'artistools.inputmodel.plotinitialcomposition:main'
-plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
+makeartismodel1dslicefromcone = 'artistools.__main__:main'
+makeartismodel = 'artistools.__main__:main'
+plotartisdensity = 'artistools.__main__:main'
+plotartisestimators = 'artistools.__main__:main'
+plotartislightcurve = 'artistools.__main__:main'
+plotartislinefluxes = 'artistools.__main__:main'
+plotartismacroatom = 'artistools.__main__:main'
+plotartisnltepops = 'artistools.__main__:main'
+plotartisnonthermal = 'artistools.__main__:main'
+plotartisradfield = 'artistools.__main__:main'
+plotartisspectrum = 'artistools.__main__:main'
+plotartistransitions = 'artistools.__main__:main'
+plotartisinitialcomposition = 'artistools.__main__:main'
+plotartisviewingangles = 'artistools.__main__:main'
 
 [tool.cibuildwheel]
 build-frontend = "uv"

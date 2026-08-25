@@ -26,6 +26,7 @@ import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
 HIDDEN_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
+DISPATCHERTARGET = "artistools.__main__:main"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
@@ -70,30 +71,58 @@ def test_polars_series_expr_dispatch() -> None:
     assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
 
 
-def _console_script_targets() -> list[tuple[str, str, str]]:
-    """Return (command, submodulename, funcname) for every console script declared in pyproject.toml."""
+def _console_scripts() -> dict[str, str]:
+    """Return the declared target of each console script in pyproject.toml."""
     with (REPOPATH / "pyproject.toml").open("rb") as f:
         scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
 
-    targets = []
+    return scripts
+
+
+def test_console_scripts() -> None:
+    """Every console script must run the dispatcher, and must be a dispatcher or name a subcommand."""
+    scripts = _console_scripts()
+    subcommands = at.commands.get_script_subcommands()
+    assert set(scripts) == {*at.commands.DISPATCHERSCRIPTS, *subcommands}
+
     for command, target in scripts.items():
-        submodulename, _, targetfuncname = target.partition(":")
-        targets.append((command, submodulename, targetfuncname))
-    return targets
+        assert target == DISPATCHERTARGET, f"console script {command} must run {DISPATCHERTARGET}"
+
+    submodulename, _, funcname = DISPATCHERTARGET.partition(":")
+    assert callable(getattr(importlib.import_module(submodulename), funcname, None))
+
+    for scriptname, words in subcommands.items():
+        spec: at.commands.CommandSpec | at.commands.CommandTree = at.commands.subcommandtree
+        for word in words:
+            assert isinstance(spec, dict)
+            spec = spec[word]
+
+        assert not isinstance(spec, dict), f"{scriptname} names the command group {' '.join(words)}"
+        assert spec.script == scriptname
 
 
-@pytest.mark.parametrize(("command", "submodulename", "targetfuncname"), _console_script_targets())
-def test_console_script_target(command: str, submodulename: str, targetfuncname: str) -> None:
-    """Every console script must point to an importable module with a callable target function."""
-    submodule = importlib.import_module(submodulename)
-    assert callable(getattr(submodule, targetfuncname, None)), (
-        f"{submodulename}.{targetfuncname} not found for command {command}"
-    )
+def test_console_script_runs_its_own_subcommand(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A per-command console script must run its own subcommand and name itself in the usage text."""
+    import artistools.__main__
 
+    monkeypatch.setattr(sys, "argv", ["plotartisestimators", "--help"])
+    with pytest.raises(SystemExit):
+        artistools.__main__.main()
 
-def test_commands_list_matches_scripts() -> None:
-    """The completion setup command list must stay in sync with the console scripts in pyproject.toml."""
-    assert set(at.commands.COMMANDS) == {command for command, _, _ in _console_script_targets()}
+    helptext = capsys.readouterr().out
+    assert helptext.startswith("usage: plotartisestimators [-h]")
+    # the parser holds this one command, thus it neither lists nor imports the other commands
+    assert "-modelpath" in helptext
+    assert "plotspectra" not in helptext
+
+    parser = at.commands.build_script_parser("plotartisestimators")
+    assert parser is not None
+    assert parser.parse_args([]).func.__module__ == "artistools.estimators.plotestimators"
+
+    for dispatcher in at.commands.DISPATCHERSCRIPTS:
+        assert at.commands.build_script_parser(dispatcher) is None
 
 
 def test_subcommandtree() -> None:

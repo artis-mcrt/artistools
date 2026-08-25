@@ -6,6 +6,7 @@ import os
 import sys
 import typing as t
 from collections.abc import Sequence
+from pathlib import Path
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,9 +58,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Parse and run an artistools subcommand."""
     import argcomplete
 
+    from artistools.commands import build_script_parser
     from artistools.misc import check_time_selection
 
-    parser = build_parser()
+    # a per-command console script such as plotartisestimators runs this same function. The name that
+    # started it selects one subcommand, and that parser holds no other command. Every entry point then
+    # reads --quiet, reports a bad argument without a traceback, and tests the time arguments the same way
+    scriptparser = build_script_parser(Path(sys.argv[0]).stem) if args is argsraw is None else None
+    parser = scriptparser or build_parser()
 
     argcomplete.autocomplete(parser)
 
