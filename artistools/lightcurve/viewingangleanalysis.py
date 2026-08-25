@@ -18,6 +18,7 @@ import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import get_series_label
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
@@ -424,18 +425,19 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     # args.plotvalues.append((a0, a0))
     # linelabels.append(datalabel)
 
-    if not args.nolegend:
-        ax.legend(
-            args.plotvalues,
-            linelabels,
-            numpoints=1,
-            handler_map={tuple: HandlerTuple(ndivide=None)},
-            loc="upper right",
-            fontsize="x-small",
-            ncol=args.ncolslegend,
-            columnspacing=1,
-            frameon=False,
-        )
+    set_legend(
+        ax,
+        args,
+        handles=args.plotvalues,
+        labels=linelabels,
+        numpoints=1,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+        loc="upper right",
+        fontsize="x-small",
+        ncol=args.ncolslegend,
+        columnspacing=1,
+        frameon=False,
+    )
     # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
@@ -683,9 +685,6 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     axis.set_ylabel("erg/s")
     axis.set_yscale("log")
 
-    axis.set_title(f"time = {args.timedays} days")
-    if args.show:
-        plt.show()
-
+    at.plottools.set_plot_title(axis, f"time = {args.timedays} days", args)
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    save_figure(fig, plotname, format="pdf")
+    save_figure(fig, plotname, format="pdf", show=args.show)

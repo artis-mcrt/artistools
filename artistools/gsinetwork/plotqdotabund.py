@@ -417,7 +417,7 @@ def plot_cell_abund_evolution(
         axis.set_ymargin(0.05)
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
-    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
+    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999)
     save_figure(fig, pdfoutpath, format="pdf")
 
 

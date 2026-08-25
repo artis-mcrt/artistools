@@ -52,6 +52,7 @@ from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
+from artistools.plottools import set_legend
 from artistools.plottools import set_prop_cycle_unusedcolors
 
 if t.TYPE_CHECKING:
@@ -596,8 +597,7 @@ def make_lightcurve_plot(
 
     lumunit = get_plot_lum_unit(args)
 
-    figwidth = args.figscale * 5.0 * args.figwidthscale
-    figheight = args.figscale * 5.0 * (0.25 + 0.4)
+    figwidth, figheight = get_figsize(args)
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
@@ -717,11 +717,10 @@ def make_lightcurve_plot(
 
     assert plottedsomething, "No light curve was plotted"
 
-    if not args.nolegend:
-        axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1)
-        if args.plotthermalisation:
-            assert axistherm is not None
-            axistherm.legend(loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
+    set_legend(axis, args, loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1)
+    if args.plotthermalisation:
+        assert axistherm is not None
+        set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
 
     axis.set_xlabel(r"Time [days]")
 
@@ -770,10 +769,7 @@ def make_lightcurve_plot(
         # near-zero denominator at one timestep rescale every curve into the bottom of the panel
         axistherm.set_ylim(0.0, 1.0)
 
-    if args.show:
-        plt.show()
-
-    save_figure(fig, filenameout, format="pdf")
+    save_figure(fig, filenameout, format="pdf", show=args.show)
 
     if args.plotthermalisation:
         assert figtherm is not None
@@ -1066,10 +1062,7 @@ def make_band_lightcurves_plot(
         args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
 
-    if args.show:
-        plt.show()
-
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", show=args.show)
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1166,9 +1159,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
-    if args.show:
-        plt.show()
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", show=args.show)
 
 
 # Just in case it's needed...

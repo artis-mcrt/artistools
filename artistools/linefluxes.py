@@ -30,7 +30,10 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
+from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 # the Fe II 7155 Å / 12570 Å pair used for the Flörs et al. (2020) ratio comparison
 DEFAULT_EMFEATURESEARCH: tuple[tuple[int, ...], ...] = ((26, 2, 7155, 7150, 7160), (26, 2, 12570, 12470, 12670))
@@ -351,7 +354,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         nrows=nrows,
         ncols=1,
         sharey=False,
-        figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.4)),
+        figsize=get_figsize(args, rows=nrows),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -435,12 +438,11 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     for ax in axes:
         ax.set_xlabel(r"Time [days]")
-        if not args.nolegend:
-            ax.legend(loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1, prop={"size": 9})
+        set_legend(ax, args, loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1)
 
     args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", show=args.show)
 
 
 def plot_nne_te_points(
@@ -653,7 +655,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 ncols=1,
                 sharey=False,
                 sharex=False,
-                figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.7)),
+                figsize=get_figsize(args, rows=nrows, aspect=0.7),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
             assert isinstance(axis, mplax.Axes)
@@ -778,7 +780,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
-            save_figure(fig, outputfile, format="pdf")
+            save_figure(fig, outputfile, format="pdf", show=args.show)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -790,6 +792,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])
 
     addarg_nolegend(parser)
+    addarg_show(parser)
 
     parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
 

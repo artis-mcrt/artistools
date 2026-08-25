@@ -24,7 +24,10 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
+from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
@@ -486,7 +489,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
     at.plottools.set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
-    save_figure(fig, outputfilename, format="pdf")
+    save_figure(fig, outputfilename, format="pdf", show=args.show)
 
 
 def plot_populations_with_time_or_velocity(
@@ -606,7 +609,7 @@ def make_singletimestep_plot(
         nrows=nrows,
         ncols=1,
         sharex=False,
-        figsize=(args.figscale * 5.0, args.figscale * 5.0 * subplotheight * nrows),
+        figsize=get_figsize(args, rows=nrows, aspect=subplotheight, offset=0.0),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -706,16 +709,16 @@ def make_singletimestep_plot(
 
             ax.set_xlim(left=-1)
 
-            if not args.nolegend and prev_ion_stage != ion_stage:
-                ax.legend(loc="best", handlelength=1, frameon=True, numpoints=1, edgecolor="0.93", facecolor="0.93")
+            if prev_ion_stage != ion_stage:
+                set_legend(
+                    ax, args, loc="best", handlelength=1, frameon=True, numpoints=1, edgecolor="0.93", facecolor="0.93"
+                )
 
             prev_ion_stage = ion_stage
 
     if args.x == "index":
         axes[-1].set_xlabel(r"Level index")
 
-    if args.labelfontsize is None:
-        args.labelfontsize = 10
     at.plottools.set_axis_properties(axes, args)
     # after set_axis_properties, which turns the automatic minor ticks on: a level index axis wants one
     # minor tick for each level, thus it keeps its own locator
@@ -725,7 +728,7 @@ def make_singletimestep_plot(
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
-    save_figure(fig, outputfilename, format="pdf")
+    save_figure(fig, outputfilename, format="pdf", show=args.show)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -782,13 +785,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_notitle(parser)
 
     addarg_nolegend(parser)
+    addarg_show(parser)
 
     parser.add_argument(
         "-labelfontsize",
         type=float,
         default=None,
-        help="Font size of the tick labels. Defaults to 10 for the level population plots, whose subplots are "
-        "short, and to 18 for the time and velocity plots",
+        help="Font size of the tick labels. The default comes from the artistools matplotlibrc.",
     )
 
     addarg_axislimits(parser)

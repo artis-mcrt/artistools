@@ -13,11 +13,13 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
@@ -293,6 +295,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
     addarg_notitle(parser)
+    addarg_show(parser)
+    addarg_dpi(parser, default=300)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
@@ -377,7 +381,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else Path(args.outputfile) / defaultfilename
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        save_figure(fig, outfilename, format=outformat, dpi=300, pad_inches=0.0)
+        save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, show=args.show)
 
         outputfilenames.append(outfilename)
 

@@ -42,6 +42,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
+from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_plot_title
@@ -1023,7 +1024,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * 5.0 * args.figwidthscale, args.figscale * 5.0 * 0.5 * len(plotlist)),
+        figsize=get_figsize(args, rows=len(plotlist), aspect=0.5, offset=0.0),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )

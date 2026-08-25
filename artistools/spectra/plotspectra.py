@@ -67,6 +67,7 @@ from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
+from artistools.plottools import set_legend
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
@@ -1124,8 +1125,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     """Plot the spectra selected by args, and return the figure, the axes, and the plotted data."""
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
-    figwidth = args.figscale * 5.0 * args.figwidthscale
-    figheight = args.figscale * 5.0 * (0.25 + nrows * 0.4)
+    figwidth, figheight = get_figsize(args, rows=nrows)
     if args.showabsorption:
         figheight *= 1.56
     if args.hidexticklabels:
@@ -1223,30 +1223,35 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
             dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
-    if not args.nolegend:
-        if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
-            plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
+    if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
+        plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
-        leg = axes[-1].legend(
-            plotobjects,
-            plotobjectlabels,
-            loc="upper right",
-            frameon=False,
-            handlelength=1 if args.showemission or args.showabsorption else 2,
-            ncol=legendncol,
-            numpoints=1,
-            columnspacing=1.0,
-        )
+    leg = set_legend(
+        axes[-1],
+        args,
+        handles=plotobjects,
+        labels=plotobjectlabels,
+        loc="upper right",
+        frameon=False,
+        handlelength=1 if args.showemission or args.showabsorption else 2,
+        ncol=legendncol,
+        numpoints=1,
+        columnspacing=1.0,
+    )
+
+    if leg is not None:
         leg.set_zorder(200)
 
-        # Luke: I don't know what this code is for
+        # colour each legend label like the line or the patch that it names
         for artist, text in zip(leg.legend_handles, leg.get_texts(), strict=False):
-            if hasattr(artist, "get_color"):
-                col = artist.get_color()
-                artist.set_linewidth(2.0)
-                # artist.set_visible(False)  # hide line next to text
+            if artist is None:
+                continue
+
+            if hasattr(artist, "get_color") and hasattr(artist, "set_linewidth"):
+                col = artist.get_color()  # ty:ignore[call-non-callable]
+                artist.set_linewidth(2.0)  # ty:ignore[call-non-callable]
             elif hasattr(artist, "get_facecolor"):
-                col = artist.get_facecolor()
+                col = artist.get_facecolor()  # ty:ignore[call-non-callable]
             else:
                 continue
 

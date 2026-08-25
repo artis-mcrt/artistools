@@ -19,6 +19,7 @@ from artistools.misc import print_saved
 if t.TYPE_CHECKING:
     from pathlib import Path
 
+    import matplotlib.legend as mpllegend
     import matplotlib.typing as mplt
 
 # colorcet.glasbey_category20
@@ -354,12 +355,12 @@ def get_figsize(
     return (figwidth, args.figscale * 5.0 * (offset + rows * aspect))
 
 
-def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> None:
-    """Draw the legend of the axes, unless -nolegend was given."""
+def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> "mpllegend.Legend | None":
+    """Draw the legend of the axes and return it. Return None when -nolegend was given."""
     if getattr(args, "nolegend", False):
-        return
+        return None
 
-    ax.legend(**legendkwargs)
+    return ax.legend(**legendkwargs)
 
 
 def get_unused_colors(

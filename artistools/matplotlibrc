@@ -27,6 +27,7 @@ ytick.labelsize:   11
 
 axes.linewidth:     1.0     # edge linewidth
 axes.titlesize:     12      # font size of the axes title
+figure.titlesize:   12      # font size of the figure title (Figure.suptitle)
 axes.labelsize:     12      # font size of the x and y labels
 
 

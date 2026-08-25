@@ -23,11 +23,15 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
@@ -259,11 +263,7 @@ def plot_celltimestep(
     print(f"T_R = {T_R}")
 
     fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + 0.4)),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
+        nrows=1, ncols=1, sharex=True, figsize=get_figsize(args), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )
 
     assert isinstance(axis, mplax.Axes)
@@ -352,9 +352,9 @@ def plot_celltimestep(
 
     at.plottools.set_exponent_label(axis)
 
-    axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
+    set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf")
+    save_figure(fig, outputfile, format="pdf", show=args.show)
     return True
 
 
@@ -386,6 +386,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--normalised", action="store_true", help="Normalise the spectra to their peak values")
 
     addarg_notitle(parser)
+    addarg_nolegend(parser)
+    addarg_show(parser)
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
