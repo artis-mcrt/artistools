@@ -517,7 +517,11 @@ def is_valid_ion(ionstr: str) -> bool:
     if isinstance(param, int):
         return param >= 1
 
-    return param == "ALL" or param.rstrip("-0123456789") in at.get_elsymbolslist()
+    elsymbols = at.get_elsymbolslist()
+
+    # get_column_name reads a suffix that joins the symbol, e.g. Fe_otherstable gives
+    # nniso_Fe_otherstable, thus the first part of the name decides
+    return param == "ALL" or param.rstrip("-0123456789") in elsymbols or param.split("_", maxsplit=1)[0] in elsymbols
 
 
 def could_be_ion(plotvar: t.Any) -> bool:
@@ -921,20 +925,20 @@ def get_xlist(
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
 
 
-def ylimits_hide_all_data(ax: mplax.Axes) -> bool:
-    """Return True when the axes hold data, but no point of it lies within the vertical range."""
-    ylo, yhi = ax.get_ylim()
-    anydata = False
-    for line in ax.get_lines():
-        ydata = np.asarray(line.get_ydata(), dtype=float)
-        ydata = ydata[np.isfinite(ydata)]
-        if ydata.size == 0:
-            continue
-        anydata = True
-        if bool(((ydata >= ylo) & (ydata <= yhi)).any()):
-            return False
+def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
+    """Return the lowest and the highest value that the axes draw, or None when they draw nothing.
 
-    return anydata
+    The vertical range of the axes carries a margin above and below the data, thus a test against that
+    range accepts a limit that leaves every point out of view.
+    """
+    values = [
+        ydata[np.isfinite(ydata)]
+        for line in ax.get_lines()
+        if (ydata := np.asarray(line.get_ydata(), dtype=float)).size > 0
+    ]
+    finite = np.concatenate([one for one in values if one.size > 0]) if values else np.array([])
+
+    return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
 
 
 def plot_subplot(
@@ -969,6 +973,7 @@ def plot_subplot(
 
     remaining_plotitems: list[t.Any] = []
     ymin, ymax = None, None
+    yscalegiven = False
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
             remaining_plotitems.append(plotitem)
@@ -1002,6 +1007,7 @@ def plot_subplot(
             # the scale must be set before the data, so that the axis autoscales in the right space.
             # "lin" is the alias that the -yscale argument of the light curve commands also accepts
             ax.set_yscale("linear" if params == "lin" else params)
+            yscalegiven = True
         else:
             remaining_plotitems.append(plotitem)
 
@@ -1061,7 +1067,10 @@ def plot_subplot(
 
             else:
                 seriestype, ionlist = plotitem
-                ax.set_yscale("log")
+                # an ion population plot reads best on a log scale, thus that is the default here. A
+                # yscale directive of the plot item wins over it
+                if not yscalegiven:
+                    ax.set_yscale("log")
                 if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
                     legend_ncols = 2
 
@@ -1076,17 +1085,24 @@ def plot_subplot(
                     **plotkwargs,
                 )
 
-    # apply the requested limits now that the data has set the range of the axis
+    # Apply the requested limits now that the data has set the range of the axis. A fixed limit of the
+    # plot list, e.g. the rho floor of the default list, suits one range of models. A limit outside the
+    # data of this model would give an empty panel, thus test each one against the data range first.
+    # set_ylim also accepts a bottom above the top, which turns the axis upside down and stays that way
+    # through a later autoscale, thus the test has to come before the call and not after it.
+    quantity = ax.get_ylabel() or "data"
+    datarange = get_data_range(ax)
     if ymin is not None:
-        ax.set_ylim(bottom=ymin)
-    if ymax is not None:
-        ax.set_ylim(top=ymax)
+        if datarange is None or ymin < datarange[1]:
+            ax.set_ylim(bottom=ymin)
+        else:
+            print(f"WARNING: every {quantity} value is below the requested minimum of {ymin}. Using the data range")
 
-    # a fixed limit of the plot list, e.g. the rho floor of the default list, suits one range of models.
-    # A model outside that range would draw an empty panel, thus give up the limit and show the data
-    if (ymin is not None or ymax is not None) and ylimits_hide_all_data(ax):
-        print(f"WARNING: no {ax.get_ylabel() or 'data'} point is inside the requested y range. Using the data range")
-        ax.autoscale(enable=True, axis="y")
+    if ymax is not None:
+        if datarange is None or ymax > datarange[0]:
+            ax.set_ylim(top=ymax)
+        else:
+            print(f"WARNING: every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend and not args.nolegend:
         ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)

@@ -91,7 +91,11 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     assert ydata.size > 0
     assert ydata.max() < 1e-16, "the test needs a model of a density below the floor of the plot list"
 
-    assert "is inside the requested y range" in capsys.readouterr().out
+    assert "below the requested minimum" in capsys.readouterr().out
+
+    # the floor must never be applied, because set_ylim accepts a bottom above the top and then turns
+    # the axis upside down, and a later autoscale keeps that direction
+    assert not mockplot.call_args_list[0][0][0].yaxis_inverted(), "the panel is drawn upside down"
 
     # the axes that the mock recorded must show the data, and not the empty range below the floor
     ax = mockplot.call_args_list[0][0][0]
@@ -931,16 +935,30 @@ def test_listvariables_names_the_units_of_a_group_whose_members_differ(capsys: p
     assert "cooling_<name>" in out
     assert "[erg/s/cm^3]: cooling rate" in out
 
-    # _on_c and _kmps give the same velocity in other units, thus the heading names the three variants
-    assert "vel_<name>, vel_<name>_on_c, vel_<name>_kmps" in out
-    assert "[cm/s], [c], [km/s]" in out
-    # the base names stay bare, and no variant appears among them
-    assert "r_max, r_mid, r_min" in out
-    assert "r_min_kmps" not in out.split(": velocity coordinates of the cell", maxsplit=1)[1]
+    # the test model holds vel_r_max_kmps and vel_r_min_kmps but no vel_r_mid_kmps, thus a heading of
+    # three variants would name a column that does not exist. Every column takes its own units instead
+    assert "vel_<name>, vel_<name>_kmps" not in out
+    for member, units in (("r_max", "cm/s"), ("r_max_kmps", "km/s"), ("r_min_on_c", "c")):
+        assert f"{member} [{units}]" in out, member
 
     # the model snapshot columns disagree, thus each of them carries its own units
     assert "kinetic_en_erg [erg]" in out
     assert "logrho [log10(g/cm^3)]" in out
+
+
+def test_listvariables_names_the_variants_when_every_base_has_them() -> None:
+    """A group whose bases all carry the same variants names them one time, with the units of each."""
+    from artistools.estimators.estimators import summarise_columns
+
+    # a complete grid: two bases, each with the plain form and the _on_c form
+    complete = summarise_columns(["vel_r_mid", "vel_r_mid_on_c", "vel_x_mid", "vel_x_mid_on_c"])
+    assert "vel_<name>, vel_<name>_on_c" in complete
+    assert "[cm/s], [c]" in complete
+
+    # one missing variant makes the grid describe a column that does not exist, thus the full listing
+    incomplete = summarise_columns(["vel_r_mid", "vel_r_mid_on_c", "vel_x_mid"])
+    assert "vel_<name>, vel_<name>_on_c" not in incomplete
+    assert "r_mid_on_c [c]" in incomplete
 
 
 def test_summarise_nuclides_replaces_a_long_family() -> None:

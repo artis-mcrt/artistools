@@ -232,16 +232,18 @@ class CommandGroupHeading(argparse.Action):
 def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[argparse.Action]] | None":
     """Return the top-level subcommands keyed by the heading of COMMANDGROUPS.
 
-    Return None when a subcommand has no heading. Only the top-level parser lists every command that
-    COMMANDGROUPS names, thus a command group such as "artistools inputmodel" keeps one flat listing.
+    A command that no tuple of COMMANDGROUPS names goes under the last heading, thus a new command still
+    appears and the headings stay. Return None when no command at all has a heading, which is how a
+    command group such as "artistools inputmodel" keeps one flat listing.
     """
     groupofcommand = {name: heading for heading, names in COMMANDGROUPS.items() for name in names}
-    if any(sub.dest not in groupofcommand for sub in subactions):
+    if all(sub.dest not in groupofcommand for sub in subactions):
         return None
 
+    lastheading = next(reversed(COMMANDGROUPS))
     grouped: dict[str, list[argparse.Action]] = {heading: [] for heading in COMMANDGROUPS}
     for sub in subactions:
-        grouped[groupofcommand[sub.dest]].append(sub)
+        grouped[groupofcommand.get(sub.dest, lastheading)].append(sub)
 
     return {heading: members for heading, members in grouped.items() if members}
 

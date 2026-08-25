@@ -91,15 +91,16 @@ def get_units(name: str, *, latex: bool = True) -> str | None:
         units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), None)
     parts = key.split("_")
     if units is None:
-        # try each shorter prefix, e.g. gamma_NT_Ar_I finds the entry gamma_NT
+        # each shorter ending first, because a name can carry the whole quantity at its end, e.g.
+        # init_volume and heating_heating_dep/total_dep. The start "heating" would shadow that ratio
+        units = next(
+            (found for start in range(1, len(parts)) if (found := VARIABLEUNITS.get("_".join(parts[start:])))), None
+        )
+    if units is None:
+        # then each shorter start, e.g. gamma_NT_Ar_I finds the entry gamma_NT
         units = next(
             (found for stop in range(len(parts) - 1, 0, -1) if (found := VARIABLEUNITS.get("_".join(parts[:stop])))),
             None,
-        )
-    if units is None:
-        # then each shorter ending, because a derived name can carry the quantity there, e.g. init_volume
-        units = next(
-            (found for start in range(1, len(parts)) if (found := VARIABLEUNITS.get("_".join(parts[start:])))), None
         )
 
     if units is None:
@@ -203,7 +204,8 @@ def format_units(name: str) -> str:
 
     A variable that carries no unit gives the note of DIMENSIONLESS instead.
     """
-    units = get_units(name, latex=False) or DIMENSIONLESS.get(name.rstrip("_"))
+    # get_units normalises the name before it looks it up, thus the note must use the same key
+    units = get_units(name, latex=False) or DIMENSIONLESS.get(name.rstrip("_").removesuffix("_prevtimestep"))
 
     return f" [{units}]" if units else ""
 
@@ -276,17 +278,21 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
             bases[name.removesuffix(suffix)].append(suffix)
 
         variants = [one for one in VARIANT_SUFFIXES if any(one in found for found in bases.values())]
-        names = ", ".join(f"{prefix}<name>{one}" for one in variants)
 
-        if len(variants) > 1:
+        # The heading names each base against each variant, thus it describes the group only when the
+        # model holds every one of those columns. A model that holds vel_r_max_kmps and vel_r_min_kmps
+        # but no vel_r_mid_kmps takes the full listing below, which names each column that it holds.
+        if len(variants) > 1 and len(members) == len(bases) * len(variants):
             # each variant gives the same quantity in one unit, thus the heading names them in order and
             # the base names stay bare
+            names = ", ".join(f"{prefix}<name>{one}" for one in variants)
             headingunits = " " + ", ".join(
                 format_units(prefix + next(base for base, found in bases.items() if one in found) + one).strip()
                 for one in variants
             )
             memberlist = sorted(bases)
         else:
+            names = f"{prefix}<name>"
             # otherwise the members can disagree, e.g. init_rho and init_kinetic_en_erg, thus one heading
             # cannot name their units and each member takes its own
             memberunits = {format_units(prefix + name) for name in members}

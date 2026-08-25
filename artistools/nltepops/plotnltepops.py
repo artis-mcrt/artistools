@@ -887,7 +887,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if mgi is not None
     )
     npts_model = get_npts_model(modelpath)
-    if not mgilist:
+    # a velocity plot draws every cell of the model, thus it needs no cell of its own. A time plot and a
+    # level index plot draw one cell, thus they do need one
+    if not mgilist and args.x != "velocity":
         if npts_model > 1:
             exit_with_error(
                 f"no model grid cell given, and this model has {npts_model} cells. "

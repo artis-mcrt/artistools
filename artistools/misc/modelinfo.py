@@ -112,7 +112,6 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     return specdata["nu"].to_numpy()
 
 
-@lru_cache(maxsize=8)
 def shorten_middle(text: str, maxlen: int | None) -> str:
     """Return text of no more than maxlen characters, with the middle replaced by an ellipsis.
 
@@ -130,6 +129,7 @@ def shorten_middle(text: str, maxlen: int | None) -> str:
     return f"{text[:head]}...{text[len(text) - (keep - head) :]}"
 
 
+@lru_cache(maxsize=8)
 def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 

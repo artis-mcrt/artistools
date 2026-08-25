@@ -33,13 +33,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# An argument that asks for a listing makes the standard output the product of the command, thus --quiet
+# must not hide it. Each name here is the dest of such an argument.
+LISTING_ARGS = ("listvariables", "listnuclides")
+
+
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """Run the subcommand. With --quiet, send its progress messages to the null device.
 
     An error message goes to the standard error, thus --quiet keeps it. No module holds a quiet flag,
     because the redirection covers the whole call.
     """
-    if not getattr(args, "quiet", False):
+    wantslisting = any(getattr(args, name, False) for name in LISTING_ARGS)
+    if wantslisting or not getattr(args, "quiet", False):
         func(args=args)
         return
 
@@ -72,9 +78,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
         # a bad argument or a missing input file is a user problem, thus report it without a traceback.
-        # An assert gives no message, thus name the environment variable that shows where it happened
-        detail = str(exc) or f"{type(exc).__name__} with no message. Set ARTISTOOLS_TRACEBACK=1 to see where"
-        print(f"error: {detail}", file=sys.stderr)
+        # An assert that carries no message is an internal check, thus say so rather than let the user
+        # read it as a mistake of their own, and name the variable that gives the full traceback
+        if detail := str(exc):
+            print(f"error: {detail}", file=sys.stderr)
+        else:
+            print(
+                f"error: an internal check of artistools failed ({type(exc).__name__}). This is a fault in "
+                "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback",
+                file=sys.stderr,
+            )
         raise SystemExit(1) from exc
 
 
