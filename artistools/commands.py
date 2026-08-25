@@ -208,7 +208,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandTree) -> None:
     """Register the subcommands in the tree on the parser."""
 
-    def func(args: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    def func(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
         parser.print_help()
 
     parser.set_defaults(func=func)

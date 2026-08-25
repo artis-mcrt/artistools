@@ -84,9 +84,7 @@ def shows_deposition(args: argparse.Namespace) -> bool:
     return bool(args.plotdeposition or args.plotalphadeposition or args.plotthermalisation)
 
 
-def convert_lum_lsun_to_plotunits(
-    lum_lsun: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
-) -> npt.NDArray[np.floating[t.Any]]:
+def convert_lum_lsun_to_plotunits(lum_lsun: npt.NDArray[np.floating], lumunit: LumUnit) -> npt.NDArray[np.floating]:
     """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
     if lumunit == "mag":
         return lum_lsun_to_mag(lum_lsun)
@@ -95,8 +93,8 @@ def convert_lum_lsun_to_plotunits(
 
 
 def convert_lum_ergs_to_plotunits(
-    lum_erg_per_s: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
-) -> npt.NDArray[np.floating[t.Any]]:
+    lum_erg_per_s: npt.NDArray[np.floating], lumunit: LumUnit
+) -> npt.NDArray[np.floating]:
     """Convert a luminosity in erg/s to the y axis units: bolometric magnitude, Lsun, or erg/s."""
     if lumunit == "erg/s":
         return lum_erg_per_s
@@ -105,11 +103,11 @@ def convert_lum_ergs_to_plotunits(
 
 
 def get_reflightcurve_yerr(
-    lum_erg_per_s: npt.NDArray[np.floating[t.Any]],
-    errminus_erg_per_s: npt.NDArray[np.floating[t.Any]],
-    errplus_erg_per_s: npt.NDArray[np.floating[t.Any]],
+    lum_erg_per_s: npt.NDArray[np.floating],
+    errminus_erg_per_s: npt.NDArray[np.floating],
+    errplus_erg_per_s: npt.NDArray[np.floating],
     lumunit: LumUnit,
-) -> tuple[list[npt.NDArray[np.floating[t.Any]]], npt.NDArray[np.bool_]]:
+) -> tuple[list[npt.NDArray[np.floating]], npt.NDArray[np.bool_]]:
     """Return the [lower, upper] error bar sizes in the y axis units, and which faint sides are unbounded.
 
     A magnitude bar whose luminosity reaches zero has no faintest magnitude. Putting NaN there makes
@@ -568,7 +566,7 @@ def plot_artis_lightcurve(
     return lcdataframes
 
 
-def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
+def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[np.object_]) -> None:
     """Point the magnitude axis downwards, so that a brighter series is drawn higher.
 
     invert_yaxis() toggles rather than sets, so calling it once per plotted series flips the axis back and
@@ -787,7 +785,7 @@ def make_lightcurve_plot(
         save_figure(figtherm, filenameout2, format="pdf")
 
 
-def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
+def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
     """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
     args.subplots = False  # TODO: set as command line arg
 
@@ -838,7 +836,7 @@ def get_linelabel(
     return serieslabel
 
 
-def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
+def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[np.object_], args: argparse.Namespace) -> None:
     """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
     if args.nolegend:
         return
@@ -859,11 +857,11 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argpars
 
 def set_lightcurve_plot_labels(
     fig: mplfig.Figure,
-    ax: mplax.Axes | npt.NDArray[t.Any],
+    ax: mplax.Axes | npt.NDArray[np.object_],
     args: argparse.Namespace,
     band_name: str | None = None,
     colour_evolution: bool = False,
-) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
+) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[np.object_]]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot.
 
     The caller states which kind of plot this is rather than it being read back off args, which cannot tell a
@@ -1225,7 +1223,7 @@ def plot_lightcurve_from_refdata(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    ax: npt.NDArray[t.Any] | mplax.Axes,
+    ax: npt.NDArray[np.object_] | mplax.Axes,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
@@ -1271,7 +1269,7 @@ def plot_color_evolution_from_data(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    ax: npt.NDArray[t.Any] | mplax.Axes,
+    ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
     args: argparse.Namespace,
 ) -> None:

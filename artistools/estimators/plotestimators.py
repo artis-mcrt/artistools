@@ -779,7 +779,7 @@ def plot_series(
 
 
 def get_xlist(
-    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: argparse.Namespace
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
     """Return the x values, model grid indices, and timesteps to plot, along with the filtered estimators."""
     if timestepslist is not None:
@@ -1010,7 +1010,7 @@ def make_figure(
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist: list[list[t.Any]],
-    args: t.Any,
+    args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> str:
     """Plot one subplot per entry in plotlist, save the figure, and return the output filename."""

@@ -39,7 +39,7 @@ def derived_lum_unit_cols() -> list[pl.Expr]:
     ]
 
 
-def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating[t.Any]]) -> npt.NDArray[np.floating[t.Any]]:
+def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
     """Return the bolometric magnitude of a luminosity in solar luminosities.
 
     A zero or negative luminosity has no magnitude, so it becomes inf or nan rather than warning.

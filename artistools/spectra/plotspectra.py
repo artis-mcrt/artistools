@@ -412,7 +412,7 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
 
 
 def plot_artis_spectrum(
-    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
+    axes: npt.NDArray[np.object_] | Sequence[mplax.Axes],
     modelpath: Path | str,
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
@@ -653,7 +653,7 @@ def plot_artis_spectrum(
 
 def make_spectrum_plot(
     speclist: Sequence[Path | str],
-    axes: npt.NDArray[t.Any] | Sequence[mplax.Axes],
+    axes: npt.NDArray[np.object_] | Sequence[mplax.Axes],
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
@@ -1116,7 +1116,7 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any], pl.DataFrame]:
+def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], pl.DataFrame]:
     """Plot the spectra selected by args, and return the figure, the axes, and the plotted data."""
     nrows = len(args.timedayslist) if args.multispecplot else 1
 

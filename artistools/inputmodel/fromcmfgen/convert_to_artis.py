@@ -67,9 +67,9 @@ def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
 def get_isotope_massfracs(
     isonames: Sequence[str],
     massnumbers: Sequence[int],
-    isofrac: npt.NDArray[t.Any],
+    isofrac: npt.NDArray[np.floating],
     nuclides: Sequence[tuple[str, int]],
-) -> dict[str, npt.NDArray[t.Any]]:
+) -> dict[str, npt.NDArray[np.floating]]:
     """Return the per-cell mass fraction column of each (CMFGEN species name, mass number) nuclide.
 
     The isotope table is looked up by name and mass number rather than by a hardcoded column index, so the
