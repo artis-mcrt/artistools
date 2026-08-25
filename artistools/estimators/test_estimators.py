@@ -886,3 +886,58 @@ def test_split_species_suffix_rebuilds_the_column_name() -> None:
 
     assert split_species_suffix("Te") is None
     assert split_species_suffix("cooling_ff") is None
+
+
+def test_get_units_takes_a_column_name_or_a_prefix() -> None:
+    """The lookup reads a whole column name or the prefix of a family, in LaTeX or in plain text."""
+    # a family prefix, with or without its underscore, gives the same units as one of its columns
+    for name in ("nniso", "nniso_", "nniso_Fe56", "nniso_Fe_otherstable"):
+        assert at.estimators.get_units(name, latex=False) == "cm^-3", name
+
+    assert at.estimators.get_units("nniso") == "cm$^{-3}$"
+    assert at.estimators.get_units("nniso", latex=False) == "cm^-3"
+
+    # a prefix of more than one part, and a name that carries the quantity at its end
+    assert at.estimators.get_units("gamma_NT_Ar_I", latex=False) == "s^-1"
+    assert at.estimators.get_units("init_volume", latex=False) == "cm^3"
+    assert at.estimators.get_units("volume_prevtimestep", latex=False) == "cm^3"
+
+    # a suffix names the units of a derived column
+    assert at.estimators.get_units("vel_r_min_kmps", latex=False) == "km/s"
+    assert at.estimators.get_units("vel_r_min_on_c", latex=False) == "c"
+    assert at.estimators.get_units("vel_r_min", latex=False) == "cm/s"
+
+    assert at.estimators.get_units("notavariable") is None
+
+
+def test_every_estimator_column_has_units_explained() -> None:
+    """Each estimator column must give units, or say why it carries none."""
+    from artistools.estimators.estimators import DIMENSIONLESS
+
+    columns = at.estimators.scan_estimators(modelpath).collect_schema().names()
+    assert len(columns) > 50, "the test model must hold a representative set of columns"
+
+    unexplained = [col for col in columns if not at.estimators.get_units(col) and col.rstrip("_") not in DIMENSIONLESS]
+    assert not unexplained, f"no units for {sorted(unexplained)}"
+
+
+def test_listvariables_names_the_units_of_a_group_whose_members_differ(capsys: pytest.CaptureFixture[str]) -> None:
+    """A group of one unit names it one time. A group of several names the units of each member."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
+    # the listing wraps its long lines, thus a name and its units can fall on two lines
+    out = " ".join(capsys.readouterr().out.split())
+
+    # the cooling rates share one unit, thus the heading carries it
+    assert "cooling_<name>" in out
+    assert "[erg/s/cm^3]: cooling rate" in out
+
+    # _on_c and _kmps give the same velocity in other units, thus the heading names the three variants
+    assert "vel_<name>, vel_<name>_on_c, vel_<name>_kmps" in out
+    assert "[cm/s], [c], [km/s]" in out
+    # the base names stay bare, and no variant appears among them
+    assert "r_max, r_mid, r_min" in out
+    assert "r_min_kmps" not in out.split(": velocity coordinates of the cell", maxsplit=1)[1]
+
+    # the model snapshot columns disagree, thus each of them carries its own units
+    assert "kinetic_en_erg [erg]" in out
+    assert "logrho [log10(g/cm^3)]" in out

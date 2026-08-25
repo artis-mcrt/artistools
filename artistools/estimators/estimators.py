@@ -26,33 +26,86 @@ if t.TYPE_CHECKING:
     import os
 
 
-def get_variableunits(key: str) -> str | None:
-    """Return the unit string for an estimator variable, or None if it is dimensionless or unknown."""
-    variableunits = {
-        "time": "days",
-        "gamma_NT": "s^-1",
-        "gamma_R_bfest": "s^-1",
-        "TR": "K",
-        "Te": "K",
-        "TJ": "K",
-        "nne": "e$^-$/cm$^3$",
-        "nniso": "cm$^{-3}$",
-        "nnion": "cm$^{-3}$",
-        "nnelement": "cm$^{-3}$",
-        "deposition": "erg/s/cm$^3$",
-        "total_dep": "erg/s/cm$^3$",
-        "heating": "erg/s/cm$^3$",
-        "heating_dep/total_dep": "Ratio",
-        "cooling": "erg/s/cm$^3$",
-        "rho": "g/cm$^3$",
-        "velocity": "km/s",
-        "beta": "v/c",
-        "vel_r_max_kmps": "km/s",
-        **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
-        **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
-    }
+# Units by the end of a name. A derived column takes its units from its end and not from its start, e.g.
+# vel_r_min_kmps and init_kinetic_en_erg. These are tried before the prefixes below.
+UNITS_BY_SUFFIX: dict[str, str] = {"_kmps": "km/s", "_on_c": "c", "_en_erg": "erg", "_days": "days"}
 
-    return variableunits.get(key) or variableunits.get(key.split("_", maxsplit=1)[0])
+# Suffixes that make a variant of the same quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
+# vel_r_mid_kmps. The listing names the variants one time rather than once for each base name.
+VARIANT_SUFFIXES = ("", "_on_c", "_kmps")
+
+
+VARIABLEUNITS: dict[str, str] = {
+    "time": "days",
+    "tdays": "days",
+    "gamma_NT": "s^-1",
+    # a recombination rate coefficient, and that coefficient times the electron density
+    "Alpha_R": "cm$^3$/s",
+    "Alpha_R*nne": "s^-1",
+    "RRC_LTE_Nahar": "cm$^3$/s",
+    "gamma_R": "s^-1",
+    "gamma_R_bfest": "s^-1",
+    "TR": "K",
+    "Te": "K",
+    "TJ": "K",
+    "nne": "e$^-$/cm$^3$",
+    "nniso": "cm$^{-3}$",
+    "nnion": "cm$^{-3}$",
+    "nnelement": "cm$^{-3}$",
+    "nntot": "cm$^{-3}$",
+    "deposition": "erg/s/cm$^3$",
+    "emission_ana": "erg/s/cm$^3$",
+    "total_dep": "erg/s/cm$^3$",
+    "heating": "erg/s/cm$^3$",
+    "heating_dep/total_dep": "Ratio",
+    "cooling": "erg/s/cm$^3$",
+    "rho": "g/cm$^3$",
+    "logrho": "log10(g/cm$^3$)",
+    "init_rho": "g/cm$^3$",
+    "init_logrho": "log10(g/cm$^3$)",
+    "init_X": "mass fraction",
+    "kinetic_en_erg": "erg",
+    "init_kinetic_en_erg": "erg",
+    "mass": "g",
+    "volume": "cm$^3$",
+    "deltavol_deltat": "cm$^3$ days",
+    "velocity": "km/s",
+    "vel": "cm/s",
+    "beta": "v/c",
+    **{f"vel_{ax}_mid": "cm/s" for ax in ["x", "y", "z", "r", "rcyl"]},
+    **{f"vel_{ax}_mid_on_c": "c" for ax in ["x", "y", "z", "r", "rcyl"]},
+}
+
+
+def get_units(name: str, *, latex: bool = True) -> str | None:
+    """Return the units of an estimator variable, or None when it carries none.
+
+    The name can be a whole column name such as nniso_Fe56, or the prefix of a family such as nniso.
+    A trailing underscore of a prefix makes no difference. With latex=False the units come back without
+    the mathematics marks that a plot label needs.
+    """
+    key = name.rstrip("_").removesuffix("_prevtimestep")
+
+    units = VARIABLEUNITS.get(key)
+    if units is None:
+        units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), None)
+    parts = key.split("_")
+    if units is None:
+        # try each shorter prefix, e.g. gamma_NT_Ar_I finds the entry gamma_NT
+        units = next(
+            (found for stop in range(len(parts) - 1, 0, -1) if (found := VARIABLEUNITS.get("_".join(parts[:stop])))),
+            None,
+        )
+    if units is None:
+        # then each shorter ending, because a derived name can carry the quantity there, e.g. init_volume
+        units = next(
+            (found for start in range(1, len(parts)) if (found := VARIABLEUNITS.get("_".join(parts[start:])))), None
+        )
+
+    if units is None:
+        return None
+
+    return units if latex else units.translate(str.maketrans("", "", "${}"))
 
 
 def get_variablelongunits(key: str) -> str | None:
@@ -64,6 +117,21 @@ def get_variablelongunits(key: str) -> str | None:
 
 # Columns that share a prefix, with a description of what the group holds. The listing gives one line for
 # each group rather than one line for each column. A longer prefix wins, thus emission_ana_ beats emission_.
+# Columns that carry no unit. get_units returns None both for these and for a name that it does
+# not know, thus the listing needs this map to tell the two apart.
+DIMENSIONLESS: dict[str, str] = {
+    "W": "dilution factor",
+    "Ye": "electrons per nucleon",
+    "grey_depth": "grey optical depth",
+    "heating_dep/total_dep": "ratio",
+    "inputcellid": "index",
+    "modelgridindex": "index",
+    "thick": "flag",
+    "timestep": "index",
+    "titeration": "index",
+}
+
+
 PREFIX_GROUPS: dict[str, str] = {
     "cooling_": "cooling rate of each process",
     "deposition_": "energy deposition rate of each particle",
@@ -130,6 +198,16 @@ def summarise_ions(species: Collection[str]) -> str:
     return ", ".join(parts)
 
 
+def format_units(name: str) -> str:
+    """Return the units of a variable in square brackets, ready for a terminal, or an empty string.
+
+    A variable that carries no unit gives the note of DIMENSIONLESS instead.
+    """
+    units = get_units(name, latex=False) or DIMENSIONLESS.get(name.rstrip("_"))
+
+    return f" [{units}]" if units else ""
+
+
 def summarise_columns(columns: Collection[str]) -> str:
     """Return a listing of the estimator columns, with each family and each group on one line."""
     families: dict[str, list[str]] = defaultdict(list)
@@ -151,18 +229,48 @@ def summarise_columns(columns: Collection[str]) -> str:
         f"{len(columns)} estimator variables:",
         "",
         f"  ({len(plain)}): one value for each cell and timestep",
-        wrap(", ".join(sorted(plain))),
+        wrap(", ".join(f"{name}{format_units(name)}" for name in sorted(plain))),
     ]
 
     for prefix in sorted(groups):
+        members = sorted(groups[prefix])
+        # a variant gives the same quantity in other units, thus name the variants in the heading and
+        # leave the base names alone, e.g. vel_<name>, vel_<name>_on_c, and vel_<name>_kmps
+        bases: dict[str, list[str]] = defaultdict(list)
+        for name in members:
+            suffix = next(one for one in reversed(VARIANT_SUFFIXES) if name.endswith(one))
+            bases[name.removesuffix(suffix)].append(suffix)
+
+        variants = [one for one in VARIANT_SUFFIXES if any(one in found for found in bases.values())]
+        names = ", ".join(f"{prefix}<name>{one}" for one in variants)
+
+        if len(variants) > 1:
+            # each variant gives the same quantity in one unit, thus the heading names them in order and
+            # the base names stay bare
+            headingunits = " " + ", ".join(
+                format_units(prefix + next(base for base, found in bases.items() if one in found) + one).strip()
+                for one in variants
+            )
+            memberlist = sorted(bases)
+        else:
+            # otherwise the members can disagree, e.g. init_rho and init_kinetic_en_erg, thus one heading
+            # cannot name their units and each member takes its own
+            memberunits = {format_units(prefix + name) for name in members}
+            headingunits = memberunits.pop() if len(memberunits) == 1 else ""
+            memberlist = [name + ("" if headingunits else format_units(prefix + name)) for name in members]
+
         lines.extend([
             "",
-            f"  {prefix}<name>  ({len(groups[prefix])}): {PREFIX_GROUPS[prefix]}",
-            wrap(", ".join(sorted(groups[prefix]))),
+            f"  {names}  ({len(members)}){headingunits}: {PREFIX_GROUPS[prefix]}",
+            wrap(", ".join(memberlist)),
         ])
 
     for family in sorted(families):
-        lines.extend(["", f"  {family}_<species>  ({len(families[family])}):", wrap(summarise_ions(families[family]))])
+        lines.extend([
+            "",
+            f"  {family}_<species>  ({len(families[family])}){format_units(family)}:",
+            wrap(summarise_ions(families[family])),
+        ])
 
     return "\n".join(lines)
 
@@ -194,7 +302,7 @@ def get_varname_formatted(varname: str) -> str:
 
 def get_units_string(variable: str) -> str:
     """Return an estimator variable's units in square brackets, or an empty string when it has none."""
-    return f" [{units}]" if (units := get_variableunits(variable)) else ""
+    return f" [{units}]" if (units := get_units(variable)) else ""
 
 
 def _estimator_colsortkey(col: str) -> str:
