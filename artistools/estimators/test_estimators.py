@@ -917,12 +917,12 @@ def test_get_units_takes_a_column_name_or_a_prefix() -> None:
 
 def test_every_estimator_column_has_units_explained() -> None:
     """Each estimator column must give units, or say why it carries none."""
-    from artistools.estimators.estimators import DIMENSIONLESS
+    from artistools.estimators.estimators import get_variable
 
     columns = at.estimators.scan_estimators(modelpath).collect_schema().names()
     assert len(columns) > 50, "the test model must hold a representative set of columns"
 
-    unexplained = [col for col in columns if not at.estimators.get_units(col) and col.rstrip("_") not in DIMENSIONLESS]
+    unexplained = [col for col in columns if not at.estimators.get_units(col) and not get_variable(col).note]
     assert not unexplained, f"no units for {sorted(unexplained)}"
 
 
@@ -1038,9 +1038,8 @@ def test_estimator_lookup_tables_are_read_only() -> None:
     from artistools.estimators import estimators
 
     for table in (
-        estimators.VARIABLEUNITS,
+        estimators.VARIABLES,
         estimators.UNITS_BY_SUFFIX,
-        estimators.DIMENSIONLESS,
         estimators.PREFIX_GROUPS,
         artistools.commands.COMMANDGROUPS,
     ):

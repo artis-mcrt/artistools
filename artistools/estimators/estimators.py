@@ -4,6 +4,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 """
 
 import contextlib
+import dataclasses as dc
 import datetime
 import string
 import textwrap
@@ -28,8 +29,8 @@ if t.TYPE_CHECKING:
     import os
 
 
-# Units by the end of a name. A derived column takes its units from its end and not from its start, e.g.
-# vel_r_min_kmps and init_kinetic_en_erg. These are tried before the prefixes below.
+# Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
+# carries its quantity at its end more often than at its start, thus get_units tries these first.
 UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
     "_kmps": "km/s",
     "_on_c": "c",
@@ -37,112 +38,134 @@ UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
     "_days": "days",
 })
 
-# Suffixes that make a variant of the same quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
+# Suffixes that make a variant of one quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
 # vel_r_mid_kmps. The listing names the variants one time rather than once for each base name.
 VARIANT_SUFFIXES = ("", "_on_c", "_kmps")
 
 
-VARIABLEUNITS: Mapping[str, str] = MappingProxyType({
-    "time": "days",
-    "tdays": "days",
-    "gamma_NT": "s^-1",
-    # a recombination rate coefficient, and that coefficient times the electron density
-    "Alpha_R": "cm$^3$/s",
-    "Alpha_R*nne": "s^-1",
-    "RRC_LTE_Nahar": "cm$^3$/s",
-    "gamma_R": "s^-1",
-    "TR": "K",
-    "Te": "K",
-    "TJ": "K",
-    "nne": "e$^-$/cm$^3$",
-    "nniso": "cm$^{-3}$",
-    "nnion": "cm$^{-3}$",
-    "nnelement": "cm$^{-3}$",
-    "nntot": "cm$^{-3}$",
-    "deposition": "erg/s/cm$^3$",
-    "emission_ana": "erg/s/cm$^3$",
-    "total_dep": "erg/s/cm$^3$",
-    "heating": "erg/s/cm$^3$",
-    "heating_dep/total_dep": "Ratio",
-    "cooling": "erg/s/cm$^3$",
-    "rho": "g/cm$^3$",
-    "logrho": "log10(g/cm$^3$)",
-    "init_X": "mass fraction",
-    # the radial variant init_kinetic_en_erg_r ends in _r, thus no suffix rule reaches it
-    "init_kinetic_en_erg": "erg",
-    "mass": "g",
-    "volume": "cm$^3$",
-    "deltavol_deltat": "cm$^3$ days",
-    "velocity": "km/s",
-    "vel": "cm/s",
-    "beta": "v/c",
+@dc.dataclass(frozen=True, slots=True)
+class VariableInfo:
+    """What the plot commands and the listing of the variables know about one estimator variable.
+
+    An empty field means that the reader falls back: an empty name gives the key itself, and an empty
+    longlabel gives the name joined to the units.
+    """
+
+    units: str = ""
+    """The units in the LaTeX of a plot label, e.g. "cm$^{-3}$"."""
+
+    name: str = ""
+    """The name in the LaTeX of a plot label, e.g. "T$_{\\rm e}$"."""
+
+    longlabel: str = ""
+    """A whole axis label that replaces the name and the units, e.g. "Temperature [K]"."""
+
+    note: str = ""
+    """What a variable of no units holds, e.g. "dilution factor". The listing gives this in its place."""
+
+    group: str = ""
+    """What the family <key>_<name> holds. The listing gives one line for the family and this text."""
+
+
+# One record for each estimator variable. A key can name a whole column, e.g. "Te", or the start of a
+# family, e.g. "nnion" for nnion_Fe_II. get_units walks the shorter starts and endings of a name, thus
+# one record serves every column of a family.
+VARIABLES: Mapping[str, VariableInfo] = MappingProxyType({
+    "Alpha_R": VariableInfo(units="cm$^3$/s"),
+    "Alpha_R*nne": VariableInfo(units="s^-1"),
+    "RRC_LTE_Nahar": VariableInfo(units="cm$^3$/s"),
+    "TJ": VariableInfo(units="K", name=r"T$_{\rm J}$", longlabel="Temperature [K]"),
+    "TR": VariableInfo(units="K", name=r"T$_{\rm R}$", longlabel="Temperature [K]"),
+    "Te": VariableInfo(units="K", name=r"T$_{\rm e}$", longlabel="Temperature [K]"),
+    "W": VariableInfo(note="dilution factor"),
+    "Ye": VariableInfo(note="electrons per nucleon"),
+    "beta": VariableInfo(units="v/c", name=r"$\beta$"),
+    "cellid": VariableInfo(name="Model grid index"),
+    "cooling": VariableInfo(units="erg/s/cm$^3$", group="cooling rate of each process"),
+    "deltavol_deltat": VariableInfo(units="cm$^3$ days"),
+    "deposition": VariableInfo(units="erg/s/cm$^3$", group="energy deposition rate of each particle"),
+    "emission_ana": VariableInfo(units="erg/s/cm$^3$", group="analytic energy emission rate of each particle"),
+    "gamma_NT": VariableInfo(units="s^-1", name=r"$\Gamma_{\rm non-thermal}$"),
+    "gamma_R": VariableInfo(units="s^-1"),
+    "gamma_R_bfest": VariableInfo(units="s^-1", name=r"$\Gamma_{\rm phot}$"),
+    "grey_depth": VariableInfo(note="grey optical depth"),
+    "heating": VariableInfo(units="erg/s/cm$^3$", group="heating rate of each process"),
+    "heating_dep/total_dep": VariableInfo(units="Ratio", name="Heating fraction", note="ratio"),
+    "init": VariableInfo(group="value of the model snapshot model.txt, before the first timestep"),
+    "init_X": VariableInfo(units="mass fraction"),
+    # the radial name init_kinetic_en_erg_r ends in _r, thus no suffix rule reaches it
+    "init_kinetic_en_erg": VariableInfo(units="erg"),
+    "inputcellid": VariableInfo(note="index"),
+    "lognne": VariableInfo(name=r"Log n$_{\rm e}$"),
+    "logrho": VariableInfo(units="log10(g/cm$^3$)"),
+    "mass": VariableInfo(units="g"),
+    "modelgridindex": VariableInfo(name="Model grid index", note="index"),
+    "nne": VariableInfo(units="e$^-$/cm$^3$", name=r"n$_{\rm e}$"),
+    "nnelement": VariableInfo(units="cm$^{-3}$"),
+    "nnion": VariableInfo(units="cm$^{-3}$"),
+    "nniso": VariableInfo(units="cm$^{-3}$"),
+    "nntot": VariableInfo(units="cm$^{-3}$"),
+    "rho": VariableInfo(units="g/cm$^3$", name=r"$\rho$"),
+    "tdays": VariableInfo(units="days"),
+    "thick": VariableInfo(note="flag"),
+    "time": VariableInfo(units="days", name="Time"),
+    "timestep": VariableInfo(name="Timestep", note="index"),
+    "titeration": VariableInfo(note="index"),
+    "total_dep": VariableInfo(units="erg/s/cm$^3$"),
+    "vel": VariableInfo(units="cm/s", group="velocity coordinates of the cell"),
+    "velocity": VariableInfo(units="km/s", name="Velocity"),
+    "volume": VariableInfo(units="cm$^3$"),
+    **{f"vel_{ax}_mid": VariableInfo(units="cm/s", name=f"$v_{{{ax}}}$") for ax in ("x", "y", "z", "r", "rcyl")},
+    **{f"vel_{ax}_mid_on_c": VariableInfo(units="c", name=f"$v_{{{ax}}}$") for ax in ("x", "y", "z", "r", "rcyl")},
 })
+
+# The families whose columns share a start, e.g. cooling_ff and cooling_coll. A longer start wins, thus
+# emission_ana_ beats emission_.
+PREFIX_GROUPS: Mapping[str, str] = MappingProxyType({
+    f"{key}_": info.group for key, info in sorted(VARIABLES.items()) if info.group
+})
+
+
+def get_variable(name: str) -> VariableInfo:
+    """Return the record of a variable, or an empty record when the table does not name it."""
+    return VARIABLES.get(name.rstrip("_").removesuffix("_prevtimestep"), VariableInfo())
 
 
 def get_units(name: str, *, latex: bool = True) -> str | None:
     """Return the units of an estimator variable, or None when it carries none.
 
-    The name can be a whole column name such as nniso_Fe56, or the prefix of a family such as nniso.
-    A trailing underscore of a prefix makes no difference. With latex=False the units come back without
-    the mathematics marks that a plot label needs.
+    The name can be a whole column name such as nniso_Fe56, or the start of a family such as nniso. A
+    trailing underscore makes no difference. With latex=False the units come back without the
+    mathematics marks that a plot label needs.
     """
     key = name.rstrip("_").removesuffix("_prevtimestep")
-
-    units = VARIABLEUNITS.get(key)
-    if units is None:
-        units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), None)
     parts = key.split("_")
-    if units is None:
+
+    units = VARIABLES[key].units if key in VARIABLES else ""
+    if not units:
+        units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), "")
+    if not units:
         # each shorter ending first, because a name can carry the whole quantity at its end, e.g.
         # init_volume and heating_heating_dep/total_dep. The start "heating" would shadow that ratio
-        units = next(
-            (found for start in range(1, len(parts)) if (found := VARIABLEUNITS.get("_".join(parts[start:])))), None
-        )
-    if units is None:
-        # then each shorter start, e.g. gamma_NT_Ar_I finds the entry gamma_NT
-        units = next(
-            (found for stop in range(len(parts) - 1, 0, -1) if (found := VARIABLEUNITS.get("_".join(parts[:stop])))),
-            None,
-        )
+        units = next((found for start in range(1, len(parts)) if (found := unitsof("_".join(parts[start:])))), "")
+    if not units:
+        # then each shorter start, e.g. gamma_NT_Ar_I finds the record gamma_NT
+        units = next((found for stop in range(len(parts) - 1, 0, -1) if (found := unitsof("_".join(parts[:stop])))), "")
 
-    if units is None:
+    if not units:
         return None
 
     return units if latex else units.translate(str.maketrans("", "", "${}"))
 
 
+def unitsof(key: str) -> str:
+    """Return the units that the table gives for an exact key, or an empty string."""
+    return VARIABLES[key].units if key in VARIABLES else ""
+
+
 def get_variablelongunits(key: str) -> str | None:
-    """Return the full axis label for an estimator variable, or None when only the short unit is wanted."""
-    return {"heating_dep/total_dep": "", "TR": "Temperature [K]", "Te": "Temperature [K]", "TJ": "Temperature [K]"}.get(
-        key
-    )
-
-
-# Columns that share a prefix, with a description of what the group holds. The listing gives one line for
-# each group rather than one line for each column. A longer prefix wins, thus emission_ana_ beats emission_.
-# Columns that carry no unit. get_units returns None both for these and for a name that it does
-# not know, thus the listing needs this map to tell the two apart.
-DIMENSIONLESS: Mapping[str, str] = MappingProxyType({
-    "W": "dilution factor",
-    "Ye": "electrons per nucleon",
-    "grey_depth": "grey optical depth",
-    "heating_dep/total_dep": "ratio",
-    "inputcellid": "index",
-    "modelgridindex": "index",
-    "thick": "flag",
-    "timestep": "index",
-    "titeration": "index",
-})
-
-
-PREFIX_GROUPS: Mapping[str, str] = MappingProxyType({
-    "cooling_": "cooling rate of each process",
-    "deposition_": "energy deposition rate of each particle",
-    "emission_ana_": "analytic energy emission rate of each particle",
-    "heating_": "heating rate of each process",
-    "init_": "value of the model snapshot model.txt, before the first timestep",
-    "vel_": "velocity coordinates of the cell",
-})
+    """Return the whole axis label of an estimator variable, or None when the name and units serve."""
+    return get_variable(key).longlabel or None
 
 
 def parse_species(suffix: str) -> str | None:
@@ -222,7 +245,7 @@ def format_units(name: str) -> str:
     A variable that carries no unit gives the note of DIMENSIONLESS instead.
     """
     # get_units normalises the name before it looks it up, thus the note must use the same key
-    units = get_units(name, latex=False) or DIMENSIONLESS.get(name.rstrip("_").removesuffix("_prevtimestep"))
+    units = get_units(name, latex=False) or get_variable(name).note
 
     return f" [{units}]" if units else ""
 
@@ -336,28 +359,8 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
 
 
 def get_varname_formatted(varname: str) -> str:
-    """Return the LaTeX-formatted name of an estimator variable, or the name unchanged if there is no mapping."""
-    return {
-        "nne": r"n$_{\rm e}$",
-        "lognne": r"Log n$_{\rm e}$",
-        "rho": r"$\rho$",
-        "Te": r"T$_{\rm e}$",
-        "TR": r"T$_{\rm R}$",
-        "TJ": r"T$_{\rm J}$",
-        "gamma_NT": r"$\Gamma_{\rm non-thermal}$",
-        "gamma_R_bfest": r"$\Gamma_{\rm phot}$",
-        "heating_dep/total_dep": "Heating fraction",
-        # the horizontal axis variables. Without an entry here they keep the lower-case name that -x takes
-        "velocity": "Velocity",
-        "beta": r"$\beta$",
-        "time": "Time",
-        "timestep": "Timestep",
-        # -x cellid and -x modelgridindex both plot the modelgridindex column, thus they share one label
-        "cellid": "Model grid index",
-        "modelgridindex": "Model grid index",
-        **{f"vel_{ax}_mid": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
-        **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
-    }.get(varname, varname)
+    """Return the name of an estimator variable in LaTeX, or the name unchanged when the table has none."""
+    return get_variable(varname).name or varname
 
 
 def get_units_string(variable: str) -> str:
