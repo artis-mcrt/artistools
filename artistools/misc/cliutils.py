@@ -2,6 +2,7 @@
 
 import argparse
 import itertools
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
@@ -305,7 +306,7 @@ def exit_with_error(message: str) -> t.NoReturn:
     A mistake in the arguments earns a message rather than a traceback, and a script that runs the
     command sees that it failed.
     """
-    print(f"ERROR: {message}")
+    print(f"error: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -318,6 +319,11 @@ def require_action(args: argparse.Namespace) -> None:
 def addarg_show(parser: argparse.ArgumentParser) -> None:
     """Add the --show argument that opens the figure in a window before it is saved."""
     parser.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
+
+
+def addarg_quiet(parser: argparse.ArgumentParser) -> None:
+    """Add the --quiet argument that hides the progress messages (__main__ reads this dest)."""
+    parser.add_argument("--quiet", action="store_true", help="Hide the progress messages. An error still appears")
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

@@ -7,6 +7,9 @@ import typing as t
 from collections.abc import Iterable
 from pathlib import Path
 
+if t.TYPE_CHECKING:
+    from collections.abc import Generator
+
 # top-level commands (one file installed per command)
 # we generally should phase this out except for a couple of main ones like at and artistools
 COMMANDS = [
@@ -44,6 +47,41 @@ class CommandSpec:
 
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
+
+# The --help listing shows the top-level commands under these headings, in this order. A command that no
+# tuple names appears under the last heading, thus a new command is still listed.
+COMMANDGROUPS: dict[str, tuple[str, ...]] = {
+    "plot commands": (
+        "comparetogsinetwork",
+        "leptontransport",
+        "plotdensity",
+        "plotestimators",
+        "plotinitialcomposition",
+        "plotlastpacketinteraction",
+        "plotlightcurves",
+        "plotlinefluxes",
+        "plotlogfiles",
+        "plotmacroatom",
+        "plotnltepops",
+        "plotradfield",
+        "plotspectra",
+        "plotspherical",
+        "plottransitions",
+        "plotviewingangles",
+    ),
+    "model commands": ("inputmodel", "makeartismodelfromparticlegridmap", "makevpktinput", "maptogrid"),
+    "data commands": (
+        "ejectaopacity",
+        "exportmassfractions",
+        "gsinetworkdecayproducts",
+        "hesma",
+        "spencerfano",
+        "writebollightcurvedata",
+        "writecodecomparisondata",
+        "writespectra",
+    ),
+    "other commands": ("completions", "describeinputmodel", "getpath", "version"),
+}
 
 subcommandtree: CommandTree = {
     "comparetogsinetwork": CommandSpec(
@@ -182,6 +220,32 @@ subcommandtree: CommandTree = {
 }
 
 
+class CommandGroupHeading(argparse.Action):
+    """A pseudo action that carries a heading into the help listing of the top-level commands."""
+
+    @t.override
+    def __call__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        """Never run, because this action only holds a heading."""
+        raise NotImplementedError
+
+
+def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[argparse.Action]] | None":
+    """Return the top-level subcommands keyed by the heading of COMMANDGROUPS.
+
+    Return None when a subcommand has no heading. Only the top-level parser lists every command that
+    COMMANDGROUPS names, thus a command group such as "artistools inputmodel" keeps one flat listing.
+    """
+    groupofcommand = {name: heading for heading, names in COMMANDGROUPS.items() for name in names}
+    if any(sub.dest not in groupofcommand for sub in subactions):
+        return None
+
+    grouped: dict[str, list[argparse.Action]] = {heading: [] for heading in COMMANDGROUPS}
+    for sub in subactions:
+        grouped[groupofcommand[sub.dest]].append(sub)
+
+    return {heading: members for heading, members in grouped.items() if members}
+
+
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
@@ -199,6 +263,35 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
         actions = sorted(actions, key=my_sort)
         super().add_arguments(actions)
+
+    @t.override
+    def _format_action(self, action: argparse.Action) -> str:
+        """Render a group heading as its own line, and every other action as usual."""
+        if isinstance(action, CommandGroupHeading):
+            return f"\n{action.dest}\n"
+
+        return super()._format_action(action)
+
+    @t.override
+    def _iter_indented_subactions(self, action: argparse.Action) -> "Generator[argparse.Action]":
+        """Yield the subcommands under a heading for each group.
+
+        This hook also feeds the column width, thus the headings do not disturb the alignment.
+        """
+        if not isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            yield from super()._iter_indented_subactions(action)
+            return
+
+        grouped = group_subactions(list(action._get_subactions()))  # ruff:ignore[private-member-access]
+        if grouped is None:
+            yield from super()._iter_indented_subactions(action)
+            return
+
+        self._indent()
+        for heading, members in grouped.items():
+            yield CommandGroupHeading(option_strings=[], dest=f"{heading}:", help=None)
+            yield from members
+        self._dedent()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

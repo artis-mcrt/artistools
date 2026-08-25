@@ -90,6 +90,7 @@ from artistools.misc import addarg_nolegend as addarg_nolegend
 from artistools.misc import addarg_notitle as addarg_notitle
 from artistools.misc import addarg_outputfile as addarg_outputfile
 from artistools.misc import addarg_outputpath as addarg_outputpath
+from artistools.misc import addarg_quiet as addarg_quiet
 from artistools.misc import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc import addarg_show as addarg_show
 from artistools.misc import addarg_timedays as addarg_timedays

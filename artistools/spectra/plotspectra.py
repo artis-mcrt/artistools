@@ -34,6 +34,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_quiet
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
@@ -41,6 +42,7 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_labels
@@ -779,8 +781,10 @@ def make_spectrum_plot(
                 assert np.allclose(dfalldata["lambda_angstroms"], seriesdata["lambda_angstroms"].to_numpy())
             dfalldata = dfalldata.with_columns(seriesdata["f_lambda"].alias(f"f_lambda.{seriesname}"))
 
-    plottedsomething = artisindex > 0 or refspecindex > 0
-    assert plottedsomething
+    if artisindex == refspecindex == 0:
+        exit_with_error(
+            "no spectra were plotted. Check that each given path holds an ARTIS run or a reference spectrum"
+        )
 
     for axis in axes:
         if args.showfilterfunctions:
@@ -1464,6 +1468,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser)
 
     addarg_show(parser)
+    addarg_quiet(parser)
 
     parser.add_argument(
         "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files"

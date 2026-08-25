@@ -24,6 +24,7 @@ import pytest
 import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
+HIDDEN_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
@@ -212,7 +213,7 @@ def test_hidden_duplicate_commands() -> None:
     parser = artistools.__main__.build_parser()
     helptext = parser.format_help()
     assert "plotspectra" in helptext
-    for hiddenname in ("describeinputmodel", "maptogrid", "makeartismodelfromparticlegridmap"):
+    for hiddenname in HIDDEN_COMMANDS:
         assert hiddenname not in helptext
 
     args = parser.parse_args(["describeinputmodel", "somemodelpath"])
@@ -246,6 +247,33 @@ def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 
     artistools.__main__.main(argsraw=[])
     assert "plotspectra" in capsys.readouterr().out
+
+
+def test_command_groups_name_every_visible_command() -> None:
+    """Every command that at --help lists must belong to exactly one group of COMMANDGROUPS."""
+    import artistools.__main__
+
+    grouped = list(itertools.chain.from_iterable(at.commands.COMMANDGROUPS.values()))
+    assert len(grouped) == len(set(grouped)), "a command appears in more than one group"
+
+    # every listed command must reach a heading, thus a new command cannot fall out of the listing
+    helptext = artistools.__main__.build_parser().format_help()
+    for heading in at.commands.COMMANDGROUPS:
+        assert f"\n{heading}:\n" in helptext
+    for name in grouped:
+        assert name in helptext or name in HIDDEN_COMMANDS
+
+
+def test_cli_bad_argument_gives_short_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """A bad argument value must exit with a one-line error on stderr instead of a traceback."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timedays", "banana"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "banana" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

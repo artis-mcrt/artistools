@@ -24,6 +24,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
 from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
@@ -786,6 +787,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_nolegend(parser)
     addarg_show(parser)
+    addarg_quiet(parser)
 
     parser.add_argument(
         "-labelfontsize",

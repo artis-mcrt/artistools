@@ -19,6 +19,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
@@ -296,6 +297,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_notitle(parser)
     addarg_show(parser)
+    addarg_quiet(parser)
     addarg_dpi(parser, default=300)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
