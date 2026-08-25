@@ -748,7 +748,7 @@ def test_parse_ion_row_classic_keys_elements_by_symbol() -> None:
 
 @pytest.mark.parametrize(
     ("plotarg", "expected"),
-    [("te", "Did you mean Te?"), ("notavariable", "available names include"), ("rhoo", "Did you mean rho?")],
+    [("te", "Did you mean Te?"), ("notavariable", "--listvariables"), ("rhoo", "Did you mean rho?")],
 )
 def test_estimator_unknown_variable_suggests_a_name(
     plotarg: str, expected: str, capsys: pytest.CaptureFixture[str]
@@ -761,24 +761,20 @@ def test_estimator_unknown_variable_suggests_a_name(
     assert expected in capsys.readouterr().err
 
 
-@pytest.mark.parametrize(("directive", "expected"), [("_foo=bar", "not a plot directive"), ("_ymim=1", "_ymin")])
+@pytest.mark.parametrize(("directive", "expected"), [("_foo=bar", "not a plot directive"), ("ymim=1", "ymin")])
 def test_estimator_unknown_directive_names_the_valid_ones(
     directive: str, expected: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """An unknown plot directive must say so and name the directives that exist."""
     with pytest.raises(SystemExit) as excinfo:
         at.estimators.plot(
-            argsraw=[],
-            modelpath=modelpath,
-            outputfile=outputpath,
-            timedays=260,
-            plotlist=[["rho", directive.split("=", maxsplit=1)]],
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", directive]]
         )
 
     assert excinfo.value.code == 1
     captured = capsys.readouterr().err
     assert expected in captured
-    assert "_yscale=" in captured
+    assert "yscale=" in captured
 
 
 def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> None:
@@ -788,3 +784,70 @@ def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> Non
 
     for bad in ("te", "notanion", "zz"):
         assert not at.estimators.plotestimators.is_valid_ion(bad), bad
+
+
+def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.CaptureFixture[str]) -> None:
+    """--listvariables must name each per-species family one time, and not every column of it."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
+
+    out = capsys.readouterr().out
+    assert "estimator variables:" in out
+    assert "nnion_<species>" in out
+    assert "nnelement_<species>" in out
+
+    # the listing names the family, thus no column of it appears in full
+    assert "nnion_Fe_II" not in out
+    assert "nnelement_Fe" not in out
+
+    # it is far shorter than one line for each column
+    assert len(out.splitlines()) < 60
+
+
+@pytest.mark.parametrize("prefix", ["", "_"])
+def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """A plot directive works with or without its underscore, and each subplot keeps its own scale."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[["TR", [f"{prefix}yscale", "lin"]], ["rho", [f"{prefix}yscale", "log"]]],
+    )
+
+    out = capsys.readouterr().out
+    assert "is not a plot directive" not in out
+
+
+def test_estimator_xmin_directive_reaches_every_subplot(capsys: pytest.CaptureFixture[str]) -> None:
+    """The subplots share one horizontal axis, thus an xmin of one plot item reaches all of them."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[["TR"], ["rho", ["xmin", 260.0], ["xmax", 300.0]]],
+    )
+
+    assert "is not a plot directive" not in capsys.readouterr().out
+
+
+def test_split_species_suffix_rebuilds_the_column_name() -> None:
+    """Each family and species of the listing must join back into the column name that it came from."""
+    from artistools.estimators.estimators import split_species_suffix
+
+    for colname, expected in (
+        ("nnion_Fe_II", ("nnion", "Fe II")),
+        ("gamma_NT_Ar_III", ("gamma_NT", "Ar III")),
+        ("nnelement_Ar", ("nnelement", "Ar")),
+        ("nniso_Co56", ("nniso", "Co56")),
+        # an underscore joins the element symbol to any suffix that is not an ion stage
+        ("nniso_Fe_otherstable", ("nniso", "Fe_otherstable")),
+    ):
+        split = split_species_suffix(colname)
+        assert split == expected, f"{colname} gave {split}"
+        assert split is not None
+        family, species = split
+        assert f"{family}_{species.replace(' ', '_')}" == colname
+
+    assert split_species_suffix("Te") is None
+    assert split_species_suffix("cooling_ff") is None

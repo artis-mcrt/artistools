@@ -5,8 +5,12 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 import contextlib
 import datetime
+import re
+import textwrap
 import time
 import typing as t
+from collections import defaultdict
+from collections.abc import Collection
 from collections.abc import Sequence
 from itertools import batched
 from pathlib import Path
@@ -56,6 +60,70 @@ def get_variablelongunits(key: str) -> str | None:
     return {"heating_dep/total_dep": "", "TR": "Temperature [K]", "Te": "Temperature [K]", "TJ": "Temperature [K]"}.get(
         key
     )
+
+
+def split_species_suffix(colname: str) -> tuple[str, str] | None:
+    """Return the family and the species of a column such as nnion_Fe_II, or None when it has no species.
+
+    The families that name one species for each column are the largest part of the estimator columns, thus
+    a listing that repeats every one of them is hard to read.
+    """
+    match = re.fullmatch(r"(?P<family>.+?)_(?P<elsymbol>[A-Z][a-z]?)(?P<rest>|_[IVXLC]+|[0-9]+|_otherstable)", colname)
+    if match is None or match["elsymbol"] not in at.get_elsymbolslist():
+        return None
+
+    rest = match["rest"]
+    # an ion stage takes a space, e.g. nnion_Fe_II names the ion "Fe II". Any other suffix keeps its
+    # underscore, because it joins the element symbol in the column name, e.g. nniso_Fe_otherstable
+    if at.decode_roman_numeral(rest.removeprefix("_")) > 0:
+        return (match["family"], f"{match['elsymbol']} {rest.removeprefix('_')}")
+
+    return (match["family"], match["elsymbol"] + rest)
+
+
+def summarise_ions(species: Collection[str]) -> str:
+    """Return a compact listing of ions, e.g. "Fe I-V", or the plain names when they are not all ions."""
+    stages: dict[str, list[int]] = defaultdict(list)
+    for name in species:
+        elsymbol, _, stage = name.partition(" ")
+        stagenumber = at.decode_roman_numeral(stage)
+        if stagenumber < 1:
+            return ", ".join(sorted(species))
+        stages[elsymbol].append(stagenumber)
+
+    parts = []
+    for elsymbol in sorted(stages):
+        low, high = min(stages[elsymbol]), max(stages[elsymbol])
+        romans = at.roman_numerals
+        parts.append(f"{elsymbol} {romans[low]}" if low == high else f"{elsymbol} {romans[low]}-{romans[high]}")
+
+    return ", ".join(parts)
+
+
+def summarise_columns(columns: Collection[str]) -> str:
+    """Return a listing of the estimator columns, with each per-species family on one line."""
+    families: dict[str, list[str]] = defaultdict(list)
+    plain: list[str] = []
+    for colname in columns:
+        if split := split_species_suffix(colname):
+            families[split[0]].append(split[1])
+        else:
+            plain.append(colname)
+
+    lines = [
+        f"{len(columns)} estimator variables:",
+        "",
+        textwrap.fill(", ".join(sorted(plain)), width=110, initial_indent="  ", subsequent_indent="    "),
+    ]
+    for family in sorted(families):
+        species = families[family]
+        lines.extend([
+            "",
+            f"  {family}_<species>  ({len(species)}):",
+            textwrap.fill(summarise_ions(species), width=110, initial_indent="    ", subsequent_indent="    "),
+        ])
+
+    return "\n".join(lines)
 
 
 def get_varname_formatted(varname: str) -> str:

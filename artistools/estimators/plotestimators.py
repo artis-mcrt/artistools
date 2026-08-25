@@ -29,6 +29,7 @@ if t.TYPE_CHECKING:
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.estimators.estimators import summarise_columns
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
@@ -468,8 +469,9 @@ def plot_levelpop(
         )
 
 
-# the plot directives that a plot item can carry, e.g. "-p rho _yscale=log"
-DIRECTIVES = ("ymin", "ymax", "yscale")
+# The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name is
+# optional. The subplots share one horizontal axis, thus xmin and xmax reach every subplot of the figure.
+DIRECTIVES = ("xmin", "xmax", "ymin", "ymax", "yscale")
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -576,8 +578,13 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         plotitems = [plotitems]
     assert isinstance(plotitems, list)
 
+    # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
+    # One shape here lets plot_subplot find an unknown directive whichever spelling the user gave
     plot_directives = [
-        plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and ("=" in plotvar)
+        ["_" + key.removeprefix("_"), value]
+        for key, value in (
+            plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and "=" in plotvar
+        )
     ]
     plotvars = [
         VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
@@ -789,7 +796,7 @@ def plot_series(
         if variable not in columns:
             suggestion = suggest_names(variable, columns)
             if not suggestion:
-                suggestion = f" The {len(columns)} available names include: {', '.join(sorted(columns)[:8])}"
+                suggestion = " Run with --listvariables to see the variables of this model."
             exit_with_error(f"'{variable}' is not an estimator variable.{suggestion}")
         colexpr = pl.col(variable)
 
@@ -968,10 +975,12 @@ def plot_subplot(
             continue
         seriestype, params = plotitem
         if seriestype.startswith("_") and seriestype.removeprefix("_").lower() not in DIRECTIVES:
+            # normalise_plotitems adds the underscore, thus report the name as the user wrote it
+            given = seriestype.removeprefix("_")
             exit_with_error(
-                f"'{seriestype}' is not a plot directive."
-                f"{suggest_names(seriestype, [f'_{name}' for name in DIRECTIVES])}"
-                f" The directives are {', '.join(f'_{name}=' for name in DIRECTIVES)}"
+                f"'{given}' is not a plot directive."
+                f"{suggest_names(given, DIRECTIVES)}"
+                f" The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}"
             )
         seriestype = seriestype.removeprefix("_").lower()
         if seriestype == "ymin":
@@ -982,9 +991,17 @@ def plot_subplot(
         elif seriestype == "ymax":
             ymax = float(params) if isinstance(params, str) else params
 
+        elif seriestype == "xmin":
+            # the subplots share one horizontal axis, thus this reaches all of them
+            ax.set_xlim(left=float(params) if isinstance(params, str) else params)
+
+        elif seriestype == "xmax":
+            ax.set_xlim(right=float(params) if isinstance(params, str) else params)
+
         elif seriestype == "yscale":
-            # the scale must be set before the data, so that the axis autoscales in the right space
-            ax.set_yscale(params)
+            # the scale must be set before the data, so that the axis autoscales in the right space.
+            # "lin" is the alias that the -yscale argument of the light curve commands also accepts
+            ax.set_yscale("linear" if params == "lin" else params)
         else:
             remaining_plotitems.append(plotitem)
 
@@ -1217,13 +1234,26 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_notitle(parser)
 
     parser.add_argument(
+        "--listvariables",
+        "--listvars",
+        action="store_true",
+        help="List the estimator variables of this model, then stop",
+    )
+
+    parser.add_argument(
         "-plotlist",
         "-plot",
         "-p",
         nargs="*",
         type=str,
         action="append",
-        help="List of plots to generate. Specify estimator names or population types. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'",
+        help=(
+            "List of plots to generate, one -plot for each subplot. Give estimator names, ions, or a "
+            "directive of the form key=value. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'. "
+            f"The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
+            "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17. The subplots share one horizontal "
+            "axis, thus xmin and xmax reach every subplot"
+        ),
     )
 
     parser.add_argument(
@@ -1319,10 +1349,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.other_axis1 = axes[0]
         args.other_axis2 = axes[1]
 
-    print(
-        f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
-        f"({args.timemin:.1f} to {args.timemax:.1f}d)"
-    )
+    if not args.listvariables:
+        print(
+            f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
+            f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+        )
 
     if args.readonlymgi:
         if args.readonlymgi == "alongaxis":
@@ -1399,6 +1430,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
 
     estimatorcolumns = estimators.collect_schema().names()
+
+    if args.listvariables:
+        print(summarise_columns(estimatorcolumns))
+        return
 
     if usingdefaultplotlist:
         keptplotlist: list[t.Any] = []
