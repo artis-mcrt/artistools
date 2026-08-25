@@ -117,13 +117,12 @@ def plot_reference_data(
                                 if firstdep < 0:
                                     firstdep = float(row[0])
                                 depcoeffs.append(float(row[0]) / firstdep)
-                    ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
                     ax.plot(
                         levelnums,
                         depcoeffs,
                         linewidth=1.5,
                         color=color,
-                        label=f"{ionstr} CHIANTI NLTE{bbstr}",
+                        label=f"CHIANTI NLTE{bbstr}",
                         linestyle="None",
                         marker=marker,
                         zorder=-1,
@@ -227,8 +226,8 @@ def make_ionsubplot(
         dfpopthision = dfpopthision.filter(pl.col("level") <= args.maxlevel)
 
     ionpopulation = float(dfpopthision["n_NLTE"].sum())
-    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-    ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionstr}", 0.0)
+    ionkey = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+    ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionkey}", 0.0)
 
     levelnames = ion_data["levels"]["levelname"].to_list()
     dfpopthision = dfpopthision.with_columns(
@@ -343,7 +342,7 @@ def make_ionsubplot(
                 floers_levelnums,
                 floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"].to_numpy(),
                 linewidth=1.5,
-                label=f"{ionstr} Flörs NLTE",
+                label="Flörs NLTE",
                 linestyle="None",
                 marker="*",
             )
@@ -356,7 +355,7 @@ def make_ionsubplot(
             dfpopthision["level"],
             dfpopthision["n_LTE_T_e_normed"],
             linewidth=1.5,
-            label=f"{ionstr} LTE T$_e$ = {T_e:.0f} K",
+            label=f"LTE T$_e$ = {T_e:.0f} K",
             linestyle="None",
             marker="*",
         )
@@ -367,7 +366,7 @@ def make_ionsubplot(
                 floers_levelnums,
                 floers_levelpop_values,
                 linewidth=1.5,
-                label=f"{ionstr} Flörs NLTE",
+                label="Flörs NLTE",
                 linestyle="None",
                 marker="*",
             )
@@ -379,7 +378,7 @@ def make_ionsubplot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],
                 linewidth=1.5,
-                label=f"{ionstr} LTE T$_R$ = {T_R:.0f} K",
+                label=f"LTE T$_R$ = {T_R:.0f} K",
                 linestyle="None",
                 marker="*",
             )
@@ -390,7 +389,7 @@ def make_ionsubplot(
         linewidth=1.5,
         linestyle="None",
         marker="x",
-        label=f"{ionstr} ARTIS NLTE",
+        label="ARTIS NLTE",
         color="black",
     )
 
@@ -407,6 +406,18 @@ def make_ionsubplot(
             markerfacecolor=(0, 0, 0, 0),
             markeredgecolor="black",
         )
+
+    # the ion names the subplot rather than every legend entry, thus the legend stays short
+    ax.annotate(
+        ionstr,
+        xy=(1.0, 1.0),
+        xycoords="axes fraction",
+        xytext=(-10, -10),
+        textcoords="offset points",
+        horizontalalignment="right",
+        verticalalignment="top",
+        fontsize="large",
+    )
 
     # reference data comparison needs the cell's estimator values, so skip it when they are absent
     if args.plotrefdata and (timestep, modelgridindex) in estimators:
