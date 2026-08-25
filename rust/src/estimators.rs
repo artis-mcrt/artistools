@@ -25,7 +25,11 @@ const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII",
 
 /// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
 fn token_pairs<'a>(tokens: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a str)> {
-    tokens.as_chunks::<2>().0.iter().map(|&[name, value]| (name, value))
+    tokens
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[name, value]| (name, value))
 }
 
 /// Look up the element symbol for an atomic number given as a decimal string
