@@ -160,6 +160,7 @@ from artistools.misc import savgol_filter as savgol_filter
 from artistools.misc import set_args_from_dict as set_args_from_dict
 from artistools.misc import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc import stripallsuffixes as stripallsuffixes
+from artistools.misc import suggest_names as suggest_names
 from artistools.misc import trim_or_pad as trim_or_pad
 from artistools.misc import vec_len as vec_len
 from artistools.misc import write_gif as write_gif

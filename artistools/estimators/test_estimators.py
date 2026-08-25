@@ -744,3 +744,47 @@ def test_parse_ion_row_classic_keys_elements_by_symbol() -> None:
 
     # add_derived_estimator_columns derives nntot, so the reader must not carry its own copy
     assert "nntot" not in outdict
+
+
+@pytest.mark.parametrize(
+    ("plotarg", "expected"),
+    [("te", "Did you mean Te?"), ("notavariable", "available names include"), ("rhoo", "Did you mean rho?")],
+)
+def test_estimator_unknown_variable_suggests_a_name(
+    plotarg: str, expected: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unknown plot variable must name the closest estimator column, or list some of them."""
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[[plotarg]])
+
+    assert excinfo.value.code == 1
+    assert expected in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("directive", "expected"), [("_foo=bar", "not a plot directive"), ("_ymim=1", "_ymin")])
+def test_estimator_unknown_directive_names_the_valid_ones(
+    directive: str, expected: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unknown plot directive must say so and name the directives that exist."""
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            outputfile=outputpath,
+            timedays=260,
+            plotlist=[["rho", directive.split("=", maxsplit=1)]],
+        )
+
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr().err
+    assert expected in captured
+    assert "_yscale=" in captured
+
+
+def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> None:
+    """The ion test must accept the ion spellings that get_iontuple reads, and reject a variable typo."""
+    for good in ("Fe", "Fe II", "FeII", "26", "Fe56"):
+        assert at.estimators.plotestimators.is_valid_ion(good), good
+
+    for bad in ("te", "notanion", "zz"):
+        assert not at.estimators.plotestimators.is_valid_ion(bad), bad

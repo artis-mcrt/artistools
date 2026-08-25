@@ -12,6 +12,8 @@ from pathlib import Path
 from artistools.commands import CustomArgHelpFormatter
 
 if t.TYPE_CHECKING:
+    from collections.abc import Collection
+
     import numpy as np
     import numpy.typing as npt
 
@@ -298,6 +300,23 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
         choices=choices,
         help=helptext,
     )
+
+
+def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -> str:
+    """Return a sentence that names the closest candidates, or an empty string when none is close.
+
+    A name that differs only in case comes first, because that mistake is common and difflib scores a
+    short name such as "te" against "Te" below its own threshold.
+    """
+    import difflib
+
+    names = list(candidates)
+    if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
+        return f" Did you mean {samecase[0]}?"
+
+    matches = difflib.get_close_matches(name, names, n=count, cutoff=0.6)
+
+    return f" Did you mean {', '.join(matches)}?" if matches else ""
 
 
 def exit_with_error(message: str) -> t.NoReturn:

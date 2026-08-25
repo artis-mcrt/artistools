@@ -43,6 +43,8 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
+from artistools.misc import exit_with_error
+from artistools.misc import suggest_names
 from artistools.plottools import get_figsize
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
@@ -466,6 +468,10 @@ def plot_levelpop(
         )
 
 
+# the plot directives that a plot item can carry, e.g. "-p rho _yscale=log"
+DIRECTIVES = ("ymin", "ymax", "yscale")
+
+
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]."""
     # interpret bare integers as atomic numbers
@@ -494,6 +500,22 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
 
     atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
     return (atomic_number, ionstr)
+
+
+def is_valid_ion(ionstr: str) -> bool:
+    """Return True when the string names an element, an ion, or an isotope that get_iontuple can read.
+
+    could_be_ion is deliberately permissive, thus it accepts a name such as "te" that get_atomic_number
+    reads as tellurium. This test rejects that name, so that the caller can suggest the variable "Te".
+    """
+    atomic_number, param = get_iontuple(ionstr)
+    if atomic_number < 1:
+        return False
+
+    if isinstance(param, int):
+        return param >= 1
+
+    return param == "ALL" or param.rstrip("-0123456789") in at.get_elsymbolslist()
 
 
 def could_be_ion(plotvar: t.Any) -> bool:
@@ -568,6 +590,13 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         raise ValueError(msg)
 
     if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
+        # an ion population plot is the reading of last resort, thus reject a name that is no ion at all
+        if notions := [var for var in plotvars if isinstance(var, str) and not is_valid_ion(var)]:
+            exit_with_error(
+                f"'{notions[0]}' is neither an estimator variable nor an ion."
+                f"{suggest_names(notions[0], estimatorcolumns)}"
+            )
+
         # plotting this as a variable would cause an error, so interpret it as ion populations instead
         new_plotvars = [["populations", plotvars]]
         print(f"Rewriting plotlist {plotvars} to {new_plotvars}")
@@ -756,7 +785,12 @@ def plot_series(
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        assert variable in estimators.collect_schema().names(), f"Variable {variable} not found in estimators"
+        columns = estimators.collect_schema().names()
+        if variable not in columns:
+            suggestion = suggest_names(variable, columns)
+            if not suggestion:
+                suggestion = f" The {len(columns)} available names include: {', '.join(sorted(columns)[:8])}"
+            exit_with_error(f"'{variable}' is not an estimator variable.{suggestion}")
         colexpr = pl.col(variable)
 
     variablename = colexpr.meta.output_name()
@@ -933,6 +967,12 @@ def plot_subplot(
             remaining_plotitems.append(plotitem)
             continue
         seriestype, params = plotitem
+        if seriestype.startswith("_") and seriestype.removeprefix("_").lower() not in DIRECTIVES:
+            exit_with_error(
+                f"'{seriestype}' is not a plot directive."
+                f"{suggest_names(seriestype, [f'_{name}' for name in DIRECTIVES])}"
+                f" The directives are {', '.join(f'_{name}=' for name in DIRECTIVES)}"
+            )
         seriestype = seriestype.removeprefix("_").lower()
         if seriestype == "ymin":
             # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here

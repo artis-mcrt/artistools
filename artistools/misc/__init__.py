@@ -34,6 +34,7 @@ from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
+from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
