@@ -20,8 +20,8 @@ import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputpath
 from artistools.plottools import save_figure
 
 
@@ -675,7 +675,7 @@ def plot_qdot_abund_modelcells(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path(), helptext="Path for ARTIS files")
+    addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(
         "-mergerroot",
@@ -684,7 +684,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    add_outputpath_arg(parser)
+    addarg_outputpath(parser)
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 

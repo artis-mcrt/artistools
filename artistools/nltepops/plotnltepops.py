@@ -17,10 +17,10 @@ import polars as pl
 from matplotlib import ticker
 
 import artistools as at
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
 from artistools.plottools import save_figure
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
@@ -734,7 +734,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("elements", nargs="*", default=["Fe"], help="List of elements to plot")
 
-    add_modelpath_arg(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
 
     # arg to give multiple model paths - can use for x axis = time but breaks other plots
     # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', type=Path,
@@ -766,7 +766,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 
-    add_figscale_args(parser, figscaledefault=1.6)
+    addarg_figscale(parser, figscaledefault=1.6)
 
     parser.add_argument(
         "--departuremode", action="store_true", help="Show departure coefficients instead of populations"
@@ -782,10 +782,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    add_axis_limit_args(parser)
+    addarg_axislimits(parser)
 
     # no default here: which one applies depends on -x, so main chooses it when resolving the path
-    add_outputfile_arg(parser, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

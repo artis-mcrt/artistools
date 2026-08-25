@@ -49,13 +49,13 @@ def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(parser, positional=True, multiplepaths=True, default=[Path()])
+    at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
     parser.add_argument(
         "--fromspectra",
         action="store_true",
         help="Integrate the direction-resolved spectra instead of reading light_curve.out",
     )
-    at.add_outputpath_arg(parser, default=Path(), astype=Path)
+    at.addarg_outputpath(parser, default=Path(), astype=Path)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

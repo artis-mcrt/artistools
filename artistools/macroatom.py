@@ -10,10 +10,10 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
@@ -21,14 +21,14 @@ defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
-    add_timestep_arg(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
+    addarg_timestep(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
     parser.add_argument("element", nargs="?", default="Fe", help="Plotted element")
-    add_axis_limit_args(
+    addarg_axislimits(
         parser,
         xlimtype=int,
         xmindefault=1000,
@@ -37,7 +37,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
         include_y=False,
     )
-    add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

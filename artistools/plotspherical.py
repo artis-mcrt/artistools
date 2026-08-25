@@ -13,10 +13,10 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.misc import add_figscale_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
@@ -263,13 +263,13 @@ def plot_spherical(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
     parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
@@ -287,7 +287,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
-    add_figscale_args(parser)
+    addarg_figscale(parser)
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
@@ -295,7 +295,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
-    add_outputfile_arg(parser, astype=str, default="", helptext="Filename for plot output file")
+    addarg_outputfile(parser, astype=str, default="", helptext="Filename for plot output file")
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 

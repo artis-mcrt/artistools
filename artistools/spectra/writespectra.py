@@ -7,7 +7,7 @@ from pathlib import Path
 
 import polars as pl
 
-from artistools.misc import add_modelpath_arg
+from artistools.misc import addarg_modelpath
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -63,7 +63,7 @@ def write_flambda_spectra(modelpath: Path) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

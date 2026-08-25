@@ -26,15 +26,15 @@ from matplotlib.lines import Line2D
 import artistools.spectra as atspectra
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
-from artistools.misc import add_figscale_args
-from artistools.misc import add_filter_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_series_style_args
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timeminmax_args
-from artistools.misc import add_timestep_arg
-from artistools.misc import add_viewingangle_args
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_filter
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_timestep
+from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbin_labels
@@ -1241,7 +1241,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
     )
 
-    add_series_style_args(parser, include_linealpha=True)
+    addarg_seriesstyle(parser, include_linealpha=True)
 
     parser.add_argument(
         "--gamma", action="store_true", help="Plot the gamma-ray spectrum instead of the UVOIR spectrum"
@@ -1251,7 +1251,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
 
     parser.add_argument(
         "--plotinvalidpart",
@@ -1294,13 +1294,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Maximum number of plot series (ions/processes) for emission/absorption plot",
     )
 
-    add_filter_args(parser)
+    addarg_filter(parser)
 
-    add_timestep_arg(parser)
+    addarg_timestep(parser)
 
-    add_timedays_arg(parser)
+    addarg_timedays(parser)
 
-    add_timeminmax_args(
+    addarg_timeminmax(
         parser,
         helptext_min="Lower time in days to integrate spectrum",
         helptext_max="Upper time in days to integrate spectrum",
@@ -1403,7 +1403,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
+    addarg_figscale(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
@@ -1429,7 +1429,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    add_outputfile_arg(parser, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, helptext="path/filename for PDF file")
 
     parser.add_argument("-dpi", type=int, default=250, help="Dots Per Inch for output file")
 
@@ -1448,7 +1448,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )
 
-    add_viewingangle_args(parser)
+    addarg_viewingangle(parser)
 
     parser.add_argument(
         "-stokesparam", type=str, default="I", help="Stokes param to plot. Default I. Expects I, Q or U"

@@ -11,7 +11,7 @@ from pathlib import Path
 from artistools.commands import CustomArgHelpFormatter
 
 
-def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
+def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
     """Add the viewing direction selection and averaging arguments shared by the plotting commands."""
     parser.add_argument(
         "-plotvspecpol",
@@ -59,7 +59,7 @@ def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: boo
     )
 
 
-def add_modelpath_arg(
+def addarg_modelpath(
     parser: argparse.ArgumentParser,
     *,
     positional: bool = False,
@@ -80,7 +80,7 @@ def add_modelpath_arg(
         parser.add_argument("-modelpath", **kwargs)
 
 
-def add_outputfile_arg(
+def addarg_outputfile(
     parser: argparse.ArgumentParser,
     *,
     default: t.Any = None,
@@ -95,7 +95,7 @@ def add_outputfile_arg(
     parser.add_argument("-outputfile", *extraflags, "-o", **kwargs)
 
 
-def add_outputpath_arg(
+def addarg_outputpath(
     parser: argparse.ArgumentParser,
     *,
     default: t.Any = ".",
@@ -109,7 +109,7 @@ def add_outputpath_arg(
     parser.add_argument("-outputpath", "-o", **kwargs)
 
 
-def add_timestep_arg(
+def addarg_timestep(
     parser: argparse.ArgumentParser,
     *,
     kind: t.Literal["rangestr", "int", "strappend"] = "rangestr",
@@ -128,7 +128,7 @@ def add_timestep_arg(
         parser.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
 
 
-def add_timedays_arg(
+def addarg_timedays(
     parser: argparse.ArgumentParser,
     *,
     kind: t.Literal["rangestr", "str", "float"] = "rangestr",
@@ -146,7 +146,7 @@ def add_timedays_arg(
         parser.add_argument(*flags, help=helptext or "Time in days to plot")
 
 
-def add_timeminmax_args(
+def addarg_timeminmax(
     parser: argparse.ArgumentParser,
     *,
     helptext_min: str = "Lower time in days",
@@ -157,7 +157,7 @@ def add_timeminmax_args(
     parser.add_argument("-timemax", type=float, help=helptext_max)
 
 
-def add_axis_limit_args(
+def addarg_axislimits(
     parser: argparse.ArgumentParser,
     *,
     xlimtype: type[int] | type[float] = float,
@@ -192,7 +192,7 @@ def color_arg(value: str) -> str:
     return value
 
 
-def add_series_style_args(
+def addarg_seriesstyle(
     parser: argparse.ArgumentParser,
     *,
     colordefault: Sequence[str] | None = None,
@@ -220,7 +220,7 @@ def add_series_style_args(
         parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
 
-def add_figscale_args(
+def addarg_figscale(
     parser: argparse.ArgumentParser, *, figscaledefault: float = 1.0, include_figwidthscale: bool = False
 ) -> None:
     """Add the figure size scale factor arguments."""
@@ -231,7 +231,7 @@ def add_figscale_args(
         parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
 
-def add_filter_args(parser: argparse.ArgumentParser) -> None:
+def addarg_filter(parser: argparse.ArgumentParser) -> None:
     """Add the spectrum smoothing filter arguments (get_filterfunc reads exactly these dests)."""
     parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
     parser.add_argument(
@@ -241,7 +241,7 @@ def add_filter_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_maxpacketfiles_arg(parser: argparse.ArgumentParser) -> None:
+def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
     """Add the -maxpacketfiles argument limiting how many packet files are read."""
     parser.add_argument(
         "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"

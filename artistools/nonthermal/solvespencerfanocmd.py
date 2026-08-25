@@ -13,9 +13,9 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import EV_to_erg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
@@ -87,11 +87,11 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=".")
+    addarg_modelpath(parser, default=".")
 
-    add_timedays_arg(parser, kind="str")
+    addarg_timedays(parser, kind="str")
 
-    add_timestep_arg(parser, kind="int")
+    addarg_timestep(parser, kind="int")
 
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
 

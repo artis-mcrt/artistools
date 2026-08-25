@@ -1,17 +1,17 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
-from artistools.misc.cliutils import add_axis_limit_args as add_axis_limit_args
-from artistools.misc.cliutils import add_figscale_args as add_figscale_args
-from artistools.misc.cliutils import add_filter_args as add_filter_args
-from artistools.misc.cliutils import add_maxpacketfiles_arg as add_maxpacketfiles_arg
-from artistools.misc.cliutils import add_modelpath_arg as add_modelpath_arg
-from artistools.misc.cliutils import add_outputfile_arg as add_outputfile_arg
-from artistools.misc.cliutils import add_outputpath_arg as add_outputpath_arg
-from artistools.misc.cliutils import add_series_style_args as add_series_style_args
-from artistools.misc.cliutils import add_timedays_arg as add_timedays_arg
-from artistools.misc.cliutils import add_timeminmax_args as add_timeminmax_args
-from artistools.misc.cliutils import add_timestep_arg as add_timestep_arg
-from artistools.misc.cliutils import add_viewingangle_args as add_viewingangle_args
+from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
+from artistools.misc.cliutils import addarg_figscale as addarg_figscale
+from artistools.misc.cliutils import addarg_filter as addarg_filter
+from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
+from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
+from artistools.misc.cliutils import addarg_outputfile as addarg_outputfile
+from artistools.misc.cliutils import addarg_outputpath as addarg_outputpath
+from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
+from artistools.misc.cliutils import addarg_timedays as addarg_timedays
+from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
+from artistools.misc.cliutils import addarg_timestep as addarg_timestep
+from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc

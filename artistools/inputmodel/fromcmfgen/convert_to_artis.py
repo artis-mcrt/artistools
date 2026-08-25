@@ -50,7 +50,7 @@ CMFGEN_SPECIES_ATOMIC_NUMBER: t.Final[Mapping[str, int]] = MappingProxyType({
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
-    at.add_outputpath_arg(parser, default=Path(), astype=Path, helptext="Folder to write model.txt/abundances.txt to")
+    at.addarg_outputpath(parser, default=Path(), astype=Path, helptext="Folder to write model.txt/abundances.txt to")
 
 
 def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:

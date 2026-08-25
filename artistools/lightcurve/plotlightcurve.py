@@ -30,13 +30,13 @@ from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_filter_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_series_style_args
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_filter
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_seriesstyle
 from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
@@ -1356,7 +1356,7 @@ def plot_color_evolution_from_data(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -1364,7 +1364,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    add_series_style_args(parser)
+    addarg_seriesstyle(parser)
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
@@ -1378,11 +1378,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
 
-    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
+    addarg_figscale(parser, figscaledefault=1.8, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 
@@ -1396,7 +1396,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
-    add_outputfile_arg(parser, helptext="Filename for PDF file")
+    addarg_outputfile(parser, helptext="Filename for PDF file")
 
     parser.add_argument(
         "--plotcmf",
@@ -1465,9 +1465,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot hesma model on top of lightcurve plot. Enter model name saved in data/hesma directory",
     )
 
-    at.add_viewingangle_args(parser, allow_select_all=True)
+    at.addarg_viewingangle(parser, allow_select_all=True)
 
-    add_axis_limit_args(parser, include_x=False)
+    addarg_axislimits(parser, include_x=False)
 
     parser.add_argument(
         "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
@@ -1501,7 +1501,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-refspecmarkers", default=[], nargs="*", help="Set a list of markers for the reference light curves"
     )
 
-    add_filter_args(parser)
+    addarg_filter(parser)
 
     parser.add_argument(
         "-redshifttoz",

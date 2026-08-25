@@ -248,8 +248,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate."
         ),
     )
-    at.add_modelpath_arg(parser, default=Path())
-    at.add_outputfile_arg(parser, helptext="Path for the plot, or omit to show it interactively")
+    at.addarg_modelpath(parser, default=Path())
+    at.addarg_outputfile(parser, helptext="Path for the plot, or omit to show it interactively")
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
 
 

@@ -18,12 +18,12 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
 
@@ -357,11 +357,11 @@ def plot_celltimestep(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=".")
+    addarg_modelpath(parser, default=".")
 
-    add_timedays_arg(parser, kind="str")
+    addarg_timedays(parser, kind="str")
 
-    add_timestep_arg(parser, kind="strappend")
+    addarg_timestep(parser, kind="strappend")
 
     parser.add_argument("-modelgridindex", "-cell", action="append", help="Modelgridindex to plot")
 
@@ -371,7 +371,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--showbinedges", action="store_true", help="Plot vertical lines at the bin edges")
 
-    add_axis_limit_args(
+    addarg_axislimits(
         parser,
         xlimtype=int,
         xmindefault=1000,
@@ -389,9 +389,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
-    add_figscale_args(parser)
+    addarg_figscale(parser)
 
-    add_outputfile_arg(parser, helptext="Filename for PDF file")
+    addarg_outputfile(parser, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

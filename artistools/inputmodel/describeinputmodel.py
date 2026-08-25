@@ -321,7 +321,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(
+    at.addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,

@@ -14,10 +14,10 @@ defaultoutputfile = "massfracs.txt"
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(parser, default=Path())
-    at.add_timestep_arg(parser, kind="int", default=14, helptext="Timestep number to export")
+    at.addarg_modelpath(parser, default=Path())
+    at.addarg_timestep(parser, kind="int", default=14, helptext="Timestep number to export")
     parser.add_argument("-modelgridindex", "-cell", default="0-9", help="Range of cell numbers to export")
-    at.add_outputpath_arg(parser, default=defaultoutputfile, helptext="Path to output file of mass fractions")
+    at.addarg_outputpath(parser, default=defaultoutputfile, helptext="Path to output file of mass fractions")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

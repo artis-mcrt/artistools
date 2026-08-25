@@ -25,14 +25,14 @@ from polars import selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_filter_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timeminmax_args
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_filter
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_timestep
 
 colors_tab10 = [
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
@@ -1108,7 +1108,7 @@ def make_figure(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser, default=".", helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
 
@@ -1116,17 +1116,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
     )
 
-    add_timestep_arg(parser, helptext="Timestep number for internal structure plot")
+    addarg_timestep(parser, helptext="Timestep number for internal structure plot")
 
-    add_timedays_arg(parser, helptext="Time in days to plot for internal structure plot")
+    addarg_timedays(parser, helptext="Time in days to plot for internal structure plot")
 
-    add_timeminmax_args(parser)
+    addarg_timeminmax(parser)
 
     parser.add_argument("--multiplot", action="store_true", help="Make multiple plots for timesteps in range")
 
     parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
 
-    add_axis_limit_args(parser, include_y=False)
+    addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
         "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
@@ -1136,7 +1136,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
 
-    add_filter_args(parser)
+    addarg_filter(parser)
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 
@@ -1165,13 +1165,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
-    add_figscale_args(parser, include_figwidthscale=True)
+    addarg_figscale(parser, include_figwidthscale=True)
     # deprecated spelling of -figwidthscale kept as a hidden alias
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     parser.add_argument("--show", action="store_true", help="Show plot before quitting")
 
-    add_outputfile_arg(parser, extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
+    addarg_outputfile(parser, extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
         "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"

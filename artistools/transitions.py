@@ -14,11 +14,11 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import K_B_ev_per_K
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
 if t.TYPE_CHECKING:
@@ -256,9 +256,9 @@ def add_upper_lte_pop(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=None)
+    addarg_modelpath(parser, default=None)
 
-    add_axis_limit_args(
+    addarg_axislimits(
         parser,
         xlimtype=int,
         xmindefault=3500,
@@ -278,9 +278,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--include-permitted", action="store_true", help="Also consider permitted lines")
 
-    add_timedays_arg(parser, kind="str")
+    addarg_timedays(parser, kind="str")
 
-    add_timestep_arg(parser, kind="int", default=70)
+    addarg_timestep(parser, kind="int", default=70)
 
     parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
 
@@ -299,7 +299,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
-    add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

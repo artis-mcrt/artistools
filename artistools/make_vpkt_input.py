@@ -8,7 +8,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 
 import artistools as at
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_outputfile
 from artistools.misc import resolve_outputfile
 
 defaultoutputfile = "vpkt.txt"
@@ -446,7 +446,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal.",
     )
-    add_outputfile_arg(parser, helptext=f"Path/filename for the output file (default {defaultoutputfile})")
+    addarg_outputfile(parser, helptext=f"Path/filename for the output file (default {defaultoutputfile})")
 
 
 def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktConfig:

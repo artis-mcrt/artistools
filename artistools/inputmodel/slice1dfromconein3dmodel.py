@@ -12,8 +12,8 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputpath
 
 if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
@@ -298,7 +298,7 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
 
@@ -338,7 +338,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone"
     )
 
-    add_outputpath_arg(parser)
+    addarg_outputpath(parser)
 
     parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 

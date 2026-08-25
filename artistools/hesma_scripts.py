@@ -189,11 +189,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " plotspectrum/plotresspec: plot a HESMA reference spectrum file."
         ),
     )
-    at.add_modelpath_arg(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
-    at.add_outputpath_arg(parser, astype=Path, helptext="Folder for the written HESMA files")
-    # not -outputfile/-o, because add_outputpath_arg above already claims -o for the folder
+    at.addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
+    at.addarg_outputpath(parser, astype=Path, helptext="Folder for the written HESMA files")
+    # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
-    at.add_timeminmax_args(parser)
+    at.addarg_timeminmax(parser)
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )

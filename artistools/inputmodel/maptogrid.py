@@ -415,7 +415,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h.",
     )
 
-    at.add_outputpath_arg(parser)
+    at.addarg_outputpath(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -154,7 +154,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
     timegroup.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to select.")
 
-    at.add_modelpath_arg(parser, default=Path(), helptext="Path of ARTIS model")
+    at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",

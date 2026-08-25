@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_outputfile
 
 
 def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
@@ -169,7 +169,7 @@ def viewing_angles_visualisation(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("modelfile", help="Path to the ARTIS model.")
-    add_outputfile_arg(
+    addarg_outputfile(
         parser,
         astype=None,
         helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",

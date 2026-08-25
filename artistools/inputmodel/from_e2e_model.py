@@ -1072,7 +1072,7 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_outputpath_arg(parser, default=None, helptext="Path of output ARTIS model file")
+    at.addarg_outputpath(parser, default=None, helptext="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 

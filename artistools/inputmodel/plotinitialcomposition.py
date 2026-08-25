@@ -339,7 +339,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(parser, default=Path())
+    at.addarg_modelpath(parser, default=Path())
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 

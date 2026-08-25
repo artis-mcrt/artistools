@@ -12,16 +12,16 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
-from artistools.misc import add_series_style_args
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputpath
+from artistools.misc import addarg_seriesstyle
 from artistools.plottools import save_figure
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -29,11 +29,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to model.txt file(s) or folders containing model.txt)",
     )
 
-    add_series_style_args(
+    addarg_seriesstyle(
         parser, colordefault=[f"C{i}" for i in range(10)], include_linestyles=False, include_dashes=False
     )
 
-    add_axis_limit_args(parser, include_y=False)
+    addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
         "-nbins",
@@ -44,7 +44,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
-    add_outputpath_arg(parser)
+    addarg_outputpath(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

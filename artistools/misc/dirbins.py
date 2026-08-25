@@ -106,7 +106,7 @@ def get_viewingdirection_costhetabincount() -> int:
 def check_averaging_angles(average_over_phi: bool, average_over_theta: bool) -> None:
     """Reject averaging over both angles at once, which leaves too few direction bins to average again.
 
-    The command-line flags are already mutually exclusive (see add_viewingangle_args), so this covers the callers
+    The command-line flags are already mutually exclusive (see addarg_viewingangle), so this covers the callers
     that pass the values directly or build an argparse.Namespace from keyword arguments.
     """
     if average_over_phi and average_over_theta:

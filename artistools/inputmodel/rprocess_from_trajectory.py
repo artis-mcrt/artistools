@@ -440,7 +440,7 @@ def add_abundancecontributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_outputpath_arg(parser)
+    at.addarg_outputpath(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

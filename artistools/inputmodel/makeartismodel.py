@@ -10,13 +10,13 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import Msun_to_g
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_outputpath
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Path to input model file")
+    addarg_modelpath(parser, multiplepaths=True, default=[], helptext="Path to input model file")
 
     parser.add_argument(
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
@@ -56,7 +56,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    add_outputpath_arg(parser, helptext="Folder for output")
+    addarg_outputpath(parser, helptext="Folder for output")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
