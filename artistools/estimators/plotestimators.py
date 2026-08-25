@@ -44,6 +44,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.plottools import get_figsize
+from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_plot_title
@@ -1065,6 +1066,9 @@ def make_figure(
             args=args,
             **plotkwargs,
         )
+
+        # a stacked subplot puts its lowest label beside the highest label of the subplot below
+        prune_log_ticks(ax.yaxis)
 
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"

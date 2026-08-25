@@ -512,6 +512,11 @@ def prune_log_ticks(axis: mplaxis.Axis, *, fraction: float = 0.04, minticks: int
     A log axis of many decades carries few major ticks. Thus this leaves the ticks unchanged rather than
     keep fewer than minticks of them.
     """
+    # a linear axis of positive limits would otherwise get a margin that is wrong, because this
+    # measures the margin in decades
+    if axis.get_scale() != "log":
+        return
+
     lo, hi = axis.get_view_interval()
     if lo <= 0.0 or hi <= lo:
         return
