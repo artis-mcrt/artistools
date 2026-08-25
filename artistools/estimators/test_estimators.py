@@ -42,6 +42,32 @@ PLOTLIST_IONS: t.Final = (
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.MagicMock) -> None:
+    """A _ymin of the plot list must not freeze the top of the axis far above the data.
+
+    set_ylim turns the autoscaling of the whole axis off, thus applying _ymin before the series were
+    drawn left the top at the value it held with no data on the axes.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-18]]],
+    )
+
+    ydata = np.concatenate([
+        np.asarray(callargs[0][2], dtype=float) for callargs in mockplot.call_args_list if len(callargs[0]) > 2
+    ])
+    ydata = ydata[np.isfinite(ydata)]
+    ax = mockplot.call_args_list[0][0][0]
+    ylo, yhi = ax.get_ylim()
+
+    assert ylo == pytest.approx(1e-18), "the requested floor must be applied"
+    assert yhi < ydata.max() * 100, f"the top {yhi:.2e} is far above the data maximum {ydata.max():.2e}"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_ymin_does_not_hide_the_whole_series(
     mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str]
 ) -> None:

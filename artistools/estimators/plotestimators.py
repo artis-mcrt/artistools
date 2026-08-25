@@ -598,8 +598,6 @@ def plot_multi_ion_series(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
-    ymin: float | None = None,
-    ymax: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""
@@ -937,14 +935,15 @@ def plot_subplot(
         seriestype, params = plotitem
         seriestype = seriestype.removeprefix("_").lower()
         if seriestype == "ymin":
+            # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here
+            # would leave the other side at the value it held before the data arrived
             ymin = float(params) if isinstance(params, str) else params
-            ax.set_ylim(bottom=ymin)
 
         elif seriestype == "ymax":
             ymax = float(params) if isinstance(params, str) else params
-            ax.set_ylim(top=ymax)
 
         elif seriestype == "yscale":
+            # the scale must be set before the data, so that the axis autoscales in the right space
             ax.set_yscale(params)
         else:
             remaining_plotitems.append(plotitem)
@@ -1017,10 +1016,14 @@ def plot_subplot(
                     estimators=estimators,
                     modelpath=modelpath,
                     args=args,
-                    ymin=ymin,
-                    ymax=ymax,
                     **plotkwargs,
                 )
+
+    # apply the requested limits now that the data has set the range of the axis
+    if ymin is not None:
+        ax.set_ylim(bottom=ymin)
+    if ymax is not None:
+        ax.set_ylim(top=ymax)
 
     # a fixed limit of the plot list, e.g. the rho floor of the default list, suits one range of models.
     # A model outside that range would draw an empty panel, thus give up the limit and show the data
