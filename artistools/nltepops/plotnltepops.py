@@ -26,6 +26,8 @@ from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
+from artistools.misc import exit_with_error
+from artistools.misc import get_npts_model
 from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -346,7 +348,7 @@ def make_ionsubplot(
                 marker="*",
             )
     else:
-        ax.set_ylabel(r"Population density (cm$^{-3}$)")
+        ax.set_ylabel(r"Level population [cm$^{-3}$]")
 
         ycolumnname = "n_NLTE"
 
@@ -831,8 +833,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif args.x in {"time", "velocity"}:
         args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timemin=0, timemax=math.inf)
     else:
-        msg = "Please specify time with -timedays or -timestep"
-        raise ValueError(msg)
+        exit_with_error(
+            "no time given. Use -timedays or -timestep. A model of more than one cell also needs -modelgridindex"
+        )
 
     args.outputfile = at.resolve_outputfile(
         args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
@@ -856,8 +859,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]
         if mgi is not None
     )
+    npts_model = get_npts_model(modelpath)
     if not mgilist:
+        if npts_model > 1:
+            exit_with_error(
+                f"no model grid cell given, and this model has {npts_model} cells. "
+                "Use -modelgridindex (or -velocity) to select one"
+            )
         mgilist.append(0)
+
+    if outofrange := [mgi for mgi in mgilist if not 0 <= mgi < npts_model]:
+        exit_with_error(f"model grid cell {outofrange[0]} is outside the range 0 to {npts_model - 1}")
 
     if args.x in {"time", "velocity"}:
         make_plot_populations_with_time_or_velocity(modelpaths=args.modelpath, args=args)

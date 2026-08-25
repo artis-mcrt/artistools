@@ -512,13 +512,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ax1.plot(
             arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta"
         )
-        ax1.set_ylabel("energy release rate (erg/s)")
+        ax1.set_ylabel("Energy release rate [erg/s]")
         ax1.set_yscale("log")
         ax1.legend()
 
         for ax in axes:
             ax.legend()
-            ax.set_xlabel("time (days)")
+            ax.set_xlabel("Time [days]")
             ax.set_xscale("log")
 
         outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"

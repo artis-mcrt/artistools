@@ -187,6 +187,7 @@ ignore-missing-imports = [
 unbound-name = false
 implicit-any-empty-container = true
 implicit-any-lambda = true
+no-any-return-explicit = true
 no-any-return-implicit = true
 string-as-iterable = true
 unnecessary-type-conversion = true

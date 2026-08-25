@@ -90,7 +90,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
                 mpirank, timetaken = zip(*sorted(bytimestep[timestep].items()), strict=True)
                 axis.plot(mpirank, timetaken, label=stage)
             axis.set_xlabel("mpi rank")
-            axis.set_ylabel("time (s)")
+            axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
             axis.legend()
             pdf.savefig(fig)

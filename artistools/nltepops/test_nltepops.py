@@ -78,8 +78,15 @@ def test_nltepops_no_estimator_data(
     """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
     make_model_without_plotted_cell_estimators(tmp_path)
 
+    # the model has two cells, thus the command must name the plotted cell
     at.nltepops.plot(
-        argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, exc_temperature=5000.0, plotrefdata=True
+        argsraw=[],
+        modelpath=tmp_path,
+        outputfile=tmp_path,
+        cell=0,
+        timestep=40,
+        exc_temperature=5000.0,
+        plotrefdata=True,
     )
 
     assert "WARNING: No estimator data" in capsys.readouterr().out

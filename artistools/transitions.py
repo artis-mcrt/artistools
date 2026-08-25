@@ -246,7 +246,7 @@ def make_plot(
 
 def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
     """Return the LTE partition function of the ion at the excitation temperature."""
-    return pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item()
+    return float(pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item())
 
 
 def add_upper_lte_pop(
