@@ -360,11 +360,13 @@ def plot_reference_spectrum(
 
     lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, xunit)
 
-    # keep the nearest row outside each bound, so that the drawn line reaches the edge of the axes
+    # the reported flux covers the range that the user asked for, thus it takes the rows inside it
+    inrange = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
+    atspectra.print_integrated_flux(inrange["f_lambda"], inrange["lambda_angstroms"])
+
+    # the drawn line keeps the nearest row outside each bound, so that it reaches the edge of the axes
     # instead of stopping at the last point inside the range
     specdata = df_filter_minmax_bracketed(specdata, "lambda_angstroms", lambda_min, lambda_max).collect()
-
-    atspectra.print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"])
 
     if fluxfilterfunc:
         print(" applying filter to reference spectrum")

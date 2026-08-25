@@ -89,3 +89,4 @@ from artistools.misc.timesteps import get_timestep_time as get_timestep_time
 from artistools.misc.timesteps import get_timestep_times as get_timestep_times
 from artistools.misc.timesteps import get_timesteps as get_timesteps
 from artistools.misc.timesteps import match_closest_time as match_closest_time
+from artistools.misc.timesteps import parse_timedays_range as parse_timedays_range

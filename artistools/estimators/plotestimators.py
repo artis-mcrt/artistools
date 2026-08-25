@@ -1211,6 +1211,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot ARTIS estimators."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    at.set_mpl_style()
+
     modelpath = Path(args.modelpath)
 
     modelname = at.get_model_name(modelpath)

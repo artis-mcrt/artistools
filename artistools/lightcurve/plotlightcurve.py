@@ -45,6 +45,7 @@ from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
+from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
@@ -799,12 +800,10 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np
         rows = 1
         cols = 1
 
-    if "figwidthscale" not in args:
-        args.figwidthscale = 1.0
     if "figwidth" not in args:
-        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
+        args.figwidth = get_figsize(args, cols=cols)[0]
     if "figheight" not in args:
-        args.figheight = 5.0 * 1.1 * rows * 1.5
+        args.figheight = get_figsize(args, rows=rows)[1]
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -965,8 +964,6 @@ def make_band_lightcurves_plot(
     modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
 ) -> None:
     """Plot band magnitude light curves for every model and save the figure."""
-    if args.labelfontsize is None:
-        args.labelfontsize = 22
     fig, ax = create_axes(args)
     axes = iter_axes(ax)
 
@@ -1096,8 +1093,6 @@ def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorTy
 
 def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
     """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
-    if args.labelfontsize is None:
-        args.labelfontsize = 24
     angle_counter = 0
     color_list = get_dirbin_palette([*args.color, *args.refspeccolors])
 
@@ -1578,10 +1573,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
     parser.add_argument(
-        "-labelfontsize",
-        type=float,
-        default=None,
-        help="Base font size for plot text (axis labels, tick labels, legend). Defaults to 22 for band light curves and 24 for colour evolution plots",
+        "-labelfontsize", type=float, default=None, help="Font size of the tick labels and the axis labels"
     )
 
 
@@ -1591,7 +1583,7 @@ def apply_time_range_args(args: argparse.Namespace, modelpath: Path | str) -> No
     -timemin and -timemax give the range directly. A single -timedays value names one time for
     --brightnessattime, thus only a value that holds a range takes part here.
     """
-    if args.timestep is None and (args.timedays is None or "-" not in str(args.timedays)):
+    if args.timestep is None and (args.timedays is None or at.misc.parse_timedays_range(args.timedays) is None):
         return
 
     _, _, rangemin, rangemax = at.get_time_range(

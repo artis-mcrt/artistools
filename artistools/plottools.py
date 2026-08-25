@@ -441,7 +441,7 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
             fontsize="large",
         )
     else:
-        ax.set_title(title, fontsize=11)
+        ax.set_title(title)
 
 
 def get_next_color(ax: mplax.Axes) -> str:
@@ -554,8 +554,7 @@ def set_axis_properties(
         args.subplots = False
     # a Namespace membership test matches the name, thus a parser default of None reached tick_params
     # as labelsize=None, which is a silent no-op that left the rcParams size in place
-    if getattr(args, "labelfontsize", None) is None:
-        args.labelfontsize = 18
+    labelfontsize = getattr(args, "labelfontsize", None)
 
     if xlimits is None:
         xlimits = (getattr(args, "xmin", None), getattr(args, "xmax", None), "-xmin")
@@ -568,10 +567,11 @@ def set_axis_properties(
     xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
 
     for axis in iter_axes(ax):
-        axis.minorticks_on()
-        # the tick length and the tick width come from the artistools matplotlibrc. These axes then match
-        # the spectra figures, which set no tick style of their own
-        axis.tick_params(axis="both", which="both", top=True, right=True, labelsize=args.labelfontsize, direction="in")
+        # the tick direction, the top and right ticks, the minor ticks and the default label size all
+        # come from the artistools matplotlibrc, thus only a command that asks for a different label
+        # size sets one here
+        if labelfontsize is not None:
+            axis.tick_params(axis="both", which="both", labelsize=labelfontsize)
 
         # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
         # padding on a log axis. A limit of None on both sides is left alone for the same reason

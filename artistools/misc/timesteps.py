@@ -1,6 +1,8 @@
 """Timestep definitions, time range selection, and deposition rates."""
 
+import contextlib
 import math
+import re
 import typing as t
 from collections.abc import Iterable
 from functools import lru_cache
@@ -155,6 +157,30 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
+def parse_timedays_range(timedays_range_str: str | float) -> tuple[float, float] | None:
+    """Return the two ends of a time range like 2.2-2.8, or None when the text names a single time.
+
+    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative time. The text is
+    read as one number first, thus only a hyphen that separates two numbers splits the range.
+    """
+    text = str(timedays_range_str).strip()
+    with contextlib.suppress(ValueError):
+        float(text)
+        return None
+
+    # a digit or a decimal point in front of the hyphen means it separates two numbers
+    parts = re.split(r"(?<=[0-9.])-", text)
+    if len(parts) != 2:
+        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
+        raise ValueError(msg)
+
+    try:
+        return float(parts[0]), float(parts[1])
+    except ValueError as exc:
+        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
+        raise ValueError(msg) from exc
+
+
 def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
     """Return the timestep that a token names, resolving a keyword such as "last"."""
     token = token.strip()
@@ -212,8 +238,8 @@ def get_time_range(
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
-            if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
-                timemin, timemax = (float(timedays) for timedays in timedays_range_str.split("-"))
+            if (timedaysrange := parse_timedays_range(timedays_range_str)) is not None:
+                timemin, timemax = timedaysrange
                 if not clamp_to_timesteps:
                     time_days_lower = timemin
                     time_days_upper = timemax
