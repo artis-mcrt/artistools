@@ -882,6 +882,22 @@ def get_xlist(
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
 
 
+def ylimits_hide_all_data(ax: mplax.Axes) -> bool:
+    """Return True when the axes hold data, but no point of it lies within the vertical range."""
+    ylo, yhi = ax.get_ylim()
+    anydata = False
+    for line in ax.get_lines():
+        ydata = np.asarray(line.get_ydata(), dtype=float)
+        ydata = ydata[np.isfinite(ydata)]
+        if ydata.size == 0:
+            continue
+        anydata = True
+        if bool(((ydata >= ylo) & (ydata <= yhi)).any()):
+            return False
+
+    return anydata
+
+
 def plot_subplot(
     ax: mplax.Axes,
     timestepslist: list[int],
@@ -1005,6 +1021,12 @@ def plot_subplot(
                     ymax=ymax,
                     **plotkwargs,
                 )
+
+    # a fixed limit of the plot list, e.g. the rho floor of the default list, suits one range of models.
+    # A model outside that range would draw an empty panel, thus give up the limit and show the data
+    if (ymin is not None or ymax is not None) and ylimits_hide_all_data(ax):
+        print(f"WARNING: no {ax.get_ylabel() or 'data'} point is inside the requested y range. Using the data range")
+        ax.autoscale(enable=True, axis="y")
 
     if showlegend and not args.nolegend:
         ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)

@@ -42,6 +42,39 @@ PLOTLIST_IONS: t.Final = (
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_ymin_does_not_hide_the_whole_series(
+    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A fixed y limit of the plot list must give way when no data point would stay in view.
+
+    The default plot list floors rho at 1e-16, and the density of the test model is below that, thus the
+    panel drew nothing at all.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-16]]],
+    )
+
+    ydata = np.concatenate([
+        np.asarray(callargs[0][2], dtype=float) for callargs in mockplot.call_args_list if len(callargs[0]) > 2
+    ])
+    ydata = ydata[np.isfinite(ydata)]
+    assert ydata.size > 0
+    assert ydata.max() < 1e-16, "the test needs a model of a density below the floor of the plot list"
+
+    assert "is inside the requested y range" in capsys.readouterr().out
+
+    # the axes that the mock recorded must show the data, and not the empty range below the floor
+    ax = mockplot.call_args_list[0][0][0]
+    ylo, yhi = ax.get_ylim()
+    assert ylo <= ydata.min(), f"the lowest point {ydata.min():.2e} is below the axis at {ylo:.2e}"
+    assert ydata.max() <= yhi, f"the highest point {ydata.max():.2e} is above the axis at {yhi:.2e}"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_FULL
