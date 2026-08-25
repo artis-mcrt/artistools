@@ -338,9 +338,14 @@ def addarg_show(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
 
 
-def addarg_quiet(parser: argparse.ArgumentParser) -> None:
-    """Add the --quiet argument that hides the progress messages (__main__ reads this dest)."""
+def addarg_quiet(parser: argparse.ArgumentParser, *, productargs: "Sequence[str]" = ()) -> None:
+    """Add the --quiet argument that hides the progress messages.
+
+    A command whose standard output is its product for some arguments names their dests in productargs,
+    e.g. --listvariables prints a listing that --quiet must keep. run_command reads both dests.
+    """
     parser.add_argument("--quiet", action="store_true", help="Hide the progress messages. An error still appears")
+    parser.set_defaults(productargs=tuple(productargs))
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

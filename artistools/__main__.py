@@ -33,19 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-# An argument that asks for a listing makes the standard output the product of the command, thus --quiet
-# must not hide it. Each name here is the dest of such an argument.
-LISTING_ARGS = ("listvariables", "listnuclides")
-
-
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """Run the subcommand. With --quiet, send its progress messages to the null device.
 
     An error message goes to the standard error, thus --quiet keeps it. No module holds a quiet flag,
     because the redirection covers the whole call.
     """
-    wantslisting = any(getattr(args, name, False) for name in LISTING_ARGS)
-    if wantslisting or not getattr(args, "quiet", False):
+    # addarg_quiet records the arguments that make the standard output the product of the command, thus
+    # the dispatcher needs no knowledge of any one command
+    wantsproduct = any(getattr(args, name, False) for name in getattr(args, "productargs", ()))
+    if wantsproduct or not getattr(args, "quiet", False):
         func(args=args)
         return
 

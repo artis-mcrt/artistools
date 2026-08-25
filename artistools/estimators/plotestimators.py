@@ -1312,7 +1312,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     addarg_show(parser)
-    addarg_quiet(parser)
+    addarg_quiet(parser, productargs=("listvariables", "listnuclides"))
 
     addarg_dpi(parser, default=600)
 
