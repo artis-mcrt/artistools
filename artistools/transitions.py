@@ -1,8 +1,9 @@
 """Plot synthetic emission spectra of individual ions from Kurucz, NIST, or ARTIS transition data."""
 
 import argparse
-import sys
+import dataclasses as dc
 import typing as t
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -166,10 +167,10 @@ def generate_ion_spectrum(
 def make_plot(
     xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
     yvalues: npt.NDArray[np.floating],
-    temperature_list: list[str],
-    vardict: dict[str, float],
+    temperature_list: Sequence[str],
+    vardict: Mapping[str, float],
     ionlist: Sequence[IonTuple],
-    ionpopdict: dict[IonTuple, float],
+    ionpopdict: Mapping[IonTuple, float],
     xmin: float,
     xmax: float,
     figure_title: str,
@@ -314,33 +315,37 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot estimated spectra from bound-bound transitions."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+@dc.dataclass(frozen=True, slots=True)
+class CellConditions:
+    """The state of one cell of a model at one timestep."""
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    modelgridindex: int
+    timestep: int
+    time_days: float
+    velocity: float
+    estimators: Mapping[str, t.Any]
 
-    if args.modelpath:
-        from_model = True
-    else:
-        from_model = False
-        args.modelpath = Path()
 
-    modelpath = args.modelpath
-    if from_model:
-        modelgridindex = args.modelgridindex
+@dc.dataclass(frozen=True, slots=True)
+class PlotConditions:
+    """The populations, the temperatures, and the title that one plot of transitions needs.
 
-        timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
+    A temperature name of "NOTEMPNLTE" selects the NLTE populations in place of an LTE calculation.
+    """
 
-        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
-        estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-        if not estimators_all:
-            print("no estimators")
-            sys.exit(1)
+    ionpopdict: Mapping[IonTuple, float]
+    temperature_list: Sequence[str]
+    vardict: Mapping[str, float]
+    figure_title: str
+    dfnltepops: pl.DataFrame | None = None
 
-        estimators = estimators_all[timestep, modelgridindex]
 
-    ionlist: list[IonTuple] = [
+def get_ionlist() -> list[IonTuple]:
+    """Return the ions that the plot shows.
+
+    The commented lines are further ions that a user can select in place of these.
+    """
+    return [
         IonTuple(26, 1),
         IonTuple(26, 2),
         IonTuple(26, 3),
@@ -348,87 +353,145 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         IonTuple(27, 3),
         IonTuple(28, 2),
         IonTuple(28, 3),
-        # iontuple(28, 2),
-        # iontuple(45, 1),
-        # iontuple(54, 1),
-        # iontuple(54, 2),
-        # iontuple(55, 1),
-        # iontuple(55, 2),
-        # iontuple(58, 1),
-        # iontuple(79, 1),
-        # iontuple(83, 1),
-        # iontuple(26, 2),
-        # iontuple(26, 3),
+        # IonTuple(45, 1),
+        # IonTuple(54, 1),
+        # IonTuple(54, 2),
+        # IonTuple(55, 1),
+        # IonTuple(55, 2),
+        # IonTuple(58, 1),
+        # IonTuple(79, 1),
+        # IonTuple(83, 1),
     ]
 
-    if args.atomicdatabase == "kurucz":
-        dftransgfall, ionlist = get_kurucz_transitions()
 
-    ionlist.sort()
+def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellConditions:
+    """Read the time, the velocity, and the estimators of the selected cell and timestep."""
+    timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
-    # resolution of the plot in Angstroms
-    plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=args.modelgridindex)
+    if not estimators_all:
+        at.exit_with_error("no estimators")
 
-    if args.atomicdatabase == "artis":
-        adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
-    ionpopdict: dict[IonTuple, float] = {}
-    if from_model:
-        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+    return CellConditions(
+        modelgridindex=args.modelgridindex,
+        timestep=timestep,
+        time_days=at.get_timestep_time(modelpath, timestep),
+        velocity=modeldata["vel_r_max_kmps"][args.modelgridindex],
+        estimators=estimators_all[timestep, args.modelgridindex],
+    )
 
-        if dfnltepops.is_empty():
-            at.exit_with_error(f"no NLTE populations for cell {modelgridindex} at timestep {timestep}")
 
-        ionpopdict = {
+def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequence[IonTuple]) -> PlotConditions:
+    """Return the NLTE populations and the temperatures of one cell of a model."""
+    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
+
+    if dfnltepops.is_empty():
+        at.exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
+
+    T_e = float(cell.estimators["Te"])
+    T_R = float(cell.estimators["TR"])
+    figure_title = (
+        f"{at.get_model_name(modelpath)}\n"
+        f"Cell {cell.modelgridindex} ({cell.velocity} km/s) with Te = {T_e:.1f} K, "
+        f"TR = {T_R:.1f} K at timestep {cell.timestep}"
+    )
+    if cell.time_days != -1:
+        figure_title += f" ({cell.time_days:.1f}d)"
+
+    return PlotConditions(
+        ionpopdict={
             IonTuple(Z, ion_stage): float(
                 dfnltepops.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["n_NLTE"].sum()
             )
             for Z, ion_stage in ionlist
-        }
+        },
+        temperature_list=["NOTEMPNLTE"],
+        vardict={"Te": T_e, "TR": T_R},
+        figure_title=figure_title,
+        dfnltepops=dfnltepops,
+    )
 
-        modelname = at.get_model_name(modelpath)
-        velocity = modeldata["vel_r_max_kmps"][modelgridindex]
 
-        Te = estimators["Te"]
-        TR = estimators["TR"]
-        figure_title = f"{modelname}\n"
-        figure_title += (
-            f"Cell {modelgridindex} ({velocity} km/s) with Te = {Te:.1f} K, TR = {TR:.1f} K at timestep {timestep}"
+def get_fixed_temperature_conditions(args: argparse.Namespace, ionlist: Sequence[IonTuple]) -> PlotConditions:
+    """Return one series for each temperature that -T names, with the same population for every ion."""
+    if not args.T:
+        args.T = [2000]
+
+    vardict = {}
+    temperature_list = []
+    for index, temperature in enumerate(args.T):
+        tlabel = "Te" if index == 0 else f"Te_{index + 1}"
+        vardict[tlabel] = float(temperature)
+        temperature_list.append(tlabel)
+
+    return PlotConditions(
+        ionpopdict={IonTuple(Z, ionstage): 1.0 for Z, ionstage in ionlist},
+        temperature_list=temperature_list,
+        vardict=vardict,
+        figure_title=f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else "",
+    )
+
+
+def get_ion_transitions(
+    ion: Mapping[str, t.Any], dftransgfall: pl.DataFrame | None, args: argparse.Namespace
+) -> pl.DataFrame:
+    """Return the transitions of one ion from the selected atomic database."""
+    if args.atomicdatabase == "kurucz":
+        assert dftransgfall is not None
+        return dftransgfall.filter((pl.col("Z") == ion["Z"]) & (pl.col("ion_stage") == ion["ion_stage"]))
+
+    if args.atomicdatabase == "nist":
+        return get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
+
+    pldftransitions = ion["transitions"]
+    assert isinstance(pldftransitions, pl.DataFrame | pl.LazyFrame)
+
+    return pldftransitions.lazy().collect()
+
+
+def add_artis_transition_columns(pldftransitions: pl.DataFrame, pldflevels: pl.DataFrame) -> pl.DataFrame:
+    """Add the level energies, the wavelengths, and the statistical weights of an ARTIS transition list."""
+    return (
+        at.atomic
+        .add_transition_columns(
+            pldftransitions,
+            pldflevels,
+            [
+                "lower_energy_ev",
+                "upper_energy_ev",
+                "lambda_angstroms",
+                "lower_level",
+                "upper_level",
+                "lower_g",
+                "upper_g",
+            ],
         )
-        time_days = at.get_timestep_time(modelpath, timestep)
-        if time_days != -1:
-            figure_title += f" ({time_days:.1f}d)"
+        .rename({"lower_g": "lower_statweight", "upper_g": "upper_statweight"})
+        .collect()
+    )
 
-        # NOTEMPNLTE means use NLTE populations
-        temperature_list = ["NOTEMPNLTE"]
-        vardict = {"Te": Te, "TR": TR}
-    else:
-        if not args.T:
-            args.T = [2000]
-        figure_title = f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else ""
 
-        temperature_list = []
-        vardict = {}
-        for index, temperature in enumerate(args.T):
-            tlabel = "Te"
-            if index > 0:
-                tlabel += f"_{index + 1}"
-            vardict[tlabel] = temperature
-            temperature_list.append(tlabel)
+def get_ion_spectra(
+    xvalues: npt.NDArray[np.floating],
+    ionlist: Sequence[IonTuple],
+    conditions: PlotConditions,
+    adata: pl.DataFrame | None,
+    dftransgfall: pl.DataFrame | None,
+    plot_resolution: int,
+    args: argparse.Namespace,
+) -> tuple[npt.NDArray[np.floating], dict[IonTuple, float]]:
+    """Return the spectrum of each ion at each temperature, and the departure coefficient of two lines.
 
-        # Fe3overFe2 = 8  # number ratio
-        # ionpopdict = {
-        #     IonTuple(26, 2): 1 / (1 + Fe3overFe2),
-        #     IonTuple(26, 3): Fe3overFe2 / (1 + Fe3overFe2),
-        #     IonTuple(28, 2): 1.0e-2,
-        # }
-        ionpopdict = {IonTuple(Z, ionstage): 1.0 for Z, ionstage in ionlist}
+    The plot marks the departure coefficient of the Fe II 7155 line and of the Ni II 7378 line, thus
+    this function gives back both.
+    """
+    yvalues = np.zeros((len(conditions.temperature_list) + 1, len(ionlist), len(xvalues)))
+    depcoeffs: dict[IonTuple, float] = {}
 
-    xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
-    yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
-    fe2depcoeff, ni2depcoeff = None, None
-    iterdict: Iterable[dict[str, t.Any]] = (
+    iterdict: Iterable[Mapping[str, t.Any]] = (
         adata.iter_rows(named=True)
-        if args.atomicdatabase == "artis"
+        if adata is not None
         else ({"Z": Z, "ion_stage": ion_stage, "levels": None} for Z, ion_stage in ionlist)
     )
     for ion in iterdict:
@@ -439,171 +502,195 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             continue
 
         ionindex = ionlist.index(ionid)
-
-        if args.atomicdatabase == "kurucz":
-            pldftransitions = dftransgfall.filter((pl.col("Z") == ion["Z"]) & (pl.col("ion_stage") == ion["ion_stage"]))
-        elif args.atomicdatabase == "nist":
-            pldftransitions = get_nist_transitions(f"nist/nist-{ion['Z']:02d}-{ion['ion_stage']:02d}.txt")
-        else:
-            pldftransitions = ion["transitions"]
-            assert isinstance(pldftransitions, pl.DataFrame | pl.LazyFrame)
-            pldftransitions = pldftransitions.lazy().collect()
+        pldftransitions = get_ion_transitions(ion, dftransgfall, args)
 
         print(
             f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
-            f"(pop={ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
+            f"(pop={conditions.ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
         )
 
         if not args.include_permitted and not pldftransitions.is_empty():
             pldftransitions = pldftransitions.filter(pl.col("forbidden") != 0)
             print(f"  ({pldftransitions.height:6d} forbidden)")
 
-        if not pldftransitions.is_empty():
-            if args.atomicdatabase == "artis":
-                assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
-                pldftransitions = (
-                    at.atomic
-                    .add_transition_columns(
-                        pldftransitions,
-                        ion["levels"],
-                        [
-                            "lower_energy_ev",
-                            "upper_energy_ev",
-                            "lambda_angstroms",
-                            "lower_level",
-                            "upper_level",
-                            "lower_g",
-                            "upper_g",
-                        ],
-                    )
-                    .rename({"lower_g": "lower_statweight", "upper_g": "upper_statweight"})
-                    .collect()
-                )
+        if pldftransitions.is_empty():
+            continue
 
-            pldftransitions = pldftransitions.sort(by="lambda_angstroms")
+        pldflevels = None
+        if args.atomicdatabase == "artis":
+            assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
+            pldflevels = ion["levels"].lazy().collect()
+            pldftransitions = add_artis_transition_columns(pldftransitions, pldflevels)
 
-            print(f"  {pldftransitions.height} plottable transitions")
+        pldftransitions = pldftransitions.sort(by="lambda_angstroms")
+        print(f"  {pldftransitions.height} plottable transitions")
 
-            if args.atomicdatabase == "artis":
-                T_exc = vardict["Te"]
-                pldflevels = ion["levels"]
-                assert isinstance(pldflevels, pl.DataFrame | pl.LazyFrame)
-                pldflevels = pldflevels.lazy().collect()
-                ltepartfunc = get_lte_partfunc(pldflevels, T_exc)
-
-            else:
-                ltepartfunc = 1.0
-
-            pldftransitions = pldftransitions.with_columns(
+        ltepartfunc = get_lte_partfunc(pldflevels, conditions.vardict["Te"]) if pldflevels is not None else 1.0
+        pldftransitions = add_upper_lte_pop(
+            pldftransitions.with_columns(
                 flux_factor=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")) * pl.col("A")
-            )
+            ),
+            conditions.vardict["Te"],
+            conditions.ionpopdict[ionid],
+            ltepartfunc,
+            columnname="upper_pop_Te",
+        )
 
-            pldftransitions = add_upper_lte_pop(
-                pldftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
-            )
+        for seriesindex, temperature in enumerate(conditions.temperature_list):
+            if temperature == "NOTEMPNLTE":
+                popcolumnname = "upper_pop_nlte"
+                dftransitions = add_nlte_pop(pldftransitions, conditions, ionid)
+                depcoeffs |= get_line_departure_coeffs(dftransitions, ionid)
 
-            for seriesindex, temperature in enumerate(temperature_list):
-                if temperature == "NOTEMPNLTE":
-                    dfnltepops_thision = dfnltepops.filter(
-                        (pl.col("Z") == ionid.Z) & (pl.col("ion_stage") == ionid.ion_stage)
-                    )
-
-                    nltepopdict = dict(zip(dfnltepops_thision["level"], dfnltepops_thision["n_NLTE"], strict=True))
-
-                    popcolumnname = "upper_pop_nlte"
-                    dftransitions = pldftransitions.with_columns(
-                        upper_pop_nlte=pl.col("upper").replace_strict(nltepopdict, default=0.0, return_dtype=pl.Float64)
-                    ).with_columns(
-                        flux_factor_nlte=pl.col("flux_factor") * pl.col(popcolumnname),
-                        upper_departure=pl.col("upper_pop_nlte") / pl.col("upper_pop_Te"),
-                    )
-                    if ionid == IonTuple(26, 2):
-                        fe2depcoeff = dftransitions.filter((pl.col("upper") == 16) & (pl.col("lower") == 5))[
-                            "upper_departure"
-                        ].item(0)
-                    elif ionid == IonTuple(28, 2):
-                        ni2depcoeff = dftransitions.filter((pl.col("upper") == 6) & (pl.col("lower") == 0))[
-                            "upper_departure"
-                        ].item(0)
-
-                    with pl.Config(tbl_cols=-1):
-                        print(dftransitions.top_k(1, by="flux_factor_nlte"))
-                else:
-                    T_exc = vardict[temperature]
-                    popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
-                    ltepartfunc = get_lte_partfunc(pldflevels, T_exc) if args.atomicdatabase == "artis" else 1.0
-                    dftransitions = add_upper_lte_pop(
-                        pldftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
-                    )
-
-                if args.print_lines:
-                    dftransitions = dftransitions.with_columns(
-                        (pl.col("flux_factor") * pl.col(popcolumnname)).alias(f"flux_factor_{popcolumnname}")
-                    )
-
-                yvalues[seriesindex][ionindex] = generate_ion_spectrum(
-                    dftransitions, xvalues, popcolumnname, plot_resolution, args
+                with pl.Config(tbl_cols=-1):
+                    print(dftransitions.top_k(1, by="flux_factor_nlte"))
+            else:
+                T_exc = conditions.vardict[temperature]
+                popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
+                dftransitions = add_upper_lte_pop(
+                    pldftransitions,
+                    T_exc,
+                    conditions.ionpopdict[ionid],
+                    get_lte_partfunc(pldflevels, T_exc) if pldflevels is not None else 1.0,
+                    columnname=popcolumnname,
                 )
-                if args.normalised:
-                    yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])  # TODO: move to ax.plot line
+
+            if args.print_lines:
+                dftransitions = dftransitions.with_columns(
+                    (pl.col("flux_factor") * pl.col(popcolumnname)).alias(f"flux_factor_{popcolumnname}")
+                )
+
+            yvalues[seriesindex][ionindex] = generate_ion_spectrum(
+                dftransitions, xvalues, popcolumnname, plot_resolution, args
+            )
+            if args.normalised:
+                yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])
 
         if args.print_lines:
             print(dftransitions.columns)
             print(dftransitions.select("lower", "upper", "forbidden", "A", "lambda_angstroms"))
+
     print()
 
-    if from_model:
+    return yvalues, depcoeffs
 
-        def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
-            elsym = at.get_elsymbol(atomic_number)
-            est_ionfracs = [
-                estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
-                / estimators[f"nnelement_{elsym}"]
-                for ion_stage in ion_stages
-            ]
-            ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
-            strions = " ".join([
-                f"{at.get_elsymbol(atomic_number)}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in ion_stages
-            ])
-            return strions, ionfracs_str
 
-        strfeions, est_fe_ionfracs_str = get_strionfracs(26, [2, 3])
-
-        strniions, est_ni_ionfracs_str = get_strionfracs(28, [2, 3])
-
-        print(
-            f"                     Fe II 7155             Ni II 7378  {strfeions}   /  {strniions}"
-            "      T_e    Fe III/II       Ni III/II"
-        )
-
-        print(
-            f"{velocity:5.0f} km/s({modelgridindex})      {fe2depcoeff:5.2f}                   "
-            f"{ni2depcoeff:.2f}        "
-            f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {Te:.0f}    "
-            f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
-            f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
-        )
-
-    outputfilename = (
-        str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
-        if from_model
-        else "plottransitions.pdf"
+def add_nlte_pop(pldftransitions: pl.DataFrame, conditions: PlotConditions, ionid: IonTuple) -> pl.DataFrame:
+    """Add the NLTE population of the upper level, its flux factor, and its departure coefficient."""
+    assert conditions.dfnltepops is not None
+    dfnltepops_thision = conditions.dfnltepops.filter(
+        (pl.col("Z") == ionid.Z) & (pl.col("ion_stage") == ionid.ion_stage)
     )
+    nltepopdict = dict(zip(dfnltepops_thision["level"], dfnltepops_thision["n_NLTE"], strict=True))
+
+    return pldftransitions.with_columns(
+        upper_pop_nlte=pl.col("upper").replace_strict(nltepopdict, default=0.0, return_dtype=pl.Float64)
+    ).with_columns(
+        flux_factor_nlte=pl.col("flux_factor") * pl.col("upper_pop_nlte"),
+        upper_departure=pl.col("upper_pop_nlte") / pl.col("upper_pop_Te"),
+    )
+
+
+def get_line_departure_coeffs(dftransitions: pl.DataFrame, ionid: IonTuple) -> dict[IonTuple, float]:
+    """Return the departure coefficient of the Fe II 7155 line or of the Ni II 7378 line."""
+    upperlower = {IonTuple(26, 2): (16, 5), IonTuple(28, 2): (6, 0)}.get(ionid)
+    if upperlower is None:
+        return {}
+
+    upper, lower = upperlower
+    departure = dftransitions.filter((pl.col("upper") == upper) & (pl.col("lower") == lower))["upper_departure"]
+
+    return {ionid: float(departure.item(0))}
+
+
+def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[IonTuple, float]) -> None:
+    """Print the ionisation fractions of iron and of nickel, beside two departure coefficients."""
+    estimators = cell.estimators
+
+    def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
+        elsym = at.get_elsymbol(atomic_number)
+        est_ionfracs = [
+            estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
+            / estimators[f"nnelement_{elsym}"]
+            for ion_stage in ion_stages
+        ]
+        ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
+        strions = " ".join([f"{elsym}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in ion_stages])
+
+        return strions, ionfracs_str
+
+    strfeions, est_fe_ionfracs_str = get_strionfracs(26, [2, 3])
+    strniions, est_ni_ionfracs_str = get_strionfracs(28, [2, 3])
+
+    print(
+        f"                     Fe II 7155             Ni II 7378  {strfeions}   /  {strniions}"
+        "      T_e    Fe III/II       Ni III/II"
+    )
+    print(
+        f"{cell.velocity:5.0f} km/s({cell.modelgridindex})      {depcoeffs[IonTuple(26, 2)]:5.2f}                   "
+        f"{depcoeffs[IonTuple(28, 2)]:.2f}        "
+        f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {estimators['Te']:.0f}    "
+        f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
+        f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
+    )
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot estimated spectra from bound-bound transitions."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+
+    # with no model path the plot shows one fixed temperature, thus it reads the atomic data of the working folder
+    from_model = bool(args.modelpath)
+    modelpath = Path(args.modelpath) if from_model else Path()
+    args.modelpath = modelpath
+
+    cell = get_cell_conditions(modelpath, args) if from_model else None
+
+    ionlist = get_ionlist()
+    dftransgfall = None
+    if args.atomicdatabase == "kurucz":
+        dftransgfall, ionlist = get_kurucz_transitions()
+
+    ionlist.sort()
+
+    # resolution of the plot in Angstroms
+    plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
+
+    adata = (
+        at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
+        if args.atomicdatabase == "artis"
+        else None
+    )
+
+    conditions = (
+        get_model_conditions(modelpath, cell, ionlist)
+        if cell is not None
+        else get_fixed_temperature_conditions(args, ionlist)
+    )
+
+    xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
+    yvalues, depcoeffs = get_ion_spectra(xvalues, ionlist, conditions, adata, dftransgfall, plot_resolution, args)
+
+    if cell is not None:
+        print_ionisation_table(cell, depcoeffs)
+        outputfilename = str(args.outputfile).format(
+            cell=cell.modelgridindex, timestep=cell.timestep, time_days=cell.time_days
+        )
+    else:
+        outputfilename = "plottransitions.pdf"
 
     make_plot(
         xvalues,
         yvalues,
-        temperature_list,
-        {k: float(v) for k, v in vardict.items()},
+        conditions.temperature_list,
+        conditions.vardict,
         ionlist,
-        ionpopdict,
+        conditions.ionpopdict,
         args.xmin,
         args.xmax,
-        figure_title,
+        conditions.figure_title,
         outputfilename,
         args,
     )
-
-
-if __name__ == "__main__":
-    main()
