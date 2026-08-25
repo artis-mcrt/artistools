@@ -76,7 +76,6 @@ from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
-    import matplotlib.artist as mplartist
     import matplotlib.typing as mplt
 
 
@@ -825,6 +824,281 @@ def make_spectrum_plot(
     return dfalldata
 
 
+def get_xy_spectrum(
+    flambda_array: npt.NDArray[np.floating], arraylambda_angstroms: npt.NDArray[np.floating], args: argparse.Namespace
+) -> pl.LazyFrame:
+    """Return the x series and the y series of one flux array, in the units that the arguments name."""
+    return atspectra.get_dfspectrum_x_y_with_units(
+        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+        xunit=args.xunit,
+        yvariable=args.yvariable,
+        fluxdistance_mpc=args.distmpc,
+    )
+
+
+def get_emission_contributions(
+    modelpath: Path,
+    args: argparse.Namespace,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    xmin: float,
+    xmax: float,
+    timestepmin: int,
+    timestepmax: int,
+    dirbin: int | None,
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
+
+    A run with --frompackets reads the packets files. A run without it reads the emission file and the
+    absorption file that ARTIS writes for each timestep.
+    """
+    if not args.frompackets:
+        assert not args.vpkt_match_emission_exclusion_to_opac
+        lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
+
+        return atspectra.get_flux_contributions(
+            modelpath,
+            filterfunc,
+            timestepmin,
+            timestepmax,
+            getemission=args.showemission,
+            getabsorption=args.showabsorption,
+            use_lastemissiontype=not args.use_thermalemissiontype,
+            directionbin=dirbin,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+            lambda_min=lambda_min,
+            lambda_max=lambda_max,
+        )
+
+    use_time: t.Literal["escape", "emission", "arrival"]
+    if args.use_escapetime:
+        use_time = "escape"
+    elif args.use_emissiontime:
+        use_time = "emission"
+    else:
+        use_time = "arrival"
+
+    if args.groupby in {"nuc", "nucmass"}:
+        emtypecolumn = "pellet_nucindex"
+    elif args.use_thermalemissiontype:
+        emtypecolumn = "trueemissiontype"
+    else:
+        emtypecolumn = "emissiontype"
+
+    lambda_bin_edges = atspectra.get_lambda_bin_edges(
+        xmin,
+        xmax,
+        deltax=args.deltax,
+        deltalogx=args.deltalogx,
+        deltalambda=args.deltalambda,
+        xunit=args.xunit,
+        modelpath=modelpath,
+        gamma=args.gamma,
+    )
+
+    return atspectra.get_flux_contributions_from_packets(
+        modelpath,
+        timelowdays=args.timemin,
+        timehighdays=args.timemax,
+        lambda_bin_edges=lambda_bin_edges,
+        getemission=args.showemission,
+        getabsorption=args.showabsorption,
+        maxpacketfiles=args.maxpacketfiles,
+        filterfunc=filterfunc,
+        groupby=args.groupby,
+        use_time=use_time,
+        fixedionlist=args.fixedionlist,
+        maxseriescount=args.maxseriescount + 20,
+        gamma=args.gamma,
+        emtypecolumn=emtypecolumn,
+        directionbin=dirbin,
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+        directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+        vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+    )
+
+
+def plot_contributions_unstacked(
+    axis: mplax.Axes,
+    contributions: Sequence[atspectra.FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+    scalefactor: float,
+    xmin: float,
+    xmax: float,
+) -> tuple[list[Artist], float]:
+    """Draw one line for each contribution, and return the artists and the largest absorption.
+
+    An absorption series goes below the axis, thus the caller reads the largest value to set the limit.
+    """
+    plotobjects: list[Artist] = []
+    max_absorption = 0.0
+
+    for contribution in contributions:
+        if args.showemission:
+            dfspec = get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args).collect()
+            (emissioncomponentplot,) = axis.plot(
+                dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=contribution.color
+            )
+            linecolor = emissioncomponentplot.get_color()
+        else:
+            linecolor = contribution.color
+
+        if args.showabsorption:
+            dfspec = get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args).collect()
+            (absorptioncomponentplot,) = axis.plot(
+                dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
+            )
+            if not args.showemission:
+                linecolor = absorptioncomponentplot.get_color()
+
+            this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+            assert isinstance(this_max_absorption, float)
+            max_absorption = max(max_absorption, this_max_absorption)
+
+        plotobjects.append(mpatches.Patch(color=linecolor))
+
+    return plotobjects, max_absorption
+
+
+def plot_contributions_stacked(
+    axis: mplax.Axes,
+    contributions: Sequence[atspectra.FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+    scalefactor: float,
+    xmin: float,
+    xmax: float,
+) -> tuple[list[Artist], float]:
+    """Draw the contributions as one filled stack, and return the artists and the largest absorption."""
+    plotobjects: list[Artist] = []
+    max_absorption = 0.0
+
+    contribcolors = [contribution.color for contribution in contributions]
+    # if any contribution has no colour set, let matplotlib assign the whole stack from the Axes property cycle
+    stackcolors: list[mplt.ColorType] | None = (
+        None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
+    )
+
+    facecolors: list[mplt.ColorType] | None
+    if args.showemission:
+        dfemissionspectra = pl.collect_all([
+            get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
+            for contribution in contributions
+        ])
+        stackplot = axis.stackplot(
+            dfemissionspectra[0]["x"],
+            [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
+            colors=stackcolors,
+            linewidth=0,
+        )
+        plotobjects.extend(stackplot)
+        # read back the drawn colours, which matplotlib assigned when stackcolors was None
+        facecolors = [mplcolors.to_rgba(np.asarray(p.get_facecolor())[0]) for p in stackplot]
+    else:
+        facecolors = stackcolors
+
+    if args.showabsorption:
+        dfabsorptionspectra = pl.collect_all([
+            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
+            for contribution in contributions
+        ])
+        absstackplot = axis.stackplot(
+            dfabsorptionspectra[0]["x"],
+            [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
+            colors=facecolors,
+            linewidth=0,
+        )
+        if not args.showemission:
+            plotobjects.extend(absstackplot)
+
+        max_absorption = (
+            pl
+            .DataFrame({
+                f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
+                for i, df in enumerate(dfabsorptionspectra)
+            })
+            .select(pl.sum_horizontal(pl.all()).max())
+            .item()
+        )
+
+    return plotobjects, max_absorption
+
+
+def plot_reference_spectra(
+    axis: mplax.Axes,
+    args: argparse.Namespace,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    scale_to_peak: float | None,
+) -> tuple[list[Artist], list[str], float]:
+    """Draw each reference spectrum of -specpath, and return the artists, the labels, and the maximum."""
+    plotobjects: list[Artist] = []
+    plotobjectlabels: list[str] = []
+    ymaxrefall = 0.0
+    plotkwargs: dict[str, t.Any] = {}
+
+    for index, filepath in enumerate(args.specpath):
+        if path_is_artis_model(filepath):
+            continue
+
+        if index < len(args.color):
+            plotkwargs["color"] = args.color[index]
+            if args.label[index] is not None:
+                plotkwargs["label"] = args.label[index]
+            plotkwargs["alpha"] = args.linealpha[index]
+
+        supxmin, supxmax = axis.get_xlim()
+        plotobj, serieslabel, ymaxref = plot_reference_spectrum(
+            filepath,
+            axis,
+            xmin=supxmin,
+            xmax=supxmax,
+            fluxfilterfunc=filterfunc,
+            scale_to_peak=scale_to_peak,
+            scale_to_dist_mpc=args.distmpc,
+            offset=0.3 if scale_to_peak else 0.0,
+            scaletoreftime=args.scaletoreftime,
+            xunit=args.xunit,
+            yvariable=args.yvariable,
+            **plotkwargs,
+        )
+        ymaxrefall = max(ymaxrefall, ymaxref)
+
+        plotobjects.append(plotobj)
+        plotobjectlabels.append(serieslabel)
+
+    return plotobjects, plotobjectlabels, ymaxrefall
+
+
+def get_emission_plot_label(modelpath: Path, args: argparse.Namespace, modelname: str, dirbin: int | None) -> str:
+    """Return the title of the plot, which names the model, the time range, and the direction bin."""
+    if args.title:
+        return str(args.title)
+
+    plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
+    if not (args.plotviewingangle or args.plotvspecpol):
+        return plotlabel
+
+    assert dirbin is not None
+    dirbin_definitions = (
+        get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
+        if args.plotvspecpol
+        else get_dirbin_labels(
+            modelpath=modelpath,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+            usedegrees=args.usedegrees,
+        )
+    )
+    plotlabel += f", {dirbin_definitions[dirbin]}"
+
+    if dirbin != -1:
+        print_theta_phi_definitions()
+
+    return plotlabel
+
+
 def make_emissionabsorption_plot(
     modelpath: Path,
     axis: mplax.Axes,
@@ -869,85 +1143,12 @@ def make_emissionabsorption_plot(
     xmin, xmax = axis.get_xlim()
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
-    if args.frompackets:
-        use_time: t.Literal["escape", "emission", "arrival"]
-        if args.use_escapetime:
-            use_time = "escape"
-        elif args.use_emissiontime:
-            use_time = "emission"
-        else:
-            use_time = "arrival"
 
-        if args.groupby in {"nuc", "nucmass"}:
-            emtypecolumn = "pellet_nucindex"
-        elif args.use_thermalemissiontype:
-            emtypecolumn = "trueemissiontype"
-        else:
-            emtypecolumn = "emissiontype"
-
-        lambda_bin_edges = atspectra.get_lambda_bin_edges(
-            xmin,
-            xmax,
-            deltax=args.deltax,
-            deltalogx=args.deltalogx,
-            deltalambda=args.deltalambda,
-            xunit=args.xunit,
-            modelpath=modelpath,
-            gamma=args.gamma,
-        )
-
-        (contribution_list, array_flambda_emission_total, arraylambda_angstroms) = (
-            atspectra.get_flux_contributions_from_packets(
-                modelpath,
-                timelowdays=args.timemin,
-                timehighdays=args.timemax,
-                lambda_bin_edges=lambda_bin_edges,
-                getemission=args.showemission,
-                getabsorption=args.showabsorption,
-                maxpacketfiles=args.maxpacketfiles,
-                filterfunc=filterfunc,
-                groupby=args.groupby,
-                use_time=use_time,
-                fixedionlist=args.fixedionlist,
-                maxseriescount=args.maxseriescount + 20,
-                gamma=args.gamma,
-                emtypecolumn=emtypecolumn,
-                directionbin=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                directionbins_are_vpkt_observers=args.plotvspecpol is not None,
-                vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
-            )
-        )
-    else:
-        assert not args.vpkt_match_emission_exclusion_to_opac
-        lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
-        contribution_list, array_flambda_emission_total, arraylambda_angstroms = atspectra.get_flux_contributions(
-            modelpath,
-            filterfunc,
-            timestepmin,
-            timestepmax,
-            getemission=args.showemission,
-            getabsorption=args.showabsorption,
-            use_lastemissiontype=not args.use_thermalemissiontype,
-            directionbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            lambda_min=lambda_min,
-            lambda_max=lambda_max,
-        )
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
+        modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, dirbin
+    )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
-
-    def to_xy(flambda_array: npt.NDArray[np.floating]) -> pl.LazyFrame:
-        return atspectra.get_dfspectrum_x_y_with_units(
-            pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
-            xunit=args.xunit,
-            yvariable=args.yvariable,
-            fluxdistance_mpc=args.distmpc,
-        )
-
-    # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
         contribution_list,
@@ -958,14 +1159,13 @@ def make_emissionabsorption_plot(
     )
 
     plotobjectlabels: list[str] = []
-    plotobjects: list[mplartist.Artist] = []
+    plotobjects: list[Artist] = []
 
-    dfspectotal = to_xy(array_flambda_emission_total).collect()
+    dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, args).collect()
 
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
     max_f_emission_total = float(max_f_emission_total)
-    max_absorption = 0.0
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
 
@@ -975,151 +1175,41 @@ def make_emissionabsorption_plot(
         plotobjects.append(line)
 
     dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
-
-    for x in contributions_sorted_reduced:
+    for contribution in contributions_sorted_reduced:
         dfaxisdata = dfaxisdata.with_columns(
-            pl.Series(name=f"emission_flambda.{x.linelabel}", values=x.array_flambda_emission)
+            pl.Series(name=f"emission_flambda.{contribution.linelabel}", values=contribution.array_flambda_emission)
         )
         if args.showabsorption:
             dfaxisdata = dfaxisdata.with_columns(
-                pl.Series(name=f"absorption_flambda.{x.linelabel}", values=x.array_flambda_absorption)
-            )
-
-    if args.nostack:
-        for x in contributions_sorted_reduced:
-            if args.showemission:
-                dfspec = to_xy(x.array_flambda_emission).collect()
-
-                (emissioncomponentplot,) = axis.plot(dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=x.color)
-
-                linecolor = emissioncomponentplot.get_color()
-            else:
-                linecolor = x.color
-
-            if args.showabsorption:
-                dfspec = to_xy(x.array_flambda_absorption).collect()
-                (absorptioncomponentplot,) = axis.plot(
-                    dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
+                pl.Series(
+                    name=f"absorption_flambda.{contribution.linelabel}", values=contribution.array_flambda_absorption
                 )
-                if not args.showemission:
-                    linecolor = absorptioncomponentplot.get_color()
+            )
 
-                this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
-                assert isinstance(this_max_absorption, float)
-                max_absorption = max(max_absorption, this_max_absorption)
-
-            plotobjects.append(mpatches.Patch(color=linecolor))
-
+    max_absorption = 0.0
+    if args.nostack:
+        newobjects, max_absorption = plot_contributions_unstacked(
+            axis, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor, xmin, xmax
+        )
+        plotobjects.extend(newobjects)
     elif contributions_sorted_reduced:
-        contribcolors = [x.color for x in contributions_sorted_reduced]
-        # if any contribution has no colour set, let matplotlib assign the whole stack from the Axes property cycle
-        stackcolors: list[mplt.ColorType] | None = (
-            None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
+        newobjects, max_absorption = plot_contributions_stacked(
+            axis, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor, xmin, xmax
         )
+        plotobjects.extend(newobjects)
 
-        facecolors: list[mplt.ColorType] | None
-        if args.showemission:
-            dfemissionspectra = pl.collect_all([to_xy(x.array_flambda_emission) for x in contributions_sorted_reduced])
-            stackplot = axis.stackplot(
-                dfemissionspectra[0]["x"],
-                [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
-                colors=stackcolors,
-                linewidth=0,
-            )
-            plotobjects.extend(stackplot)
-            # read back the drawn colours, which matplotlib assigned when stackcolors was None
-            facecolors = [mplcolors.to_rgba(np.asarray(p.get_facecolor())[0]) for p in stackplot]
-        else:
-            facecolors = stackcolors
+    plotobjectlabels.extend([contribution.linelabel for contribution in contributions_sorted_reduced])
 
-        if args.showabsorption:
-            dfabsorptionspectra = pl.collect_all([
-                to_xy(x.array_flambda_absorption) for x in contributions_sorted_reduced
-            ])
-            absstackplot = axis.stackplot(
-                dfabsorptionspectra[0]["x"],
-                [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
-                colors=facecolors,
-                linewidth=0,
-            )
-            if not args.showemission:
-                plotobjects.extend(absstackplot)
-
-            max_absorption = (
-                pl
-                .DataFrame({
-                    f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
-                    for i, df in enumerate(dfabsorptionspectra)
-                })
-                .select(pl.sum_horizontal(pl.all()).max())
-                .item()
-            )
-
-    plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
-
-    ymaxrefall = 0.0
-    plotkwargs = {}
-    for index, filepath in enumerate(args.specpath):
-        if path_is_artis_model(filepath):
-            continue
-
-        if index < len(args.color):
-            plotkwargs["color"] = args.color[index]
-            if args.label[index] is not None:
-                plotkwargs["label"] = args.label[index]
-            plotkwargs["alpha"] = args.linealpha[index]
-
-        supxmin, supxmax = axis.get_xlim()
-        plotobj, serieslabel, ymaxref = plot_reference_spectrum(
-            filepath,
-            axis,
-            xmin=supxmin,
-            xmax=supxmax,
-            fluxfilterfunc=filterfunc,
-            scale_to_peak=scale_to_peak,
-            scale_to_dist_mpc=args.distmpc,
-            offset=0.3 if scale_to_peak else 0.0,
-            scaletoreftime=args.scaletoreftime,
-            xunit=args.xunit,
-            yvariable=args.yvariable,
-            **plotkwargs,
-        )
-        ymaxrefall = max(ymaxrefall, ymaxref)
-
-        plotobjects.append(plotobj)
-        plotobjectlabels.append(serieslabel)
+    refobjects, reflabels, ymaxrefall = plot_reference_spectra(axis, args, filterfunc, scale_to_peak)
+    plotobjects.extend(refobjects)
+    plotobjectlabels.extend(reflabels)
 
     axis.axhline(color="black", linewidth=1)
 
-    if args.title:
-        plotlabel = args.title
-    else:
-        plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
-        if args.plotviewingangle or args.plotvspecpol:
-            assert dirbin is not None
-            dirbin_definitions = (
-                get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
-                if args.plotvspecpol
-                else get_dirbin_labels(
-                    modelpath=modelpath,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
-                    usedegrees=args.usedegrees,
-                )
-            )
-            plotlabel += f", {dirbin_definitions[dirbin]}"
+    set_plot_title(axis, get_emission_plot_label(modelpath, args, modelname, dirbin), args)
 
-            if dirbin != -1:
-                print_theta_phi_definitions()
-
-    set_plot_title(axis, plotlabel, args)
-
-    # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
-    #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
-
-    ymax = max(ymaxrefall, scalefactor * max_f_emission_total * 1.2)
     if args.ymax is None:
-        axis.set_ylim(top=ymax)
+        axis.set_ylim(top=max(ymaxrefall, scalefactor * max_f_emission_total * 1.2))
 
     if args.ymin is None:
         axis.set_ylim(bottom=-scalefactor * max_absorption * 1.2)
