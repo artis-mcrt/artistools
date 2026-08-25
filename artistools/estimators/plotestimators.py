@@ -23,6 +23,9 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
@@ -103,7 +106,7 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
 
 
 @lru_cache(maxsize=1)
-def get_unreserved_elemcolors() -> tuple[t.Any, ...]:
+def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
     """Return the colours available to elements with no reserved colour, in a stable order.
 
     get_unused_colors compares by value, thus a rounded copy of a reserved colour is also removed. A
@@ -1274,7 +1277,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
     if estimators.select(pl.len()).collect().item() == 0:
         print("No data was found for the requested timesteps/cells.")
-        estimators = at.estimators.scan_estimators(modelpath=modelpath)
+        estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=args.classicartis)
         print("Cells with data: ")
         print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
         print("Timesteps with data: ")

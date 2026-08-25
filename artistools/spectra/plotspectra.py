@@ -1625,7 +1625,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfalldata.write_csv(datafilenameout, separator=" ")
             print_saved(datafilenameout)
 
-        save_figure(fig, filenameout, dpi=args.dpi)
+        save_figure(fig, filenameout, show=args.show, dpi=args.dpi)
 
 
 if __name__ == "__main__":

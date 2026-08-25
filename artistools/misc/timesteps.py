@@ -188,15 +188,11 @@ def get_time_range(
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
-        # a silent precedence hid the argument that the user gave and did not get, thus the combination
-        # is refused here, where every command that selects a time range passes through
-        given = [
-            name
-            for name, value in (("-timedays", timedays_range_str), ("-timemin", timemin), ("-timemax", timemax))
-            if value is not None
-        ]
-        if given:
-            msg = f"Specify only one of -timestep and {', '.join(given)}"
+        # a silent precedence hid the argument that the user gave and did not get, thus this refuses the
+        # combination. Only -timedays takes part. A caller assigns the timemin and timemax that this
+        # function returns back onto its own arguments, thus a second call would see its own output.
+        if timedays_range_str is not None:
+            msg = "Specify only one of -timestep and -timedays"
             raise ValueError(msg)
 
         # "last" names the final timestep, so that a command needs no arithmetic to ask for it

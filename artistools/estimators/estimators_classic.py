@@ -79,9 +79,14 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
     # the trailing wildcard accepts a compressed file, which at.zopen below reads. The macroatom reader
     # globs the same way.
-    estimfiles = sorted(
-        itertools.chain(Path(modelpath).glob("estimators_????.out*"), Path(modelpath).glob("*/estimators_????.out*"))
+    estimpaths = itertools.chain(
+        Path(modelpath).glob("estimators_????.out*"), Path(modelpath).glob("*/estimators_????.out*")
     )
+    # one entry per rank file: a plain file and its compressed copy share a stem, and the plain file wins
+    byplainname: dict[Path, Path] = {}
+    for path in sorted(estimpaths):
+        byplainname.setdefault(path.with_suffix("") if path.suffix != ".out" else path, path)
+    estimfiles = sorted(byplainname.values())
     if not estimfiles:
         print("No estimator files found")
         return None
@@ -95,8 +100,6 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
 
     estimators: dict[tuple[int, int], t.Any] = {}
     for estfilepath in estimfiles:
-        # If classic plots break it's probably getting first timestep here
-        # Try either of the next two lines
         # the run log gives the first timestep of the folder. A folder with no log starts at zero, which is
         # correct when the run was not restarted.
         if str(estfilepath.parent) in first_timesteps_in_dir:

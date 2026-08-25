@@ -201,13 +201,15 @@ def get_closest_network_timesteps(
     raise AssertionError(msg)
 
 
-def check_traj_time_matches(particleid: int, traj_time_s: float, target_time_s: float) -> None:
+def check_traj_time_matches(
+    particleid: int, traj_time_s: float, target_time_s: float, rel_tol: float = 0.2, abs_tol: float = 1.0
+) -> None:
     """Raise when a network step time is not the time that the caller asked for.
 
-    The tolerance is wide because a network step lands near the target rather than on it, and because the
-    times are read from a text file at a precision the writer chose.
+    The default tolerance is wide, because a network step lands near a target time rather than on it. A
+    caller that already knows the exact step index passes a tight tolerance instead.
     """
-    if not math.isclose(traj_time_s, target_time_s, rel_tol=0.2, abs_tol=1.0):
+    if not math.isclose(traj_time_s, target_time_s, rel_tol=rel_tol, abs_tol=abs_tol):
         msg = (
             f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {target_time_s} seconds"
         )

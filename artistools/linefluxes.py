@@ -833,13 +833,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # parser.add_argument('-timemax', type=float,
     #                     help='Upper time in days to integrate spectrum')
     #
+    # the x axis of this command is a time in days, thus it takes no wavelength aliases
     addarg_axislimits(
         parser,
         xmindefault=50,
         xmaxdefault=450,
-        xminhelp="Plot range: minimum wavelength in Angstroms",
-        xmaxhelp="Plot range: maximum wavelength in Angstroms",
-        wavelength_aliases=True,
+        xminhelp="Plot range: minimum time in days",
+        xmaxhelp="Plot range: maximum time in days",
     )
 
     parser.add_argument(

@@ -21,7 +21,6 @@ from artistools.misc import addarg_outputfile
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.plottools import save_figure
-from artistools.plottools import set_plot_title
 
 
 def plot_spherical(
@@ -366,9 +365,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             phireverse=args.phireverse,
         )
 
-        set_plot_title(
-            axes[0], f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", args
-        )
+        if not args.notitle:
+            axes[0].set_title(
+                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
+            )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
         outfilename = str(

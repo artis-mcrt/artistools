@@ -39,12 +39,12 @@ def make_downscaled_3d_grid(
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     nabundcols = len(abundcols)
-    max_atomic_number = len([col for col in dfelemabund.columns if col.startswith("X_")])
+    elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
+    max_atomic_number = len(elemcolnames)
 
     print("reading abundance file")
 
     # the flat cell lists vary x fastest, so a Fortran-order reshape gives arrays indexed [x, y, z]
-    elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
     abund = dfelemabund.to_numpy().reshape((grid, grid, grid, max_atomic_number + 1), order="F")
 
     print("reading model file")
@@ -81,25 +81,22 @@ def make_downscaled_3d_grid(
             rho_small[x, y, z] /= merge**3
 
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
-    cellorder = list(itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)))
     xmax = vmax * t_model_days * day_to_s
+    axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
+    inputcellid = pl.Series("inputcellid", range(1, smallgrid**3 + 1), dtype=pl.Int32)
 
     dfmodel_small = pl.DataFrame({
-        "inputcellid": pl.Series(range(1, smallgrid**3 + 1), dtype=pl.Int32),
-        "pos_x_min": [-xmax + 2 * x * xmax / smallgrid for _z, _y, x in cellorder],
-        "pos_y_min": [-xmax + 2 * y * xmax / smallgrid for _z, y, _x in cellorder],
-        "pos_z_min": [-xmax + 2 * z * xmax / smallgrid for z, _y, _x in cellorder],
-        "rho": [rho_small[x, y, z] for z, y, x in cellorder],
+        "inputcellid": inputcellid,
+        "pos_x_min": np.tile(axispos, smallgrid**2),
+        "pos_y_min": np.tile(np.repeat(axispos, smallgrid), smallgrid),
+        "pos_z_min": np.repeat(axispos, smallgrid**2),
+        "rho": rho_small.ravel(order="F"),
     }).with_columns([
-        pl.Series(abundcol, [radioabunds_small[x, y, z, i] for z, y, x in cellorder])
-        for i, abundcol in enumerate(abundcols)
+        pl.Series(abundcol, radioabunds_small[:, :, :, i].ravel(order="F")) for i, abundcol in enumerate(abundcols)
     ])
 
-    dfelemabund_small = pl.DataFrame({
-        "inputcellid": pl.Series(range(1, smallgrid**3 + 1), dtype=pl.Int32)
-    }).with_columns([
-        pl.Series(elemcol, [abund_small[x, y, z, i + 1] for z, y, x in cellorder])
-        for i, elemcol in enumerate(elemcolnames)
+    dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns([
+        pl.Series(elemcol, abund_small[:, :, :, i + 1].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)
     ])
 
     modelmeta_small = modelmeta | {

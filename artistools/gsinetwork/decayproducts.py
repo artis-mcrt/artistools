@@ -244,7 +244,7 @@ def process_trajectory(
     decay_powers |= {
         col: (
             np.array([
-                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else math.nan
+                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
                 for networktimestepindex in networktimestepindices
             ])
             * traj_mass_grams

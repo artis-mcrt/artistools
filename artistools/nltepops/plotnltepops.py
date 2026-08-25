@@ -440,7 +440,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=at.plottools.get_figsize(args, rows=rows, cols=cols, aspect=0.85, offset=0.0),
+        figsize=(5.0 * 2 * cols, 5.0 * 0.85 * rows),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
 
@@ -482,8 +482,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         title += f", {timedayslist} days"
     at.plottools.set_plot_title(at.plottools.iter_axes(ax)[-1], title, args)
 
-    if args.labelfontsize is None:
-        args.labelfontsize = 18
     at.plottools.set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
@@ -845,7 +843,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
-    mgilist = [mgi for cellarg in args.modelgridindex for mgi in at.parse_range_list(str(cellarg))]
+    cellargs = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
+    mgilist = [mgi for cellarg in cellargs for mgi in at.parse_range_list(str(cellarg))]
     mgilist.extend(
         mgi
         for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]

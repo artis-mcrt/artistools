@@ -448,9 +448,9 @@ def get_particledata(
 
         particledata = particledata.with_columns(
             pl.Series(
-                # a time outside the network range gets NaN rather than the clamped end value, which
-                # would draw a flat plateau that looks like data
-                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col], left=np.nan, right=np.nan)],
+                # np.interp holds the end value outside the range. These curves are summed over the
+                # trajectories, thus a NaN here would make the whole population sum NaN.
+                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
                 dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
             ).alias(col)
             for col in heatcols
@@ -472,8 +472,10 @@ def get_particledata(
                         traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
                     )
                 )
+                # nts is the exact network step, thus these two times come from the same step and
+                # agree to the precision of the file
                 at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
-                    particleid, traj_time_s, nstep_timesec[nts]
+                    particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0
                 )
                 for strnuc, Z, N in arr_strnuc_z_n:
                     if N is None:

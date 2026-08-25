@@ -674,13 +674,13 @@ def test_parse_ion_row_classic_keys_elements_by_symbol() -> None:
     row = ["0", "1", "2", "3", "4", "5", "10.0", "20.0", "40.0"]
     parse_ion_row_classic(row, outdict, {26: 2, 28: 1})
 
-    assert outdict["nnion_Fe_I"] == 10.0
-    assert outdict["nnion_Fe_II"] == 20.0
-    assert outdict["nnion_Ni_I"] == 40.0
+    assert np.isclose(outdict["nnion_Fe_I"], 10.0)
+    assert np.isclose(outdict["nnion_Fe_II"], 20.0)
+    assert np.isclose(outdict["nnion_Ni_I"], 40.0)
 
     # the element key uses the symbol, so that plotestimators and exportmassfractions can find it
-    assert outdict["nnelement_Fe"] == 30.0
-    assert outdict["nnelement_Ni"] == 40.0
+    assert np.isclose(outdict["nnelement_Fe"], 30.0)
+    assert np.isclose(outdict["nnelement_Ni"], 40.0)
     assert not [key for key in outdict if key.startswith("nnelement_") and key[len("nnelement_") :].isdigit()]
 
     # add_derived_estimator_columns derives nntot, so the reader must not carry its own copy

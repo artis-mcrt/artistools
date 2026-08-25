@@ -173,7 +173,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     # light curve's row index. The columns are time_days and luminosity_Lsun, not the time and lum this used to read
     dflightcurve = (
         at.lightcurve
-        .readfile(Path(modelpath, "light_curve.out"))[-1]
+        .readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
         .join(at.get_deposition(modelpath), on="timestep", how="inner")

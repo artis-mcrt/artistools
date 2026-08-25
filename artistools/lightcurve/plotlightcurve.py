@@ -34,6 +34,7 @@ from artistools.misc import addarg_filter
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -44,7 +45,6 @@ from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
-from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
@@ -374,9 +374,6 @@ def plot_artis_lightcurve(
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
-        if lcfilename is None:
-            lcfilename = None
-
         try:
             lcpath = (
                 at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
@@ -802,8 +799,12 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np
         rows = 1
         cols = 1
 
-    if "figwidth" not in args or "figheight" not in args:
-        args.figwidth, args.figheight = get_figsize(args, rows=rows, cols=cols, aspect=1.65, offset=0.0)
+    if "figwidthscale" not in args:
+        args.figwidthscale = 1.0
+    if "figwidth" not in args:
+        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
+    if "figheight" not in args:
+        args.figheight = 5.0 * 1.1 * rows * 1.5
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -1558,6 +1559,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make scatter plot of light curve brightness at a given time (requires timedays)",
     )
 
+    addarg_notitle(parser)
+
     addarg_timestep(parser, helptext="Timestep, or a range e.g. 20-30, to plot")
 
     addarg_timedays(parser, helptext="Time in days, or a range e.g. 2.2-2.8, to plot")
@@ -1582,6 +1585,24 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def apply_time_range_args(args: argparse.Namespace, modelpath: Path | str) -> None:
+    """Narrow the plotted time range from -timestep or from a -timedays range.
+
+    -timemin and -timemax give the range directly. A single -timedays value names one time for
+    --brightnessattime, thus only a value that holds a range takes part here.
+    """
+    if args.timestep is None and (args.timedays is None or "-" not in str(args.timedays)):
+        return
+
+    _, _, rangemin, rangemax = at.get_time_range(
+        modelpath, timestep_range_str=args.timestep, timedays_range_str=args.timedays
+    )
+    if args.timemin is None:
+        args.timemin = rangemin
+    if args.timemax is None:
+        args.timemax = rangemax
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -1596,18 +1617,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpaths = args.modelpath
 
-    # -timedays takes a range like 2.2-2.8, and -timestep selects the same range by timestep number.
-    # Both narrow the plotted time range, which -timemin and -timemax give directly.
-    if args.timestep is not None or (args.timedays is not None and "-" in str(args.timedays)):
-        _, _, rangemin, rangemax = at.get_time_range(
-            modelpaths[0],
-            timestep_range_str=args.timestep,
-            timedays_range_str=None if args.timestep is not None else args.timedays,
-        )
-        if args.timemin is None:
-            args.timemin = rangemin
-        if args.timemax is None:
-            args.timemax = rangemax
+    apply_time_range_args(args, modelpaths[0])
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth

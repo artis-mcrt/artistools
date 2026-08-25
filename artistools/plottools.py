@@ -424,11 +424,11 @@ def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
 
 def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:
     """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
-    if args.notitle or not title:
+    # a command that defines neither flag still gets a title, thus a caller does not have to declare a
+    # flag just to use this helper (set_axis_properties and set_legend default the same way)
+    if getattr(args, "notitle", False) or not title:
         return
 
-    # five parsers define --notitle but only plotspectra defines --inset_title, so default it here rather
-    # than making every other caller add the flag just to use this helper (set_axis_properties does the same)
     if getattr(args, "inset_title", False):
         ax.annotate(
             title,
