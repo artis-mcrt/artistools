@@ -213,13 +213,33 @@ def format_units(name: str) -> str:
 MAXSPECIES_LISTED = 60
 
 
+def species_placeholder(species: Collection[str]) -> str:
+    """Return the name of what a family takes, e.g. "ion", or "element or nuclide" for a mixed family.
+
+    The family init_X_ takes the mass fraction of an element such as init_X_Fe, and also of one nuclide
+    such as init_X_Fe52, thus one word cannot name what it takes.
+    """
+    kinds = {"ion" if " " in name else "element" if name in at.get_elsymbolslist() else "nuclide" for name in species}
+
+    return " or ".join(sorted(kinds)) if kinds else "species"
+
+
 def summarise_nuclides(species: Collection[str]) -> str:
-    """Return one line that gives the number of nuclides and the elements that they cover."""
+    """Return one line that counts the species of a family and names the elements that they cover."""
     symbols = {name.removesuffix("_otherstable").rstrip(string.digits) for name in species}
     known = sorted((one for one in symbols if one in at.get_elsymbolslist()), key=at.get_atomic_number)
     across = f", {known[0]} to {known[-1]}" if known else ""
 
-    return f"{len(species)} nuclides of {len(symbols)} elements{across}. For a full list pass --listnuclides"
+    # a family that names an element as well as a nuclide counts both, and the count of the elements
+    # then makes the phrase "of N elements" repeat itself
+    bare = sum(name in at.get_elsymbolslist() for name in species)
+    counts = (
+        f"{bare} elements and {len(species) - bare} nuclides"
+        if bare
+        else f"{len(species)} nuclides of {len(symbols)} elements"
+    )
+
+    return f"{counts}{across}. For a full list pass --listnuclides"
 
 
 def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -> str:
@@ -289,7 +309,8 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
         if not fullnuclides and nuclides and len(species) > MAXSPECIES_LISTED and listing == ", ".join(sorted(species)):
             listing = summarise_nuclides(species)
 
-        lines.extend(["", f"  {family}_<species>  ({len(species)}){format_units(family)}:", wrap(listing)])
+        placeholder = species_placeholder(species)
+        lines.extend(["", f"  {family}_<{placeholder}>  ({len(species)}){format_units(family)}:", wrap(listing)])
 
     return "\n".join(lines)
 

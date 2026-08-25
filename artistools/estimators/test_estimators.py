@@ -792,8 +792,8 @@ def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.C
 
     out = capsys.readouterr().out
     assert "estimator variables:" in out
-    assert "nnion_<species>" in out
-    assert "nnelement_<species>" in out
+    assert "nnion_<ion>" in out
+    assert "nnelement_<element>" in out
 
     # the listing names the family, thus no column of it appears in full
     assert "nnion_Fe_II" not in out
@@ -971,3 +971,30 @@ def test_summarise_columns_keeps_a_family_of_elements_whole() -> None:
     assert "nuclides" not in listing
     assert "--listnuclides" not in listing
     assert "Fe" in listing
+
+
+def test_species_placeholder_names_what_a_family_takes() -> None:
+    """The heading of a family must name what it takes, and a mixed family must name both kinds."""
+    from artistools.estimators.estimators import species_placeholder
+
+    assert species_placeholder(["Fe", "Ni"]) == "element"
+    assert species_placeholder(["Fe II", "Ni III"]) == "ion"
+    assert species_placeholder(["Fe56", "Ni_otherstable"]) == "nuclide"
+
+    # init_X_ takes the mass fraction of an element such as init_X_Fe, and of a nuclide such as init_X_Fe52
+    assert species_placeholder(["Fe", "Fe52", "Ni56"]) == "element or nuclide"
+
+
+def test_listvariables_heading_names_the_kind_of_each_family(capsys: pytest.CaptureFixture[str]) -> None:
+    """The listing must show which kind of species each family takes."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
+    out = capsys.readouterr().out
+
+    assert "nnelement_<element>" in out
+    assert "nnion_<ion>" in out
+    assert "init_X_<element or nuclide>" in out
+
+    # the test model holds no isotope columns, thus read that family from the summariser
+    from artistools.estimators.estimators import summarise_columns
+
+    assert "nniso_<nuclide>" in summarise_columns(["nniso_Fe56", "nniso_Ni_otherstable"])
