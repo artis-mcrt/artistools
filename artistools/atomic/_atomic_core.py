@@ -422,7 +422,6 @@ def _get_elements_df() -> pl.DataFrame:
 
 
 @lru_cache(maxsize=1)
-@lru_cache(maxsize=1)
 def get_elsymbolset() -> frozenset[str]:
     """Return the element symbols as a set, for a test of membership.
 
@@ -432,6 +431,7 @@ def get_elsymbolset() -> frozenset[str]:
     return frozenset(get_elsymbolslist())
 
 
+@lru_cache(maxsize=1)
 def get_elsymbolslist() -> tuple[str, ...]:
     """Return the element symbols indexed by atomic number.
 

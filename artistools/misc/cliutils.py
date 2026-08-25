@@ -396,7 +396,10 @@ def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
 
 
 def check_time_selection(
-    parser: argparse.ArgumentParser, args: argparse.Namespace, argsraw: "Sequence[str] | None" = None
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    argsraw: "Sequence[str] | None" = None,
+    kwargs: "Collection[str] | None" = None,
 ) -> None:
     """Stop when the arguments name a time range in more than one way.
 
@@ -404,10 +407,13 @@ def check_time_selection(
     arguments, thus a second call for a second model path would read its own output as a second range.
 
     The test reads the arguments that the user wrote, because a value can be the same as the default of
-    the parser: plottransitions gives -timestep a default of 70, and a user can also type that value. A
-    keyword argument of the API becomes a default, thus a value that differs from the default counts too.
+    the parser: plottransitions gives -timestep a default of 70, and a user can also type that value.
+
+    set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
+    that differs from the default counts, and so does a name that kwargs holds.
     """
     argstrings = list(sys.argv[1:] if argsraw is None else argsraw)
+    keywordnames = set(kwargs or ())
     flagsofdest = {
         action.dest: action.option_strings
         for action in parser._actions  # ruff:ignore[private-member-access]
@@ -418,6 +424,10 @@ def check_time_selection(
             return False
 
         flags = flagsofdest.get(dest, [])
+        # set_args_from_dict takes the dest of an argument or any of its option strings as a key
+        if dest in keywordnames or any(flag.lstrip("-") in keywordnames for flag in flags):
+            return True
+
         if any(flag in argstrings or any(one.startswith(f"{flag}=") for one in argstrings) for flag in flags):
             return True
 
@@ -451,7 +461,7 @@ def parse_cli_args(
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
     args = parser.parse_args([] if kwargs else argsraw)
-    check_time_selection(parser, args, [] if kwargs else argsraw)
+    check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
 
     return args
 

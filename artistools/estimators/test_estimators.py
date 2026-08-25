@@ -1047,3 +1047,30 @@ def test_estimator_lookup_tables_are_read_only() -> None:
         with pytest.raises(TypeError):
             # the type forbids this too, which is the point: the table is read-only at run time as well
             table["newkey"] = "newvalue"  # ty:ignore[invalid-assignment]  # pyrefly: ignore[unsupported-operation]
+
+
+def test_estimator_keyword_time_selection_refuses_a_conflict() -> None:
+    """set_args_from_dict makes a keyword argument a default, thus the name has to count as given."""
+    with pytest.raises(SystemExit) as withdays:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["rho"]], timestep=11, timedays=260
+        )
+    assert withdays.value.code == 1
+
+    with pytest.raises(SystemExit) as withbounds:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            outputfile=outputpath,
+            plotlist=[["rho"]],
+            timestep=11,
+            timemin=100,
+            timemax=200,
+        )
+    assert withbounds.value.code == 1
+
+
+@pytest.mark.parametrize("timestep", [11, "11"])
+def test_estimator_keyword_timestep_reads_an_int(timestep: int | str) -> None:
+    """A keyword argument gives an int, and a command line gives a string. Both name one timestep."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["rho"]], timestep=timestep)

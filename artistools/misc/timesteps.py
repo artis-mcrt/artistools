@@ -190,7 +190,7 @@ def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
 
 def get_time_range(
     modelpath: Path | str,
-    timestep_range_str: str | None = None,
+    timestep_range_str: str | int | None = None,
     timemin: float | str | None = None,
     timemax: float | str | None = None,
     timedays_range_str: str | float | None = None,
@@ -214,6 +214,9 @@ def get_time_range(
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
+        # a keyword argument of the API gives an int, e.g. plot(timestep=11), and a command line gives
+        # the string "11" or a range such as "10-20"
+        timestep_range_str = str(timestep_range_str)
         # a silent precedence hid the argument that the user gave and did not get, thus this refuses the
         # combination. Only -timedays takes part. A caller assigns the timemin and timemax that this
         # function returns back onto its own arguments, thus a second call would see its own output.
