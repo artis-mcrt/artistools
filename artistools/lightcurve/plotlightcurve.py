@@ -46,6 +46,7 @@ from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
+from artistools.plottools import AxesTree
 from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
@@ -566,7 +567,7 @@ def plot_artis_lightcurve(
     return lcdataframes
 
 
-def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[np.object_]) -> None:
+def invert_magnitude_yaxis(ax: AxesTree) -> None:
     """Point the magnitude axis downwards, so that a brighter series is drawn higher.
 
     invert_yaxis() toggles rather than sets, so calling it once per plotted series flips the axis back and
@@ -831,7 +832,7 @@ def get_linelabel(
     return serieslabel
 
 
-def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[np.object_], args: argparse.Namespace) -> None:
+def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
     """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
     if args.nolegend:
         return
@@ -846,11 +847,11 @@ def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[np.object_], args: ar
 
 def set_lightcurve_plot_labels(
     fig: mplfig.Figure,
-    ax: mplax.Axes | npt.NDArray[np.object_],
+    ax: AxesTree,
     args: argparse.Namespace,
     band_name: str | None = None,
     colour_evolution: bool = False,
-) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[np.object_]]:
+) -> tuple[mplfig.Figure, AxesTree]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot.
 
     The caller states which kind of plot this is rather than it being read back off args, which cannot tell a
@@ -903,10 +904,7 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    scaledmap: t.Any,
-    args: argparse.Namespace,
-    fig: mplfig.Figure | None = None,
-    ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
+    scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarcostheta:
@@ -934,14 +932,15 @@ def make_colorbar_viewingangles(
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "ϕ bin"
 
+    # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
+    axeslist = iter_axes(ax) if ax is not None else None
     if fig:
-        cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
+        cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=axeslist, shrink=0.95)
     else:
-        assert ax is not None
-        firstaxis = iter_axes(ax)[0]
-        axisfigure = firstaxis.get_figure()
+        assert axeslist is not None
+        axisfigure = axeslist[0].get_figure()
         assert axisfigure is not None
-        cbar = axisfigure.colorbar(scaledmap, ax=ax)
+        cbar = axisfigure.colorbar(scaledmap, ax=axeslist)
     if label:
         cbar.set_label(label, rotation=0)
     cbar.locator = mplticker.FixedLocator(ticklocs)

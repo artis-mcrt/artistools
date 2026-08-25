@@ -141,7 +141,7 @@ Use the shared functions to build a parser and to find a path. Do not write this
 - You can test a plot without an image. Patch the axes method and examine the arguments of the call:
   ```python
   @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-  def test_something(mockplot: t.Any) -> None: ...
+  def test_something(mockplot: mock.MagicMock) -> None: ...
   ```
 - Add `@pytest.mark.benchmark` to a slow test that is representative. As an alternative, give the test a `benchmark: BenchmarkFixture` argument. CodSpeed then monitors that test.
 - Write a regression test for each bug that you correct. If you change a numerical result deliberately, change the expected value in the same commit. Give the reason in the commit message.

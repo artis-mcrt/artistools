@@ -43,7 +43,7 @@ PLOTLIST_IONS: t.Final = (
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_snapshot(mockplot: t.Any) -> None:
+def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
@@ -106,7 +106,7 @@ def test_estimator_snapshot(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_averaging(mockplot: t.Any) -> None:
+def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_FULL
 
     at.estimators.plot(
@@ -165,7 +165,7 @@ def test_estimator_averaging(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
+def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
@@ -252,7 +252,7 @@ def test_estimator_snapshot_classic_3d(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_snapshot_classic_3d_x_axis(mockplot: t.Any) -> None:
+def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS
 
     at.estimators.plot(
@@ -466,7 +466,7 @@ def test_estimparse_divides_by_own_cell_nne(tmp_path: Path) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_default_plotlist_skips_absent_elements(mockplot: t.Any) -> None:
+def test_estimator_default_plotlist_skips_absent_elements(mockplot: mock.MagicMock) -> None:
     """The built-in plot list names particular elements, which most models do not contain."""
     funcoutpath = outputpath / "test_estimator_default_plotlist"
     funcoutpath.mkdir(exist_ok=True, parents=True)
@@ -483,7 +483,7 @@ def test_estimator_default_plotlist_skips_absent_elements(mockplot: t.Any) -> No
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_levelpopulation_dn_on_dvel(mockplot: t.Any) -> None:
+def test_estimator_levelpopulation_dn_on_dvel(mockplot: mock.MagicMock) -> None:
     """Plotting dN/dv needs the inner shell velocity, which is a derived model column."""
     funcoutpath = outputpath / "test_estimator_levelpopulation_dn_on_dvel"
     funcoutpath.mkdir(exist_ok=True, parents=True)
@@ -532,7 +532,7 @@ def test_get_averageexcitation() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_averageexcitation_plot(mockplot: t.Any) -> None:
+def test_estimator_averageexcitation_plot(mockplot: mock.MagicMock) -> None:
     """The averageexcitation plot item must draw a finite series for each requested ion."""
     funcoutpath = outputpath / "test_estimator_averageexcitation"
     funcoutpath.mkdir(exist_ok=True, parents=True)

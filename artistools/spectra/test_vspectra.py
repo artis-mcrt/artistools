@@ -1,4 +1,3 @@
-import typing as t
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -10,7 +9,7 @@ import artistools as at
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vspectraplot(mockplot: t.Any) -> None:
+def test_vspectraplot(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_path("testdata") / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -64,7 +63,7 @@ def test_vspectraplot(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vpkt_frompackets_spectrum_plot(mockplot: t.Any) -> None:
+def test_vpkt_frompackets_spectrum_plot(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[at.get_path("testdata") / "vpktcontrib"],

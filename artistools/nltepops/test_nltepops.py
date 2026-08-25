@@ -21,7 +21,7 @@ def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_singletimestep(mockplot: t.Any) -> None:
+def test_nltepops_singletimestep(mockplot: mock.MagicMock) -> None:
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
     assert len(mockplot.call_args_list) == 15
@@ -73,7 +73,7 @@ def make_model_without_plotted_cell_estimators(tmp_path: Path) -> None:
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nltepops_no_estimator_data(
-    mockplot: t.Any, mocktitle: t.Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    mockplot: mock.MagicMock, mocktitle: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
     make_model_without_plotted_cell_estimators(tmp_path)
@@ -96,7 +96,7 @@ def test_nltepops_no_estimator_data(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
+def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     at.nltepops.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -119,7 +119,7 @@ def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # no outputfile, so this covers the default filename that -x time selects
     monkeypatch.chdir(tmp_path)
     at.nltepops.plot(

@@ -1,5 +1,4 @@
 import contextlib
-import io
 import string
 import time
 import typing as t
@@ -29,7 +28,7 @@ if t.TYPE_CHECKING:
 
 
 def parse_adata(
-    fadata: io.TextIOBase,
+    fadata: t.IO[str],
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]],
     ionlist: Collection[tuple[int, int]] | None,
 ) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
@@ -267,7 +266,7 @@ def get_levels(
     return pl.DataFrame(level_lists, orient="row")
 
 
-def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:
+def parse_recombratefile(frecomb: t.IO[str]) -> Generator[tuple[int, int, pl.DataFrame]]:
     """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())

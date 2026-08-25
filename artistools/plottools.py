@@ -11,10 +11,12 @@ import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
-import numpy.typing as npt
 
 from artistools.commands import get_path
 from artistools.misc import print_saved
+
+# subplots() gives a single axes, a 1D array, or a 2D array, thus the type nests to any depth
+type AxesTree = mplax.Axes | Iterable[AxesTree]
 
 if t.TYPE_CHECKING:
     from pathlib import Path
@@ -515,7 +517,7 @@ def set_exponent_label(axis: mplax.Axes) -> None:
     axis.yaxis.set_minor_locator(mplticker.AutoMinorLocator())
 
 
-def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
+def iter_axes(ax: AxesTree) -> list[mplax.Axes]:
     """Return a flat list of the axes, whether the figure has a single axes or a grid of them.
 
     Iterating a 2D array of axes yields its rows, so the rows are flattened rather than returned as they are.
@@ -540,10 +542,8 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
 
 
 def set_axis_properties(
-    ax: Iterable[mplax.Axes] | mplax.Axes,
-    args: argparse.Namespace,
-    xlimits: tuple[float | None, float | None, str] | None = None,
-) -> t.Any:
+    ax: AxesTree, args: argparse.Namespace, xlimits: tuple[float | None, float | None, str] | None = None
+) -> AxesTree:
     """Apply the standard tick, minor tick, and font size settings to one or more axes.
 
     A command whose x range has its own argument name, e.g. the -timemin/-timemax of the light curve
@@ -591,12 +591,7 @@ def set_axis_properties(
 
 
 def set_axis_labels(
-    fig: mplfig.Figure,
-    ax: mplax.Axes | npt.ArrayLike,
-    xlabel: str,
-    ylabel: str,
-    labelfontsize: int | None,
-    args: argparse.Namespace,
+    fig: mplfig.Figure, ax: AxesTree, xlabel: str, ylabel: str, labelfontsize: int | None, args: argparse.Namespace
 ) -> None:
     """Set the x and y axis labels, placing them on the figure rather than the axes when there are subplots."""
     if args.subplots:

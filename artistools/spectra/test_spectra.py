@@ -20,7 +20,7 @@ modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectraplot(mockplot: t.Any) -> None:
+def test_spectraplot(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -39,7 +39,7 @@ def test_spectraplot(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_spectra_frompackets(mockplot: t.Any) -> None:
+def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -567,7 +567,7 @@ def test_plotspectra_title_arg() -> None:
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
-def test_spectraplot_custom_title(mocksettitle: t.Any) -> None:
+def test_spectraplot_custom_title(mocksettitle: mock.MagicMock) -> None:
     """-title text must be passed through to the axis title (previously store_true produced a title of 'True')."""
     at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, title="Custom title"

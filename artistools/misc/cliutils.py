@@ -10,6 +10,13 @@ from pathlib import Path
 
 from artistools.commands import CustomArgHelpFormatter
 
+if t.TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
+
+# a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
+type PathArg = Path | str | Sequence[PathArg] | None
+
 
 def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
     """Add the viewing direction selection and averaging arguments shared by the plotting commands."""
@@ -425,7 +432,7 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         raise ValueError(msg)
 
 
-def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -443,17 +450,16 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
+def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[int]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
     """
     if isinstance(rngs, list):
         rngs = ",".join(str(x) for x in rngs)
-    elif not hasattr(rngs, "split"):
+    elif not isinstance(rngs, str):
         return [rngs]
 
-    assert isinstance(rngs, str)
     return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
@@ -500,7 +506,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def normalize_path_list(paths: t.Any, default: Path | str = ".") -> list[Path]:
+def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
     """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
     if not paths:
         return [Path(default)]
@@ -509,14 +515,14 @@ def normalize_path_list(paths: t.Any, default: Path | str = ".") -> list[Path]:
     return [Path(p) for p in flatten_list(list(paths))]
 
 
-def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
 
-        def movavgfilterfunc(ylist: t.Any) -> t.Any:
+        def movavgfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
             import numpy as np
 
             n = args.filtermovingavg
@@ -531,7 +537,7 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
 
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
-        def savgolfilterfunc(ylist: t.Any) -> t.Any:
+        def savgolfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
             return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
 
         assert filterfunc is None

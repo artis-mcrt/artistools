@@ -322,7 +322,7 @@ def test_macroatom() -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @pytest.mark.benchmark
-def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
+def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
@@ -369,7 +369,7 @@ def test_plotspherical_gif() -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_logfiles(mockplot: t.Any) -> None:
+def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
     logfilepaths = at.logfiles.read_logfiles(modelpath_classic_3d)
     # compressed log files must be read too, not skipped
@@ -400,7 +400,7 @@ def test_logfiles(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_transitions(mockplot: t.Any) -> None:
+def test_transitions(mockplot: mock.MagicMock) -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
     assert len(mockplot.call_args_list) == 7
@@ -886,7 +886,7 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
-def test_radfield_line_estimators_filter_cell_zero(mockscatter: t.Any) -> None:
+def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) -> None:
     """The line estimator plot must filter on cell and timestep zero, which are falsy."""
     radfielddata = pl.DataFrame({
         "bin_num": [-2, -3, -2, -3],

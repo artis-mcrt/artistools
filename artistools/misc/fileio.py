@@ -7,6 +7,7 @@ import re
 import shlex
 import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -63,7 +64,7 @@ def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     return None
 
 
-def get_decompress_open(ext: str) -> t.Any:
+def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
     """Return the open() function of the compression module that handles the given file extension."""
     if sys.version_info >= (3, 14):
         # only available in Python 3.14+
@@ -80,7 +81,7 @@ def get_decompress_open(ext: str) -> t.Any:
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.Any:
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
     """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
     The named file wins, thus a stale compressed copy never shadows a file that a run has just written.
@@ -102,7 +103,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, e
     return filepath.open(mode=mode, encoding=encoding, errors=errors)
 
 
-def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
     """Return the path of a file that polars reads itself, or a file object that decompresses it.
 
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
@@ -112,13 +113,11 @@ def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = 
     if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
         return filepath
 
-    # get_decompress_open() erases the three backends' differing signatures to Any, so the file
-    # object is Any by design and the annotation says so rather than leaving it implicit
-    fileobj: t.Any = get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
-    return fileobj
+    # the default mode "r" opens a binary stream in all three backends, which is what polars reads
+    return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
 
 
-def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
     """Return a polars source for filename, or for a compressed sibling when the named file does not exist.
 
     The named file wins, for the same reason as in zopen. If polars can read the file directly, this
@@ -464,7 +463,7 @@ def path_is_codecomparison(filepath: Path | str) -> bool:
     return not filepath.exists() and filepath.parts[0] == "codecomparison"
 
 
-def readnoncommentline(file: io.TextIOBase) -> str:
+def readnoncommentline(file: t.IO[str]) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #.
 
     Raise EOFError if the end of the file is reached before any non-blank, non-comment line is found.

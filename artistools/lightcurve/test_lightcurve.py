@@ -29,7 +29,7 @@ outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_lightcurve_plot(mockplot: mock.MagicMock, benchmark: BenchmarkFixture) -> None:
     benchmark(lambda: at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False))
 
     arr_time_d = np.array(mockplot.call_args[0][1])
@@ -49,7 +49,7 @@ def test_lightcurve_plot(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixture) -> None:
+def test_lightcurve_plot_frompackets(mockplot: mock.MagicMock, benchmark: BenchmarkFixture) -> None:
     benchmark(
         lambda: at.lightcurve.plot(
             argsraw=[],
@@ -77,7 +77,7 @@ def test_lightcurve_plot_frompackets(mockplot: t.Any, benchmark: BenchmarkFixtur
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: t.Any) -> None:
+def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.MagicMock) -> None:
     """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""
     at.lightcurve.plot(
         argsraw=[],
@@ -267,7 +267,7 @@ def test_colour_evolution_plot() -> None:
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_colour_evolution_plot_ylabel(mockylabel: t.Any) -> None:
+def test_colour_evolution_plot_ylabel(mockylabel: mock.MagicMock) -> None:
     """A colour evolution plot must be labelled in delta magnitudes, not as a band magnitude.
 
     colour_evolution_plot assigns args.filter before asking for the labels, so reading the plot kind back off
@@ -280,7 +280,7 @@ def test_colour_evolution_plot_ylabel(mockylabel: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_falls_back_to_the_model_name(mockplot: t.Any) -> None:
+def test_linelabel_falls_back_to_the_model_name(mockplot: mock.MagicMock) -> None:
     """A series with no -label is named after its model, not after the None that pads the -label list."""
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
@@ -288,7 +288,7 @@ def test_linelabel_falls_back_to_the_model_name(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_uses_the_label_arg(mockplot: t.Any) -> None:
+def test_linelabel_uses_the_label_arg(mockplot: mock.MagicMock) -> None:
     """A -label value names its series, in place of the model name."""
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], label=["My model"], outputfile=outputpath)
 
@@ -296,7 +296,7 @@ def test_linelabel_uses_the_label_arg(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: t.Any) -> None:
+def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock) -> None:
     """A direction bin is named after the -label value of its model, with the bin appended."""
     at.lightcurve.plot(
         argsraw=[],
@@ -315,7 +315,7 @@ def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_color_arg(mockplot: t.Any) -> None:
+def test_colour_evolution_plot_color_arg(mockplot: mock.MagicMock) -> None:
     """A -color value must reach the plotted line."""
     at.lightcurve.plot(
         argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], color=["magenta"], outputfile=outputpath
@@ -325,7 +325,7 @@ def test_colour_evolution_plot_color_arg(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_viewingangle_colours(mockplot: t.Any) -> None:
+def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock) -> None:
     """Direction bins get one colour each from the tab20 colour map, whatever -color says.
 
     The -color list has one entry per model, so it cannot colour the direction bins. This used to warn about
@@ -365,7 +365,7 @@ def test_dirbin_palette_avoids_the_assigned_colours() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot: t.Any) -> None:
+def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot: mock.MagicMock) -> None:
     """A direction bin keeps one colour across the subplots of the filter pairs.
 
     The legend is drawn on one subplot only, so a bin drawn in a different colour in each subplot
@@ -390,7 +390,7 @@ def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_single_dirbin_colour(mockplot: t.Any) -> None:
+def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock) -> None:
     """Use the -color value when a model contributes a single line, even if that line is one direction bin."""
     at.lightcurve.plot(
         argsraw=[],
@@ -632,7 +632,7 @@ def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_reference_colors(mockplot: t.Any, mockerrorbar: t.Any) -> None:
+def test_lightcurve_plot_reference_colors(mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock) -> None:
     """The reference light curves get black and then grey, and the model keeps the first colour of the cycle."""
     at.lightcurve.plot(
         argsraw=[],
@@ -648,7 +648,9 @@ def test_lightcurve_plot_reference_colors(mockplot: t.Any, mockerrorbar: t.Any) 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_lightcurve_plot_reflightcurves_continue_the_greys(mockerrorbar: t.Any, mockscatter: t.Any) -> None:
+def test_lightcurve_plot_reflightcurves_continue_the_greys(
+    mockerrorbar: mock.MagicMock, mockscatter: mock.MagicMock
+) -> None:
     """A -reflightcurves file follows the reference files of the model path list, thus no two series are black."""
     at.lightcurve.plot(
         argsraw=[],
@@ -665,7 +667,7 @@ def test_lightcurve_plot_reflightcurves_continue_the_greys(mockerrorbar: t.Any, 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_colors_survive_a_skipped_model(mockplot: t.Any, mockerrorbar: t.Any) -> None:
+def test_lightcurve_plot_colors_survive_a_skipped_model(mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock) -> None:
     """A model path that plots nothing must not shift the colour of every later series."""
     at.lightcurve.plot(
         argsraw=[],
@@ -694,7 +696,9 @@ def test_find_bol_reflightcurve_file_reads_a_compressed_file(tmp_path: Path) -> 
 REFLIGHTCURVE = "AT2017gfo_smarttetal2017.txt"
 
 
-def get_reflightcurve_errorbar_call(mockerrorbar: t.Any) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def get_reflightcurve_errorbar_call(
+    mockerrorbar: mock.MagicMock,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Return the times and luminosities that the reference light curve was drawn with."""
     assert mockerrorbar.call_count == 1
     callargs = mockerrorbar.call_args_list[0]
@@ -703,7 +707,7 @@ def get_reflightcurve_errorbar_call(mockerrorbar: t.Any) -> tuple[npt.NDArray[np
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_erg_per_s(mockerrorbar: t.Any) -> None:
+def test_bol_reflightcurve_erg_per_s(mockerrorbar: mock.MagicMock) -> None:
     """A bolometric reference light curve is plotted in erg/s by default."""
     at.lightcurve.plot(
         argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], outputfile=outputpath / "lightcurve_reflightcurve_ergpers.pdf"
@@ -720,7 +724,7 @@ def test_bol_reflightcurve_erg_per_s(mockerrorbar: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_lsun(mockerrorbar: t.Any) -> None:
+def test_bol_reflightcurve_lsun(mockerrorbar: mock.MagicMock) -> None:
     """A bolometric reference light curve must be converted to Lsun when the axis is in Lsun.
 
     Before the conversion was applied, the reference data stayed in erg/s and was drawn a factor of
@@ -741,7 +745,7 @@ def test_bol_reflightcurve_lsun(mockerrorbar: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_magnitude(mockerrorbar: t.Any) -> None:
+def test_bol_reflightcurve_magnitude(mockerrorbar: mock.MagicMock) -> None:
     """A bolometric reference light curve must be converted to magnitudes when the axis is in magnitudes."""
     at.lightcurve.plot(
         argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], magnitude=True, outputfile=outputpath / "lc_reflc_mag.pdf"
@@ -852,7 +856,7 @@ def test_get_reflightcurve_yerr_nonpositive_luminosity_draws_no_bar() -> None:
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow(
-    mockerrorbar: t.Any, tmp_path: Path
+    mockerrorbar: mock.MagicMock, tmp_path: Path
 ) -> None:
     """An error bar reaching zero luminosity keeps its bright half, plus an arrow pointing at the faint side.
 
@@ -931,7 +935,7 @@ def test_get_reflightcurve_yerr_scaling() -> None:
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: t.Any) -> None:
+def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: mock.MagicMock) -> None:
     """A reference curve with asymmetric luminosity errors gets asymmetric magnitude error bars.
 
     AT2017gfo_smarttetal2017.txt has errors that are symmetric in log10(luminosity), so its two magnitude
@@ -965,7 +969,7 @@ def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: t.Any) -> None:
 
 @pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "magnitude"])
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotdeposition(mockplot: t.Any, lumunit: str) -> None:
+def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
     """Deposition curves are drawn in the y axis units, in every unit mode.
 
     plot_deposition_thermalisation() appends a suffix to the caller's label and picks its own linestyle and
@@ -1013,7 +1017,7 @@ def test_plotthermalisation() -> None:
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_reflightcurves_arg_draws_error_bars(mockerrorbar: t.Any) -> None:
+def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> None:
     """-reflightcurves must draw the same curve as a positional reference file, error bars included.
 
     This branch used to scatter the points with no uncertainties while the positional branch drew error bars
@@ -1064,7 +1068,7 @@ def test_get_plot_lum_unit_and_column() -> None:
 )
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_yaxis_is_inverted(
-    mockplot: t.Any, dirbins: list[int], colour_evolution: list[str]
+    mockplot: mock.MagicMock, dirbins: list[int], colour_evolution: list[str]
 ) -> None:
     """The colour axis points downwards however many direction bins and filter pairs are drawn.
 
@@ -1089,7 +1093,7 @@ def test_colour_evolution_plot_yaxis_is_inverted(
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_dirbin_colours_avoid_the_model_colours(mockplot: t.Any) -> None:
+def test_colour_evolution_plot_dirbin_colours_avoid_the_model_colours(mockplot: mock.MagicMock) -> None:
     """A direction bin must not be given the colour that a whole model was assigned.
 
     The direction bin palette and the per-model colours are two independent sources drawn on one set of axes,
@@ -1112,7 +1116,7 @@ def test_colour_evolution_plot_dirbin_colours_avoid_the_model_colours(mockplot: 
 
 @pytest.mark.parametrize("plotalpha", [False, True])
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotalphadeposition_draws_the_alpha_curves(mockplot: t.Any, plotalpha: bool) -> None:
+def test_plotalphadeposition_draws_the_alpha_curves(mockplot: mock.MagicMock, plotalpha: bool) -> None:
     """The alpha decay curves are drawn only when -plotalphadeposition asks for them."""
     at.lightcurve.plot(
         argsraw=[],
@@ -1129,7 +1133,7 @@ def test_plotalphadeposition_draws_the_alpha_curves(mockplot: t.Any, plotalpha: 
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_deposition_curves_do_not_reuse_a_model_colour(mockplot: t.Any) -> None:
+def test_deposition_curves_do_not_reuse_a_model_colour(mockplot: mock.MagicMock) -> None:
     """The deposition curves take their colours from the axis cycle, which the model colours were removed from.
 
     A hardcoded colour would collide with whichever model get_series_colors happened to give that colour to.
@@ -1143,7 +1147,11 @@ def test_deposition_curves_do_not_reuse_a_model_colour(mockplot: t.Any) -> None:
         outputfile=outputpath / "lc_deposition_colours.pdf",
     )
 
-    lines = [(str(callargs.kwargs.get("label")), callargs.kwargs.get("color")) for callargs in mockplot.call_args_list]
+    lines = [
+        (str(callargs.kwargs.get("label")), color)
+        for callargs in mockplot.call_args_list
+        if (color := callargs.kwargs.get("color")) is not None
+    ]
     modelcolors = {mplcolors.to_hex(color) for label, color in lines if "dot" not in label}
     depositioncolors = {mplcolors.to_hex(color) for label, color in lines if "dot" in label}
 
@@ -1153,7 +1161,7 @@ def test_deposition_curves_do_not_reuse_a_model_colour(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) -> None:
+def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: mock.MagicMock) -> None:
     """The deposition curves take their style from the command line, not from the last direction bin drawn.
 
     plot_artis_lightcurve mutates its plot kwargs per direction bin, and those used to ride into the
@@ -1178,7 +1186,7 @@ def test_plotdeposition_does_not_inherit_the_light_curve_style(mockplot: t.Any) 
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotdeposition_is_drawn_once_per_model(mockplot: t.Any) -> None:
+def test_plotdeposition_is_drawn_once_per_model(mockplot: mock.MagicMock) -> None:
     """A model draws its deposition rates once, however many light curve series it contributes.
 
     plot_artis_lightcurve runs once per escape type and once per top nuclide, and the deposition rates were
@@ -1206,7 +1214,7 @@ def test_plotdeposition_is_drawn_once_per_model(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_one_sided_time_limit_keeps_the_data_in_view(mockplot: t.Any) -> None:
+def test_lightcurve_plot_one_sided_time_limit_keeps_the_data_in_view(mockplot: mock.MagicMock) -> None:
     """A -timemin with no -timemax leaves the right hand side fitted to the light curve.
 
     Setting a one-sided limit before anything is drawn turns autoscaling off, freezing the other side at the
@@ -1221,7 +1229,7 @@ def test_lightcurve_plot_one_sided_time_limit_keeps_the_data_in_view(mockplot: t
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_gamma_lightcurve_magnitude_ylabel(mockylabel: t.Any) -> None:
+def test_gamma_lightcurve_magnitude_ylabel(mockylabel: mock.MagicMock) -> None:
     """A gamma-ray light curve in magnitudes is not a bolometric magnitude, and must not be labelled as one."""
     at.lightcurve.plot(
         argsraw=[],
@@ -1237,7 +1245,7 @@ def test_gamma_lightcurve_magnitude_ylabel(mockylabel: t.Any) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: t.Any) -> None:
+def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -> None:
     """Averaging direction bins averages the luminosity, so the magnitude must be rebuilt from the result.
 
     average_direction_bins takes the mean of every column, and a magnitude is logarithmic: the mean of the
@@ -1289,7 +1297,7 @@ def test_colour_evolution_plot_leaves_the_filter_arg_alone() -> None:
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_lightcurve_ylabel_names_deposition_only_when_it_is_drawn(mockylabel: t.Any) -> None:
+def test_lightcurve_ylabel_names_deposition_only_when_it_is_drawn(mockylabel: mock.MagicMock) -> None:
     """Asking for deposition rates is not drawing them, so a run with no ARTIS model must not claim them."""
     at.lightcurve.plot(
         argsraw=[],
@@ -1369,7 +1377,7 @@ def test_transparent_series_colour_leaves_the_cycle_alone() -> None:
 
 @pytest.mark.parametrize("plottype", ["bolometric", "band", "colour_evolution"])
 @mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
-def test_time_limits_reach_every_figure(mockxlim: t.Any, plottype: str) -> None:
+def test_time_limits_reach_every_figure(mockxlim: mock.MagicMock, plottype: str) -> None:
     """-timemin/-timemax are this command's x limits, so every figure it draws must honour them."""
     at.lightcurve.plot(
         argsraw=[],
@@ -1417,7 +1425,7 @@ def test_viewing_angle_scatter_needs_the_angle_averaged_step(monkeypatch: pytest
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: t.Any) -> None:
+def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: mock.MagicMock) -> None:
     """A band reference file is read and drawn once for the whole figure, not once per band.
 
     plot_lightcurve_from_refdata already draws every band of the file onto its own panel, so calling it
@@ -1449,7 +1457,7 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: t.Any) -> None:
 
 
 @mock.patch.object(at.plottools, "get_next_color", side_effect=at.plottools.get_next_color, autospec=True)
-def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: t.Any) -> None:
+def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: mock.MagicMock) -> None:
     """A colour taken but not drawn steps every later series along the cycle for nothing."""
     for plotalphadeposition, expected_extra in ((False, 0), (True, 1)):
         _fig, axis = plt.subplots()
@@ -1466,7 +1474,7 @@ def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: t.Any
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_band_plot_first_dirbin_takes_the_color_arg(mockplot: t.Any) -> None:
+def test_band_plot_first_dirbin_takes_the_color_arg(mockplot: mock.MagicMock) -> None:
     """A -color value is removed from the cycle for the model, so one of its lines has to use it.
 
     The band figure gave every line of a multi-bin model a cycle colour, so the requested colour was
