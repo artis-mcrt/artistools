@@ -475,7 +475,11 @@ def plot_levelpop(
 
 # The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name is
 # optional. The subplots share one horizontal axis, thus xmin and xmax reach every subplot of the figure.
-DIRECTIVES = ("xmin", "xmax", "ymin", "ymax", "yscale")
+DIRECTIVES = ("ymin", "ymax", "yscale")
+
+# The subplots share one horizontal axis, thus no directive can set it for one subplot alone. The
+# arguments -xmin and -xmax set it for the figure, and they also drop the data outside that range.
+FIGURE_ARGUMENTS: Mapping[str, str] = MappingProxyType({"xmin": "-xmin", "xmax": "-xmax"})
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -987,6 +991,12 @@ def plot_subplot(
         if seriestype.startswith("_") and seriestype.removeprefix("_").lower() not in DIRECTIVES:
             # normalise_plotitems adds the underscore, thus report the name as the user wrote it
             given = seriestype.removeprefix("_")
+            if argument := FIGURE_ARGUMENTS.get(given.lower()):
+                exit_with_error(
+                    f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
+                    f"share one horizontal axis. Give {argument} instead, which also drops the data outside"
+                )
+
             exit_with_error(
                 f"'{given}' is not a plot directive."
                 f"{suggest_names(given, DIRECTIVES)}"
@@ -1000,13 +1010,6 @@ def plot_subplot(
 
         elif seriestype == "ymax":
             ymax = float(params)
-
-        elif seriestype == "xmin":
-            # the subplots share one horizontal axis, thus this reaches all of them
-            ax.set_xlim(left=float(params))
-
-        elif seriestype == "xmax":
-            ax.set_xlim(right=float(params))
 
         elif seriestype == "yscale":
             # the scale must be set before the data, so that the axis autoscales in the right space.
@@ -1282,7 +1285,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "directive of the form key=value. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'. "
             f"The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17. The subplots share one horizontal "
-            "axis, thus xmin and xmax reach every subplot"
+            "axis, thus -xmin and -xmax set that axis for the whole figure"
         ),
     )
 

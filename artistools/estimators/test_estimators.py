@@ -823,17 +823,30 @@ def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.
     assert not capsys.readouterr().err
 
 
-def test_estimator_xmin_directive_reaches_every_subplot(capsys: pytest.CaptureFixture[str]) -> None:
-    """The subplots share one horizontal axis, thus an xmin of one plot item reaches all of them."""
+def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.CaptureFixture[str]) -> None:
+    """The subplots share one horizontal axis, thus xmin= names the argument that sets it for the figure."""
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", "xmin=260"]]
+        )
+
+    assert excinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "-xmin" in message
+    assert "share one horizontal axis" in message
+
+
+def test_estimator_xmin_argument_sets_the_axis_of_every_subplot() -> None:
+    """-xmin and -xmax reach the whole figure, because one horizontal axis serves every subplot."""
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
         outputfile=outputpath,
         timedays=260,
-        plotlist=[["TR"], ["rho", ["xmin", 260.0], ["xmax", 300.0]]],
+        plotlist=[["TR"], ["rho"]],
+        xmin=0,
+        xmax=4000,
     )
-
-    assert not capsys.readouterr().err
 
 
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:
