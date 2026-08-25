@@ -190,3 +190,11 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
     assert math.isclose(result.filter(pl.col("level") == 0)["lte_10000"].item(), 1.0, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 1)["lte_10000"].item(), expected_level1, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 4)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
+
+
+@pytest.mark.parametrize("timedays", [300, "300", 300.0])
+def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_path: Path) -> None:
+    """A command line gives a string, and a keyword argument of the API gives a number. Both name one time."""
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedays=timedays)
+
+    assert any(tmp_path.glob("plotnlte_Fe_cell000_ts*.pdf"))

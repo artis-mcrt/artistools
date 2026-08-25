@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import itertools
 import math
 import sys
 import typing as t
@@ -190,6 +191,123 @@ def get_floers_data(
     return floers_levelnums, floers_levelpop_values
 
 
+def get_config_labels(configlist: Sequence[str]) -> list[str]:
+    """Return one LaTeX label for the configuration of each level.
+
+    A level that keeps the configuration of the level before it shows a mark and its term only. The
+    axis labels then stay short.
+    """
+    configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
+    for prevconfig, config in itertools.pairwise(configlist):
+        if config.rsplit("_", maxsplit=1)[0] == prevconfig.rsplit("_", maxsplit=1)[0]:
+            configtexlist.append('" ' + at.nltepops.texifyterm(config.rsplit("_", maxsplit=1)[1]))
+        else:
+            configtexlist.append(at.nltepops.texifyconfiguration(config))
+
+    return configtexlist
+
+
+def set_level_xticks(
+    ax: mplax.Axes, levelindices: "pl.Series", configtexlist: Sequence[str], xmode: str, *, lastsubplot: bool
+) -> None:
+    """Put one tick at each level. The lowest subplot alone shows the names of the configurations."""
+    if xmode == "config":
+        ax.set_xticks(levelindices)
+        if lastsubplot:
+            ax.set_xticklabels(configtexlist, rotation=60, horizontalalignment="right", rotation_mode="anchor")
+        else:
+            ax.set_xticklabels("" for _ in configtexlist)
+    elif xmode == "none":
+        ax.set_xticklabels("" for _ in configtexlist)
+
+
+def print_top_radiative_decays(ion_data: dict[str, t.Any], dfpopthision: pl.DataFrame, maxlevel_ion: int) -> None:
+    """Print the transitions that emit most strongly from the levels that the plot shows."""
+    if "upper" not in ion_data["transitions"].collect_schema().names():
+        return
+
+    dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel_ion).collect()
+    if dftrans.is_empty():
+        return
+
+    dftrans = dftrans.join(
+        dfpopthision.select("level", "n_NLTE").with_columns(pl.col("level").cast(pl.Int32)),
+        how="left",
+        left_on="upper",
+        right_on="level",
+        coalesce=True,
+    ).with_columns(
+        emissionstrength=pl
+        .when(pl.col("n_NLTE").is_not_null())
+        .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
+        .otherwise(0)
+    )
+
+    print("\nTop radiative decays")
+    print(dftrans.sort(by="emissionstrength", descending=True).head(20))
+
+
+def plot_reference_populations(
+    ax: mplax.Axes,
+    dfpopthision: pl.DataFrame,
+    floers_levelnums: list[int] | None,
+    floers_levelpop_values: npt.NDArray[np.floating] | None,
+    T_e: float,
+    T_R: float,
+    ionpopulation: float,
+    args: argparse.Namespace,
+) -> str:
+    """Draw the LTE curves and the reference data, and return the column that holds the ARTIS series."""
+    if args.departuremode:
+        ax.axhline(y=1.0, color="0.7", linestyle="dashed", linewidth=1.5)
+        ax.set_ylabel("Departure coefficient")
+
+        # this mode does not draw T_e, thus skip its colour to keep the colour of every other label
+        at.plottools.get_next_color(ax)
+        if floers_levelpop_values is not None:
+            assert floers_levelnums is not None
+            ax.plot(
+                floers_levelnums,
+                floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"].to_numpy(),
+                linewidth=1.5,
+                label="Flörs NLTE",
+                linestyle="None",
+                marker="*",
+            )
+
+        return "departure_coeff"
+
+    ax.set_ylabel(r"Level population [cm$^{-3}$]")
+    ax.plot(
+        dfpopthision["level"],
+        dfpopthision["n_LTE_T_e_normed"],
+        linewidth=1.5,
+        label=f"LTE T$_e$ = {T_e:.0f} K",
+        linestyle="None",
+        marker="*",
+    )
+
+    if floers_levelnums is not None:
+        assert floers_levelpop_values is not None
+        ax.plot(
+            floers_levelnums, floers_levelpop_values, linewidth=1.5, label="Flörs NLTE", linestyle="None", marker="*"
+        )
+
+    if not args.hide_lte_tr:
+        # the T_R curve also matches the ion population, thus the two LTE curves differ in shape alone
+        n_LTE_T_R_normed = dfpopthision["n_LTE_T_R"] * (ionpopulation / float(dfpopthision["n_LTE_T_R"].sum()))
+        ax.plot(
+            dfpopthision["level"],
+            n_LTE_T_R_normed,
+            linewidth=1.5,
+            label=f"LTE T$_R$ = {T_R:.0f} K",
+            linestyle="None",
+            marker="*",
+        )
+
+    return "n_NLTE"
+
+
 def make_ionsubplot(
     ax: mplax.Axes,
     modelpath: Path,
@@ -205,8 +323,7 @@ def make_ionsubplot(
     args: argparse.Namespace,
     lastsubplot: bool | np.bool,
 ) -> None:
-    """Plot the level populations the specified ion, cell, and timestep."""
-    ionstr = at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
+    """Plot the level populations of one ion, in one cell, at one timestep."""
     ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
     dfpopthision = dfpop.filter(
@@ -229,48 +346,25 @@ def make_ionsubplot(
     ionkey = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionkey}", 0.0)
 
+    maxlevel_ion = dfpopthision["level"].max()
+    assert isinstance(maxlevel_ion, int)
     levelnames = ion_data["levels"]["levelname"].to_list()
+    configlist = levelnames[: maxlevel_ion + 1]
+    configtexlist = get_config_labels(configlist)
+
     dfpopthision = dfpopthision.with_columns(
+        # a level name that ends in "o" in front of the term is a level of odd parity
         parity=pl.Series([
             1 if (level != -1 and levelnames[int(level)].split("[")[0][-1] == "o") else 0
             for level in dfpopthision["level"]
-        ])
-    )
-
-    maxlevel_ion = dfpopthision["level"].max()
-    assert isinstance(maxlevel_ion, int)
-    configlist = ion_data["levels"]["levelname"][: maxlevel_ion + 1]
-
-    configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
-    for i in range(1, len(configlist)):
-        prevconfignoterm = configlist[i - 1].rsplit("_", maxsplit=1)[0]
-        confignoterm = configlist[i].rsplit("_", maxsplit=1)[0]
-        if confignoterm == prevconfignoterm:
-            configtexlist.append('" ' + at.nltepops.texifyterm(configlist[i].rsplit("_", maxsplit=1)[1]))
-        else:
-            configtexlist.append(at.nltepops.texifyconfiguration(configlist[i]))
-
-    dfpopthision = dfpopthision.with_columns(
+        ]),
         config=pl.Series([configlist[level] for level in dfpopthision["level"]]),
         texname=pl.Series([configtexlist[level] for level in dfpopthision["level"]]),
     )
 
-    if args.x == "config":
-        # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
-        ax.set_xticks(ion_data["levels"]["levelindex"][: maxlevel_ion + 1])
-
-        if not lastsubplot:
-            ax.set_xticklabels("" for _ in configtexlist)
-        else:
-            ax.set_xticklabels(
-                configtexlist,
-                # fontsize=8,
-                rotation=60,
-                horizontalalignment="right",
-                rotation_mode="anchor",
-            )
-    elif args.x == "none":
-        ax.set_xticklabels("" for _ in configtexlist)
+    set_level_xticks(
+        ax, ion_data["levels"]["levelindex"][: maxlevel_ion + 1], configtexlist, args.x, lastsubplot=bool(lastsubplot)
+    )
 
     print(
         f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} has a summed "
@@ -290,98 +384,19 @@ def make_ionsubplot(
     )
 
     if dfpopthision.height < 30:
-        # print(dfpopthision[
-        #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
         with pl.Config(tbl_cols=150, tbl_rows=30):
             print(dfpopthision.drop("timestep", "modelgridindex", "Z", "parity", "texname"))
 
-    dftrans: pl.DataFrame | None = None
-    if "upper" in ion_data["transitions"].collect_schema().names():
-        dftrans = ion_data["transitions"].filter(pl.col("upper") <= maxlevel_ion).collect()
-        if dftrans is not None and dftrans.is_empty():
-            dftrans = None
-
-    if dftrans is not None:
-        dflevel_and_pop = dfpopthision.select("level", "n_NLTE")
-        dftrans = dftrans.join(
-            dflevel_and_pop.with_columns(pl.col("level").cast(pl.Int32)),
-            how="left",
-            left_on="upper",
-            right_on="level",
-            coalesce=True,
-        )
-        dftrans = dftrans.with_columns(
-            emissionstrength=pl
-            .when(pl.col("n_NLTE").is_not_null())
-            .then(pl.col("n_NLTE") * pl.col("A") * pl.col("epsilon_trans_ev"))
-            .otherwise(0)
-        )
-
-        dftrans = dftrans.sort(by="emissionstrength", descending=True)
-
-        print("\nTop radiative decays")
-        print(dftrans.head(20))
+    print_top_radiative_decays(ion_data, dfpopthision, maxlevel_ion)
 
     ax.set_yscale("log")
 
     floers_levelnums, floers_levelpop_values = get_floers_data(
         dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex
     )
-
-    if args.departuremode:
-        ax.axhline(y=1.0, color="0.7", linestyle="dashed", linewidth=1.5)
-        ax.set_ylabel("Departure coefficient")
-
-        ycolumnname = "departure_coeff"
-
-        # skip one color, since T_e is not plotted in departure mode
-        at.plottools.get_next_color(ax)
-        if floers_levelpop_values is not None:
-            assert floers_levelnums is not None
-            ax.plot(
-                floers_levelnums,
-                floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"].to_numpy(),
-                linewidth=1.5,
-                label="Flörs NLTE",
-                linestyle="None",
-                marker="*",
-            )
-    else:
-        ax.set_ylabel(r"Level population [cm$^{-3}$]")
-
-        ycolumnname = "n_NLTE"
-
-        ax.plot(
-            dfpopthision["level"],
-            dfpopthision["n_LTE_T_e_normed"],
-            linewidth=1.5,
-            label=f"LTE T$_e$ = {T_e:.0f} K",
-            linestyle="None",
-            marker="*",
-        )
-
-        if floers_levelnums is not None:
-            assert floers_levelpop_values is not None
-            ax.plot(
-                floers_levelnums,
-                floers_levelpop_values,
-                linewidth=1.5,
-                label="Flörs NLTE",
-                linestyle="None",
-                marker="*",
-            )
-
-        if not args.hide_lte_tr:
-            lte_scalefactor = ionpopulation / float(dfpopthision["n_LTE_T_R"].sum())
-            dfpopthision = dfpopthision.with_columns(n_LTE_T_R_normed=pl.col("n_LTE_T_R") * lte_scalefactor)
-            ax.plot(
-                dfpopthision["level"],
-                dfpopthision["n_LTE_T_R_normed"],
-                linewidth=1.5,
-                label=f"LTE T$_R$ = {T_R:.0f} K",
-                linestyle="None",
-                marker="*",
-            )
+    ycolumnname = plot_reference_populations(
+        ax, dfpopthision, floers_levelnums, floers_levelpop_values, T_e, T_R, ionpopulation, args
+    )
 
     ax.plot(
         dfpopthision["level"],
@@ -409,7 +424,7 @@ def make_ionsubplot(
 
     # the ion names the subplot rather than every legend entry, thus the legend stays short
     ax.annotate(
-        ionstr,
+        at.get_ionstring(atomic_number, ion_stage, style="chargelatex"),
         xy=(1.0, 1.0),
         xycoords="axes fraction",
         xytext=(-10, -10),
@@ -419,7 +434,7 @@ def make_ionsubplot(
         fontsize="large",
     )
 
-    # reference data comparison needs the cell's estimator values, so skip it when they are absent
+    # a comparison with reference data needs the estimator values of the cell, thus skip it if they are absent
     if args.plotrefdata and (timestep, modelgridindex) in estimators:
         plot_reference_data(
             ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
@@ -844,8 +859,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             at.exit_with_error("specify the levels to plot with -levels, e.g. -levels 0 1 2")
 
     if args.timedays:
-        if "-" in args.timedays:
-            args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timedays_range_str=args.timedays)
+        # a command line gives a string, and a keyword argument of the API gives a number
+        if "-" in str(args.timedays):
+            args.timestepmin, args.timestepmax, _, _ = at.get_time_range(
+                modelpath, timedays_range_str=str(args.timedays)
+            )
         else:
             timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
             args.timestep = timestep
