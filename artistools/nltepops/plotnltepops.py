@@ -632,7 +632,6 @@ def make_singletimestep_plot(
 
     assert isinstance(axes, np.ndarray)
 
-    prev_ion_stage = -1
     assert mgilist
 
     # invariant to the cell loop, so read the estimators and the model once instead of once per cell
@@ -723,12 +722,26 @@ def make_singletimestep_plot(
 
             ax.set_xlim(left=-1)
 
-            if prev_ion_stage != ion_stage:
-                set_legend(
-                    ax, args, loc="best", handlelength=1, frameon=True, numpoints=1, edgecolor="0.93", facecolor="0.93"
-                )
-
-            prev_ion_stage = ion_stage
+    # one legend for the figure, because the annotation names the ion and every subplot draws the same
+    # series. An ion with no odd-parity level adds no entry for it, thus collect the entries of every
+    # subplot. Reverse the order so that the entry of the first subplot wins for a repeated label
+    handlesbylabel = {
+        label: handle
+        for ax in reversed(at.plottools.iter_axes(axes))
+        for handle, label in zip(*ax.get_legend_handles_labels(), strict=True)
+    }
+    set_legend(
+        axes[0],
+        args,
+        handles=list(handlesbylabel.values()),
+        labels=list(handlesbylabel.keys()),
+        loc="best",
+        handlelength=1,
+        frameon=True,
+        numpoints=1,
+        edgecolor="0.93",
+        facecolor="0.93",
+    )
 
     if args.x == "index":
         axes[-1].set_xlabel(r"Level index")

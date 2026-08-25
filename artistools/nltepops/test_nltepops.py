@@ -146,6 +146,18 @@ def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypa
     assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
 
 
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+def test_nltepops_draws_one_shared_legend(mocklegend: mock.MagicMock, tmp_path: Path) -> None:
+    """One legend covers every subplot, and it names each series one time."""
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, cell=0, timestep=40)
+
+    assert len(mocklegend.call_args_list) == 1
+    labels = mocklegend.call_args_list[0].kwargs["labels"]
+    assert len(labels) == len(set(labels)), f"a label appears more than one time: {labels}"
+    # the ion names the subplot, thus no legend entry repeats it
+    assert not any("Fe" in label for label in labels), labels
+
+
 def test_texifyterm_handles_multiplicity_parity_and_jvalue() -> None:
     assert at.nltepops.texifyterm("o4Fo[2]") == r"$^{4}$F$^{\rm o}_{2}$"
     assert at.nltepops.texifyterm("3P2") == r"$^{3}$P2"
