@@ -70,6 +70,14 @@ def get_varname_formatted(varname: str) -> str:
         "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
+        # the horizontal axis variables. Without an entry here they keep the lower-case name that -x takes
+        "velocity": "Velocity",
+        "beta": r"$\beta$",
+        "time": "Time",
+        "timestep": "Timestep",
+        # -x cellid and -x modelgridindex both plot the modelgridindex column, thus they share one label
+        "cellid": "Model grid index",
+        "modelgridindex": "Model grid index",
         **{f"vel_{ax}_mid": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
         **{f"vel_{ax}_mid_on_c": f"$v_{{{ax}}}$" for ax in ["x", "y", "z", "r", "rcyl"]},
     }.get(varname, varname)
