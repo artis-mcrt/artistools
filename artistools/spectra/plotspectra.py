@@ -78,6 +78,8 @@ from artistools.spectra.writespectra import write_flambda_spectra
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 
+    from artistools.spectra.spectra import FluxContributionTuple
+
 
 def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
     """Return the reference spectrum path, or None when no such file exists.
@@ -845,7 +847,7 @@ def get_emission_contributions(
     timestepmin: int,
     timestepmax: int,
     dirbin: int | None,
-) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> "tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]":
     """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
 
     A run with --frompackets reads the packets files. A run without it reads the emission file and the
@@ -921,7 +923,7 @@ def get_emission_contributions(
 
 def plot_contributions_unstacked(
     axis: mplax.Axes,
-    contributions: Sequence[atspectra.FluxContributionTuple],
+    contributions: "Sequence[FluxContributionTuple]",
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,
@@ -964,7 +966,7 @@ def plot_contributions_unstacked(
 
 def plot_contributions_stacked(
     axis: mplax.Axes,
-    contributions: Sequence[atspectra.FluxContributionTuple],
+    contributions: "Sequence[FluxContributionTuple]",
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,
