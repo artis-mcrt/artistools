@@ -1256,7 +1256,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 
-    parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
+    parser.add_argument(
+        "--makegif", action="store_true", help="Make a gif of the time evolution, one frame per timestep"
+    )
 
     addarg_notitle(parser)
 
@@ -1341,23 +1343,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot ARTIS estimators."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int, int]:
+    """Apply the default x variable and the default time range, and return the first and last timestep.
 
-    modelpath = Path(args.modelpath)
-
-    modelname = at.get_model_name(modelpath)
-
-    should_use_all_timesteps = (
-        not args.timedays
-        and not args.timemin
-        and not args.timemax
-        and not args.timestep
-        and (args.modelgridindex is not None or args.x in {None, "time", "timestep"})
-    )
-
-    if should_use_all_timesteps:
+    A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
+    plot against a spatial variable takes one snapshot, thus it keeps the default time range.
+    """
+    notimegiven = not any((args.timedays, args.timemin, args.timemax, args.timestep))
+    if notimegiven and (args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
         if args.x is None:
             args.x = "time"
@@ -1366,69 +1359,53 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.x = "velocity"
         print(f"Setting x variable to {args.x}")
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    timestepmin, timestepmax, args.timemin, args.timemax = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    if args.readonlymgi:
-        args.sliceaxis = args.axis[1]
-        assert args.axis[0] in {"+", "-"}
-        args.positive_axis = args.axis[0] == "+"
+    return timestepmin, timestepmax
 
-        axes = ["x", "y", "z"]
-        axes.remove(args.sliceaxis)
-        args.other_axis1 = axes[0]
-        args.other_axis2 = axes[1]
 
-    if not (args.listvariables or args.listnuclides):
-        print(
-            f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.1f} to {args.timemax:.1f}d)"
-        )
+def select_cells_along_axis(args: argparse.Namespace) -> None:
+    """Select the cells of a slice or a cone of a 3D model, and record the two axes that stay.
 
-    if args.readonlymgi:
-        if args.readonlymgi == "alongaxis":
-            print(f"Getting mgi along {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
+    The selection functions of slice1dfromconein3dmodel read these axis names from the arguments.
+    """
+    args.sliceaxis = args.axis[1]
+    assert args.axis[0] in {"+", "-"}
+    args.positive_axis = args.axis[0] == "+"
+    otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
+    args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
-        elif args.readonlymgi == "cone":
-            print(f"Getting mgi lying within a cone around {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
-        else:
-            msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
-            raise ValueError(msg)
-        dfselectedcells = dfselectedcells.filter(pl.col("rho") > 0)
-        args.modelgridindex = list(dfselectedcells["inputcellid"])
+    if args.readonlymgi == "alongaxis":
+        print(f"Getting mgi along {args.axis} axis")
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
+    elif args.readonlymgi == "cone":
+        print(f"Getting mgi lying within a cone around {args.axis} axis")
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
+    else:
+        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
+        raise ValueError(msg)
 
-    timesteps_included = list(range(timestepmin, timestepmax + 1))
-    estimators = at.estimators.scan_estimators(
-        modelpath=modelpath,
-        modelgridindex=args.modelgridindex,
-        timestep=tuple(timesteps_included),
-        classicartis=args.classicartis,
-    )
+    args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["inputcellid"])
 
-    estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    # a listing of the variables reads the schema only, thus it must not pay for a count of the rows
-    wantslisting = args.listvariables or args.listnuclides
 
-    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
-    if not wantslisting and estimators.select(pl.len()).collect().item() == 0:
-        print("No data was found for the requested timesteps/cells.")
-        estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=args.classicartis)
-        print("Cells with data: ")
-        print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
-        print("Timesteps with data: ")
-        print(estimators.select(pl.col("timestep").unique().sort()).collect().to_series().to_list())
-        return
+def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
+    """Name the cells and the timesteps for which the model holds estimator data."""
+    print("No data was found for the requested timesteps/cells.")
+    estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=classicartis)
+    print("Cells with data: ")
+    print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
+    print("Timesteps with data: ")
+    print(estimators.select(pl.col("timestep").unique().sort()).collect().to_series().to_list())
 
-    if args.modelgridindex is None:
-        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
+def get_default_plotlist() -> list[t.Any]:
+    """Return the plot items that a command with no -plot argument draws.
 
-    usingdefaultplotlist = not args.plotlist
-    plotlist: list[t.Any] = args.plotlist or [
+    The commented lines are examples that a user can copy. Each one gives a shape that -plot accepts.
+    """
+    return [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
@@ -1463,36 +1440,128 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
+
+def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str], modelpath: Path) -> list[list[t.Any]]:
+    """Return the plot items of each subplot, with the aliases resolved and the directives at the end.
+
+    The default list names particular elements, thus a model that holds no such element loses those
+    items. A user who names an item always keeps it, thus an error in that name still stops the command.
+    """
+    plotlist: list[t.Any] = args.plotlist
+    if not plotlist:
+        plotlist = []
+        skippedplotlist: list[t.Any] = []
+        for plotitems in get_default_plotlist():
+            target = plotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
+            target.append(plotitems)
+
+        if skippedplotlist:
+            print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
+
+        if not plotlist:
+            msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
+            raise ValueError(msg)
+
+    return [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
+
+
+def write_snapshot_figures(
+    args: argparse.Namespace,
+    modelpath: Path,
+    estimators: pl.LazyFrame,
+    vmax_cmps: float,
+    timesteps_included: list[int],
+    plotlist: list[list[t.Any]],
+) -> None:
+    """Plot a range of cells at one time, which shows the internal structure. Write one file per frame.
+
+    With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
+    one PDF file.
+    """
+    if args.x == "velocity" and vmax_cmps > 0.3 * C_cm_per_s:
+        args.x = "beta"
+
+    if args.readonlymgi:
+        if not isinstance(args.modelgridindex, list):
+            args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
+    # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
+    if args.makegif:
+        args.multiplot = True
+        args.format = "png"
+
+    frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+    outputfiles = [
+        make_figure(
+            modelpath=modelpath,
+            timestepslist=frame,
+            estimators=estimators,
+            xvariable=args.x,
+            plotlist=plotlist,
+            args=args,
+        )
+        for frame in frames
+    ]
+
+    if len(outputfiles) > 1:
+        if args.makegif:
+            # make_figure resolves args.outputfile to the name of a frame, thus the gif goes beside the frames
+            outdir = Path(outputfiles[0]).parent
+            firstts, lastts = timesteps_included[0], timesteps_included[-1]
+            at.write_gif(outdir / f"plotestim_evolution_ts{firstts:03d}_ts{lastts:03d}.gif", outputfiles, duration=1000)
+        elif args.format == "pdf":
+            at.merge_pdf_files(outputfiles)
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot ARTIS estimators."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    modelpath = Path(args.modelpath)
+    timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
+    wantslisting = args.listvariables or args.listnuclides
+
+    if not wantslisting:
+        print(
+            f"Plotting estimators for '{at.get_model_name(modelpath)}' timesteps {timestepmin} to {timestepmax} "
+            f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+        )
+
+    if args.readonlymgi:
+        select_cells_along_axis(args)
+
+    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    estimators = at.estimators.scan_estimators(
+        modelpath=modelpath,
+        modelgridindex=args.modelgridindex,
+        timestep=tuple(timesteps_included),
+        classicartis=args.classicartis,
+    )
+    estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
+
+    # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
+    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
+    if not wantslisting and estimators.select(pl.len()).collect().item() == 0:
+        report_data_available(modelpath, classicartis=args.classicartis)
+        return
+
+    if args.modelgridindex is None:
+        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+
+    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
     estimatorcolumns = estimators.collect_schema().names()
 
     if wantslisting:
         print(summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
         return
 
+    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
+
     at.set_mpl_style()
 
-    if usingdefaultplotlist:
-        keptplotlist: list[t.Any] = []
-        skippedplotlist: list[t.Any] = []
-        for plotitems in plotlist:
-            target = (
-                keptplotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
-            )
-            target.append(plotitems)
-
-        if skippedplotlist:
-            print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
-        if not keptplotlist:
-            msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
-            raise ValueError(msg)
-        plotlist = keptplotlist
-
-    plotlist = [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
-
-    outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
     assert args.x is not None
     if args.x in {"time", "timestep"}:
-        # plot time evolution
         make_figure(
             modelpath=modelpath,
             timestepslist=timesteps_included,
@@ -1502,46 +1571,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args=args,
         )
     else:
-        # plot a range of cells in a time snapshot showing internal structure
-
-        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
-            args.x = "beta"
-
-        if args.readonlymgi:
-            if not isinstance(args.modelgridindex, list):
-                args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
-            estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-
-        frames_timesteps_included = (
-            [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
-        )
-
-        if args.makegif:
-            args.multiplot = True
-            args.format = "png"
-
-        outputfiles: list[str] = []
-        for timesteps_included in frames_timesteps_included:
-            outfilename = make_figure(
-                modelpath=modelpath,
-                timestepslist=timesteps_included,
-                estimators=estimators,
-                xvariable=args.x,
-                plotlist=plotlist,
-                args=args,
-            )
-
-            outputfiles.append(outfilename)
-
-        if len(outputfiles) > 1:
-            if args.makegif:
-                assert args.multiplot
-                assert args.format == "png"
-                gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
-                at.write_gif(gifname, outputfiles, duration=1000)
-            elif args.format == "pdf":
-                at.merge_pdf_files(outputfiles)
-
-
-if __name__ == "__main__":
-    main()
+        write_snapshot_figures(args, modelpath, estimators, modelmeta["vmax_cmps"], timesteps_included, plotlist)

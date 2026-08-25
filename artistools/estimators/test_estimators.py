@@ -1086,3 +1086,16 @@ def test_estimator_keyword_time_selection_refuses_a_conflict() -> None:
 def test_estimator_keyword_timestep_reads_an_int(timestep: int | str) -> None:
     """A keyword argument gives an int, and a command line gives a string. Both name one timestep."""
     at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["rho"]], timestep=timestep)
+
+
+def test_estimator_makegif_writes_one_frame_per_timestep(tmp_path: Path) -> None:
+    """--makegif must write one frame per timestep and join them, and it must not need --multiplot.
+
+    The frame list was made before --makegif set multiplot, thus --makegif alone wrote one frame and no gif.
+    """
+    at.estimators.plot(
+        argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["rho"]], timestep="0-2", makegif=True
+    )
+
+    assert len(list(tmp_path.glob("*.png"))) == 3
+    assert [giffile.name for giffile in tmp_path.glob("*.gif")] == ["plotestim_evolution_ts000_ts002.gif"]
