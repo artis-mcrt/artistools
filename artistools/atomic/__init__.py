@@ -10,6 +10,7 @@ from artistools.atomic._atomic_core import get_composition_data as get_compositi
 from artistools.atomic._atomic_core import get_composition_data_from_outputfile as get_composition_data_from_outputfile
 from artistools.atomic._atomic_core import get_elsymbol as get_elsymbol
 from artistools.atomic._atomic_core import get_elsymbols_df as get_elsymbols_df
+from artistools.atomic._atomic_core import get_elsymbolset as get_elsymbolset
 from artistools.atomic._atomic_core import get_elsymbolslist as get_elsymbolslist
 from artistools.atomic._atomic_core import get_ion_tuple as get_ion_tuple
 from artistools.atomic._atomic_core import get_ionrecombratecalibration as get_ionrecombratecalibration

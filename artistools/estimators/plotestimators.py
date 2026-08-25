@@ -293,17 +293,20 @@ def plot_average_ionisation(
 
     ax.set_ylabel("Average ion charge")
 
+    # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
+    colnames = estimators.collect_schema().names()
+
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
         atomic_number = at.get_atomic_number(paramvalue)
 
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = at.get_elsymbol(atomic_number)
-        if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
+        if f"nnelement_{elsymb}" not in colnames:
             msg = f"ERROR: No element data found for {paramvalue}"
             raise ValueError(msg)
 
-        ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
+        ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
         ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
         ax.set_ylim(0.0, max(ioncharges) + 0.1)
         expr_charge_per_nuc = pl.sum_horizontal([
@@ -482,7 +485,7 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         atomic_number = int(ionstr)
         return (atomic_number, "ALL")
 
-    if ionstr in at.get_elsymbolslist():
+    if ionstr in at.get_elsymbolset():
         return (at.get_atomic_number(ionstr), "ALL")
 
     # a space separates the element symbol from the ionstage, e.g. Fe II
@@ -490,12 +493,12 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         return (at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
 
     # for element symbol with a mass number after it, e.g. Fe56
-    if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
+    if ionstr.rstrip("-0123456789") in at.get_elsymbolset():
         atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
         return (atomic_number, ionstr)
 
     # for element and ionstage without a space, e.g. FeII
-    for elsymb in at.get_elsymbolslist():
+    for elsymb in at.get_elsymbolset():
         if ionstr.startswith(elsymb):
             possible_roman = at.decode_roman_numeral(ionstr.removeprefix(elsymb))
             if possible_roman > 0:
@@ -518,7 +521,7 @@ def is_valid_ion(ionstr: str) -> bool:
     if isinstance(param, int):
         return param >= 1
 
-    elsymbols = at.get_elsymbolslist()
+    elsymbols = at.get_elsymbolset()
 
     # get_column_name reads a suffix that joins the symbol, e.g. Fe_otherstable gives
     # nniso_Fe_otherstable, thus the first part of the name decides
@@ -1093,19 +1096,21 @@ def plot_subplot(
     # set_ylim also accepts a bottom above the top, which turns the axis upside down and stays that way
     # through a later autoscale, thus the test has to come before the call and not after it.
     # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
-    quantity = ax.get_ylabel().translate(str.maketrans("", "", "$\\{}")) or "data"
-    datarange = get_data_range(ax)
-    if ymin is not None:
-        if datarange is None or ymin < datarange[1]:
-            ax.set_ylim(bottom=ymin)
-        else:
-            print(f"WARNING: every {quantity} value is below the requested minimum of {ymin}. Using the data range")
+    if ymin is not None or ymax is not None:
+        # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
+        quantity = ax.get_ylabel().translate(str.maketrans("", "", "$\\{}")) or "data"
+        datarange = get_data_range(ax)
+        if ymin is not None:
+            if datarange is None or ymin < datarange[1]:
+                ax.set_ylim(bottom=ymin)
+            else:
+                print(f"WARNING: every {quantity} value is below the requested minimum of {ymin}. Using the data range")
 
-    if ymax is not None:
-        if datarange is None or ymax > datarange[0]:
-            ax.set_ylim(top=ymax)
-        else:
-            print(f"WARNING: every {quantity} value is above the requested maximum of {ymax}. Using the data range")
+        if ymax is not None:
+            if datarange is None or ymax > datarange[0]:
+                ax.set_ylim(top=ymax)
+            else:
+                print(f"WARNING: every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend:
         set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
@@ -1337,8 +1342,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot ARTIS estimators."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    at.set_mpl_style()
-
     modelpath = Path(args.modelpath)
 
     modelname = at.get_model_name(modelpath)
@@ -1403,8 +1406,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
+    # a listing of the variables reads the schema only, thus it must not pay for a count of the rows
+    wantslisting = args.listvariables or args.listnuclides
+
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
-    if estimators.select(pl.len()).collect().item() == 0:
+    if not wantslisting and estimators.select(pl.len()).collect().item() == 0:
         print("No data was found for the requested timesteps/cells.")
         estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=args.classicartis)
         print("Cells with data: ")
@@ -1456,9 +1462,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     estimatorcolumns = estimators.collect_schema().names()
 
-    if args.listvariables or args.listnuclides:
+    if wantslisting:
         print(summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
         return
+
+    at.set_mpl_style()
 
     if usingdefaultplotlist:
         keptplotlist: list[t.Any] = []

@@ -148,10 +148,10 @@ PREFIX_GROUPS: Mapping[str, str] = MappingProxyType({
 def parse_species(suffix: str) -> str | None:
     """Return the species that the suffix names, or None when it names no element, ion, or isotope."""
     elsymbol, sep, rest = suffix.partition("_")
-    if elsymbol not in at.get_elsymbolslist():
+    if elsymbol not in at.get_elsymbolset():
         # an isotope joins the mass number to the symbol, e.g. Ni56
         stem = suffix.rstrip(string.digits)
-        return suffix if not sep and stem != suffix and stem in at.get_elsymbolslist() else None
+        return suffix if not sep and stem != suffix and stem in at.get_elsymbolset() else None
 
     if not sep:
         return elsymbol
@@ -238,7 +238,7 @@ def species_placeholder(species: Collection[str]) -> str:
     The family init_X_ takes the mass fraction of an element such as init_X_Fe, and also of one nuclide
     such as init_X_Fe52, thus one word cannot name what it takes.
     """
-    kinds = {"ion" if " " in name else "element" if name in at.get_elsymbolslist() else "nuclide" for name in species}
+    kinds = {"ion" if " " in name else "element" if name in at.get_elsymbolset() else "nuclide" for name in species}
 
     return " or ".join(sorted(kinds))
 
@@ -246,12 +246,12 @@ def species_placeholder(species: Collection[str]) -> str:
 def summarise_nuclides(species: Collection[str]) -> str:
     """Return one line that counts the species of a family and names the elements that they cover."""
     symbols = {name.removesuffix("_otherstable").rstrip(string.digits) for name in species}
-    known = sorted((one for one in symbols if one in at.get_elsymbolslist()), key=at.get_atomic_number)
+    known = sorted((one for one in symbols if one in at.get_elsymbolset()), key=at.get_atomic_number)
     across = f", {known[0]} to {known[-1]}" if known else ""
 
     # a family that names an element as well as a nuclide counts both, and the count of the elements
     # then makes the phrase "of N elements" repeat itself
-    bare = sum(name in at.get_elsymbolslist() for name in species)
+    bare = sum(name in at.get_elsymbolset() for name in species)
     counts = (
         f"{bare} elements and {len(species) - bare} nuclides"
         if bare
@@ -325,7 +325,7 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
         # summarise_ions gives back the plain names when the species are nuclides and not ions, thus a
         # family of thousands of nuclides would fill the terminal. A family of bare element symbols stays
         # whole, because 83 of them take three lines and no name of them is a nuclide
-        nuclides = [one for one in species if one not in at.get_elsymbolslist()]
+        nuclides = [one for one in species if one not in at.get_elsymbolset()]
         if not fullnuclides and nuclides and len(species) > MAXSPECIES_LISTED and listing == ", ".join(sorted(species)):
             listing = summarise_nuclides(species)
 

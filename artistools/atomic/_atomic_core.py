@@ -422,6 +422,16 @@ def _get_elements_df() -> pl.DataFrame:
 
 
 @lru_cache(maxsize=1)
+@lru_cache(maxsize=1)
+def get_elsymbolset() -> frozenset[str]:
+    """Return the element symbols as a set, for a test of membership.
+
+    get_elsymbolslist gives a tuple, thus "in" reads all 119 symbols. The listing of the estimator
+    variables makes that test one time for each candidate split of every column name.
+    """
+    return frozenset(get_elsymbolslist())
+
+
 def get_elsymbolslist() -> tuple[str, ...]:
     """Return the element symbols indexed by atomic number.
 
