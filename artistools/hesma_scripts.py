@@ -15,6 +15,7 @@ import polars.selectors as cs
 import artistools as at
 from artistools.misc import addarg_action
 from artistools.misc import addarg_timedays
+from artistools.misc import addarg_unsupported
 from artistools.misc import require_action
 from artistools.plottools import save_or_show
 
@@ -188,7 +189,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )
     # this command declares no -timestep, thus the -t alias would read that word as a value
-    addarg_timedays(parser, kind="float", short_alias=False, helptext="Time in days to plot (plotspectrum)")
+    addarg_timedays(parser, kind="float", helptext="Time in days to plot (plotspectrum)")
+    # this command selects a time in days alone, thus -timestep must give a message and not "-t imestep"
+    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
     parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
     parser.add_argument("-modelname", help="Model name in the viewing angle filenames (widthluminosity)")
     parser.add_argument(

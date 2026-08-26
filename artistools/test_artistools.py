@@ -206,10 +206,12 @@ def test_shared_cli_args_consistent() -> None:
                 assert "-ts" in flags, label
             elif dest == "timedays" and "-timedays" in flags:
                 assert "-time" in flags, label
-                # argparse reads "-timestep 30" as "-t imestep". A typed -timedays rejects that with a
-                # clear message, thus only an untyped one needs -timestep declared beside it
-                if "-t" in flags and action.type is None:
-                    assert any("-timestep" in f for f in flagsbycommand[command].values()), label
+                # -t means -timedays on every command, thus a user needs no knowledge of which other
+                # arguments that command takes
+                assert "-t" in flags, label
+                # argparse reads "-timestep 30" as "-t imestep", thus a command that declares -t must
+                # also declare -timestep, as its own argument or through addarg_unsupported
+                assert any("-timestep" in f for f in flagsbycommand[command].values()), label
             elif dest == "maxpacketfiles":
                 assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
                 assert action.type is int, label
@@ -1401,3 +1403,38 @@ def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], 
     here = Path("localfigure.pdf")
     at.misc.print_saved(Path.cwd() / here)
     assert capsys.readouterr().out.strip() == f"open {here}"
+
+
+def test_short_time_flag_always_means_timedays() -> None:
+    """-t must mean -timedays on every command, and never something else.
+
+    A command that takes no -timestep left -t ambiguous with -timedays and -time, thus -t failed there.
+    argparse also reads "-timestep 30" as "-t imestep", thus such a command declares the name it
+    refuses.
+    """
+    import artistools.hesma_scripts
+
+    parser = argparse.ArgumentParser(prog="hesma")
+    artistools.hesma_scripts.addargs(parser)
+
+    assert parser.parse_args(["-t", "300"]).timedays == 300.0
+    assert parser.parse_args(["-timedays", "300"]).timedays == 300.0
+
+    # the command takes no timestep, thus it names the argument that it does take
+    for flag in ("-timestep", "-ts"):
+        with pytest.raises(SystemExit):
+            parser.parse_args([flag, "40"])
+
+
+def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixture[str]) -> None:
+    """A declared but unsupported argument must name the argument to give in its place."""
+    parser = argparse.ArgumentParser(prog="demo")
+    at.misc.addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-timestep", "40"])
+
+    assert "-timestep is not an argument of this command. Give -timedays instead" in capsys.readouterr().err
+
+    # a hidden name stays out of the help text
+    assert "-timestep" not in parser.format_help()

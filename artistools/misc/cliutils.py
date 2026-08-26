@@ -180,6 +180,35 @@ def addarg_modelgridindex(
         parser.add_argument(*flags, default=default, help=helptext)
 
 
+class UnsupportedArgument(argparse.Action):
+    """Stop the command, and name the argument to give in place of the one that the user gave."""
+
+    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str = "", **kwargs: t.Any) -> None:
+        """Take the name of the argument that this command does take."""
+        super().__init__(option_strings, dest, nargs="?", help=argparse.SUPPRESS, **kwargs)
+        self.instead = instead
+
+    @t.override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,
+    ) -> None:
+        """Report that this command does not take the argument."""
+        parser.error(f"{option_string} is not an argument of this command. Give {self.instead} instead")
+
+
+def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
+    """Declare an argument that this command does not take, so that a user gets a clear message.
+
+    argparse joins a value to a single-dash flag, thus "-timestep 30" on a parser that declares -t but
+    no -timestep reads as "-t imestep". A declared name gives a message that names the right argument.
+    """
+    parser.add_argument(*flags, action=UnsupportedArgument, instead=instead, default=argparse.SUPPRESS)
+
+
 def addarg_timestep(
     parser: argparse.ArgumentParser,
     *,
@@ -204,16 +233,14 @@ def addarg_timedays(
     *,
     kind: t.Literal["rangestr", "str", "float"] = "rangestr",
     helptext: str | None = None,
-    short_alias: bool = True,
 ) -> None:
     """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value.
 
-    A command that takes no -timestep passes short_alias=False. argparse joins a value to a single-dash
-    flag, thus "-timestep 30" on such a parser reads as "-t imestep" and reports an invalid value for an
-    argument that the user never named. A command that declares -timestep matches it exactly, thus "-t"
-    is safe there. test_shared_cli_args_consistent holds this rule.
+    -t means -timedays on every command, thus a user needs no knowledge of which other arguments a
+    command takes. A command that takes no -timestep calls addarg_unsupported for that name, because
+    argparse joins a value to a single-dash flag and would read "-timestep 30" as "-t imestep".
     """
-    flags = ("-timedays", "-time", "-t") if short_alias else ("-timedays", "-time")
+    flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
         parser.add_argument(
             *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"

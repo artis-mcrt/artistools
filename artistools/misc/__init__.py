@@ -19,6 +19,7 @@ from artistools.misc.cliutils import addarg_show as addarg_show
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
+from artistools.misc.cliutils import addarg_unsupported as addarg_unsupported
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
 from artistools.misc.cliutils import check_time_selection as check_time_selection
@@ -40,6 +41,7 @@ from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
+from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
