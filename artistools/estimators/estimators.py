@@ -141,7 +141,7 @@ def get_units(name: str, *, latex: bool = True) -> str | None:
     key = name.rstrip("_").removesuffix("_prevtimestep")
     parts = key.split("_")
 
-    units = VARIABLES[key].units if key in VARIABLES else ""
+    units = unitsof(key)
     if not units:
         units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), "")
     if not units:
@@ -242,7 +242,7 @@ def summarise_ions(species: Collection[str]) -> str:
 def format_units(name: str) -> str:
     """Return the units of a variable in square brackets, ready for a terminal, or an empty string.
 
-    A variable that carries no unit gives the note of DIMENSIONLESS instead.
+    A variable that carries no unit gives its note instead.
     """
     # get_units normalises the name before it looks it up, thus the note must use the same key
     units = get_units(name, latex=False) or get_variable(name).note

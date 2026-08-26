@@ -508,9 +508,9 @@ class PrunedLogLocator(mplticker.LogLocator):
     outer labels touch the title and the axis label of the figure. MaxNLocator takes a prune argument and
     LogLocator takes none, thus this drops the locations within a fraction of the axis length of each end.
 
-    It prunes each time that matplotlib draws, thus the ticks follow the view. A FixedLocator of the
-    locations of one view would keep them through a zoom, and save_figure shows the figure before it
-    writes the file, so a zoom in that window would otherwise reach the file with the wrong ticks.
+    It prunes each time that matplotlib draws, thus the ticks follow the view. A FixedLocator of one
+    view would keep those ticks through a zoom. save_figure shows the figure before it writes the
+    file, thus a zoom in that window would reach the file with the wrong ticks.
     """
 
     def __init__(self, *args: t.Any, fraction: float = 0.04, minticks: int = 3, **kwargs: t.Any) -> None:
@@ -520,7 +520,7 @@ class PrunedLogLocator(mplticker.LogLocator):
         self.minticks = minticks
 
     @t.override
-    def tick_values(self, vmin: float, vmax: float) -> t.Any:
+    def tick_values(self, vmin: float, vmax: float) -> Sequence[float]:
         """Return the tick locations of the view, without the ones against either end."""
         ticks = super().tick_values(vmin, vmax)
         low, high = min(vmin, vmax), max(vmin, vmax)
@@ -608,14 +608,11 @@ def set_axis_properties(
     xmin = log_axis_limit(xlimits[0], logscale=logscalex, argname=xargname)
     xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
 
-    for axis in iter_axes(ax):
+    axeslist = iter_axes(ax)
+    for axis in axeslist:
         # the tick direction, the top and right ticks, the minor ticks and the default label size all
         # come from the artistools matplotlibrc, thus only a command that asks for a different label
         # size sets one here
-
-        # a log axis of a stack of subplots needs its end ticks pruned. A command that sets the scale
-        # after this call, e.g. plotestimators, asks for prune_log_ticks itself
-        prune_log_ticks(axis.yaxis)
 
         if labelfontsize is not None:
             axis.tick_params(axis="both", which="both", labelsize=labelfontsize)
@@ -626,6 +623,12 @@ def set_axis_properties(
             axis.set_xscale("log")
         if logscaley:
             axis.set_yscale("log")
+
+        # the lowest label of one axes meets the highest label of the axes below, thus a stack needs its
+        # end ticks pruned. A single axes keeps them, because they mark the ends of the data. set_yscale
+        # installs the default locators of the scale, thus this must follow it
+        if len(axeslist) > 1:
+            prune_log_ticks(axis.yaxis)
 
         if ymin is not None or ymax is not None:
             axis.set_ylim(ymin, ymax)

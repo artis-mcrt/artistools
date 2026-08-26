@@ -88,7 +88,8 @@ Repository = "https://github.com/artis-mcrt/artistools"
 Issues = "https://github.com/artis-mcrt/artistools/issues"
 
 # Every script runs the same dispatcher. The name that starts it gives the subcommand, which
-# get_subcommand_of_script reads from subcommandtree. Add a new script there and not here.
+# get_script_subcommands reads from subcommandtree. Name a new script in that tree as well as here,
+# because test_console_scripts holds the two lists to each other.
 [project.scripts]
 at = 'artistools.__main__:main'
 artistools = 'artistools.__main__:main'

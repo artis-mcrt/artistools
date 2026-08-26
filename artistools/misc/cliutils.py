@@ -415,7 +415,8 @@ def check_time_selection(
     the parser: plottransitions gives -timestep a default of 70, and a user can also type that value.
 
     set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
-    that differs from the default counts, and so does a name that kwargs holds.
+    that differs from the default counts, and so does a name that kwargs holds. A name that carries
+    None counts for nothing, because a caller can forward an argument that it does not use.
     """
     argstrings = list(sys.argv[1:] if argsraw is None else argsraw)
     keywordnames = set(kwargs or ())
@@ -425,7 +426,8 @@ def check_time_selection(
     }
 
     def wasgiven(dest: str) -> bool:
-        if not hasattr(args, dest):
+        # a value of None selects no time, thus a caller that forwards an unused argument gives nothing
+        if not hasattr(args, dest) or getattr(args, dest) is None:
             return False
 
         flags = flagsofdest.get(dest, [])

@@ -23,7 +23,7 @@ from matplotlib import ticker
 from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
-import artistools.spectra as atspectra
+import artistools.spectra.spectra as atspectra
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
 from artistools.misc import addarg_axislimits
@@ -77,8 +77,6 @@ from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
-
-    from artistools.spectra.spectra import FluxContributionTuple
 
 
 def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
@@ -847,7 +845,7 @@ def get_emission_contributions(
     timestepmin: int,
     timestepmax: int,
     dirbin: int | None,
-) -> "tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]":
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
 
     A run with --frompackets reads the packets files. A run without it reads the emission file and the
@@ -923,7 +921,7 @@ def get_emission_contributions(
 
 def plot_contributions_unstacked(
     axis: mplax.Axes,
-    contributions: "Sequence[FluxContributionTuple]",
+    contributions: Sequence[atspectra.FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,
@@ -937,9 +935,28 @@ def plot_contributions_unstacked(
     plotobjects: list[Artist] = []
     max_absorption = 0.0
 
-    for contribution in contributions:
+    # one call runs every query together, as the stacked plot does. A collect for each contribution
+    # runs them one after the other, which costs about four times as much for the default series count
+    emissionspectra: list[pl.DataFrame] = (
+        pl.collect_all([
+            get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
+            for contribution in contributions
+        ])
+        if args.showemission
+        else []
+    )
+    absorptionspectra: list[pl.DataFrame] = (
+        pl.collect_all([
+            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
+            for contribution in contributions
+        ])
+        if args.showabsorption
+        else []
+    )
+
+    for index, contribution in enumerate(contributions):
         if args.showemission:
-            dfspec = get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args).collect()
+            dfspec = emissionspectra[index]
             (emissioncomponentplot,) = axis.plot(
                 dfspec["x"], dfspec["y"] * scalefactor, linewidth=1, color=contribution.color
             )
@@ -948,16 +965,17 @@ def plot_contributions_unstacked(
             linecolor = contribution.color
 
         if args.showabsorption:
-            dfspec = get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args).collect()
+            dfspec = absorptionspectra[index]
             (absorptioncomponentplot,) = axis.plot(
                 dfspec["x"], -dfspec["y"] * scalefactor, color=linecolor, linewidth=1
             )
             if not args.showemission:
                 linecolor = absorptioncomponentplot.get_color()
 
+            # an x range that holds no bin gives None, thus the largest absorption stays where it was
             this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
-            assert isinstance(this_max_absorption, float)
-            max_absorption = max(max_absorption, this_max_absorption)
+            if isinstance(this_max_absorption, float):
+                max_absorption = max(max_absorption, this_max_absorption)
 
         plotobjects.append(mpatches.Patch(color=linecolor))
 
@@ -966,7 +984,7 @@ def plot_contributions_unstacked(
 
 def plot_contributions_stacked(
     axis: mplax.Axes,
-    contributions: "Sequence[FluxContributionTuple]",
+    contributions: Sequence[atspectra.FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,

@@ -599,6 +599,9 @@ def get_line_departure_coeffs(dftransitions: pl.DataFrame, ionid: IonTuple) -> d
 
     upper, lower = upperlower
     departure = dftransitions.filter((pl.col("upper") == upper) & (pl.col("lower") == lower))["upper_departure"]
+    # an atomic data set that stops below the upper level holds no such line
+    if departure.is_empty():
+        return {}
 
     return {ionid: float(departure.item(0))}
 
@@ -615,9 +618,15 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[IonTuple, fl
             for ion_stage in ion_stages
         ]
         ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
-        strions = " ".join([f"{elsym}{at.roman_numerals[ion_stage]}".rjust(6) for ion_stage in ion_stages])
+        strions = " ".join([at.get_ionstring(atomic_number, ion_stage, sep="").rjust(6) for ion_stage in ion_stages])
 
         return strions, ionfracs_str
+
+    def departure(ionid: IonTuple, width: int) -> str:
+        """Give the departure coefficient of one line, or a mark when the run covered no such line."""
+        value = depcoeffs.get(ionid)
+
+        return f"{value:{width}.2f}" if value is not None else "-".rjust(width)
 
     strfeions, est_fe_ionfracs_str = get_strionfracs(26, [2, 3])
     strniions, est_ni_ionfracs_str = get_strionfracs(28, [2, 3])
@@ -627,8 +636,8 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[IonTuple, fl
         "      T_e    Fe III/II       Ni III/II"
     )
     print(
-        f"{cell.velocity:5.0f} km/s({cell.modelgridindex})      {depcoeffs[IonTuple(26, 2)]:5.2f}                   "
-        f"{depcoeffs[IonTuple(28, 2)]:.2f}        "
+        f"{cell.velocity:5.0f} km/s({cell.modelgridindex})      {departure(IonTuple(26, 2), 5)}                   "
+        f"{departure(IonTuple(28, 2), 0)}        "
         f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {estimators['Te']:.0f}    "
         f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
         f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
@@ -694,3 +703,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         outputfilename,
         args,
     )
+
+
+if __name__ == "__main__":
+    main()

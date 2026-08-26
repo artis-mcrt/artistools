@@ -71,7 +71,7 @@ def test_polars_series_expr_dispatch() -> None:
     assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
 
 
-def _console_scripts() -> dict[str, str]:
+def get_console_scripts() -> dict[str, str]:
     """Return the declared target of each console script in pyproject.toml."""
     with (REPOPATH / "pyproject.toml").open("rb") as f:
         scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
@@ -81,7 +81,7 @@ def _console_scripts() -> dict[str, str]:
 
 def test_console_scripts() -> None:
     """Every console script must run the dispatcher, and must be a dispatcher or name a subcommand."""
-    scripts = _console_scripts()
+    scripts = get_console_scripts()
     subcommands = at.commands.get_script_subcommands()
     assert set(scripts) == {*at.commands.DISPATCHERSCRIPTS, *subcommands}
 

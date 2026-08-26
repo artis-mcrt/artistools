@@ -473,13 +473,13 @@ def plot_levelpop(
         )
 
 
-# The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name is
-# optional. The subplots share one horizontal axis, thus xmin and xmax reach every subplot of the figure.
+# The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name
+# is optional.
 DIRECTIVES = ("ymin", "ymax", "yscale")
 
 # The subplots share one horizontal axis, thus no directive can set it for one subplot alone. The
 # arguments -xmin and -xmax set it for the figure, and they also drop the data outside that range.
-FIGURE_ARGUMENTS: Mapping[str, str] = MappingProxyType({"xmin": "-xmin", "xmax": "-xmax"})
+FIGURE_ARGUMENTS = ("xmin", "xmax")
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -988,15 +988,17 @@ def plot_subplot(
             remaining_plotitems.append(plotitem)
             continue
         seriestype, params = plotitem
-        if seriestype.startswith("_") and seriestype.removeprefix("_").lower() not in DIRECTIVES:
-            # normalise_plotitems adds the underscore, thus report the name as the user wrote it
-            given = seriestype.removeprefix("_")
-            if argument := FIGURE_ARGUMENTS.get(given.lower()):
-                exit_with_error(
-                    f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
-                    f"share one horizontal axis. Give {argument} instead, which also drops the data outside"
-                )
+        # normalise_plotitems adds the underscore, thus report the name as the user wrote it
+        given = seriestype.removeprefix("_")
+        # a figure argument stops the command whichever way the caller spells it, because a plot item
+        # of that name reaches the ion branch and gives an error that names no argument
+        if given.lower() in FIGURE_ARGUMENTS:
+            exit_with_error(
+                f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
+                f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
+            )
 
+        if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
             exit_with_error(
                 f"'{given}' is not a plot directive."
                 f"{suggest_names(given, DIRECTIVES)}"
@@ -1349,11 +1351,15 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
     plot against a spatial variable takes one snapshot, thus it keeps the default time range.
     """
-    notimegiven = not any((args.timedays, args.timemin, args.timemax, args.timestep))
+    # a timestep of 0 and a time of 0 are real selections, and both are falsy. Thus this tests for
+    # absence and not for truth
+    timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
+    notimegiven = all(value is None for value in timeargs)
     if notimegiven and (args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
         if args.x is None:
-            args.x = "time"
+            # a gif holds one snapshot for each timestep, thus it plots against a spatial variable
+            args.x = "velocity" if getattr(args, "makegif", False) else "time"
             print(f"Setting x variable to {args.x}")
     elif args.x is None:
         args.x = "velocity"
@@ -1492,6 +1498,14 @@ def write_snapshot_figures(
         args.format = "png"
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+    outputpath = Path(args.outputfile)
+    if len(frames) > 1 and not outputpath.is_dir() and "{timestep" not in outputpath.name:
+        msg = (
+            f"'{outputpath.name}' names one file, and this command writes {len(frames)} frames. Give a "
+            "folder with -o, or a name that holds {timestep}, e.g. -o 'frame_{timestep}.png'"
+        )
+        raise ValueError(msg)
+
     outputfiles = [
         make_figure(
             modelpath=modelpath,
@@ -1572,3 +1586,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
     else:
         write_snapshot_figures(args, modelpath, estimators, modelmeta["vmax_cmps"], timesteps_included, plotlist)
+
+
+if __name__ == "__main__":
+    main()

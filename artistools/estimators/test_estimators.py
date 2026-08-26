@@ -836,7 +836,8 @@ def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.
     assert "share one horizontal axis" in message
 
 
-def test_estimator_xmin_argument_sets_the_axis_of_every_subplot() -> None:
+@mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
+def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.MagicMock) -> None:
     """-xmin and -xmax reach the whole figure, because one horizontal axis serves every subplot."""
     at.estimators.plot(
         argsraw=[],
@@ -844,9 +845,33 @@ def test_estimator_xmin_argument_sets_the_axis_of_every_subplot() -> None:
         outputfile=outputpath,
         timedays=260,
         plotlist=[["TR"], ["rho"]],
-        xmin=0,
+        xmin=1000,
         xmax=4000,
     )
+
+    # the last call on each axes decides the view, and both subplots must end at the requested range
+    lastlimits: dict[int, tuple[float, float]] = {}
+    for call in mockxlim.call_args_list:
+        if len(call.args) >= 3 and call.args[1] is not None and call.args[2] is not None:
+            lastlimits[id(call.args[0])] = (float(call.args[1]), float(call.args[2]))
+
+    assert len(lastlimits) == 2, "each of the two subplots must get the limits"
+    for limits in lastlimits.values():
+        assert np.allclose(limits, (1000.0, 4000.0))
+
+
+def test_estimator_xmin_as_a_plot_item_names_the_argument() -> None:
+    """A bare list ["xmin", value] must give the same message as the "xmin=value" string.
+
+    normalise_plotitems adds the underscore to the string form alone, thus the bare list reached the ion
+    branch and stopped with a TypeError that named no argument.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", ["xmin", 260.0]]]
+        )
+
+    assert excinfo.value.code == 1
 
 
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:

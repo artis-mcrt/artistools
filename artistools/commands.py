@@ -318,8 +318,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def get_script_subcommands() -> Mapping[str, tuple[str, ...]]:
     """Return the subcommand path of each per-command console script, e.g. plotartisestimators.
 
-    The CommandSpec of a subcommand names its script, thus the tree holds both and no second table
-    can fall out of step with it.
+    The CommandSpec of a subcommand names its script, thus the tree holds both names. No second table
+    can disagree with the tree.
     """
     scripts: dict[str, tuple[str, ...]] = {}
 
@@ -356,9 +356,9 @@ def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
 def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
     """Return a parser for the subcommand of a per-command console script, or None for another name.
 
-    A script such as plotartisestimators runs one subcommand. Thus its parser holds that command alone,
-    and it imports one module in place of every module of the tree. The usage text also gives the name
-    of the script and not the name of the subcommand.
+    A script such as plotartisestimators runs one subcommand, thus its parser holds that command alone.
+    The usage text then gives the name of the script and not the name of the subcommand, and argparse
+    builds one parser in place of the whole tree.
     """
     words = get_subcommand_of_script(scriptname)
     if not words:
