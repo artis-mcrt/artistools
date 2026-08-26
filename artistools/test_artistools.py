@@ -72,6 +72,30 @@ def test_polars_series_expr_dispatch() -> None:
     assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
 
 
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="polars rebinds its own Series stubs below 3.15")
+def test_polarscompat_is_still_necessary() -> None:
+    """Fail once polars rebinds its Series methods without help, so that the repair can go.
+
+    polars leaves most Series methods as docstring-only stubs, and it rebinds each one to the Expr
+    version when it imports. It picks them by inspecting co_consts, which CPython 3.15 no longer fills
+    for such a function, thus every stub returns None. artistools/_polarscompat.py repairs that.
+
+    This test reads the state of polars alone. test_polars_series_expr_dispatch reads the state after
+    the repair, thus the two together say both that the repair works and that it is still needed.
+    """
+    # a fresh interpreter, because importing artistools applies the repair
+    code = "import polars as pl; print(pl.Series('x', [1]).unique() is None)"
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+
+    assert result.stdout.strip() == "True", (
+        f"polars {pl.__version__} rebinds its own Series methods on Python "
+        f"{'.'.join(str(part) for part in sys.version_info[:3])}. Delete artistools/_polarscompat.py, "
+        "the call to repair_series_expr_dispatch in artistools/__init__.py, and this test"
+    )
+
+
 def get_console_scripts() -> dict[str, str]:
     """Return the declared target of each console script in pyproject.toml."""
     with (REPOPATH / "pyproject.toml").open("rb") as f:
