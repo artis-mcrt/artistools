@@ -1826,3 +1826,16 @@ def test_verbose_means_the_same_on_every_command() -> None:
 
         if "verbose" in flagsofdest:
             assert flagsofdest["verbose"] == ["--verbose", "-v"], subcommand
+
+
+def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The command wrote a file that had the name of the folder and no extension, and a run with
+    --makegif stopped, because it built the path of each frame below a folder that did not exist.
+    """
+    outfolder = tmp_path / "frames"
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"

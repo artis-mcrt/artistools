@@ -26,6 +26,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
+from artistools.misc import resolve_outputfile
 from artistools.plottools import save_figure
 
 
@@ -380,11 +381,16 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             )
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
-        outfilename = str(
-            args.outputfile
-            if (args.outputfile and not Path(args.outputfile).is_dir() and not args.makegif)
-            else Path(args.outputfile) / defaultfilename
-        ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
+        if args.makegif:
+            # a gif needs a frame for each time range, thus the given path always names their folder
+            outfolder = Path(args.outputfile) if args.outputfile else Path()
+            outfolder.mkdir(parents=True, exist_ok=True)
+            outpath = outfolder / defaultfilename
+        else:
+            # a path that has no file extension names a folder, which this makes
+            outpath = resolve_outputfile(args.outputfile, defaultfilename)
+
+        outfilename = str(outpath).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
         save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args)
 
