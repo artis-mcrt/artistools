@@ -35,6 +35,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_pathoption
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -55,6 +56,7 @@ from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
+from artistools.misc import KeepGivenPaths
 from artistools.misc import makelist
 from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
@@ -1385,8 +1387,15 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
-        "specpath", default=[], nargs="*", type=Path, help="Paths to ARTIS folders or reference spectra filenames"
+        "specpath",
+        default=[],
+        nargs="*",
+        type=Path,
+        action=KeepGivenPaths,
+        help="Paths to ARTIS folders or reference spectra filenames",
     )
+    for flag in ("-specpath", "-modelpath"):
+        addarg_pathoption(parser, flag, "specpath", multiplepaths=True)
 
     addarg_seriesstyle(parser, include_linealpha=True)
 

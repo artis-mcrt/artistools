@@ -153,7 +153,11 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
         if tstart <= timedays_float < tend:
             return ts
 
-    msg = f"Could not find timestep bracketing time {timedays_float}"
+    msg = (
+        f"No timestep of this model covers {timedays_float:g} days. It has {len(arr_tstart)} timesteps, "
+        f"which cover {arr_tstart[0]:.2f} to {arr_tend[-1]:.2f} days. Give -timedays in that range, or "
+        "-timestep to name one directly"
+    )
     raise ValueError(msg)
 
 
@@ -231,6 +235,15 @@ def get_time_range(
         else:
             timestepmin = parse_timestep_token(timestep_range_str, dictvars)
             timestepmax = timestepmin
+
+        # a range that overshoots the end still starts inside the run, thus only the start must be in it
+        if timestepmin > dictvars["last"]:
+            msg = (
+                f"Timestep {timestepmin} is not in this model. It has {len(tmids)} timesteps, 0 to "
+                f"{dictvars['last']}, which cover {tstarts[0]:.2f} to {tends[-1]:.2f} days. "
+                '"last" names the final timestep'
+            )
+            raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:
             timemin = -1.0

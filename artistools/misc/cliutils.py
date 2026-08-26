@@ -69,6 +69,44 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
     )
 
 
+class KeepGivenPaths(argparse.Action):
+    """Store the paths of a positional argument, but keep the paths that the option form already gave.
+
+    argparse applies a positional after an option that shares its dest, thus an empty positional would
+    otherwise hide the value of that option.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Set the paths of the positional argument, unless the option form already gave some."""
+        if values or getattr(namespace, self.dest, None) is None:
+            setattr(namespace, self.dest, values)
+
+
+def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
+    """Accept an option that names the same paths as a positional argument.
+
+    Some commands take the paths as a positional argument and others take -modelpath. A user who learns
+    one form must not meet "unrecognized arguments" with the other, thus the option stands beside the
+    positional. It stays out of the help text, because the positional already gives the paths a name.
+    """
+    optionkwargs: dict[str, t.Any] = {
+        "dest": dest,
+        "type": Path,
+        "default": argparse.SUPPRESS,
+        "help": argparse.SUPPRESS,
+    }
+    if multiplepaths:
+        optionkwargs["nargs"] = "*"
+
+    parser.add_argument(flag, **optionkwargs)
+
+
 def addarg_modelpath(
     parser: argparse.ArgumentParser,
     *,
@@ -83,7 +121,8 @@ def addarg_modelpath(
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
-        parser.add_argument("modelpath", **kwargs)
+        parser.add_argument("modelpath", action=KeepGivenPaths, **kwargs)
+        addarg_pathoption(parser, "-modelpath", "modelpath", multiplepaths=multiplepaths)
     else:
         if required:
             kwargs["required"] = True

@@ -870,7 +870,8 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
     assert at.get_timestep_of_timedays(tmp_path, 149) == 4
     assert at.get_timestep_of_timedays(tmp_path, "125d") == 2  # accepts a "<days>d" string
 
-    with pytest.raises(ValueError, match="Could not find timestep"):
+    # the message names the range that the run covers, so that the user can correct the value
+    with pytest.raises(ValueError, match=r"No timestep of this model covers 500 days.*100\.00 to 150\.00 days"):
         at.get_timestep_of_timedays(tmp_path, 500)
 
 
@@ -1190,3 +1191,24 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Cell 0 holds no matter"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
+
+
+def test_addarg_modelpath_positional_also_takes_the_option() -> None:
+    """A command whose path is positional must also accept -modelpath.
+
+    Some commands take -modelpath and others take a positional path. A user who learns one form must
+    not meet "unrecognized arguments" with the other.
+    """
+
+    def build() -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser()
+        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+        return parser
+
+    assert build().parse_args([]).modelpath == []
+    assert build().parse_args(["a", "b"]).modelpath == [Path("a"), Path("b")]
+    assert build().parse_args(["-modelpath", "a"]).modelpath == [Path("a")]
+    assert build().parse_args(["-modelpath", "a", "b"]).modelpath == [Path("a"), Path("b")]
+
+    # the positional already names the paths in the help, thus the option stays out of it
+    assert "-modelpath" not in build().format_help()

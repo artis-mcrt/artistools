@@ -12,6 +12,7 @@ from artistools.misc.cliutils import addarg_nolegend as addarg_nolegend
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_outputfile as addarg_outputfile
 from artistools.misc.cliutils import addarg_outputpath as addarg_outputpath
+from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
@@ -26,6 +27,7 @@ from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
+from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
