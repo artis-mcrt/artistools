@@ -1423,8 +1423,9 @@ def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], 
     faraway = tmp_path / "figure.pdf"
     faraway.touch()
 
+    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
     at.misc.print_saved(faraway)
-    reported = capsys.readouterr().out.removeprefix("open ").strip().strip("'")
+    reported = capsys.readouterr().out.removeprefix(f"{opencommand} ").strip().strip("'")
 
     assert ".." not in reported
     assert Path(reported).resolve() == faraway.resolve()
@@ -1432,7 +1433,7 @@ def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], 
     # a file below the working folder keeps its short relative name
     here = Path("localfigure.pdf")
     at.misc.print_saved(Path.cwd() / here)
-    assert capsys.readouterr().out.strip() == f"open {here}"
+    assert capsys.readouterr().out.strip() == f"{opencommand} {here}"
 
 
 def test_short_time_flag_always_means_timedays() -> None:

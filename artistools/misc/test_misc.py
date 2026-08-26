@@ -137,20 +137,28 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
 
 
 def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    """print_saved must emit a runnable macOS open command with a path relative to the working directory."""
+    """print_saved must emit a runnable open command with a path relative to the working directory."""
     monkeypatch.chdir(tmp_path)
 
     at.print_saved(tmp_path / "subdir" / "out.pdf")
-    assert capsys.readouterr().out == "open subdir/out.pdf\n"
+    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
+    assert capsys.readouterr().out == f"{opencommand} subdir/out.pdf\n"
 
     at.print_saved("out.pdf")
-    assert capsys.readouterr().out == "open out.pdf\n"
+    assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
     at.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
-    assert capsys.readouterr().out == "open out.pdf\n"
+    assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
     at.print_saved(tmp_path / "with space.pdf")
-    assert capsys.readouterr().out == "open 'with space.pdf'\n"
+    assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
+
+    # the other platform gets its own verb, thus a macOS run also covers the Linux line
+    otherplatform = "linux" if sys.platform == "darwin" else "darwin"
+    otherverb = "open" if otherplatform == "darwin" else "xdg-open"
+    monkeypatch.setattr(sys, "platform", otherplatform)
+    at.print_saved("out.pdf")
+    assert capsys.readouterr().out == f"{otherverb} out.pdf\n"
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------
