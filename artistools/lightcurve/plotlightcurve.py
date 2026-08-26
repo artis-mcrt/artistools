@@ -47,6 +47,7 @@ from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import path_is_artis_model
+from artistools.misc import print_product
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
 from artistools.plottools import AxesTree
@@ -550,7 +551,7 @@ def plot_artis_lightcurve(
 
         axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
-            print(lcdata)
+            print_product(args, lcdata)
 
         if args.plotcmf:
             assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
@@ -1001,7 +1002,7 @@ def make_band_lightcurves_plot(
                         f.write(txtout)
                     at.print_saved(bandoutfile)
                 if args.print_data:
-                    print(txtout)
+                    print_product(args, txtout)
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
@@ -1455,7 +1456,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_show(parser)
-    addarg_quiet(parser, productargs=("print_data",))
+    addarg_quiet(parser)
 
     # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
     #                     help='Calculate band risetime, peak mag and delta m15 values for '

@@ -33,6 +33,7 @@ from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
+from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale

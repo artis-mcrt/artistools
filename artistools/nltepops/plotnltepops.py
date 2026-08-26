@@ -912,6 +912,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]
         if mgi is not None
     )
+    # the branches below read args.modelgridindex, thus give them the expanded cells and not "3-7"
+    args.modelgridindex = mgilist
+
     npts_model = get_npts_model(modelpath)
     # a velocity plot draws every cell of the model, thus it needs no cell of its own. A time plot and a
     # level index plot draw one cell, thus they do need one

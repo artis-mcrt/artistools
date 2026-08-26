@@ -37,21 +37,21 @@ def build_parser() -> argparse.ArgumentParser:
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """Run the subcommand. With --quiet, send its progress messages to the null device.
 
-    An error message goes to the standard error, thus --quiet keeps it. No module holds a quiet flag,
-    because the redirection covers the whole call.
+    An error message goes to the standard error, thus --quiet keeps it. A command writes its product
+    with print_product, which reaches the standard output even with --quiet, thus a script reads that
+    product with no progress message around it.
     """
-    # addarg_quiet records the arguments that make the standard output the product of the command, thus
-    # the dispatcher needs no knowledge of any one command
-    wantsproduct = any(getattr(args, name, False) for name in getattr(args, "productargs", ()))
-    if wantsproduct or not getattr(args, "quiet", False):
+    if not getattr(args, "quiet", False):
         func(args=args)
         return
 
     import contextlib
     from pathlib import Path
 
-    with Path(os.devnull).open("w", encoding="utf-8") as devnull, contextlib.redirect_stdout(devnull):
-        func(args=args)
+    with Path(os.devnull).open("w", encoding="utf-8") as devnull:
+        args.productstream = sys.stdout
+        with contextlib.redirect_stdout(devnull):
+            func(args=args)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None) -> None:

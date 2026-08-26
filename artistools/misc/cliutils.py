@@ -377,14 +377,23 @@ def addarg_show(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
 
 
-def addarg_quiet(parser: argparse.ArgumentParser, *, productargs: "Sequence[str]" = ()) -> None:
+def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     """Add the --quiet argument that hides the progress messages.
 
-    A command whose standard output is its product for some arguments names their dests in productargs,
-    e.g. --listvariables prints a listing that --quiet must keep. run_command reads both dests.
+    A command writes its product with print_product, thus --quiet keeps that product and hides only the
+    progress messages around it.
     """
     parser.add_argument("--quiet", action="store_true", help="Hide the progress messages. An error still appears")
-    parser.set_defaults(productargs=tuple(productargs))
+
+
+def print_product(args: argparse.Namespace, *values: object) -> None:
+    """Print the product of a command, which --quiet keeps.
+
+    --quiet sends the progress messages to the null device. The product of the command, e.g. the table
+    of --print_data or the listing of --listvariables, must reach the standard output even so. A script
+    then reads that product with no progress message around it.
+    """
+    print(*values, file=getattr(args, "productstream", None) or sys.stdout)
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

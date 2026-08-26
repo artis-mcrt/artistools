@@ -1,10 +1,10 @@
 """Read estimator files written by classic (pre-2020) versions of ARTIS."""
 
-import itertools
 import typing as t
 from pathlib import Path
 
 import artistools as at
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:
@@ -79,8 +79,13 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
     # the trailing wildcard accepts a compressed file, which at.zopen below reads. The macroatom reader
     # globs the same way.
-    estimpaths = itertools.chain(
-        Path(modelpath).glob("estimators_????.out*"), Path(modelpath).glob("*/estimators_????.out*")
+    # the trailing wildcard also matches a sibling such as estimators_0000.out.bak, which shares the
+    # stem of the live file and wins the sort. Thus only zopen's own formats take part
+    estimpaths = (
+        path
+        for pattern in ("estimators_????.out*", "*/estimators_????.out*")
+        for path in Path(modelpath).glob(pattern)
+        if path.suffix == ".out" or path.suffix in COMPRESSED_EXTENSIONS
     )
     # one entry per rank file: a plain file and its compressed copy share a stem, and the plain file wins
     byplainname: dict[Path, Path] = {}

@@ -1124,3 +1124,28 @@ def test_estimator_makegif_writes_one_frame_per_timestep(tmp_path: Path) -> None
 
     assert len(list(tmp_path.glob("*.png"))) == 3
     assert [giffile.name for giffile in tmp_path.glob("*.gif")] == ["plotestim_evolution_ts000_ts002.gif"]
+
+
+def test_classic_estimator_glob_ignores_an_unreadable_sibling(tmp_path: Path) -> None:
+    """A sibling such as estimators_0000.out.bak shares the stem of the live file.
+
+    The name of the stale file sorts in front of the compressed name, thus the reader took the stale
+    file and drew obsolete data without a word.
+    """
+    import gzip
+
+    from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+
+    with gzip.open(tmp_path / "estimators_0000.out.gz", "wt") as gzfile:
+        gzfile.write("live\n")
+    (tmp_path / "estimators_0000.out.bak").write_text("stale\n")
+
+    allnames = sorted(path.name for path in tmp_path.glob("estimators_????.out*"))
+    assert allnames[0] == "estimators_0000.out.bak", "the stale name must sort first, or this proves nothing"
+
+    kept = [
+        path.name
+        for path in sorted(tmp_path.glob("estimators_????.out*"))
+        if path.suffix == ".out" or path.suffix in COMPRESSED_EXTENSIONS
+    ]
+    assert kept == ["estimators_0000.out.gz"]

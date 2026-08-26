@@ -1522,7 +1522,12 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     withoutdata = capsys.readouterr().out
 
     assert not withoutdata, "--quiet alone must hide the progress messages"
-    assert withdata, "--print_data names the product of the command, thus --quiet must keep it"
+    assert withdata, "print_product writes the product, thus --quiet must keep it"
+
+    # a script reads the product, thus no progress message may stand around it
+    assert "====>" not in withdata
+    assert "Reading " not in withdata
+    assert withdata.lstrip().startswith("shape:")
 
 
 def test_lightcurve_reference_data_takes_a_day_range(tmp_path: Path) -> None:

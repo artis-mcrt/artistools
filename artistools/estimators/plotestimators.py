@@ -46,6 +46,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import print_product
 from artistools.misc import suggest_names
 from artistools.plottools import get_figsize
 from artistools.plottools import prune_log_ticks
@@ -1317,7 +1318,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     addarg_show(parser)
-    addarg_quiet(parser, productargs=("listvariables", "listnuclides"))
+    addarg_quiet(parser)
 
     addarg_dpi(parser, default=600)
 
@@ -1500,7 +1501,9 @@ def write_snapshot_figures(
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
     outputpath = Path(args.outputfile)
-    if len(frames) > 1 and not outputpath.is_dir() and "{timestep" not in outputpath.name:
+    # resolve_outputfile takes a path of no extension as a folder, and it makes that folder
+    namesonefile = bool(outputpath.suffix) and not outputpath.is_dir()
+    if len(frames) > 1 and namesonefile and "{timestep" not in outputpath.name:
         msg = (
             f"'{outputpath.name}' names one file, and this command writes {len(frames)} frames. Give a "
             "folder with -o, or a name that holds {timestep}, e.g. -o 'frame_{timestep}.png'"
@@ -1568,7 +1571,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimatorcolumns = estimators.collect_schema().names()
 
     if wantslisting:
-        print(summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
+        print_product(args, summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
         return
 
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
