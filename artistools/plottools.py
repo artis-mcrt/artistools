@@ -536,6 +536,20 @@ class PrunedLogLocator(mplticker.LogLocator):
         return keep if self.minticks <= len(keep) < len(inview) else ticks
 
 
+def plain_label(label: str) -> str:
+    r"""Return a plot label as plain text, for a log line that a terminal shows.
+
+    A label carries LaTeX for the figure, e.g. "$\\pm$". A terminal shows those marks as they are,
+    thus this gives the symbol that they stand for.
+    """
+    # a terminal of any encoding shows these, thus the plain form stays in ASCII
+    replacements = {r"$\pm$": "+/-", r"$\times$": "x", r"\odot": "sun", "$": "", "{": "", "}": ""}
+    for latex, plain in replacements.items():
+        label = label.replace(latex, plain)
+
+    return label
+
+
 def prune_log_ticks(axis: mplaxis.Axis) -> None:
     """Give a log axis a locator that leaves out the ticks against either end."""
     if axis.get_scale() == "log":

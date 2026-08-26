@@ -376,6 +376,32 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
     return parser
 
 
+class SuggestingArgumentParser(argparse.ArgumentParser):
+    """Name the closest subcommand when the given one does not match.
+
+    Python 3.14 does this with suggest_on_error, which Python 3.13 does not take. CI runs both, thus
+    this gives the same help on each.
+    """
+
+    @t.override
+    def error(self, message: str) -> t.NoReturn:
+        """Add a suggestion to an invalid-choice message, then report it as argparse does."""
+        import re
+
+        from artistools.misc import suggest_names
+
+        given = re.search(r"invalid choice: '([^']*)'", message)
+        _, _, choicetext = message.partition("choose from")
+        if given is not None and choicetext:
+            # Python 3.13 gives the choices without quotation marks, and Python 3.14 gives them with
+            choices = [choice.strip(" '\")") for choice in choicetext.split(",")]
+            if suggestion := suggest_names(given.group(1), choices):
+                # the list of every choice is long, thus the suggestion goes in front of it
+                message = message.replace(" (choose from", f"{suggestion} (choose from", 1)
+
+        super().error(message)
+
+
 def run_subcommand(*words: str) -> None:
     """Run one subcommand of the tree through the dispatcher.
 

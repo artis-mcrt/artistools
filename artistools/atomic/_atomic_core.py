@@ -692,7 +692,16 @@ def read_linestatfile(
 ]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
-        filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
+        filepath = firstexisting(
+            "linestat.out",
+            folder=filepath,
+            tryzipped=True,
+            purpose=(
+                "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
+                "The commands that identify a line read it, e.g. plotlinefluxes and "
+                "plotspectra --emissionabsorption."
+            ),
+        )
 
     print(f"Reading {filepath}")
 
@@ -723,7 +732,15 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
-    textfile = firstexisting("linestat.out", folder=modelpath)
+    textfile = firstexisting(
+        "linestat.out",
+        folder=modelpath,
+        purpose=(
+            "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
+            "The commands that identify a line read it, e.g. plotlinefluxes and "
+            "plotspectra --emissionabsorption."
+        ),
+    )
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     parquetstat: os.stat_result | None = None

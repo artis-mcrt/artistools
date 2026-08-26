@@ -50,7 +50,11 @@ def print_saved(filepath: Path | str) -> None:
     """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
     filepath = Path(filepath).resolve()
     with contextlib.suppress(ValueError):
-        filepath = filepath.relative_to(Path.cwd(), walk_up=True)
+        relativepath = filepath.relative_to(Path.cwd(), walk_up=True)
+        # a file outside the working folder gives a chain of "..", which is longer than the full path
+        if len(str(relativepath)) < len(str(filepath)):
+            filepath = relativepath
+
     print(f"open {shlex.quote(str(filepath))}")
 
 
@@ -369,8 +373,13 @@ def firstexisting(
     folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
+    purpose: str = "",
 ) -> Path:
-    """Return the first existing file in file list. If none exist, raise exception."""
+    """Return the first existing file in file list. If none exist, raise exception.
+
+    A caller gives purpose to say what the file holds and which commands read it, because a list of
+    names alone does not tell a user what to do next.
+    """
     if isinstance(filelist, str | Path):
         filelist = [Path(filelist)]
     else:
@@ -413,6 +422,9 @@ def firstexisting(
     strfilelist = "\n  ".join([str(x.relative_to(folder)) if x.is_relative_to(folder) else str(x) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
     msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
+    if purpose:
+        msg += f"\n{purpose}"
+
     raise FileNotFoundError(msg)
 
 

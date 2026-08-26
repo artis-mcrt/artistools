@@ -70,6 +70,7 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
+from artistools.plottools import plain_label
 from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
@@ -497,8 +498,9 @@ def plot_artis_spectrum(
             if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
 
+        # the label carries LaTeX for the figure, thus the log line shows the plain form
         print(
-            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+            f"====> '{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
         print(f" modelpath {modelpath}")
 

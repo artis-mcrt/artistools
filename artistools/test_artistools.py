@@ -1342,3 +1342,62 @@ def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) 
     bottoms = [callargs.kwargs["bottom"] for callargs in mocksetylim.call_args_list if "bottom" in callargs.kwargs]
     assert bottoms, "the command must set the bottom of the axis"
     assert 1e-14 in bottoms, f"the requested -ymin is missing from {bottoms}"
+
+
+def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    """A mistyped subcommand must name the closest one on every Python version that CI runs.
+
+    Python 3.14 does this with suggest_on_error, and Python 3.13 takes no such argument. The
+    SuggestingArgumentParser fills that gap, thus a user gets the same help on either.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspetcra"])
+
+    message = capsys.readouterr().err
+    assert "plotspectra" in message
+    assert "invalid choice" in message
+
+    # the parser of Python 3.13 names the closest subcommand in front of the list of every choice
+    if sys.version_info < (3, 14):
+        assert "Did you mean" in message
+        assert message.index("Did you mean") < message.index("choose from")
+
+
+def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
+    """A list of file names alone does not tell a user what the file holds or which command reads it."""
+    with pytest.raises(FileNotFoundError, match=r"linestat\.out gives the wavelength"):
+        at.misc.firstexisting("linestat.out", folder=tmp_path, purpose="linestat.out gives the wavelength")
+
+    # a caller that gives no purpose keeps the plain message
+    with pytest.raises(FileNotFoundError) as noreason:
+        at.misc.firstexisting("linestat.out", folder=tmp_path)
+
+    assert "None of these files exist" in str(noreason.value)
+    assert "gives the wavelength" not in str(noreason.value)
+
+
+def test_plain_label_and_saved_path_read_well_in_a_terminal() -> None:
+    """A log line must carry no LaTeX, and it must give the shorter of the two forms of a path."""
+    assert at.plottools.plain_label(r"TEST MODEL +300.3d ($\pm$ 0.5d)") == "TEST MODEL +300.3d (+/- 0.5d)"
+    # the subscript mark goes and the underscore stays, thus the plain form reads as M_sun
+    assert at.plottools.plain_label(r"M$_{\odot}$") == "M_sun"
+    assert at.plottools.plain_label("no mathematics here") == "no mathematics here"
+
+
+def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A file outside the working folder gave a chain of "..", which is longer than the full path."""
+    faraway = tmp_path / "figure.pdf"
+    faraway.touch()
+
+    at.misc.print_saved(faraway)
+    reported = capsys.readouterr().out.removeprefix("open ").strip().strip("'")
+
+    assert ".." not in reported
+    assert Path(reported).resolve() == faraway.resolve()
+
+    # a file below the working folder keeps its short relative name
+    here = Path("localfigure.pdf")
+    at.misc.print_saved(Path.cwd() / here)
+    assert capsys.readouterr().out.strip() == f"open {here}"

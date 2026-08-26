@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     from artistools.commands import addsubparsers
     from artistools.commands import CustomArgHelpFormatter
     from artistools.commands import subcommandtree
+    from artistools.commands import SuggestingArgumentParser
 
     parserkwargs: dict[str, t.Any] = {
         "formatter_class": CustomArgHelpFormatter,
@@ -26,7 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     }
     if sys.version_info >= (3, 14):
         parserkwargs["suggest_on_error"] = True  # suggest close matches for mistyped subcommands
-    parser = argparse.ArgumentParser(**parserkwargs)
+        parser = argparse.ArgumentParser(**parserkwargs)
+    else:
+        # Python 3.13 takes no suggest_on_error, thus the subclass gives the same help
+        parser = SuggestingArgumentParser(**parserkwargs)
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
 
     addsubparsers(parser, "artistools", subcommandtree)
