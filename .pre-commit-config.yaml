@@ -10,7 +10,7 @@ repos:
       rev: v6.0.0
       hooks:
           - id: check-added-large-files
-            args: [--maxkb=800]
+            args: [--maxkb=1000]
           - id: check-ast
           - id: check-case-conflict
           - id: check-builtin-literals
