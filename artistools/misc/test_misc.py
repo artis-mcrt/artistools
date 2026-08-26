@@ -1264,3 +1264,48 @@ def test_timedays_of_a_joined_ts_value_names_the_mistake() -> None:
     """-ts70 reads as -t s70, thus the message must say to put a space after -ts."""
     with pytest.raises(ValueError, match=r"reads as -t s70, thus put a space after -ts"):
         at.get_timestep_of_timedays(at.get_path("testdata") / "testmodel", "s70")
+
+
+def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing optional dependency must say how to install it, and not give a bare traceback."""
+    import builtins
+
+    realimport = builtins.__import__
+
+    def failing_import(name: str, *importargs: t.Any, **importkwargs: t.Any) -> object:
+        if name.startswith("pyvista"):
+            raise ImportError(name)
+        return realimport(name, *importargs, **importkwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    with pytest.raises(ModuleNotFoundError, match=r"needs pyvista.*artistools\[extras\]"):
+        at.import_optional("pyvista")
+
+    # an installed module comes back as the import statement gives it
+    assert at.import_optional("math").sqrt(4.0) == 2.0
+
+
+def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str]) -> None:
+    """A warning goes to the standard error, thus --quiet keeps it and a script reads a clean product.
+
+    Every warning went to the standard output before, thus --quiet discarded all of them.
+    """
+    at.misc.print_warning("the model is on fire")
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err == "WARNING: the model is on fire\n"
+
+    # the dispatcher redirects the standard output alone, thus the warning of a --quiet run appears
+    import artistools.__main__
+
+    artistools.__main__.main(
+        argsraw=[
+            "plotestimators",
+            "-modelpath",
+            str(at.get_path("testdata") / "testmodel"),
+            "--listvariables",
+            "--quiet",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out

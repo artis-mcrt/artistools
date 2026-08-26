@@ -1588,3 +1588,27 @@ def test_plotspectra_x_names_the_unit_argument(capsys: pytest.CaptureFixture[str
         parser.parse_args([".", "-x", "nm"])
 
     assert "-x is not an argument of this command. Give -xunit instead" in capsys.readouterr().err
+
+
+def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.CaptureFixture[str]) -> None:
+    """The timesteps command gives the table that a user needs to select a -timestep value.
+
+    Before this command, the mapping from a timestep to its days appeared only inside the error message
+    for a wrong value.
+    """
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath)])
+    table = capsys.readouterr().out
+
+    lines = table.splitlines()
+    assert lines[0] == "TEST MODEL: 100 timesteps from 250.000 to 350.000 days"
+    assert lines[1].split() == ["timestep", "start_days", "mid_days", "end_days", "width_days"]
+    assert len(lines) == 103, "a header, a column line, 100 rows, and a closing hint"
+
+    firstrow = lines[2].split()
+    assert firstrow[0] == "0"
+    assert np.isclose(float(firstrow[1]), 250.0)
+
+    # the hint names the ways to select a time, and the keyword that names the final timestep
+    assert "-timestep" in lines[-1]
+    assert "-timedays" in lines[-1]
+    assert '"last" names timestep 99' in lines[-1]

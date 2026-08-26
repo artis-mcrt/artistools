@@ -94,13 +94,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # a bad argument or a missing input file is a user problem, thus report it without a traceback.
         # An assert that carries no message is an internal check, thus say so rather than let the user
         # read it as a mistake of their own, and name the variable that gives the full traceback
+        from artistools.misc import print_error
+
         if detail := str(exc):
-            print(f"error: {detail}", file=sys.stderr)
+            print_error(detail)
         else:
-            print(
-                f"error: an internal check of artistools failed ({type(exc).__name__}). This is a fault in "
-                "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback",
-                file=sys.stderr,
+            print_error(
+                f"an internal check of artistools failed ({type(exc).__name__}). This is a fault in "
+                "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback"
             )
         raise SystemExit(1) from exc
 

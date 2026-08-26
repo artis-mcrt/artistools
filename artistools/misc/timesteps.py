@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import path_is_codecomparison
@@ -218,11 +219,11 @@ def get_time_range(
     time_days_lower, time_days_upper = None, None
 
     if timemin is not None and float(timemin) > tends[-1]:
-        print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
+        print_warning(f"{get_model_name(modelpath)}: timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
     if timemax is not None and float(timemax) < tstarts[0]:
-        print(
-            f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
+        print_warning(
+            f"{get_model_name(modelpath)}: timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 
@@ -313,7 +314,7 @@ def get_time_range(
 
     timesteplast = len(tmids) - 1
     if timestepmax > timesteplast:
-        print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
+        print_warning(f"timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
 
     # when the range was given as timesteps there is no requested time in days, so the timestep bounds are the only
@@ -369,7 +370,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
         # get_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except FileNotFoundError:
-        print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
+        print_warning("No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1
 
     assert isinstance(nts_last, int)

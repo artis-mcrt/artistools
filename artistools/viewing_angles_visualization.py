@@ -1,7 +1,6 @@
 """Animate the ARTIS viewing angle bins as vectors around a 3D model."""
 
 import argparse
-import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -99,12 +98,8 @@ def viewing_angles_visualisation(
     isomin, isomax : float | int, float
 
     """
-    try:
-        import plotly.express as px
-        import plotly.graph_objects as go
-    except ModuleNotFoundError:
-        print("Cannot run visualization without plotly...")
-        sys.exit()
+    px = at.import_optional("plotly.express")
+    go = at.import_optional("plotly.graph_objects")
 
     # Load model contents
     dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect()

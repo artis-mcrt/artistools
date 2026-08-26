@@ -1401,7 +1401,8 @@ def test_nonpositive_limit_on_a_log_axis_is_dropped(capsys: pytest.CaptureFixtur
 
     at.plottools.set_axis_properties(axis, args)
 
-    assert "-ymin" in capsys.readouterr().out
+    # a warning goes to the standard error, thus --quiet keeps it
+    assert "-ymin" in capsys.readouterr().err
     ymin, ymax = axis.get_ylim()
     assert ymin > 0.0, "the data must stay in view rather than the axis freezing at a rejected limit"
     assert np.isclose(ymax, 1e45)

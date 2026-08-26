@@ -48,6 +48,7 @@ from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools
 from artistools import radfield as radfield
 from artistools import rustext as rustext
+from artistools import showtimesteps as showtimesteps
 from artistools import spectra as spectra
 from artistools import transitions as transitions
 from artistools import viewing_angles_visualization as viewing_angles_visualization
@@ -138,6 +139,7 @@ from artistools.misc import get_viewingdirectionbincount as get_viewingdirection
 from artistools.misc import get_vpkt_config as get_vpkt_config
 from artistools.misc import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc import get_wid_init_at_tmodel as get_wid_init_at_tmodel
+from artistools.misc import import_optional as import_optional
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files

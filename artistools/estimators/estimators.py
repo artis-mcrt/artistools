@@ -24,6 +24,7 @@ from polars import selectors as cs
 import artistools as at
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import path_is_codecomparison
+from artistools.misc import print_warning
 
 if t.TYPE_CHECKING:
     import os
@@ -647,8 +648,8 @@ def _scan_artis_estimators(
             .lazy()
         )
     else:
-        print(
-            f"WARNING: No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
+        print_warning(
+            f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )
         pldflazy = (
             at

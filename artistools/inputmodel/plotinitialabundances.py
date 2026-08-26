@@ -12,6 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -47,7 +48,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
         massfracsum = df["massfraction"].sum()
         if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
-            print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
+            print_warning(f"mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
 
         df = (
             df

@@ -17,6 +17,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
+from artistools.misc import print_warning
 
 
 def read_ejectasnapshot(
@@ -322,7 +323,7 @@ def makemodelfromgriddata(
             )
         )
     else:
-        print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
+        print_warning("No abundances will be set because no nuclear network trajectories folder was specified")
         dfelabundances = None
 
     if dimensions < 3:

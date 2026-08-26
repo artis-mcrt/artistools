@@ -34,7 +34,9 @@ from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
+from artistools.misc.cliutils import print_error as print_error
 from artistools.misc.cliutils import print_product as print_product
+from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
@@ -75,6 +77,7 @@ from artistools.misc.fileio import zopen as zopen
 from artistools.misc.fileio import zopenpl as zopenpl
 from artistools.misc.general import df_filter_minmax_bracketed as df_filter_minmax_bracketed
 from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
+from artistools.misc.general import import_optional as import_optional
 from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
 from artistools.misc.general import vec_len as vec_len

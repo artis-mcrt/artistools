@@ -48,14 +48,22 @@ def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame |
 
 def print_saved(filepath: Path | str) -> None:
     """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
-    filepath = Path(filepath).resolve()
+    from rich.console import Console
+    from rich.text import Text
+
+    fullpath = Path(filepath).resolve()
+    filepath = fullpath
     with contextlib.suppress(ValueError):
-        relativepath = filepath.relative_to(Path.cwd(), walk_up=True)
+        relativepath = fullpath.relative_to(Path.cwd(), walk_up=True)
         # a file outside the working folder gives a chain of "..", which is longer than the full path
-        if len(str(relativepath)) < len(str(filepath)):
+        if len(str(relativepath)) < len(str(fullpath)):
             filepath = relativepath
 
-    print(f"open {shlex.quote(str(filepath))}")
+    # the verb of the platform, thus the line runs as a command there. A terminal that shows links also
+    # makes the path one, and a pipe gets the plain text
+    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
+    line = Text(f"{opencommand} ") + Text(shlex.quote(str(filepath)), style=f"link {fullpath.as_uri()}")
+    Console(highlight=False, soft_wrap=True).print(line)
 
 
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
@@ -532,7 +540,9 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
 def merge_pdf_files(pdf_files: list[str]) -> None:
     """Merge a list of PDF files into a single PDF file, deleting the inputs once the merged file is written."""
-    from pypdf import PdfWriter
+    from artistools.misc.general import import_optional
+
+    PdfWriter = import_optional("pypdf").PdfWriter
 
     merger = PdfWriter()
 
@@ -553,7 +563,9 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
 
 def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: float) -> None:
     """Combine image files into an animated gif, showing each frame for duration milliseconds."""
-    import imageio.v2 as iio
+    from artistools.misc.general import import_optional
+
+    iio = import_optional("imageio.v2")
 
     # bind the writer outside the with, because __enter__ is typed as returning the reader/writer base class
     writer = iio.get_writer(giffile, mode="I", duration=duration)

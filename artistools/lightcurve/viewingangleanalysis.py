@@ -17,6 +17,7 @@ from matplotlib.legend_handler import HandlerTuple
 import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import get_series_label
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -153,8 +154,8 @@ def calculate_peak_time_mag_deltam15(
             "This will give a stupid result. Specify args.timemin and args.timemax"
         )
         sys.exit(1)
-    print(
-        "WARNING: Both methods that can be used to fit model light curves to get  "
+    print_warning(
+        "Both methods that can be used to fit model light curves to get "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
         "of the light curve is being fitted. It is safest to experiment with the  "
         "timemin and timemax args which set the region of the light curve fitted. "
@@ -176,8 +177,8 @@ def calculate_peak_time_mag_deltam15(
         """
         index = int(np.abs(arr_xfit - (tmax_polyfit + days)).argmin())
         if arr_xfit[-1] < tmax_polyfit + days:
-            print(
-                f"WARNING: the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
+            print_warning(
+                f"the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
                 f" peak at {tmax_polyfit:.1f} d. deltam{days:.0f} is really the decline to"
                 f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen -timemax to cover the full range."
             )
@@ -238,7 +239,7 @@ def lightcurve_polyfit(
         import scipy.optimize as op
 
     except ModuleNotFoundError:
-        print(
+        print_warning(
             "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
             "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
         )

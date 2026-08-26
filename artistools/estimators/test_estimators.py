@@ -91,7 +91,7 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     assert ydata.size > 0
     assert ydata.max() < 1e-16, "the test needs a model of a density below the floor of the plot list"
 
-    assert "below the requested minimum" in capsys.readouterr().out
+    assert "below the requested minimum" in capsys.readouterr().err
 
     # the floor must never be applied, because set_ylim accepts a bottom above the top and then turns
     # the axis upside down, and a later autoscale keeps that direction

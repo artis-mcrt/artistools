@@ -94,7 +94,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "describeinputmodel", "getpath", "version"),
+    "other commands": ("completions", "describeinputmodel", "getpath", "timesteps", "version"),
 })
 
 subcommandtree: CommandTree = {
@@ -255,6 +255,9 @@ subcommandtree: CommandTree = {
         "nonthermal.solvespencerfanocmd",
         script="plotartisnonthermal",
         helptext="Solve the Spencer-Fano equation using data from an ARTIS cell at some timestep.",
+    ),
+    "timesteps": CommandSpec(
+        "showtimesteps", helptext="List the timesteps of a model and the days that each one covers."
     ),
     "version": CommandSpec("commands", funcname="show_version", helptext="Print the artistools version."),
     "writebollightcurvedata": CommandSpec(

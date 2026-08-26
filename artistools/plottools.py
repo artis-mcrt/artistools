@@ -15,6 +15,7 @@ import matplotlib.ticker as mplticker
 
 from artistools.commands import get_path
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 
 # subplots() gives a single axes, a 1D array, or a 2D array, thus the type nests to any depth
 type AxesTree = mplax.Axes | Iterable[AxesTree]
@@ -590,7 +591,7 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     argument that asked for it.
     """
     if limit is not None and logscale and limit <= 0.0:
-        print(f"WARNING: ignoring {argname} {limit}, which a log axis cannot show")
+        print_warning(f"ignoring {argname} {limit}, which a log axis cannot show")
         return None
 
     return limit

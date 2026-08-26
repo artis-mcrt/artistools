@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import artistools as at
+from artistools.misc import print_warning
 
 defaultoutputfile = "plotlogfiles_{0}.pdf"
 
@@ -114,7 +115,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpaths = at.normalize_path_list(args.modelpath)
     outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     if len(modelpaths) > 1 and "{" not in str(outputfile):
-        print(f"WARNING: output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
+        print_warning(f"output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
 
     for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)

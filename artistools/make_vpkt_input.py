@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 import artistools as at
 from artistools.misc import addarg_outputfile
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
 defaultoutputfile = "vpkt.txt"
@@ -499,7 +500,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print("stdin is not a terminal, so keeping the settings above without prompting")
 
     for warning in check_config(config):
-        print(f"WARNING: {warning}. ARTIS will abort unless it was built with matching constants.")
+        print_warning(f"{warning}. ARTIS will abort unless it was built with matching constants.")
 
     outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
     at.print_saved(outputfile)

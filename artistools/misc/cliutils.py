@@ -383,13 +383,33 @@ def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -
     return f" Did you mean {', '.join(matches)}?" if matches else ""
 
 
+def print_error(message: str) -> None:
+    """Print an error to the standard error. rich colours the prefix in a terminal alone."""
+    from rich.console import Console
+    from rich.text import Text
+
+    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("error: ", style="bold red") + Text(message))
+
+
+def print_warning(*values: object) -> None:
+    """Print a warning to the standard error, thus --quiet keeps it and a script reads a clean product.
+
+    rich colours the prefix in a terminal, and it writes plain text into a pipe or under NO_COLOR.
+    """
+    from rich.console import Console
+    from rich.text import Text
+
+    message = " ".join(str(value) for value in values)
+    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("WARNING: ", style="bold yellow") + Text(message))
+
+
 def exit_with_error(message: str) -> t.NoReturn:
     """Print an error message and stop with a failing exit status.
 
     A mistake in the arguments earns a message rather than a traceback, and a script that runs the
     command sees that it failed.
     """
-    print(f"error: {message}", file=sys.stderr)
+    print_error(message)
     raise SystemExit(1)
 
 
@@ -410,7 +430,9 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     A command writes its product with print_product, thus --quiet keeps that product and hides only the
     progress messages around it.
     """
-    parser.add_argument("--quiet", action="store_true", help="Hide the progress messages. An error still appears")
+    parser.add_argument(
+        "--quiet", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
+    )
 
 
 def print_product(args: argparse.Namespace, *values: object) -> None:

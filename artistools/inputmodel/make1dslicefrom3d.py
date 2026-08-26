@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -139,8 +140,8 @@ def slice_abundance_file(
         # the loop only writes a block when the next one starts, so the last block still has to be flushed
         if currentblock:
             if blocklens and len(currentblock) < max(blocklens):
-                print(
-                    f"WARNING: the last block has {len(currentblock)} values, but earlier blocks have"
+                print_warning(
+                    f"the last block has {len(currentblock)} values, but earlier blocks have"
                     f" {max(blocklens)}. The input file looks truncated"
                 )
             if keepcurrentblock:

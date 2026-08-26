@@ -135,7 +135,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                 )
                 # Cells exist but all have density=0
                 logprint(
-                    f"\nWARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0).\n"
+                    f"WARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0)."
                     "This shell and all shells further out in the model will be removed from the model.\n"
                     "This is safe provided this empty shell is far enough out in the model: check model file to \n"
                     "confirm this is the case. If not there may be an issue with the model being read in.\n"

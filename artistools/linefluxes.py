@@ -33,6 +33,7 @@ from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
+from artistools.misc import print_warning
 from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -331,7 +332,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
-        print(f"WARNING: no rows for Flörs model w7 in {floersmodelratiopath}")
+        print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
         return
 
     axis.plot(

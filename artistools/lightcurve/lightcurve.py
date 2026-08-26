@@ -22,6 +22,7 @@ from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.misc import path_is_artis_model
+from artistools.misc import print_warning
 from artistools.misc.fileio import firstexisting_or_none
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
@@ -273,7 +274,7 @@ def generate_band_lightcurve_data(
         )
         if specfilename is None:
             if args.plotviewingangle:
-                print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
+                print_warning("no direction-resolved spectra available. Using angle-averaged spectra.")
             specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
 
         with at.zopen(specfilename) as fspec:

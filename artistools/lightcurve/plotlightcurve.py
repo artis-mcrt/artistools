@@ -50,6 +50,7 @@ from artistools.misc import makelist
 from artistools.misc import path_is_artis_model
 from artistools.misc import print_product
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
 from artistools.plottools import AxesTree
 from artistools.plottools import get_figsize
@@ -345,7 +346,7 @@ def plot_artis_lightcurve(
     modelpath = inputpath.parent if lcfilename else inputpath
 
     if not modelpath.is_dir():
-        print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
+        print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
     linelabel_is_custom = linelabel is not None
@@ -392,7 +393,7 @@ def plot_artis_lightcurve(
                 )
             )
         except FileNotFoundError:
-            print(f"WARNING: Skipping because the light curve file of {modelpath} does not exist")
+            print_warning(f"Skipping because the light curve file of {modelpath} does not exist")
             return None
 
         lcdataframes = at.lightcurve.readfile(
@@ -535,7 +536,7 @@ def plot_artis_lightcurve(
             axis.plot(lcdata_before_valid["time_days"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
             axis.plot(lcdata_after_valid["time_days"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
         elif lcdata_valid.is_empty():
-            print(" WARNING: No data points in valid range")
+            print_warning("No data points in valid range")
 
         energy_released = abs(
             np.trapezoid(
@@ -675,7 +676,7 @@ def make_lightcurve_plot(
                         print(top_nuclides)
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
-                        print("WARNING: no nuclides.out file found, skipping top nuclides")
+                        print_warning("no nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
                     lcdataframes = plot_artis_lightcurve(
@@ -1235,7 +1236,7 @@ def plot_lightcurve_from_refdata(
                 filter_data[filter_name], lambda0, metadata["a_v"], metadata["r_v"]
             )
         else:
-            print("WARNING: did not correct for reddening")
+            print_warning("did not correct for reddening")
 
         axis.plot(
             filter_data[filter_name]["time"],
@@ -1388,7 +1389,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="+",
         help=(
             "Choose filter eg. bol U B V R I. Default B. "
-            "WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs"
+            "filter names are not case sensitive eg. sloan-r is not r, it is rs"
         ),
     )
 
@@ -1614,7 +1615,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if getattr(args, "average_every_tenth_viewing_angle", False):
-        print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
 
     at.set_mpl_style()

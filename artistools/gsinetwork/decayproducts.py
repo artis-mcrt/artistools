@@ -22,6 +22,7 @@ from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
@@ -435,7 +436,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:
-                print(f"Warning! No trajectories found for eject state {state}")
+                print_warning(f"No trajectories found for eject state {state}")
                 continue
             labelfull = ej_names[i]
             label = ej_names[i]

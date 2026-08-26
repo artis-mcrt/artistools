@@ -47,6 +47,7 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import print_product
+from artistools.misc import print_warning
 from artistools.misc import suggest_names
 from artistools.plottools import get_figsize
 from artistools.plottools import prune_log_ticks
@@ -677,14 +678,14 @@ def plot_multi_ion_series(
                     missingions.add((atomic_number, ion_stage))
 
     except FileNotFoundError:
-        print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
+        print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
         for atomic_number, ion_stage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             if f"nnion_{ionstr}" not in estimators.collect_schema().names():
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:
-        print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
+        print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
     lazyframes = []
@@ -1121,13 +1122,13 @@ def plot_subplot(
             if datarange is None or ymin < datarange[1]:
                 ax.set_ylim(bottom=ymin)
             else:
-                print(f"WARNING: every {quantity} value is below the requested minimum of {ymin}. Using the data range")
+                print_warning(f"every {quantity} value is below the requested minimum of {ymin}. Using the data range")
 
         if ymax is not None:
             if datarange is None or ymax > datarange[0]:
                 ax.set_ylim(top=ymax)
             else:
-                print(f"WARNING: every {quantity} value is above the requested maximum of {ymax}. Using the data range")
+                print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend:
         set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)

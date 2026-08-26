@@ -30,6 +30,7 @@ from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_npts_model
+from artistools.misc import print_warning
 from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -690,7 +691,7 @@ def make_singletimestep_plot(
             nne = estimators[timestep, modelgridindex]["nne"]
             print(f"nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}")
         else:
-            print(f"WARNING: No estimator data. Setting T_e = T_R = {args.exc_temperature} K, nne and W unknown")
+            print_warning(f"No estimator data. Setting T_e = T_R = {args.exc_temperature} K, nne and W unknown")
             T_e = args.exc_temperature
             T_R = args.exc_temperature
             # only used for display in the subplot title, so report them as unknown rather than inventing a value

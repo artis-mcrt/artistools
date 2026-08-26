@@ -17,6 +17,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
+from artistools.misc import print_warning
 
 t_model_init_s = 0.1 * day_to_s  # snapshot time is fixed by the npz files
 
@@ -1205,7 +1206,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if model_dim == 2:
         if args.perturb3Dmodel:
-            print("Warning! Density perturbations only work on 3D models. Skip.")
+            print_warning("Density perturbations only work on 3D models. Skip.")
         ngrid_rcyl = int(args.ngridrcyl)
         ngrid_z = int(args.ngridz)
         (
@@ -1301,8 +1302,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.perturb3Dmodel:
             if args.replacedyn:
-                print(
-                    "Warning! Perturbations should only be applied to axisymmetric 3D models to conserve global isotopic mass fractions."
+                print_warning(
+                    "Apply a perturbation only to an axisymmetric 3D model, or the global isotopic mass fractions change."
                 )
             dfmodel = apply_density_perturbations(dfmodel, float(args.vmax_on_c), tuple(args.perturb3Dmodel))
 

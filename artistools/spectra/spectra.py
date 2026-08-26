@@ -40,6 +40,7 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import polars_source
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 
@@ -1074,7 +1075,7 @@ def get_flux_contributions(
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
     if not Path(modelpath, "compositiondata.txt").is_file():
-        print("WARNING: compositiondata.txt not found. Using output*.txt instead")
+        print_warning("compositiondata.txt not found. Using output*.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
@@ -1502,7 +1503,7 @@ def get_flux_contributions_from_packets(
     allgroupnames = list(group_energy_sum)
 
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
-        print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
+        print_warning(f"(packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     def sortkey(groupname: str) -> tuple[int, float | int]:
         grouptotal = group_energy_sum[groupname]
@@ -1623,7 +1624,7 @@ def sort_and_reduce_flux_contribution_list(
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
     if fixedionlist:
         if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
-            print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
+            print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
 
         # sort in manual order
         def sortkey(x: FluxContributionTuple) -> tuple[int, float]:

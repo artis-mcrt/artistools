@@ -66,6 +66,7 @@ from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
@@ -130,24 +131,22 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
         _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages: list[str] = []
         if validrange_start_days is validrange_end_days is None:
-            problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}: The model has no valid time range days"
-            )
+            problem_messages.append("The model has no valid time range days")
         if validrange_start_days is not None and timemin < validrange_start_days:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}: timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
+                f"timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
             )
         if validrange_end_days is not None and timemax > validrange_end_days:
             problem_messages.append(
-                f" {'WARNING' if allow_invalid else 'ERROR'}: timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
+                f"timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
             )
 
         if problem_messages and not allow_invalid:
             problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
             raise ValueError("\n".join(problem_messages))
 
-        if problem_messages:
-            print("\n".join(problem_messages))
+        for message in problem_messages:
+            print_warning(message)
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -452,11 +451,11 @@ def plot_artis_spectrum(
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
-        print(f"WARNING: ignoring filename of {specfilename}")
+        print_warning(f"ignoring filename of {specfilename}")
         modelpath = Path(modelpath).parent
 
     if not modelpath.is_dir():
-        print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
+        print_warning(f"Skipping because {modelpath} does not exist")
         return None
     dfspectrum = None
     use_time: t.Literal["escape", "emission", "arrival"]
@@ -781,7 +780,7 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             except FileNotFoundError as e:
-                print(f"WARNING: Skipping {specpath} because it does not exist")
+                print_warning(f"Skipping {specpath} because it does not exist")
                 print(e)
                 continue
 
@@ -1667,7 +1666,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if getattr(args, "average_every_tenth_viewing_angle", False):
-        print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
 
     if args.xunit is None:

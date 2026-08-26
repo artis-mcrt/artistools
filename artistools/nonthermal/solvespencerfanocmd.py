@@ -16,6 +16,7 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
@@ -164,6 +165,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    # the import stands in front of the work, thus a missing module stops the command at once
+    pynt = at.import_optional("pynonthermal")
+
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
         return
@@ -198,7 +202,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         nntot = estim["nntot"]
         x_e = estim["nne"] / nntot
         T_e = estim["Te"]
-        print("WARNING: Use LTE pops at Te for now")
+        print_warning("Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / EV_to_erg
         ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
@@ -308,8 +312,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             for atomic_number, ion_stage in ions:
                 strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
             Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
-
-        import pynonthermal as pynt
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:

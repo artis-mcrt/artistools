@@ -89,7 +89,8 @@ def test_nltepops_no_estimator_data(
         plotrefdata=True,
     )
 
-    assert "WARNING: No estimator data" in capsys.readouterr().out
+    # a warning goes to the standard error, thus --quiet keeps it
+    assert "WARNING: No estimator data" in capsys.readouterr().err
     titles = [callargs[0][1] for callargs in mocktitle.call_args_list]
     assert any("Te=5000 K" in ti and "nne=nan" in ti and "T$_R$=5000 K" in ti and "W=nan" in ti for ti in titles)
 

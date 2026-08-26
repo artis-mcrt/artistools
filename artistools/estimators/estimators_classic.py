@@ -4,6 +4,7 @@ import typing as t
 from pathlib import Path
 
 import artistools as at
+from artistools.misc import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 
@@ -119,7 +120,7 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
         if str(estfilepath.parent) in first_timesteps_in_dir:
             timestep = first_timesteps_in_dir[str(estfilepath.parent)]
         else:
-            print(f"WARNING: no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
+            print_warning(f"no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
             timestep = 0
         with at.zopen(estfilepath) as estfile:
             modelgridindex = -1

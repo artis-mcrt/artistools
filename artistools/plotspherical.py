@@ -24,6 +24,7 @@ from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -51,7 +52,7 @@ def plot_spherical(
 
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
-        print("WARNING! The observer never gets light from the entire ejecta. Plotting all packets anyway")
+        print_warning("The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
             dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().to_numpy()[0]
         )
@@ -60,18 +61,17 @@ def plot_spherical(
             print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
             timemindays = tmin_d_valid
         elif timemindays < tmin_d_valid:
-            print(
-                f"WARNING! timemindays {timemindays} is too early for light to travel from the entire ejecta "
-                f" ({tmin_d_valid:.2f} d)"
+            print_warning(
+                f"timemindays {timemindays} is too early for light to travel from the entire ejecta "
+                f"({tmin_d_valid:.2f} d)"
             )
 
         if timemaxdays is None:
             print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
             timemaxdays = tmax_d_valid
         elif timemaxdays > tmax_d_valid:
-            print(
-                f"WARNING! timemaxdays {timemaxdays} is too late to receive light from the entire ejecta "
-                f" ({tmax_d_valid:.2f} d)"
+            print_warning(
+                f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
             )
         dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timemindays, timemaxdays))
 

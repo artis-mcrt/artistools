@@ -20,6 +20,7 @@ from matplotlib.image import AxesImage
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -166,8 +167,9 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
-        print(
-            f"Scaling positions/densities to {targetmodeltime_days} days. \nWARNING: abundances not updated for radioactive decays"
+        print_warning(
+            f"Scaling positions/densities to {targetmodeltime_days} days. "
+            "The abundances are not updated for radioactive decays"
         )
 
         dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
@@ -241,7 +243,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
-    import pyvista as pv
+    pv = at.import_optional("pyvista")
 
     # set white background
     pv.set_plot_theme("document")  # type: ignore[no-untyped-call]

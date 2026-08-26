@@ -29,6 +29,7 @@ from artistools.misc import firstexisting
 from artistools.misc import get_file_identity
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
@@ -245,8 +246,8 @@ def read_modelfile_text(
             )
             for col, pos in expected_positions:
                 if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
-                    print(
-                        f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
+                    print_warning(
+                        f"{col} does not match expected value. Check that vmax is consistent with the cell positions."
                     )
 
         else:
@@ -727,7 +728,7 @@ def add_derived_cols_to_modeldata(
         for col in derived_cols
         if col not in dfmodel.collect_schema().names() and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
     ]:
-        print(f"WARNING: Unknown derived columns: {unknown_cols}")
+        print_warning(f"Unknown derived columns: {unknown_cols}")
 
     if "pos_min" in derived_cols:
         derived_cols.extend(

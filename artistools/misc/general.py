@@ -4,6 +4,9 @@ import contextlib
 import functools
 import sys
 import typing as t
+
+if t.TYPE_CHECKING:
+    from types import ModuleType
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -109,6 +112,25 @@ def gaussian_filter_wrap(data: npt.NDArray[np.floating], sigma: float) -> npt.ND
         padwidth[axis] = (radius, radius)
         out = np.apply_along_axis(convolve_valid, axis, np.pad(out, padwidth, mode="wrap"))
     return out
+
+
+def import_optional(modulename: str) -> "ModuleType":
+    """Import a module of the optional dependencies, or say how to install them.
+
+    A bare import of pyvista or pynonthermal stops with a traceback that names no fix. This raises one
+    message that gives the install command.
+    """
+    import importlib
+
+    try:
+        return importlib.import_module(modulename)
+    except ImportError as exc:
+        packagename = modulename.partition(".")[0]
+        msg = (
+            f"This command needs {packagename}, which is not installed. Install the optional "
+            "dependencies with: uv pip install 'artistools[extras]'"
+        )
+        raise ModuleNotFoundError(msg) from exc
 
 
 def parallel_map[IterableType, ResultType](
