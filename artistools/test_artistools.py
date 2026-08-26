@@ -1462,3 +1462,28 @@ def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixtur
 
     # a hidden name stays out of the help text
     assert "-timestep" not in parser.format_help()
+
+
+@pytest.mark.parametrize("example", [command for command, _ in at.commands.EXAMPLES])
+def test_help_examples_run(example: str, tmp_path: Path) -> None:
+    """Every example of the help text must run, thus no example can name an argument that went away.
+
+    The examples give a path of ".", which this test replaces with the test model.
+    """
+    import artistools.__main__
+
+    argv = [str(modelpath) if word == "." else word for word in example.split()]
+    artistools.__main__.main(argsraw=[*argv, "-o", str(tmp_path), "--quiet"])
+
+
+def test_help_shows_the_examples() -> None:
+    """The help text must carry the examples and the way to read the help of one command."""
+    import artistools.__main__
+
+    helptext = artistools.__main__.build_parser().format_help()
+
+    for command, description in at.commands.EXAMPLES:
+        assert command in helptext, command
+        assert description in helptext, description
+
+    assert 'Run "artistools <command> --help"' in helptext

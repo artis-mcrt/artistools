@@ -13,6 +13,28 @@ from types import MappingProxyType
 if t.TYPE_CHECKING:
     from collections.abc import Generator
 
+# Every line here is a command that a test runs against the test model, thus no example can go stale.
+EXAMPLES: tuple[tuple[str, str], ...] = (
+    ("plotspectra . -t 300", "the spectrum at 300 days"),
+    ("plotlightcurves .", "the light curve of a model"),
+    ("plotestimators -modelpath . -p Te TR -t 300", "two estimator variables against velocity"),
+    ("plotestimators -modelpath . --listvariables", "every variable that a model holds"),
+    ("plotnltepops -modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),
+)
+
+
+def get_epilog() -> str:
+    """Return the examples and the pointer to the help of one command."""
+    width = max(len(command) for command, _ in EXAMPLES)
+    lines = [f"  artistools {command:{width}}  # {description}" for command, description in EXAMPLES]
+
+    return (
+        "examples (a path of . reads the model in the working folder):\n"
+        + "\n".join(lines)
+        + '\n\nRun "artistools <command> --help" for the arguments of one command.'
+    )
+
+
 # the console scripts that take a subcommand as their first argument. Every other console script names
 # its subcommand in the CommandSpec of that subcommand, thus get_script_subcommands finds it
 DISPATCHERSCRIPTS = ("at", "artistools")
@@ -262,8 +284,12 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     return {heading: members for heading, members in grouped.items() if members}
 
 
-class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
+class CustomArgHelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    """Custom argparse formatter to show default values in help text, sorted with dashes last.
+
+    RawDescriptionHelpFormatter keeps the lines of the epilog, because the examples there are commands
+    that a user copies. It changes no other part of the help text.
+    """
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         """Widen the help column so long option names stay on one line."""

@@ -18,12 +18,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     from artistools.commands import addsubparsers
     from artistools.commands import CustomArgHelpFormatter
+    from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
     from artistools.commands import SuggestingArgumentParser
 
     parserkwargs: dict[str, t.Any] = {
         "formatter_class": CustomArgHelpFormatter,
         "description": "Plotting and analysis tools for the ARTIS radiative transfer code.",
+        "epilog": get_epilog(),
     }
     if sys.version_info >= (3, 14):
         parserkwargs["suggest_on_error"] = True  # suggest close matches for mistyped subcommands
