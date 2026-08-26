@@ -1212,3 +1212,22 @@ def test_addarg_modelpath_positional_also_takes_the_option() -> None:
 
     # the positional already names the paths in the help, thus the option stays out of it
     assert "-modelpath" not in build().format_help()
+
+
+def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
+    """A cell that the model does not hold must name the cells that it does hold.
+
+    The check was a bare assert, thus the dispatcher reported "an internal check of artistools failed",
+    which points a user away from their own argument.
+    """
+    from artistools.misc.modelinfo import get_mpirankofcell
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    with pytest.raises(ValueError, match=r"Cell 999 is not in this model\. Its cells are 0 to 0"):
+        get_mpirankofcell(999, modelpath=modelpath)
+
+    with pytest.raises(ValueError, match="Cell -1 is not in this model"):
+        get_mpirankofcell(-1, modelpath=modelpath)
+
+    # the one cell of the test model still resolves
+    assert get_mpirankofcell(0, modelpath=modelpath) >= 0

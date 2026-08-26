@@ -856,7 +856,17 @@ def get_xlist(
         scalefactor = km_to_cm if xvariable == "velocity" else C_cm_per_s
         estimators = estimators.with_columns(xvalue=(pl.col(velcolumn) / scalefactor))
     else:
-        assert xvariable in estimators.collect_schema().names()
+        # -x takes any variable of the model as well as the four names above, thus no choices list can
+        # hold them. A name that no model gives must still say what the choices are
+        columns = estimators.collect_schema().names()
+        if xvariable not in columns:
+            exit_with_error(
+                f"'{xvariable}' is not a variable of this model, thus the horizontal axis cannot show it."
+                f"{suggest_names(xvariable, columns)}"
+                " The other choices are time, timestep, velocity, and beta."
+                " Run with --listvariables to see every variable of this model"
+            )
+
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
     # one collect for these streaming aggregations, rather than re-running the whole scan once per column. Only

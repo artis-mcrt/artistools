@@ -1689,7 +1689,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.distmpc is None:
             args.distmpc = 1.0  # no reference spectra with distances, so default to 1 Mpc
     assert args.distmpc is not None
-    assert args.distmpc > 0.0
+    if args.distmpc <= 0.0:
+        msg = f"-distmpc gives the distance of the observer in Mpc, thus it must be above zero, not {args.distmpc}"
+        raise ValueError(msg)
 
     args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth

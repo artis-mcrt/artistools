@@ -1149,3 +1149,17 @@ def test_classic_estimator_glob_ignores_an_unreadable_sibling(tmp_path: Path) ->
         if path.suffix == ".out" or path.suffix in COMPRESSED_EXTENSIONS
     ]
     assert kept == ["estimators_0000.out.gz"]
+
+
+def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[str]) -> None:
+    """-x takes any variable of the model, thus a wrong name must say what the choices are."""
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, plotlist=[["rho"]], x="Tee"
+        )
+
+    assert excinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "Did you mean Te?" in message
+    assert "time, timestep, velocity, and beta" in message
+    assert "--listvariables" in message

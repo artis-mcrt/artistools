@@ -414,7 +414,10 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     modelpath = Path(modelpath)
     npts_model = get_npts_model(modelpath)
-    assert modelgridindex < npts_model
+    if not 0 <= modelgridindex < npts_model:
+        # a model of one cell makes "1 cells" and "0 to 0" read badly, thus name the range alone
+        msg = f"Cell {modelgridindex} is not in this model. Its cells are 0 to {npts_model - 1}"
+        raise ValueError(msg)
 
     dfrankassignments = get_dfrankassignments(modelpath)
     if dfrankassignments is not None:
