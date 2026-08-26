@@ -457,15 +457,9 @@ def get_packets_rankbatch_parquetfile(
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
-        import warnings
+        from artistools.misc.general import get_progress_class
 
-        from tqdm import TqdmExperimentalWarning
-
-        # parallel_map quietens the same warning: the rich bar is worth its experimental label
-        warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-        from tqdm.rich import tqdm
-
-        with tqdm(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
+        with get_progress_class()(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
 
             def read_with_progress(text_file_path: Path) -> pl.LazyFrame:
                 frame = ftextreader(text_file_path, column_names=column_names).lazy()

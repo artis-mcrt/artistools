@@ -1317,3 +1317,25 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     )
     captured = capsys.readouterr()
     assert "estimator variables" in captured.out
+
+
+def test_progress_class_sets_the_spawn_method_first() -> None:
+    """A bar made before parallel_map must not give its workers a fork lock in a spawn pool.
+
+    tqdm builds its shared lock from the default multiprocessing context at the first bar. On Linux the
+    default was fork before Python 3.14, thus CI stopped with "A SemLock created in a fork context is
+    being shared with a process in a spawn context". get_progress_class sets spawn before any bar.
+    """
+    import multiprocessing as mp
+
+    from artistools.misc.general import get_progress_class
+
+    original = mp.get_start_method(allow_none=True)
+    try:
+        mp.set_start_method("fork", force=True)  # the Linux default before Python 3.14
+        progressbar = get_progress_class()(total=1, disable=True)
+        progressbar.close()
+        assert mp.get_start_method() == "spawn"
+    finally:
+        if original is not None:
+            mp.set_start_method(original, force=True)

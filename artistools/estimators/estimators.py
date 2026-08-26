@@ -622,12 +622,9 @@ def _scan_artis_estimators(
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
-        import warnings
+        from artistools.misc.general import get_progress_class
 
-        from tqdm import TqdmExperimentalWarning
-
-        warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-        from tqdm.rich import tqdm
+        tqdm = get_progress_class()
 
         # each batch reads up to 100 rank text files in one call, thus a conversion of a large run takes
         # minutes and deserves a bar with a count. A run whose parquet caches exist finishes at once

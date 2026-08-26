@@ -133,6 +133,28 @@ def import_optional(modulename: str) -> "ModuleType":
         raise ModuleNotFoundError(msg) from exc
 
 
+def get_progress_class() -> "type[t.Any]":
+    """Return the rich tqdm class, with the multiprocessing start method set to spawn first.
+
+    tqdm builds its shared progress-bar lock from the default multiprocessing context at the first bar.
+    On Linux the default was fork before Python 3.14, thus a bar made before parallel_map gave its
+    workers a fork lock in a spawn pool: "A SemLock created in a fork context is being shared with a
+    process in a spawn context". Every bar comes through here, thus the lock is a spawn lock from the
+    start. Spawn is also needed because forking a process that already has polars threads is unsafe.
+    """
+    import multiprocessing as mp
+    import warnings
+
+    from tqdm import TqdmExperimentalWarning
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+    mp.set_start_method("spawn", force=True)
+
+    import tqdm.rich
+
+    return tqdm.rich.tqdm
+
+
 def parallel_map[IterableType, ResultType](
     fn: Callable[[IterableType], ResultType],
     *iterables: Iterable[IterableType],
@@ -140,13 +162,7 @@ def parallel_map[IterableType, ResultType](
     **kwargs: t.Any,
 ) -> list[ResultType]:
     """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
-    import multiprocessing as mp
-    import warnings
-
-    import tqdm.rich
-    from tqdm import TqdmExperimentalWarning
-
-    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+    progressclass = get_progress_class()
 
     use_multiprocessing = allow_multiprocessing
     if allow_multiprocessing:
@@ -158,18 +174,13 @@ def parallel_map[IterableType, ResultType](
     if use_multiprocessing:
         from tqdm.contrib.concurrent import process_map
 
-        # Set the start method globally rather than passing mp_context to the pool. process_map shares one
-        # progress-bar lock with its workers, and tqdm builds that lock from the *default* context, so a pool
-        # running in a different context gets a lock it cannot use: on Linux, where the default was fork before
-        # Python 3.14, that raises "A SemLock created in a fork context is being shared with a process in a spawn
-        # context". Spawn is needed because forking a process that already has polars/rayon threads is unsafe.
-        mp.set_start_method("spawn", force=True)
-
-        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
+        # get_progress_class has set the start method to spawn, thus the shared progress-bar lock and
+        # the pool live in one context
+        results = process_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
     else:
         from tqdm.contrib.concurrent import thread_map
 
-        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
+        results = thread_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
 
     assert isinstance(results, list)
     return results
