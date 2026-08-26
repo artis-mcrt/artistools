@@ -119,6 +119,19 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
+                # a classic ARTIS run writes a row of numbers that starts with the cell index. A modern
+                # run writes "timestep 0 modelgridindex 0 ...", and it does so even with the options of
+                # the classic code, thus the name of --classicartis misleads
+                if row and row[0] == "timestep":
+                    msg = (
+                        f"{estfilepath} holds the estimator format of a modern ARTIS run, thus "
+                        "--classicartis does not read it. That argument reads the output of the classic "
+                        "ARTIS code, which writes one row of numbers for each cell. A modern run that "
+                        "takes the classic options still writes the modern format, thus give it no "
+                        "--classicartis"
+                    )
+                    raise ValueError(msg)
+
                 if int(row[0]) <= modelgridindex:
                     timestep += 1
                 modelgridindex = int(row[0])

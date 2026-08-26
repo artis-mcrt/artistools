@@ -1339,7 +1339,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
+        "--classicartis",
+        action="store_true",
+        help=(
+            "Read the estimator format of the classic ARTIS code. A modern run writes the modern"
+            " format, even when it takes the classic options"
+        ),
     )
 
     parser.add_argument(

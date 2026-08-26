@@ -1243,3 +1243,28 @@ def test_classic_estimators_read_a_real_run() -> None:
     # the ion counts of output_0-0.txt slice the row, thus a wrong count misaligns every later element
     assert firstcell["nnion_Al_I"] >= 0.0
     assert len([key for key in firstcell if key.startswith("nnion_")]) > 50
+
+
+def test_classicartis_on_a_modern_model_names_the_difference() -> None:
+    """A modern ARTIS run writes the modern estimator format, even with the options of the classic code.
+
+    --classicartis reads the output of the classic ARTIS code, thus its name misleads. A user who gives
+    it for a modern run met "invalid literal for int() with base 10: 'timestep'".
+    """
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
+    with pytest.raises(ValueError, match="format of a modern ARTIS run"):
+        read_classic_estimators(modelpath_classic_3d)
+
+
+@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
+def test_classicartis_reads_a_classic_run_through_the_scanner() -> None:
+    """The whole path from --classicartis to a dataframe must work for a classic ARTIS run."""
+    estimators = at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect()
+
+    assert estimators.height > 0
+    assert {"timestep", "modelgridindex", "Te", "TR"} <= set(estimators.columns)
+    # Series.max() gives a wide union, thus narrow it before the comparison
+    maxtemperature = estimators["Te"].max()
+    assert isinstance(maxtemperature, float)
+    assert maxtemperature > 0.0
