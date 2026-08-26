@@ -238,7 +238,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
 
-    save_figure(fig, outfilename, show=args.show, format="pdf")
+    save_figure(fig, outfilename, show=args.show, openfile=args.open, format="pdf")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:

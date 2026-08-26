@@ -152,7 +152,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outfilepath = at.resolve_outputfile(args.outputpath, "densityprofile.pdf")
 
-    save_figure(fig, outfilepath, show=args.show)
+    save_figure(fig, outfilepath, show=args.show, openfile=args.open)
 
 
 if __name__ == "__main__":

@@ -1234,7 +1234,7 @@ def make_figure(
 
     set_plot_title(axes[0], figure_title, args)
 
-    save_figure(fig, outfilename, show=args.show, dpi=args.dpi)
+    save_figure(fig, outfilename, show=args.show, openfile=args.open, dpi=args.dpi)
 
     return outfilename
 

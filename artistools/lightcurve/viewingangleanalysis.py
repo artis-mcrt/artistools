@@ -688,4 +688,4 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     at.plottools.set_plot_title(axis, f"time = {args.timedays} days", args)
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    save_figure(fig, plotname, format="pdf", show=args.show)
+    save_figure(fig, plotname, format="pdf", show=args.show, openfile=args.open)

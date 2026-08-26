@@ -9,6 +9,7 @@ from pathlib import Path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_quiet
 from artistools.misc import get_model_name
+from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
@@ -36,9 +37,23 @@ def get_timesteps_table(modelpath: Path | str) -> str:
     return "\n".join(lines)
 
 
+def get_timestep_row(modelpath: Path | str, timestep: int) -> str:
+    """Return one line that gives the days of one timestep."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+
+    return f"timestep {timestep} covers {tstarts[timestep]:.3f} to {tends[timestep]:.3f} days"
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
+    parser.add_argument(
+        "-timedays", "-time", "-t", type=float, default=None, help="Name the timestep that covers this time in days"
+    )
+    parser.add_argument(
+        "-timestep", "-ts", type=str, default=None, help="Give the days that this timestep covers, e.g. 40 or last"
+    )
     addarg_quiet(parser)
 
 
@@ -46,7 +61,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """List the timesteps of an ARTIS model and the days that each one covers."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    print_product(args, get_timesteps_table(args.modelpath))
+    if args.timedays is not None:
+        timestep = get_timestep_of_timedays(args.modelpath, args.timedays)
+        row = get_timestep_row(args.modelpath, timestep).replace(" covers ", ", which covers ")
+        print_product(args, f"{args.timedays:g} days falls in {row}")
+    elif args.timestep is not None:
+        lasttimestep = len(get_timestep_times(args.modelpath, loc="mid")) - 1
+        timestep = lasttimestep if args.timestep == "last" else int(args.timestep)
+        print_product(args, get_timestep_row(args.modelpath, timestep))
+    else:
+        print_product(args, get_timesteps_table(args.modelpath))
 
 
 if __name__ == "__main__":

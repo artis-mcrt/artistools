@@ -358,7 +358,7 @@ def plot_celltimestep(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf", show=args.show)
+    save_figure(fig, outputfile, format="pdf", show=args.show, openfile=args.open)
     return True
 
 

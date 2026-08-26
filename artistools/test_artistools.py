@@ -1691,3 +1691,38 @@ def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pyt
         artistools.__main__.main(argsraw=argsraw)
         assert (tmp_path / expectedname).is_file(), (argsraw[0], sorted(p.name for p in tmp_path.glob("*.pdf")))
         assert expectedname.startswith(argsraw[0]), "the file must carry the name of its command"
+
+
+def test_help_groups_the_shared_arguments() -> None:
+    """The shared arguments sit in titled groups, thus the help of a command of 77 options has a shape."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    for command in ("plotspectra", "plotlightcurves", "plotestimators"):
+        helptext = subactions[0].choices[command].format_help()
+        for title in ("time selection:", "appearance:", "output:"):
+            assert f"\n{title}\n" in helptext, (command, title)
+
+
+def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
+    """--open opens the saved file with the default application, thus no copied command is needed."""
+    with mock.patch.object(subprocess, "run") as mockrun:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["rho"]], timestep="40", open=True
+        )
+
+    opencalls = [call.args[0] for call in mockrun.call_args_list]
+    assert len(opencalls) == 1
+    assert opencalls[0][0] in {"open", "xdg-open"}
+    assert opencalls[0][1].endswith(".pdf")
+    assert Path(opencalls[0][1]).is_file(), "the opener must receive the file that was saved"
+
+
+def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixture[str]) -> None:
+    """-timedays names the timestep that covers a time, and -timestep gives the days of one timestep."""
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
+    assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
+
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
+    assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"

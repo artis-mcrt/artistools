@@ -403,11 +403,13 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
-def save_figure(fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False, **savefig_kwargs: t.Any) -> None:
+def save_figure(
+    fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False, openfile: bool = False, **savefig_kwargs: t.Any
+) -> None:
     """Save the figure to outpath, report the path, and close the figure.
 
-    With show, the figure opens in a window first, thus a resize there reaches the saved file. This is
-    what the -show help text of every command promises.
+    With show, the figure opens in a window first, thus a resize there reaches the saved file. With
+    openfile, the saved file opens in its default application, thus --open needs no copied command.
     """
     if show:
         plt.show()
@@ -415,6 +417,14 @@ def save_figure(fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False
     fig.savefig(outpath, **savefig_kwargs)
     print_saved(outpath)
     plt.close(fig)
+
+    if openfile:
+        import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+        from artistools.misc.fileio import get_open_command
+
+        # the command is our own platform opener and the path of the file this function just wrote
+        subprocess.run([get_open_command(), str(outpath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
 
 
 def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:

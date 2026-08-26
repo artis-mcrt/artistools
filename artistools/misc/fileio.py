@@ -46,6 +46,11 @@ def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame |
     return df.drop(cs.by_index(-1)) if isnullcol.item() else df
 
 
+def get_open_command() -> str:
+    """Return the command that opens a file with its default application on this platform."""
+    return "open" if sys.platform == "darwin" else "xdg-open"
+
+
 def print_saved(filepath: Path | str) -> None:
     """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
     from rich.console import Console
@@ -61,7 +66,7 @@ def print_saved(filepath: Path | str) -> None:
 
     # the verb of the platform, thus the line runs as a command there. A terminal that shows links also
     # makes the path one, and a pipe gets the plain text
-    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
+    opencommand = get_open_command()
     line = Text(f"{opencommand} ") + Text(shlex.quote(str(filepath)), style=f"link {fullpath.as_uri()}")
     Console(highlight=False, soft_wrap=True).print(line)
 

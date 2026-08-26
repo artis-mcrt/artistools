@@ -243,7 +243,7 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    save_figure(fig, outputfilename, show=args.show, format="pdf")
+    save_figure(fig, outputfilename, show=args.show, openfile=args.open, format="pdf")
 
 
 def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:

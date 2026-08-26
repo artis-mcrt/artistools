@@ -622,6 +622,18 @@ def _scan_artis_estimators(
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
+        import warnings
+
+        from tqdm import TqdmExperimentalWarning
+
+        warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+        from tqdm.rich import tqdm
+
+        # each batch reads up to 100 rank text files in one call, thus a conversion of a large run takes
+        # minutes and deserves a bar with a count. A run whose parquet caches exist finishes at once
+        pairs = [
+            (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
+        ]
         parquetfiles = [
             get_estimators_rankbatch_parquetfile(
                 modelpath=modelpath,
@@ -630,8 +642,9 @@ def _scan_artis_estimators(
                 batchindex=batchindex,
                 verbose=verbose,
             )
-            for runfolder in runfolders
-            for batchindex, mpiranks in mpirank_groups
+            for runfolder, batchindex, mpiranks in tqdm(
+                pairs, desc="Reading estimator batches", unit="batch", disable=len(pairs) <= 1
+            )
         ]
 
         assert bool(parquetfiles)

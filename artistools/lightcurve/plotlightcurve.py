@@ -776,7 +776,7 @@ def make_lightcurve_plot(
         # near-zero denominator at one timestep rescale every curve into the bottom of the panel
         axistherm.set_ylim(0.0, 1.0)
 
-    save_figure(fig, filenameout, format="pdf", show=args.show)
+    save_figure(fig, filenameout, format="pdf", show=args.show, openfile=args.open)
 
     if args.plotthermalisation:
         assert figtherm is not None
@@ -1067,7 +1067,7 @@ def make_band_lightcurves_plot(
         args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
 
-    save_figure(fig, args.outputfile, format="pdf", show=args.show)
+    save_figure(fig, args.outputfile, format="pdf", show=args.show, openfile=args.open)
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1164,7 +1164,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
-    save_figure(fig, args.outputfile, format="pdf", show=args.show)
+    save_figure(fig, args.outputfile, format="pdf", show=args.show, openfile=args.open)
 
 
 # Just in case it's needed...
