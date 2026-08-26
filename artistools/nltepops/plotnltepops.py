@@ -592,6 +592,17 @@ def plot_populations_with_time_or_velocity(
             #          label=f'level {ionlevel} {modelname} LTE')
 
 
+def get_subplot_block(mgilistindex: int, nionstages: int) -> tuple[int, int]:
+    """Return the first and the last subplot index of one cell.
+
+    Each cell owns one subplot for each ion stage, thus its block starts after the blocks of the cells
+    in front of it. A block that started at the index of the cell drew over the block before it.
+    """
+    firstindex = mgilistindex * nionstages
+
+    return firstindex, firstindex + nionstages - 1
+
+
 def make_singletimestep_plot(
     modelpath: Path,
     atomic_number: int,
@@ -665,8 +676,7 @@ def make_singletimestep_plot(
     elsymbol = at.get_elsymbol(atomic_number)
 
     for mgilistindex, modelgridindex in enumerate(mgilist):
-        mgifirstaxindex = mgilistindex
-        mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
+        mgifirstaxindex, mgilastaxindex = get_subplot_block(mgilistindex, len(ion_stage_list))
 
         print(
             f"Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, timestep {timestep} (t={time_days}d)"

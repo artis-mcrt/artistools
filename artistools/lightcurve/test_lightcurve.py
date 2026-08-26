@@ -1523,3 +1523,33 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
 
     assert not withoutdata, "--quiet alone must hide the progress messages"
     assert withdata, "--print_data names the product of the command, thus --quiet must keep it"
+
+
+def test_lightcurve_reference_data_takes_a_day_range(tmp_path: Path) -> None:
+    """A range in days needs no timestep data, thus reference data alone still takes -timedays.
+
+    apply_time_range_args gave the first path to get_time_range, which searches for the files of an
+    ARTIS model. A reference light curve holds none, thus the command stopped before it drew anything.
+    """
+    at.lightcurve.plot(argsraw=["AT2017gfo_smarttetal2017.txt", "-timedays", "2-5", "-o", str(tmp_path / "ref.pdf")])
+
+    assert (tmp_path / "ref.pdf").is_file()
+
+
+def test_lightcurve_day_range_of_a_model_clamps_to_its_timesteps() -> None:
+    """A model in the list gives the timestep times, thus the range still clamps to a timestep edge."""
+    import argparse
+
+    from artistools.lightcurve.plotlightcurve import apply_time_range_args
+
+    withmodel = argparse.Namespace(timestep=None, timedays="260-300", timemin=None, timemax=None)
+    apply_time_range_args(withmodel, [modelpath])
+
+    reference = argparse.Namespace(timestep=None, timedays="260-300", timemin=None, timemax=None)
+    apply_time_range_args(reference, ["AT2017gfo_smarttetal2017.txt"])
+
+    # the model clamps to the start and the end of a timestep, and the reference data take the range
+    assert withmodel.timemin > 260.0
+    assert withmodel.timemax < 300.0
+    assert np.isclose(reference.timemin, 260.0)
+    assert np.isclose(reference.timemax, 300.0)

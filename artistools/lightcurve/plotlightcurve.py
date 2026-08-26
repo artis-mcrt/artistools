@@ -46,6 +46,7 @@ from artistools.misc import addarg_yscale
 from artistools.misc import color_arg
 from artistools.misc import get_series_label
 from artistools.misc import makelist
+from artistools.misc import path_is_artis_model
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import trim_or_pad
 from artistools.plottools import AxesTree
@@ -1566,18 +1567,29 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def apply_time_range_args(args: argparse.Namespace, modelpath: Path | str) -> None:
+def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:
     """Narrow the plotted time range from -timestep or from a -timedays range.
 
     -timemin and -timemax give the range directly. A single -timedays value names one time for
     --brightnessattime, thus only a value that holds a range takes part here.
     """
-    if args.timestep is None and (args.timedays is None or at.misc.parse_timedays_range(args.timedays) is None):
+    dayrange = at.misc.parse_timedays_range(args.timedays) if args.timedays is not None else None
+    if args.timestep is dayrange is None:
         return
 
-    _, _, rangemin, rangemax = at.get_time_range(
-        modelpath, timestep_range_str=args.timestep, timedays_range_str=args.timedays
-    )
+    # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
+    # command that plots reference data alone still takes a range in days
+    artispath = next((path for path in modelpaths if path_is_artis_model(path)), None)
+    if artispath is None:
+        if dayrange is None:
+            msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
+            raise ValueError(msg)
+        rangemin, rangemax = dayrange
+    else:
+        _, _, rangemin, rangemax = at.get_time_range(
+            artispath, timestep_range_str=args.timestep, timedays_range_str=args.timedays
+        )
+
     if args.timemin is None:
         args.timemin = rangemin
     if args.timemax is None:
@@ -1600,7 +1612,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.misc.resolve_yscale(args)
 
-    apply_time_range_args(args, modelpaths[0])
+    apply_time_range_args(args, modelpaths)
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth

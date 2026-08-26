@@ -198,3 +198,18 @@ def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_pat
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedays=timedays)
 
     assert any(tmp_path.glob("plotnlte_Fe_cell000_ts*.pdf"))
+
+
+def test_nltepops_subplot_blocks_do_not_overlap() -> None:
+    """Each cell must own its own block of subplots, one for each ion stage.
+
+    A block that started at the index of the cell drew over the block of the cell in front of it, and
+    it left the last block empty.
+    """
+    for ncells in (1, 2, 5):
+        for nionstages in (1, 3, 8):
+            blocks = [at.nltepops.plotnltepops.get_subplot_block(index, nionstages) for index in range(ncells)]
+            covered = [axindex for first, last in blocks for axindex in range(first, last + 1)]
+
+            # make_singletimestep_plot builds this many subplots
+            assert covered == list(range(ncells * nionstages)), (ncells, nionstages)
