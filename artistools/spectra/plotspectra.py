@@ -386,7 +386,7 @@ def plot_reference_spectrum(
     specdata = df_filter_minmax_bracketed(specdata, "lambda_angstroms", lambda_min, lambda_max).collect()
 
     if fluxfilterfunc:
-        print(" applying filter to reference spectrum")
+        print(" Applying filter to reference spectrum")
         specdata = specdata.with_columns(
             cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
         )
@@ -780,8 +780,7 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             except FileNotFoundError as e:
-                print_warning(f"Skipping {specpath} because it does not exist")
-                print(e)
+                print_warning(f"Skipping {specpath} because it does not exist ({e})")
                 continue
 
             if seriesdata is not None:
@@ -804,7 +803,7 @@ def make_spectrum_plot(
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
-                print("Use args.normalised")
+                print_warning("the filter functions plot normalised values, thus give -normalised as well")
             plot_filter_functions(axis)
 
         # H = 6.6260755e-27  # Planck constant [erg s]
@@ -1490,7 +1489,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         dest="xunit",
         default=None,
         type=str,
-        help="x (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
+        help="X (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
     # deprecated spelling kept as a hidden alias
     parser.add_argument("-xunits", dest="xunit", type=str, help=argparse.SUPPRESS)
@@ -1556,7 +1555,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-groupby",
         default=None,
         choices=["ion", "line", "nuc", "nucmass"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets.",
+        help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets",
     )
 
     parser.add_argument(
@@ -1606,7 +1605,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    addarg_outputfile(parser, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, helptext="Path/filename for PDF file")
 
     addarg_dpi(parser)
 

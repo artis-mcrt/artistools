@@ -246,7 +246,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext=(
             "plotrate: plot the analytic nuclear heating power against time."
             " describe: report the total energy and rate from the written energy files."
-            " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate."
+            " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),
     )
     at.addarg_modelpath(parser, default=Path())

@@ -83,7 +83,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["uniform", "describe"],
         helptext=(
             "uniform: write an opacity.txt with the same opacity in every cell."
-            " describe: report the opacities in an existing opacity.txt."
+            " describe: report the opacities in an existing opacity.txt"
         ),
     )
     at.addarg_modelpath(parser, default=Path())

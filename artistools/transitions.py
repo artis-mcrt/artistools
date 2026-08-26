@@ -313,7 +313,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
-    addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file")
     addarg_show(parser)
 
 

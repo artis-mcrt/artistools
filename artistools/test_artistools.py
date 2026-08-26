@@ -26,7 +26,7 @@ import pytest
 import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
-HIDDEN_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
+RETIRED_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
 DISPATCHERTARGET = "artistools.__main__:main"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -290,17 +290,23 @@ def test_lightcurve_title_arg() -> None:
     assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
 
 
-def test_hidden_duplicate_commands() -> None:
-    """Cross-level duplicate command names still work but are not advertised in at --help."""
+def test_retired_duplicate_commands_stay_gone() -> None:
+    """The retired top-level duplicates neither parse nor appear, and their tree names work.
+
+    describeinputmodel, makeartismodelfromparticlegridmap, and maptogrid were hidden duplicates of the
+    inputmodel commands. The repository keeps no compatibility shim, thus they are deleted.
+    """
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
     helptext = parser.format_help()
-    assert "plotspectra" in helptext
-    for hiddenname in HIDDEN_COMMANDS:
-        assert hiddenname not in helptext
+    for retiredname in RETIRED_COMMANDS:
+        assert retiredname not in helptext
 
-    args = parser.parse_args(["describeinputmodel", "somemodelpath"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["describeinputmodel", "somemodelpath"])
+
+    args = parser.parse_args(["inputmodel", "describe", "somemodelpath"])
     assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
 
 
@@ -345,7 +351,7 @@ def test_command_groups_name_every_visible_command() -> None:
     for heading in at.commands.COMMANDGROUPS:
         assert f"\n{heading}:\n" in helptext
     for name in grouped:
-        assert name in helptext or name in HIDDEN_COMMANDS
+        assert name in helptext
 
 
 def test_cli_bad_argument_gives_short_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1612,3 +1618,44 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     assert "-timestep" in lines[-1]
     assert "-timedays" in lines[-1]
     assert '"last" names timestep 99' in lines[-1]
+
+
+def test_help_strings_follow_one_style() -> None:
+    """Every help string starts with a capital letter, ends without a period, and writes e.g. in full.
+
+    31 of 336 strings ended with a period, 3 started with a lowercase letter, and "eg." stood beside
+    "e.g.". This holds every future string to the one style.
+    """
+    import artistools.__main__
+
+    def walk(parser: argparse.ArgumentParser) -> "t.Generator[tuple[str, argparse.Action]]":
+        for action in parser._actions:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                seen = set()
+                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
+                    if id(subparser) in seen:
+                        continue  # an alias maps to the same parser
+                    seen.add(id(subparser))
+                    yield from ((f"{name} {label}", act) for label, act in walk(subparser))
+            elif action.help and action.help != argparse.SUPPRESS:
+                yield str(action.option_strings or [action.dest]), action
+
+    failures = []
+    for label, action in walk(artistools.__main__.build_parser()):
+        # argparse writes the -h and --version texts itself, thus they keep their own style
+        if action.dest == "help" or isinstance(action, argparse._VersionAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            continue
+        helptext = action.help
+        assert helptext is not None
+        # a menu of the choices starts with the name of its first choice, e.g. "uniform: write..."
+        startswithchoice = action.choices is not None and any(
+            helptext.startswith(f"{choice}:") for choice in action.choices
+        )
+        if helptext[0].islower() and not startswithchoice:
+            failures.append(f"{label}: starts lowercase: {helptext[:60]!r}")
+        if helptext.endswith(".") and not helptext.endswith(("e.g.", "etc.")):
+            failures.append(f"{label}: ends with a period: {helptext[-60:]!r}")
+        if "eg. " in helptext:
+            failures.append(f"{label}: write e.g. in full: {helptext[:60]!r}")
+
+    assert not failures, "\n".join(failures)

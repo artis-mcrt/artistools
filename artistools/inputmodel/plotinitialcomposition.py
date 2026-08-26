@@ -364,9 +364,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
-    parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
+    parser.add_argument("-surfaces3d", type=float, nargs="+", help="Define positions of surfaces for 3D plots")
 
-    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
+    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float")
 
     parser.add_argument(
         "-axis",

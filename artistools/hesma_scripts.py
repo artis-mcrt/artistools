@@ -177,7 +177,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " bollightcurve: write the angle-averaged bolometric light curve."
             " widthluminosity: build a peak magnitude/dm15 file from viewing angle data."
             " plotwidthluminosity: plot peak magnitude against dm15 for a folder of those files."
-            " plotspectrum/plotresspec: plot a HESMA reference spectrum file."
+            " plotspectrum/plotresspec: plot a HESMA reference spectrum file"
         ),
     )
     at.addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")

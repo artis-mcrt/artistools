@@ -115,7 +115,6 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         for i, column_name in enumerate(packet_properties):
             if column_name in replacements_dict:
                 packet_properties[i] = replacements_dict[column_name]
-        print(packet_properties)
 
         return packet_properties
 
@@ -250,7 +249,6 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
 def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zst) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
-    print(f"  reading {packetsfiletext}")
     dtype_overrides = {
         "absorption_freq": pl.Float32,
         "absorption_type": pl.Int32,
@@ -459,10 +457,24 @@ def get_packets_rankbatch_parquetfile(
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
-        pldf_batch = pl.concat(
-            (ftextreader(text_file_path, column_names=column_names).lazy() for text_file_path in text_file_paths),
-            how="vertical",
-        )
+        import warnings
+
+        from tqdm import TqdmExperimentalWarning
+
+        # parallel_map quietens the same warning: the rich bar is worth its experimental label
+        warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+        from tqdm.rich import tqdm
+
+        with tqdm(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
+
+            def read_with_progress(text_file_path: Path) -> pl.LazyFrame:
+                frame = ftextreader(text_file_path, column_names=column_names).lazy()
+                progressbar.update(1)
+                return frame
+
+            pldf_batch = pl.concat(
+                (read_with_progress(text_file_path) for text_file_path in text_file_paths), how="vertical"
+            )
 
         assert pldf_batch is not None
 

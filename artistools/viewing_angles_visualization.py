@@ -163,21 +163,21 @@ def viewing_angles_visualisation(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("modelfile", help="Path to the ARTIS model.")
+    parser.add_argument("modelfile", help="Path to the ARTIS model")
     addarg_outputfile(
         parser,
         astype=None,
-        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",
+        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation",
     )
-    parser.add_argument("-isomin", type=float, help="Minimum density for color coding.")
-    parser.add_argument("-isomax", type=float, help="Maximum density for color coding.")
-    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value.")
-    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted.")
-    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines.")
+    parser.add_argument("-isomin", type=float, help="Minimum density for color coding")
+    parser.add_argument("-isomax", type=float, help="Maximum density for color coding")
+    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value")
+    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted")
+    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines")
     parser.add_argument(
-        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize."
+        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize"
     )
-    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving.")
+    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving")
 
     # deprecated double-dash spellings kept as hidden aliases
     parser.add_argument("--outfile", dest="outputfile", help=argparse.SUPPRESS)

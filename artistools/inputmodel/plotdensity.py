@@ -37,10 +37,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
-        "-nbins",
-        type=int,
-        default=None,
-        help="Use specified number of fixed velocity bins up to maximum plot velocity.",
+        "-nbins", type=int, default=None, help="Use specified number of fixed velocity bins up to maximum plot velocity"
     )
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")

@@ -103,8 +103,8 @@ def plot_reference_data(
                         color = "C1"
                         marker = "^"
 
-                    print(f"Plotting reference data from {depfilepath},")
                     print(
+                        f"Plotting reference data from {depfilepath}: "
                         f"nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, "
                         f"TR = {file_TR} (ARTIS {TR}) K, W = {file_W} (ARTIS {W})"
                     )
@@ -179,7 +179,7 @@ def get_floers_data(
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
             modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
             vel_outer = modeldata["vel_r_max_kmps"].item(modelgridindex)
-            print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
+            print(f"  Reading {floersmultizonefilename} for vel_outer {vel_outer} and Te {T_e}")
             dffloers = pl.read_csv(floersmultizonefilename).filter((pl.col("vel_outer") - vel_outer).abs() < 0.5)
             for row in dffloers.iter_rows(named=True):
                 print(f"  ARTIS cell vel_outer: {vel_outer}, Floersfile: {row['vel_outer']}")
@@ -846,13 +846,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-labelfontsize",
         type=float,
         default=None,
-        help="Font size of the tick labels. The default comes from the artistools matplotlibrc.",
+        help="Font size of the tick labels. The default comes from the artistools matplotlibrc",
     )
 
     addarg_axislimits(parser)
 
     # no default here: which one applies depends on -x, so main chooses it when resolving the path
-    addarg_outputfile(parser, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, helptext="Path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -881,7 +881,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.timestep = timestep
             args.timestepmin, args.timestepmax = timestep, timestep
     elif args.timedayslist:
-        print(args.timedayslist)
+        print(f"Plotting the times {args.timedayslist}")
     elif args.timestep is not None:
         args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timestep_range_str=str(args.timestep))
     elif args.x in {"time", "velocity"}:

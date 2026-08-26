@@ -391,7 +391,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-setgrid_fractionrmax",
         type=float,
         default=0.5,
-        help="Setup grid to have max equal to fraction of particle rmax.",
+        help="Setup grid to have max equal to fraction of particle rmax",
     )
     parser.add_argument(
         "-downsamplefactor",
@@ -411,8 +411,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "option6",
             "False",
         ],  # We should choose if the default should be false and how we want to name these
-        help="Option to modify smoothing length h. Choose from options."
-        "Default modifies h. Set to False for no modifications to h.",
+        help="Option to modify smoothing length h. Choose from options. "
+        "Default modifies h. Set to False for no modifications to h",
     )
 
     at.addarg_outputpath(parser)

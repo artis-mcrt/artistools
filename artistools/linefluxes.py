@@ -873,7 +873,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
 
-    addarg_outputfile(parser, helptext="path/filename for PDF file")
+    addarg_outputfile(parser, helptext="Path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

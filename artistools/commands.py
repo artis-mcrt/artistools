@@ -32,6 +32,7 @@ def get_epilog() -> str:
         "examples (a path of . reads the model in the working folder):\n"
         + "\n".join(lines)
         + '\n\nRun "artistools <command> --help" for the arguments of one command.'
+        + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
     )
 
 
@@ -83,7 +84,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plottransitions",
         "plotviewingangles",
     ),
-    "model commands": ("inputmodel", "makeartismodelfromparticlegridmap", "makevpktinput", "maptogrid"),
+    "model commands": ("inputmodel", "makevpktinput"),
     "data commands": (
         "ejectaopacity",
         "exportmassfractions",
@@ -94,7 +95,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "describeinputmodel", "getpath", "timesteps", "version"),
+    "other commands": ("completions", "getpath", "timesteps", "version"),
 })
 
 subcommandtree: CommandTree = {
@@ -106,11 +107,6 @@ subcommandtree: CommandTree = {
         "commands",
         funcname="setup_completions",
         helptext="Generate a shell tab-completion script for artistools commands.",
-    ),
-    "describeinputmodel": CommandSpec(
-        "inputmodel.describeinputmodel",
-        helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
-        hidden=True,  # duplicate of "inputmodel describe"
     ),
     "ejectaopacity": CommandSpec(
         "ejectaopacity", helptext="Compute binned expansion opacities and Planck-mean opacities in postprocessing."
@@ -180,18 +176,8 @@ subcommandtree: CommandTree = {
         "nonthermal.leptontransport",
         helptext="Plot the energy loss of a fast lepton to plasma, ionisation, and excitation with distance.",
     ),
-    "makeartismodelfromparticlegridmap": CommandSpec(
-        "inputmodel.modelfromhydro",
-        helptext="Create an ARTIS format model from grid.dat.",
-        hidden=True,  # duplicate of "inputmodel makeartismodelfromparticlegridmap"
-    ),
     "makevpktinput": CommandSpec(
         "make_vpkt_input", helptext="Create a vpkt.txt virtual packet configuration file for an ARTIS simulation."
-    ),
-    "maptogrid": CommandSpec(
-        "inputmodel.maptogrid",
-        helptext="Map tracer particle trajectories to a Cartesian grid.",
-        hidden=True,  # duplicate of "inputmodel maptogrid"
     ),
     "plotdensity": CommandSpec(
         "inputmodel.plotdensity",

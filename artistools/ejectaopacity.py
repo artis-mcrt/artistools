@@ -152,24 +152,24 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # mutex with time in days:
     timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
     timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
-    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to select.")
+    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to select")
 
     at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",
-        help="Show the binned opacities for each cell (can be very large).",
+        help="Show the binned opacities for each cell (can be very large)",
     )
-    at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed.")
+    at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed")
 
     parser.add_argument(
-        "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities."
+        "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
-        "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities."
+        "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
-        "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities."
+        "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities"
     )
 
 

@@ -673,7 +673,7 @@ def make_lightcurve_plot(
                             .select(["e_rf_sum", "nucname", "pellet_nucindex"])
                             .collect()
                         )
-                        print(top_nuclides)
+                        print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
                         print_warning("no nuclides.out file found, skipping top nuclides")
@@ -919,7 +919,7 @@ def make_colorbar_viewingangles(
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "cos θ"
     if args.colorbarphi:
-        print("reordered phi bins")
+        print("Reordered phi bins")
         phi_viewing_angle_bins_reordered = [
             "0",
             "π/5",
@@ -1370,7 +1370,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions"
     )
 
     parser.add_argument(
@@ -1388,12 +1388,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=str,
         nargs="+",
         help=(
-            "Choose filter eg. bol U B V R I. Default B. "
-            "filter names are not case sensitive eg. sloan-r is not r, it is rs"
+            "Choose filter e.g. bol U B V R I. Default B. "
+            "filter names are not case sensitive e.g. sloan-r is not r, it is rs"
         ),
     )
 
-    parser.add_argument("-colour_evolution", nargs="*", help="Plot of colour evolution. Give two filters eg. B-V")
+    parser.add_argument("-colour_evolution", nargs="*", help="Plot of colour evolution. Give two filters e.g. B-V")
 
     parser.add_argument("--print_data", action="store_true", help="Print plotted data")
 
@@ -1451,7 +1451,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-redshifttoz",
         type=float,
         nargs="+",
-        help="Redshift to z = x. Expects array length of number modelpaths.If not to be redshifted then = 0.",
+        help="Redshift to z = x. Expects array length of number modelpaths. If not to be redshifted then = 0",
     )
 
     addarg_show(parser)
@@ -1517,7 +1517,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include_delta_m40",
         action="store_true",
-        help="When calculating delta_m15, calculate delta_m40 as well.Only affects the saved viewing angle data.",
+        help="When calculating delta_m15, calculate delta_m40 as well. Only affects the saved viewing angle data",
     )
 
     parser.add_argument(

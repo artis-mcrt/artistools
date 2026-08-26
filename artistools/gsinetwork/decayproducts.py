@@ -67,7 +67,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
 
     parser.add_argument(
-        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
+        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories"
     )
 
     at.addarg_outputpath(parser, default=Path(), astype=Path, helptext="Path for output PDF and parquet files")

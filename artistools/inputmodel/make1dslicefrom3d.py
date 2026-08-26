@@ -28,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-outputfolder", action="store", default="1dslice", help="Path to folder in which to store 1D output files"
     )
 
-    parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot.")
+    parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

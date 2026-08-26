@@ -49,9 +49,9 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 - artistools plotlightcurve (alias: at lc)
 - artistools plotestimators (alias: at estimators)
 - artistools plotnltepops
-- artistools describeinputmodel
+- artistools inputmodel describe
 
-Use the -h option to get a list of command-line arguments for each subcommand. Most of these commands should be run either within an ARTIS simulation folder or by passing the folder path as the last argument.
+Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Most of these commands should be run either within an ARTIS simulation folder or by passing the folder path as the last argument.
 
 ## Example output
 

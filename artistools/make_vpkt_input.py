@@ -445,7 +445,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--non-interactive",
         action="store_true",
-        help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal.",
+        help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal",
     )
     addarg_outputfile(parser, helptext=f"Path/filename for the output file (default {defaultoutputfile})")
 

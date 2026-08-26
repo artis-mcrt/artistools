@@ -1321,7 +1321,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-labelfontsize",
         type=float,
         default=None,
-        help="Font size of the tick labels. The default comes from the artistools matplotlibrc.",
+        help="Font size of the tick labels. The default comes from the artistools matplotlibrc",
     )
 
     addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
@@ -1418,10 +1418,12 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
     estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=classicartis)
-    print("Cells with data: ")
-    print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
-    print("Timesteps with data: ")
-    print(estimators.select(pl.col("timestep").unique().sort()).collect().to_series().to_list())
+    print(
+        f"Cells with data: {estimators.select(pl.col('modelgridindex').unique().sort()).collect().to_series().to_list()}"
+    )
+    print(
+        f"Timesteps with data: {estimators.select(pl.col('timestep').unique().sort()).collect().to_series().to_list()}"
+    )
 
 
 def get_default_plotlist() -> list[t.Any]:

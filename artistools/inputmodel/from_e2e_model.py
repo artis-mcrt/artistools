@@ -1099,7 +1099,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
     )
 
-    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy.")
+    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy")
 
     parser.add_argument(
         "-ngridx",
@@ -1133,7 +1133,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-interpolrescale",
         type=float,
         default=None,
-        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass.",
+        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass",
     )
 
     parser.add_argument(
@@ -1154,7 +1154,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         nargs=2,
         default=None,
-        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified.",
+        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified",
     )
 
     parser.add_argument(
@@ -1169,7 +1169,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing."
+        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing"
     )
 
     parser.add_argument(
