@@ -243,7 +243,7 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    save_figure(fig, outputfilename, show=args.show, openfile=args.open, format="pdf")
+    save_figure(fig, outputfilename, args=args, format="pdf")
 
 
 def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
@@ -687,7 +687,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if cell is not None:
         print_ionisation_table(cell, depcoeffs)
         outputfilename = str(args.outputfile).format(
-            cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days, time_days=cell.time_days
+            cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days
         )
     else:
         outputfilename = "plottransitions.pdf"

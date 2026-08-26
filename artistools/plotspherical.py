@@ -384,9 +384,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else Path(args.outputfile) / defaultfilename
         ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        save_figure(
-            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, show=args.show, openfile=args.open
-        )
+        save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args)
 
         outputfilenames.append(outfilename)
 

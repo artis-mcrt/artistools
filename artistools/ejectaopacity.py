@@ -149,11 +149,8 @@ def get_expansion_opacities(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    # mutex with time in days:
-    timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
-    timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
-    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to select")
-
+    at.addarg_timestep(parser, kind="int", helptext="Timestep number to select")
+    at.addarg_timedays(parser, kind="str", helptext="Time in days to select")
     at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",

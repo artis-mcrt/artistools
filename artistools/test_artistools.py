@@ -1379,8 +1379,8 @@ def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) 
 def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     """A mistyped subcommand must name the closest one on every Python version that CI runs.
 
-    Python 3.14 does this with suggest_on_error, and Python 3.13 takes no such argument. The
-    SuggestingArgumentParser fills that gap, thus a user gets the same help on either.
+    SuggestingArgumentParser composes this message itself, thus Python 3.13 and 3.14 give the
+    same text.
     """
     import artistools.__main__
 
@@ -1388,13 +1388,10 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
         artistools.__main__.main(argsraw=["plotspetcra"])
 
     message = capsys.readouterr().err
-    assert "plotspectra" in message
     assert "invalid choice" in message
-
-    # the parser of Python 3.13 names the closest subcommand in front of the list of every choice
-    if sys.version_info < (3, 14):
-        assert "Did you mean" in message
-        assert message.index("Did you mean") < message.index("choose from")
+    # the parser names the closest subcommand in front of the list of every choice
+    assert "Did you mean plotspectra" in message
+    assert message.index("Did you mean") < message.index("choose from")
 
 
 def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
@@ -1423,7 +1420,7 @@ def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], 
     faraway = tmp_path / "figure.pdf"
     faraway.touch()
 
-    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
+    opencommand = at.misc.fileio.get_open_command()
     at.misc.print_saved(faraway)
     reported = capsys.readouterr().out.removeprefix(f"{opencommand} ").strip().strip("'")
 

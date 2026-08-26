@@ -178,7 +178,7 @@ def addarg_outputpath(
 def addarg_modelgridindex(
     parser: argparse.ArgumentParser,
     *,
-    kind: t.Literal["rangestr", "int", "append", "list"] = "int",
+    kind: t.Literal["rangestr", "int", "append"] = "int",
     default: t.Any = None,
     helptext: str | None = None,
 ) -> None:
@@ -187,14 +187,15 @@ def addarg_modelgridindex(
     A command that plots one cell takes kind="int". A command that reads several cells takes a range
     string such as 3-7, which parse_range_list expands. Every command offers the same three flags.
     """
+    group = arggroup(parser, "cell selection")
     flags = ("-modelgridindex", "-cell", "-mgi")
     helptext = helptext or "Model grid cell to plot"
     if kind == "int":
-        arggroup(parser, "cell selection").add_argument(*flags, type=int, default=default, help=helptext)
+        group.add_argument(*flags, type=int, default=default, help=helptext)
     elif kind == "append":
-        arggroup(parser, "cell selection").add_argument(*flags, action="append", default=default, help=helptext)
+        group.add_argument(*flags, action="append", default=default, help=helptext)
     else:
-        arggroup(parser, "cell selection").add_argument(*flags, default=default, help=helptext)
+        group.add_argument(*flags, default=default, help=helptext)
 
 
 class UnsupportedArgument(argparse.Action):
@@ -234,19 +235,16 @@ def addarg_timestep(
     helptext: str | None = None,
 ) -> None:
     """Add the -timestep/-ts argument: a range string like 45-65, a single int, or an appendable list."""
+    group = arggroup(parser, "time selection")
     flags = ("-timestep", "-ts")
     if kind == "rangestr":
-        arggroup(parser, "time selection").add_argument(
+        group.add_argument(
             *flags, dest="timestep", nargs="?", default=default, help=helptext or "First timestep or a range e.g. 45-65"
         )
     elif kind == "int":
-        arggroup(parser, "time selection").add_argument(
-            *flags, type=int, default=default, help=helptext or "Timestep number to plot"
-        )
+        group.add_argument(*flags, type=int, default=default, help=helptext or "Timestep number to plot")
     else:
-        arggroup(parser, "time selection").add_argument(
-            *flags, action="append", default=default, help=helptext or "Timestep number to plot"
-        )
+        group.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
 
 
 def addarg_timedays(
@@ -261,15 +259,16 @@ def addarg_timedays(
     command takes. A command that takes no -timestep calls addarg_unsupported for that name, because
     argparse joins a value to a single-dash flag and would read "-timestep 30" as "-t imestep".
     """
+    group = arggroup(parser, "time selection")
     flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
-        arggroup(parser, "time selection").add_argument(
+        group.add_argument(
             *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
         )
     elif kind == "float":
-        arggroup(parser, "time selection").add_argument(*flags, type=float, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
     else:
-        arggroup(parser, "time selection").add_argument(*flags, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, help=helptext or "Time in days to plot")
 
 
 def addarg_timeminmax(
@@ -279,8 +278,9 @@ def addarg_timeminmax(
     helptext_max: str = "Upper time in days",
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
-    arggroup(parser, "time selection").add_argument("-timemin", type=float, help=helptext_min)
-    arggroup(parser, "time selection").add_argument("-timemax", type=float, help=helptext_max)
+    group = arggroup(parser, "time selection")
+    group.add_argument("-timemin", type=float, help=helptext_min)
+    group.add_argument("-timemax", type=float, help=helptext_max)
 
 
 def addarg_axislimits(
@@ -300,22 +300,15 @@ def addarg_axislimits(
     A command whose x axis is a wavelength in Angstroms takes wavelength_aliases, which adds the
     -lambdamin and -lambdamax spellings of the same arguments.
     """
+    group = arggroup(parser, "appearance")
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
-        arggroup(parser, "appearance").add_argument(
-            *xminflags, dest="xmin", type=xlimtype, default=xmindefault, help=xminhelp
-        )
-        arggroup(parser, "appearance").add_argument(
-            *xmaxflags, dest="xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp
-        )
+        group.add_argument(*xminflags, dest="xmin", type=xlimtype, default=xmindefault, help=xminhelp)
+        group.add_argument(*xmaxflags, dest="xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
     if include_y:
-        arggroup(parser, "appearance").add_argument(
-            "-ymin", type=float, default=None, help="Plot range: y-axis minimum"
-        )
-        arggroup(parser, "appearance").add_argument(
-            "-ymax", type=float, default=None, help="Plot range: y-axis maximum"
-        )
+        group.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
+        group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
 def color_arg(value: str) -> str:
@@ -342,8 +335,9 @@ def addarg_seriesstyle(
     include_dashes: bool = True,
 ) -> None:
     """Add the per-series style list arguments shared by the multi-series plotting commands."""
-    arggroup(parser, "appearance").add_argument("-label", default=[], nargs="*", help="List of series label overrides")
-    arggroup(parser, "appearance").add_argument(
+    group = arggroup(parser, "appearance")
+    group.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    group.add_argument(
         "-color",
         "-colors",
         dest="color",
@@ -353,35 +347,31 @@ def addarg_seriesstyle(
         help="List of line colors",
     )
     if include_linestyles:
-        arggroup(parser, "appearance").add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-        arggroup(parser, "appearance").add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
+        group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
+        group.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
     if include_linealpha:
-        arggroup(parser, "appearance").add_argument(
-            "-linealpha", default=[], nargs="*", help="List of line alphas (opacities)"
-        )
+        group.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:
-        arggroup(parser, "appearance").add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+        group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
 
 def addarg_figscale(
     parser: argparse.ArgumentParser, *, figscaledefault: float = 1.0, include_figwidthscale: bool = False
 ) -> None:
     """Add the figure size scale factor arguments."""
-    arggroup(parser, "appearance").add_argument(
+    group = arggroup(parser, "appearance")
+    group.add_argument(
         "-figscale", type=float, default=figscaledefault, help="Scale factor for plot area. 1.0 is for single-column"
     )
     if include_figwidthscale:
-        arggroup(parser, "appearance").add_argument(
-            "-figwidthscale", type=float, default=1.0, help="Scale factor for plot width"
-        )
+        group.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
 
 def addarg_filter(parser: argparse.ArgumentParser) -> None:
     """Add the spectrum smoothing filter arguments (get_filterfunc reads exactly these dests)."""
-    arggroup(parser, "appearance").add_argument(
-        "-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)"
-    )
-    arggroup(parser, "appearance").add_argument(
+    group = arggroup(parser, "appearance")
+    group.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
+    group.add_argument(
         "-filtersavgol",
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
@@ -456,12 +446,9 @@ def require_action(args: argparse.Namespace) -> None:
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
     """Add --show, which opens the figure in a window before the save, and --open, which opens the file after it."""
-    arggroup(parser, "output").add_argument(
-        "--show", action="store_true", help="Show the plot in a window before saving it"
-    )
-    arggroup(parser, "output").add_argument(
-        "--open", action="store_true", help="Open the saved file with its default application"
-    )
+    group = arggroup(parser, "output")
+    group.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
+    group.add_argument("--open", action="store_true", help="Open the saved file with its default application")
 
 
 def addarg_quiet(parser: argparse.ArgumentParser) -> None:

@@ -46,7 +46,6 @@ from artistools.misc import addarg_unsupported
 from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
@@ -100,10 +99,10 @@ def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
 
 def find_reference_spectrum_file(filename: Path | str) -> Path:
     """Return the reference spectrum path, falling back to the bundled data/refspectra folder."""
-    try:
-        return firstexisting(filename, tryzipped=True)
-    except FileNotFoundError:
-        return firstexisting(filename, folder=Path(get_path("artistools_dir"), "data", "refspectra"), tryzipped=True)
+    if (found := find_reference_spectrum_file_or_none(filename)) is None:
+        msg = f"Reference spectrum {filename} was not found here or in the bundled data/refspectra folder"
+        raise FileNotFoundError(msg)
+    return found
 
 
 def path_is_reference_spectrum(filepath: str | Path) -> bool:
@@ -308,7 +307,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    save_figure(fig, outpath, format="pdf", show=args.show, openfile=args.open)
+    save_figure(fig, outpath, format="pdf", args=args)
 
 
 def plot_reference_spectrum(
@@ -951,23 +950,27 @@ def plot_contributions_unstacked(
     max_absorption = 0.0
 
     # one call runs every query together, as the stacked plot does. A collect for each contribution
-    # runs them one after the other, which costs about four times as much for the default series count
-    emissionspectra: list[pl.DataFrame] = (
-        pl.collect_all([
+    # runs them one after the other, which costs about four times as much for the default series count.
+    # The emission queries and the absorption queries are independent, thus one call takes both sets
+    emissionqueries = (
+        [
             get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
             for contribution in contributions
-        ])
+        ]
         if args.showemission
         else []
     )
-    absorptionspectra: list[pl.DataFrame] = (
-        pl.collect_all([
+    absorptionqueries = (
+        [
             get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
             for contribution in contributions
-        ])
+        ]
         if args.showabsorption
         else []
     )
+    collected = pl.collect_all([*emissionqueries, *absorptionqueries])
+    emissionspectra = collected[: len(emissionqueries)]
+    absorptionspectra = collected[len(emissionqueries) :]
 
     for index, contribution in enumerate(contributions):
         if args.showemission:
@@ -1016,12 +1019,30 @@ def plot_contributions_stacked(
         None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
     )
 
-    facecolors: list[mplt.ColorType] | None
-    if args.showemission:
-        dfemissionspectra = pl.collect_all([
+    # the emission queries and the absorption queries are independent, thus one call runs both sets
+    # together. The draw order stays the same, because the collect comes before either stackplot
+    emissionqueries = (
+        [
             get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
             for contribution in contributions
-        ])
+        ]
+        if args.showemission
+        else []
+    )
+    absorptionqueries = (
+        [
+            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
+            for contribution in contributions
+        ]
+        if args.showabsorption
+        else []
+    )
+    collected = pl.collect_all([*emissionqueries, *absorptionqueries])
+    dfemissionspectra = collected[: len(emissionqueries)]
+    dfabsorptionspectra = collected[len(emissionqueries) :]
+
+    facecolors: list[mplt.ColorType] | None
+    if args.showemission:
         stackplot = axis.stackplot(
             dfemissionspectra[0]["x"],
             [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
@@ -1035,10 +1056,6 @@ def plot_contributions_stacked(
         facecolors = stackcolors
 
     if args.showabsorption:
-        dfabsorptionspectra = pl.collect_all([
-            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
-            for contribution in contributions
-        ])
         absstackplot = axis.stackplot(
             dfabsorptionspectra[0]["x"],
             [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
@@ -1771,13 +1788,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         filenameout = str(args.outputfile)
         if args.timemin is not None:
-            filenameout = filenameout.format(
-                timemin=args.timemin,
-                timemax=args.timemax,
-                time_days_min=args.timemin,
-                time_days_max=args.timemax,
-                directionbins=strdirectionbins,
-            )
+            filenameout = filenameout.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
         elif "{" in filenameout:
             # no global time range was resolved (e.g. --multispecplot), so the time placeholders can't be filled
             filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
@@ -1787,7 +1798,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfalldata.write_csv(datafilenameout, separator=" ")
             print_saved(datafilenameout)
 
-        save_figure(fig, filenameout, show=args.show, openfile=args.open, dpi=args.dpi)
+        save_figure(fig, filenameout, args=args, dpi=args.dpi)
 
 
 if __name__ == "__main__":

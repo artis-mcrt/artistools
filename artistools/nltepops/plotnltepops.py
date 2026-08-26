@@ -520,7 +520,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
     at.plottools.set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
-    save_figure(fig, outputfilename, format="pdf", show=args.show, openfile=args.open)
+    save_figure(fig, outputfilename, format="pdf", args=args)
 
 
 def plot_populations_with_time_or_velocity(
@@ -780,13 +780,9 @@ def make_singletimestep_plot(
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number),
-        cell=mgilist[0],
-        timestep=timestep,
-        timedays=time_days,
-        time_days=time_days,
+        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
     )
-    save_figure(fig, outputfilename, format="pdf", show=args.show, openfile=args.open)
+    save_figure(fig, outputfilename, format="pdf", args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

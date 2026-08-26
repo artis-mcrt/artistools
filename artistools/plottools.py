@@ -404,13 +404,24 @@ def set_mpl_style() -> None:
 
 
 def save_figure(
-    fig: mplfig.Figure, outpath: "Path | str", *, show: bool = False, openfile: bool = False, **savefig_kwargs: t.Any
+    fig: mplfig.Figure,
+    outpath: "Path | str",
+    *,
+    args: argparse.Namespace | None = None,
+    show: bool = False,
+    openfile: bool = False,
+    **savefig_kwargs: t.Any,
 ) -> None:
     """Save the figure to outpath, report the path, and close the figure.
 
-    With show, the figure opens in a window first, thus a resize there reaches the saved file. With
-    openfile, the saved file opens in its default application, thus --open needs no copied command.
+    A caller passes args, and the --show and --open flags of the command then apply. With show, the
+    figure opens in a window first, thus a resize there reaches the saved file. With openfile, the
+    saved file opens in its default application, thus --open needs no copied command.
     """
+    if args is not None:
+        show = show or getattr(args, "show", False)
+        openfile = openfile or getattr(args, "open", False)
+
     if show:
         plt.show()
 

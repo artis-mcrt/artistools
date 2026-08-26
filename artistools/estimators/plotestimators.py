@@ -1200,7 +1200,7 @@ def make_figure(
         defaultoutputfile = "plotestimators_cell{cell:05d}.{format}"
         args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
-        outfilename = str(args.outputfile).format(cell=mgilist[0], modelgridindex=mgilist[0], format=args.format)
+        outfilename = str(args.outputfile).format(cell=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
@@ -1234,7 +1234,7 @@ def make_figure(
 
     set_plot_title(axes[0], figure_title, args)
 
-    save_figure(fig, outfilename, show=args.show, openfile=args.open, dpi=args.dpi)
+    save_figure(fig, outfilename, args=args, dpi=args.dpi)
 
     return outfilename
 

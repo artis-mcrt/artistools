@@ -108,7 +108,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    save_figure(fig, outputfile, show=args.show, openfile=args.open, format="pdf")
+    save_figure(fig, outputfile, args=args, format="pdf")
 
 
 def read_files(

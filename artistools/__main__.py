@@ -27,9 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
         "description": "Plotting and analysis tools for the ARTIS radiative transfer code.",
         "epilog": get_epilog(),
     }
-    if sys.version_info >= (3, 14):
-        parserkwargs["suggest_on_error"] = True  # suggest close matches for mistyped subcommands
-    # the subclass suggests a subcommand on Python 3.13, and a flag on every version
+    # the subclass suggests a subcommand and a flag, on Python 3.13 and 3.14 alike
     parser = SuggestingArgumentParser(**parserkwargs)
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
 
@@ -56,7 +54,6 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
         func(args=args)
     else:
         import contextlib
-        from pathlib import Path
 
         with Path(os.devnull).open("w", encoding="utf-8") as devnull:
             args.productstream = sys.stdout

@@ -1,6 +1,7 @@
 """Read estimator files written by classic (pre-2020) versions of ARTIS."""
 
 import typing as t
+from functools import lru_cache
 from pathlib import Path
 
 import artistools as at
@@ -95,8 +96,13 @@ def get_classic_estimator_files(modelpath: Path) -> list[Path]:
     )
 
 
+@lru_cache(maxsize=2)
 def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
-    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
+    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found.
+
+    The cache serves the no-data report, which reads the run a second time. Do not change the dict
+    that this function returns.
+    """
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
     estimfiles = get_classic_estimator_files(modelpath)
     if not estimfiles:

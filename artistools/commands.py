@@ -442,8 +442,25 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     """Name the closest subcommand, and the closest argument, when the given one does not match.
 
     Python 3.14 suggests a subcommand with suggest_on_error, which Python 3.13 does not take, and
-    neither version suggests an argument. CI runs both, thus this gives the same help on each.
+    neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
+
+    @t.override
+    def _check_value(self, action: argparse.Action, value: t.Any) -> None:
+        """Refuse a value outside the choices with a message that names the closest choice.
+
+        argparse composes this message here, thus the override sees the structured choices and needs
+        no parse of the rendered text, which differs between Python 3.13 and 3.14.
+        """
+        if action.choices is None or value in action.choices:
+            return
+
+        from artistools.misc import suggest_names
+
+        choices = [str(choice) for choice in action.choices]
+        # the list of every choice is long, thus the suggestion goes in front of it
+        message = f"invalid choice: '{value}'{suggest_names(str(value), choices)} (choose from {', '.join(choices)})"
+        raise argparse.ArgumentError(action, message)
 
     def get_visible_flags(self) -> list[str]:
         """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
@@ -474,19 +491,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
-        """Add a suggestion to an invalid-choice or an ambiguous-option message, as argparse does not."""
+        """Add a suggestion to an ambiguous-option message, as argparse does not."""
         import re
 
         from artistools.misc import suggest_names
-
-        given = re.search(r"invalid choice: '([^']*)'", message)
-        _, _, choicetext = message.partition("choose from")
-        if given is not None and choicetext and "maybe you meant" not in message:
-            # Python 3.13 gives the choices without quotation marks, and Python 3.14 gives them with
-            choices = [choice.strip(" '\")") for choice in choicetext.split(",")]
-            if suggestion := suggest_names(given.group(1), choices):
-                # the list of every choice is long, thus the suggestion goes in front of it
-                message = message.replace(" (choose from", f"{suggestion} (choose from", 1)
 
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant

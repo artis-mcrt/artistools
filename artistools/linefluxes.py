@@ -445,7 +445,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    save_figure(fig, args.outputfile, format="pdf", show=args.show, openfile=args.open)
+    save_figure(fig, args.outputfile, format="pdf", args=args)
 
 
 def plot_nne_te_points(
@@ -785,7 +785,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
-            save_figure(fig, outputfile, format="pdf", show=args.show, openfile=args.open)
+            save_figure(fig, outputfile, format="pdf", args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
