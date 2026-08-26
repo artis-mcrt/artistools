@@ -1587,6 +1587,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if wantslisting:
         print_product(args, summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
+        print_product(args, 'Plot a variable with e.g. "artistools plotestimators -p Te rho -t 300"')
         return
 
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)

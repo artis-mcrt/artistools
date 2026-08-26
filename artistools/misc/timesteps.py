@@ -305,7 +305,10 @@ def get_time_range(
                 raise ValueError(msg)
             timestepmax = timestepmin
     else:
-        msg = "Either time or timesteps must be specified."
+        msg = (
+            "No time was given. Give one with -timedays (e.g. -t 300 or -t 290-320), with -timestep "
+            "(e.g. -ts 40 or -ts last), or with -timemin and -timemax"
+        )
         raise ValueError(msg)
 
     timesteplast = len(tmids) - 1

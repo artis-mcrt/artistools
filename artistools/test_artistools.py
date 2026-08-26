@@ -1540,3 +1540,51 @@ def test_command_note_reaches_the_help_and_not_the_listing() -> None:
     assert spec.helptext in toplevel
     # the listing shows one line for each of 36 commands, thus the note stays out of it
     assert spec.note not in toplevel
+
+
+def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
+    """A renamed flag keeps its old spelling as a hidden alias, thus an old command line still runs.
+
+    The help shows one spelling for each concept, thus a reader meets no synonyms.
+    """
+    import artistools.gsinetwork.decayproducts
+    import artistools.lightcurve.plotlightcurve
+    import artistools.spectra.plotspectra
+
+    cases = {
+        artistools.spectra.plotspectra.addargs: (
+            ["-yvar", "packetcount", "-xunits", "nm", "-dist", "1"],
+            ("yvariable", "xunit", "distmpc"),
+            ("-yvar", "-xunits", "-dist_mpc", "-dist", "-fluxdistmpc"),
+        ),
+        artistools.lightcurve.plotlightcurve.addargs: (
+            ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
+            ("plotcmf", "timemin", "title"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title"),
+        ),
+        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("tmin",), ()),
+    }
+    for addargs, (argsraw, dests, hidden) in cases.items():
+        parser = argparse.ArgumentParser()
+        addargs(parser)
+        namespace = parser.parse_args(argsraw)
+        for dest in dests:
+            assert getattr(namespace, dest) not in {None, False}, (addargs.__module__, dest)
+
+        helptext = parser.format_help()
+        for spelling in hidden:
+            assert f"{spelling} " not in helptext, spelling
+            assert f"{spelling},\n" not in helptext, spelling
+
+
+def test_plotspectra_x_names_the_unit_argument(capsys: pytest.CaptureFixture[str]) -> None:
+    """-x names the axis variable on plotestimators, thus plotspectra must refuse it and name -xunit."""
+    import artistools.spectra.plotspectra
+
+    parser = argparse.ArgumentParser(prog="plotspectra")
+    artistools.spectra.plotspectra.addargs(parser)
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([".", "-x", "nm"])
+
+    assert "-x is not an argument of this command. Give -xunit instead" in capsys.readouterr().err

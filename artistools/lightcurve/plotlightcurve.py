@@ -1313,13 +1313,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-title",
-        "--title",
         dest="title",
         nargs="?",
         const=True,
         default=None,
         help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
+    # deprecated spelling kept as a hidden alias
+    parser.add_argument("--title", dest="title", nargs="?", const=True, help=argparse.SUPPRESS)
 
     addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
 
@@ -1341,13 +1342,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_outputfile(parser, helptext="Filename for PDF file")
 
+    parser.add_argument("--plotcmf", action="store_true", help="Plot comoving frame light curve")
+    # deprecated spellings kept as hidden aliases
     parser.add_argument(
-        "--plotcmf",
-        "--plot_cmf",
-        "--showcmf",
-        "--show_cmf",
-        action="store_true",
-        help="Plot comoving frame light curve",
+        "--plot_cmf", "--showcmf", "--show_cmf", dest="plotcmf", action="store_true", help=argparse.SUPPRESS
     )
 
     parser.add_argument(
@@ -1412,13 +1410,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_axislimits(parser, include_x=False)
 
-    parser.add_argument(
-        "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
-    )
+    parser.add_argument("-timemin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum")
 
-    parser.add_argument(
-        "-timemax", "-timedaysmax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum"
-    )
+    parser.add_argument("-timemax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum")
+    # deprecated spellings kept as hidden aliases
+    parser.add_argument("-timedaysmin", dest="timemin", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-timedaysmax", dest="timemax", type=float, help=argparse.SUPPRESS)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
 
