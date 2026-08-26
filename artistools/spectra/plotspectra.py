@@ -25,6 +25,7 @@ from matplotlib.lines import Line2D
 
 import artistools.spectra.spectra as atspectra
 from artistools.commands import get_path
+from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
@@ -1755,4 +1756,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotspectra")

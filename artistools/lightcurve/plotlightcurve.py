@@ -21,6 +21,7 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -1453,7 +1454,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_show(parser)
-    addarg_quiet(parser)
+    addarg_quiet(parser, productargs=("print_data",))
 
     # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
     #                     help='Calculate band risetime, peak mag and delta m15 values for '
@@ -1684,4 +1685,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotlightcurves")

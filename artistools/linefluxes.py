@@ -20,6 +20,7 @@ from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
@@ -931,4 +932,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotlinefluxes")

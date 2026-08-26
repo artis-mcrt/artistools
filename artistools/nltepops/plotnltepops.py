@@ -18,6 +18,7 @@ import polars as pl
 from matplotlib import ticker
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
@@ -934,4 +935,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotnltepops")

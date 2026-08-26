@@ -376,6 +376,20 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
     return parser
 
 
+def run_subcommand(*words: str) -> None:
+    """Run one subcommand of the tree through the dispatcher.
+
+    A module that runs as `python -m artistools.radfield` calls its own main function, thus it read no
+    --quiet, and it reported a bad argument with a traceback. This gives it the path of a console
+    script. The name of the subcommand comes from the caller, because a module holds no such name.
+    """
+    import sys
+
+    from artistools.__main__ import main
+
+    main(argsraw=[*words, *sys.argv[1:]])
+
+
 def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandTree) -> None:
     """Register the subcommands in the tree on the parser."""
 

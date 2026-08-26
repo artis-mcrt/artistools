@@ -14,6 +14,7 @@ import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
@@ -455,4 +456,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotradfield")

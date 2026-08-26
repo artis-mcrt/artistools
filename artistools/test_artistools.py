@@ -5,6 +5,7 @@ import inspect
 import itertools
 import math
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -123,6 +124,33 @@ def test_console_script_runs_its_own_subcommand(
 
     for dispatcher in at.commands.DISPATCHERSCRIPTS:
         assert at.commands.build_script_parser(dispatcher) is None
+
+
+def test_module_entry_points_name_a_real_subcommand() -> None:
+    """Each module entry point must run through the dispatcher and name a subcommand of the tree.
+
+    A module that calls its own main function reads no --quiet, and it reports a bad argument with a
+    traceback. run_subcommand gives it the path of a console script.
+    """
+    names: dict[Path, str] = {}
+    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
+        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text()):
+            names[path] = match.group(1)
+
+    assert names, "no module entry point routes through the dispatcher"
+
+    for path, subcommand in names.items():
+        spec = at.commands.subcommandtree.get(subcommand)
+        assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
+        assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
+
+    # a module that advertises --quiet must not call main directly, or the option does nothing
+    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
+        text = path.read_text()
+        if "addarg_quiet(" in text and "def addarg_quiet" not in text:
+            assert 'if __name__ == "__main__":\n    main()' not in text, (
+                f"{path.name} advertises --quiet, thus its entry point must call run_subcommand"
+            )
 
 
 def test_subcommandtree() -> None:

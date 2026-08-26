@@ -1504,3 +1504,22 @@ def test_scatterplot_magnitude_axis_stays_inverted_with_limits() -> None:
     assert ymin > ymax, "the magnitude axis must point downwards even when -ymin/-ymax are given"
     assert np.isclose(ymin, -14.0)
     assert np.isclose(ymax, -20.0)
+
+
+def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """--print_data prints the plotted data, thus --quiet must keep it.
+
+    addarg_quiet names the arguments whose product is the standard output, and run_command reads them.
+    Only the dispatcher applies the redirection, thus the test gives a command line and not a keyword.
+    """
+    import artistools.__main__
+
+    common = ["plotlightcurves", str(modelpath), "-o", str(tmp_path)]
+    artistools.__main__.main(argsraw=[*common, "--print_data", "--quiet"])
+    withdata = capsys.readouterr().out
+
+    artistools.__main__.main(argsraw=[*common, "--quiet"])
+    withoutdata = capsys.readouterr().out
+
+    assert not withoutdata, "--quiet alone must hide the progress messages"
+    assert withdata, "--print_data names the product of the command, thus --quiet must keep it"

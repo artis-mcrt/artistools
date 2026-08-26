@@ -11,6 +11,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.misc import addarg_dpi
@@ -397,4 +398,4 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotspherical")

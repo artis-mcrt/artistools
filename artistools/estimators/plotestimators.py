@@ -23,6 +23,7 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.commands import run_subcommand
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -1589,4 +1590,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotestimators")
