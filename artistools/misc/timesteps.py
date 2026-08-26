@@ -142,7 +142,16 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
         # could be a string like '330d'
         timedays = timedays.rstrip("d")
 
-    timedays_float = float(timedays)
+    try:
+        timedays_float = float(timedays)
+    except ValueError as exc:
+        msg = f"Cannot read {timedays!r} as a time in days"
+        if isinstance(timedays, str) and timedays[:1].isalpha() and timedays.lstrip("s").replace(".", "").isdigit():
+            # a value joins only a flag of one letter, thus -ts70 reads as -t with the value s70
+            msg += (
+                f". A joined value such as -ts{timedays.lstrip('s')} reads as -t {timedays}, thus put a space after -ts"
+            )
+        raise ValueError(msg) from exc
 
     arr_tstart = get_timestep_times(modelpath, loc="start")
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)

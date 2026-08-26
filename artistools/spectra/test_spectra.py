@@ -667,3 +667,29 @@ def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> No
     # the output of a real run keeps its own reading, whether the user names the folder or the file
     assert not path_is_reference_spectrum(modelpath)
     assert not path_is_reference_spectrum(modelpath / "spec.out")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectraemissionplot_draws_a_reference_named_out(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The emission plot must draw a reference spectrum whose name ends in the .out suffix of ARTIS.
+
+    The overlay loop read the suffix alone, thus it skipped such a file without a word.
+    """
+    import shutil
+
+    source = at.get_path("artistools_dir") / "data" / "refspectra" / "2003du_20031213_3219_8822_00.txt"
+    shutil.copy(source, tmp_path / "myref.out")
+    shutil.copy(f"{source}.meta.yml", tmp_path / "myref.out.meta.yml")
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, tmp_path / "myref.out"],
+        outputfile=tmp_path,
+        timemin=290,
+        timemax=320,
+        emissionabsorption=True,
+        use_thermalemissiontype=True,
+    )
+
+    labels = {callargs.kwargs.get("label") for callargs in mockplot.call_args_list}
+    assert any(label and "2003du" in str(label) for label in labels), labels

@@ -1075,7 +1075,9 @@ def plot_reference_spectra(
     plotkwargs: dict[str, t.Any] = {}
 
     for index, filepath in enumerate(args.specpath):
-        if path_is_artis_model(filepath):
+        # reference data can carry the .out suffix of ARTIS, thus the reference predicate decides.
+        # A name that is neither falls through, and plot_reference_spectrum names the missing file
+        if path_is_artis_model(filepath) and not path_is_reference_spectrum(filepath):
             continue
 
         if index < len(args.color):

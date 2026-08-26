@@ -499,6 +499,24 @@ def check_time_selection(
         action.dest: action.option_strings
         for action in parser._actions  # ruff:ignore[private-member-access]
     }
+    allflags = list(itertools.chain.from_iterable(flagsofdest.values()))
+
+    def givesflag(argstring: str, flag: str) -> bool:
+        """Report whether the string of the command line gives the flag its value, as argparse reads it.
+
+        argparse joins a value to a flag of one letter alone, thus -t300 gives -t the value 300, and
+        -ts70 also reads as -t with the value s70. A string that names another flag, exactly or as a
+        start of its name, belongs to that flag.
+        """
+        if argstring == flag or argstring.startswith(f"{flag}="):
+            return True
+
+        if len(flag) != 2 or flag.startswith("--") or not argstring.startswith(flag):
+            return False
+
+        base = argstring.partition("=")[0]
+
+        return not any(other != flag and (base == other or other.startswith(base)) for other in allflags)
 
     def wasgiven(dest: str) -> bool:
         # a value of None selects no time, thus a caller that forwards an unused argument gives nothing
@@ -510,7 +528,7 @@ def check_time_selection(
         if dest in keywordnames or any(flag.lstrip("-") in keywordnames for flag in flags):
             return True
 
-        if any(flag in argstrings or any(one.startswith(f"{flag}=") for one in argstrings) for flag in flags):
+        if any(givesflag(argstring, flag) for flag in flags for argstring in argstrings):
             return True
 
         return bool(getattr(args, dest) != parser.get_default(dest))

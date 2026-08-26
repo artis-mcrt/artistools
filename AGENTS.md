@@ -159,6 +159,7 @@ Use the shared functions to build a parser and to find a path. Do not write this
 
 - The file `pyproject.toml` holds all the tool configuration. Do not add a configuration file for one tool. Do not add an inline setting that repeats a value from `pyproject.toml`.
 - Add a dependency only if it is necessary. Put a run-time dependency in `[project.dependencies]`. Put a large optional dependency in `[project.optional-dependencies].extras`. Put a tool in `[dependency-groups].dev`. Then run `uv lock` and commit `uv.lock`.
-- Do not commit simulation output, a plot file, or a file larger than 800 kB. The pre-commit hook rejects a large file.
+- Do not commit a plot file or a file larger than 800 kB. The pre-commit hook rejects a large
+  file. Simulation output is permitted below 1 MB, e.g. the small test models in `tests/data`.
 - Before you rename or delete a name, search the full repository for it. Examine `artistools/commands.py`, the re-exports in each `__init__.py`, and the tests. Change all the occurrences in one commit.
 - Delete the old code when you replace it or make it inactive. Do not keep it as a comment, because git holds the old version. The ruff rule `commented-out-code` is off and it has no fix, thus no tool finds such code for you. A comment block that is documentation is different: an example that shows the permitted values of a setting, or a published benchmark configuration that a user can run again. Keep such an example, but delete code that a new version replaced. If you are not sure which type a block is, keep it and ask the user.

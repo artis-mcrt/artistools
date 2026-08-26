@@ -1231,3 +1231,36 @@ def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
 
     # the one cell of the test model still resolves
     assert get_mpirankofcell(0, modelpath=modelpath) >= 0
+
+
+def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
+    """The test of the command line must give each string the reading that argparse gives it.
+
+    argparse joins a value to a flag of one letter alone, thus -t300 gives -t the value 300, and -ts70
+    reads as -t with the value s70 rather than as a timestep.
+    """
+    import artistools.transitions
+
+    def parse(argsraw: list[str]) -> tuple[argparse.ArgumentParser, argparse.Namespace]:
+        parser = argparse.ArgumentParser()
+        artistools.transitions.addargs(parser)
+        return parser, parser.parse_args(argsraw)
+
+    # the joined value of a one-letter flag counts, and the timestep here is the default of the parser
+    for argsraw in (["-t300", "-ts", "70"], ["-ts=70", "-t", "300"], ["-ts", "70", "-t", "300"]):
+        parser, namespace = parse(argsraw)
+        with pytest.raises(SystemExit) as excinfo:
+            at.misc.check_time_selection(parser, namespace, argsraw)
+        assert excinfo.value.code == 1, argsraw
+
+    # argparse reads -ts70 as -t with the value s70, thus no timestep is given and no conflict exists
+    argsraw = ["-ts70", "-t", "300"]
+    parser, namespace = parse(argsraw)
+    assert namespace.timestep == parser.get_default("timestep")
+    at.misc.check_time_selection(parser, namespace, argsraw)
+
+
+def test_timedays_of_a_joined_ts_value_names_the_mistake() -> None:
+    """-ts70 reads as -t s70, thus the message must say to put a space after -ts."""
+    with pytest.raises(ValueError, match=r"reads as -t s70, thus put a space after -ts"):
+        at.get_timestep_of_timedays(at.get_path("testdata") / "testmodel", "s70")
