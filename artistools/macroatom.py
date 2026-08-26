@@ -14,6 +14,7 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
@@ -39,6 +40,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         wavelength_aliases=True,
     )
     addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -106,7 +108,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    save_figure(fig, outputfile, format="pdf")
+    save_figure(fig, outputfile, show=args.show, format="pdf")
 
 
 def read_files(

@@ -236,7 +236,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
 
-    save_figure(fig, outfilename, format="pdf")
+    save_figure(fig, outfilename, show=args.show, format="pdf")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
@@ -372,6 +372,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
         help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
+    at.addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -1,7 +1,11 @@
 testmodel
+# the large models come from a release of the repository, thus git holds none of them
 *.tar.*
+# this one is small enough for git to hold, thus setuptestdata.sh needs no download for it
+!test_classicmode_1d.tar.xz
 testmodel/
 vspecpolmodel/
 test-classicmode_3d
+test-classicmode_1d
 *.parquet
 *.tmp

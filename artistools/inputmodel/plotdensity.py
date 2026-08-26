@@ -16,6 +16,7 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_outputpath
 from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
 from artistools.plottools import save_figure
 
 
@@ -45,6 +46,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
     addarg_outputpath(parser)
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -153,7 +155,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outfilepath = at.resolve_outputfile(args.outputpath, "densityprofile.pdf")
 
-    save_figure(fig, outfilepath)
+    save_figure(fig, outfilepath, show=args.show)
 
 
 if __name__ == "__main__":

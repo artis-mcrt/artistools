@@ -74,7 +74,7 @@ def make_plot(args: argparse.Namespace) -> None:
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
-    save_figure(fig, outpath, dpi=300)
+    save_figure(fig, outpath, show=args.show, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -104,6 +104,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["massfraction", "abundance"],
         help="Vertical axis quantity: mass fraction or number abundance",
     )
+    at.addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

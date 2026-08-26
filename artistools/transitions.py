@@ -22,6 +22,7 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
@@ -242,7 +243,7 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    save_figure(fig, outputfilename, format="pdf")
+    save_figure(fig, outputfilename, show=args.show, format="pdf")
 
 
 def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
@@ -313,6 +314,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="path/filename for PDF file")
+    addarg_show(parser)
 
 
 @dc.dataclass(frozen=True, slots=True)

@@ -1211,3 +1211,35 @@ def test_classic_restart_with_an_offset_reads_both_folders(tmp_path: Path) -> No
     estimators = read_classic_estimators(modelpath)
     assert estimators is not None
     assert sorted(estimators) == [(0, 0), (0, 1), (2, 0), (2, 1)]
+
+
+CLASSIC1DPATH = at.get_path("testdata") / "test-classicmode_1d"
+
+
+@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
+def test_classic_estimators_read_a_real_run() -> None:
+    """Read the estimators of a classic ARTIS run of one dimension.
+
+    The 3D classic model of the test data does not parse with this reader, thus this run covers the
+    classic code path: the ion counts of output_0-0.txt, the rows of the estimator files, and the run
+    folder that holds them.
+    """
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
+    estimators = read_classic_estimators(CLASSIC1DPATH)
+    assert estimators is not None
+
+    timesteps = {timestep for timestep, _ in estimators}
+    cells = {cell for _, cell in estimators}
+    assert cells == {0, 1, 2}, "the run holds the three rank files that the archive keeps"
+    assert min(timesteps) == 0
+    assert max(timesteps) == 110
+
+    firstcell = estimators[0, 0]
+    assert np.isclose(firstcell["Te"], 91313.2, rtol=1e-5)
+    assert np.isclose(firstcell["TR"], 91313.2, rtol=1e-5)
+    assert np.isclose(firstcell["W"], 1.0, rtol=1e-5)
+
+    # the ion counts of output_0-0.txt slice the row, thus a wrong count misaligns every later element
+    assert firstcell["nnion_Al_I"] >= 0.0
+    assert len([key for key in firstcell if key.startswith("nnion_")]) > 50
