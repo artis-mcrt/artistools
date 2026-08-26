@@ -40,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# a command that runs at least this long reports its wall time
+SLOW_COMMAND_SECONDS = 15.0
+
+
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """Run the subcommand. With --quiet, send its progress messages to the null device.
 
@@ -47,17 +51,25 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     with print_product, which reaches the standard output even with --quiet, thus a script reads that
     product with no progress message around it.
     """
+    import time
+
+    starttime = time.monotonic()
     if not getattr(args, "quiet", False):
         func(args=args)
-        return
+    else:
+        import contextlib
+        from pathlib import Path
 
-    import contextlib
-    from pathlib import Path
+        with Path(os.devnull).open("w", encoding="utf-8") as devnull:
+            args.productstream = sys.stdout
+            with contextlib.redirect_stdout(devnull):
+                func(args=args)
 
-    with Path(os.devnull).open("w", encoding="utf-8") as devnull:
-        args.productstream = sys.stdout
-        with contextlib.redirect_stdout(devnull):
-            func(args=args)
+    # a long run says how long it took, thus a wait was the data and not a fault. A quick run says
+    # nothing, and the line goes to the standard error beside the progress bars
+    elapsed = time.monotonic() - starttime
+    if elapsed >= SLOW_COMMAND_SECONDS:
+        print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None) -> None:

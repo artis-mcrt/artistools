@@ -1726,3 +1726,24 @@ def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixtur
 
     at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
     assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"
+
+
+def test_quiet_short_flag_and_slow_command_timing(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """-q means --quiet, and a command that runs past the threshold reports its wall time."""
+    import artistools.__main__
+
+    argsraw = ["plotestimators", "-modelpath", str(modelpath), "--listvariables", "-q"]
+
+    # a quick run says nothing about its time
+    artistools.__main__.main(argsraw=argsraw)
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out, "-q must mean --quiet, and the product must stay"
+    assert "seconds" not in captured.err
+
+    # past the threshold, the time goes to the standard error beside the progress bars
+    monkeypatch.setattr(artistools.__main__, "SLOW_COMMAND_SECONDS", 0.0)
+    artistools.__main__.main(argsraw=argsraw)
+    captured = capsys.readouterr()
+    assert re.search(r"The command took \d+\.\d seconds", captured.err)

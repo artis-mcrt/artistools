@@ -471,7 +471,7 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     progress messages around it.
     """
     arggroup(parser, "output").add_argument(
-        "--quiet", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
+        "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
     )
 
 
