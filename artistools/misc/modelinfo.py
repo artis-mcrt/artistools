@@ -1,10 +1,15 @@
 """ARTIS model folder information: input parameters, run folders, and MPI rank mappings."""
 
+import re
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
+
+if t.TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import numpy as np
 import numpy.typing as npt
@@ -311,12 +316,33 @@ def read_rank_outputfiles(
     When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
     and the rows are filtered to that selection (negative values mean no filter).
     """
-    filepaths = [
-        firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
-        for folderpath in get_runfolders(modelpath, timestep=timestep)
-        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-    ]
-    assert filepaths, f"No {filenameformat} files found in {modelpath}"
+    nonemptycounts = get_nonempty_cellcounts(modelpath)
+    filepaths = []
+    emptyranks = []
+    for folderpath in get_runfolders(modelpath, timestep=timestep):
+        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex):
+            filepath = firstexisting_or_none(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+            if filepath is not None:
+                filepaths.append(filepath)
+            elif nonemptycounts is not None and nonemptycounts.get(mpirank) == 0:
+                emptyranks.append(mpirank)
+            else:
+                # the rank handles a cell that holds matter, thus the file is missing. firstexisting
+                # names every compressed form that it looked for
+                firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+
+    if not filepaths:
+        # the format holds a field for the rank, thus name the family rather than one file
+        filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
+        if emptyranks and isinstance(modelgridindex, int) and modelgridindex >= 0:
+            msg = (
+                f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
+                f"assigned no 3D cell to it, and rank {emptyranks[0]} wrote no file for it"
+            )
+            raise ValueError(msg)
+
+        msg = f"No {filefamily} files found in {modelpath}"
+        raise FileNotFoundError(msg)
 
     dfout = (
         pl
@@ -364,6 +390,24 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
             lambda column_name: column_name.removeprefix("#")
         )
     return None
+
+
+@lru_cache(maxsize=16)
+def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
+    """Return the count of cells that hold matter for each rank, or None without the assignments file.
+
+    ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
+    cells alone, thus it writes no output file, and the absence of that file is not a fault.
+    """
+    dfrankassignments = get_dfrankassignments(modelpath)
+    if dfrankassignments is None:
+        return None
+
+    dfranks = dfrankassignments.collect()
+    if "ndo_nonempty" not in dfranks.columns:
+        return None
+
+    return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))
 
 
 def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:

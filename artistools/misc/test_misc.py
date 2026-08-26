@@ -1160,3 +1160,33 @@ def test_check_time_selection_counts_a_default_as_absent() -> None:
 
     # the user named only -timedays, thus the default timestep must not raise
     at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))
+
+
+def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
+    """modelgridrankassignments.out gives the count of cells that hold matter for each rank.
+
+    ARTIS assigns no 3D cell to a shell that holds no matter, thus the rank of such a shell writes no
+    output file. That absence is normal, and it must not read as a file that went missing.
+    """
+    from artistools.misc.modelinfo import get_nonempty_cellcounts
+
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n1 1 1 0\n2 2 1 3\n")
+
+    counts = get_nonempty_cellcounts(tmp_path)
+    assert counts == {0: 0, 1: 0, 2: 3}
+
+    # a model that holds no such file gives None, thus the caller keeps its own error
+    assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
+
+
+def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
+    """A cell that holds no matter must say so, and not name a file that it never had."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
+    # a folder counts as a run folder when it holds an estimators file
+    (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n")
+    (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
+
+    with pytest.raises(ValueError, match="Cell 0 holds no matter"):
+        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
