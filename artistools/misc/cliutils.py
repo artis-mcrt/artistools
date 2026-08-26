@@ -606,9 +606,14 @@ def check_time_selection(
         return bool(getattr(args, dest) != parser.get_default(dest))
 
     given = [name for name in ("timestep", "timedays", "timemin", "timemax") if wasgiven(name)]
-    if "timestep" in given and len(given) > 1:
-        others = ", ".join(f"-{name}" for name in given if name != "timestep")
-        exit_with_error(f"specify only one of -timestep and {others}")
+    # -timemin and -timemax bound one range, thus the pair counts as one way to give it. get_time_range
+    # reads the range of -timedays alone, thus a bound beside it has no effect and must not pass
+    ways = [f"-{name}" for name in ("timestep", "timedays") if name in given]
+    if bounds := [f"-{name}" for name in ("timemin", "timemax") if name in given]:
+        ways.append(" and ".join(bounds))
+
+    if len(ways) > 1:
+        exit_with_error(f"{', '.join(ways)} name the time range in more than one way", "Give only one of them")
 
 
 def parse_cli_args(

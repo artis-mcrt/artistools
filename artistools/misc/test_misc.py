@@ -1126,16 +1126,25 @@ def test_shorten_middle_keeps_both_ends() -> None:
 
 
 def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
-    """A command must not take -timestep together with -timedays or -timemin/-timemax."""
+    """-timestep, -timedays, and the pair -timemin/-timemax each name a time range, thus one may come.
+
+    get_time_range reads the range of -timedays alone, thus "-timedays 250-300 -timemin 280" gave the
+    range of -timedays and took no notice of the bound.
+    """
     import artistools.spectra.plotspectra
 
     parser = argparse.ArgumentParser()
     artistools.spectra.plotspectra.addargs(parser)
 
-    conflicting = parser.parse_args([".", "-timestep", "40", "-timemin", "100", "-timemax", "200"])
-    with pytest.raises(SystemExit) as excinfo:
-        at.misc.check_time_selection(parser, conflicting)
-    assert excinfo.value.code == 1
+    for argsraw in (
+        [".", "-timestep", "40", "-timemin", "100", "-timemax", "200"],
+        [".", "-timedays", "250-300", "-timemin", "280"],
+        [".", "-timestep", "40", "-timedays", "300"],
+        [".", "-timedays", "250-300", "-timemax", "280"],
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            at.misc.check_time_selection(parser, parser.parse_args(argsraw), argsraw)
+        assert excinfo.value.code == 1, argsraw
 
     # each way on its own is accepted
     for argsraw in ([".", "-timestep", "40"], [".", "-timedays", "300"], [".", "-timemin", "290", "-timemax", "310"]):

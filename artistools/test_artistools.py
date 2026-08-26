@@ -1747,9 +1747,15 @@ def test_quiet_short_flag_and_slow_command_timing(
 
     # past the threshold, the time goes to the standard error beside the progress bars
     monkeypatch.setattr(artistools.__main__, "SLOW_COMMAND_SECONDS", 0.0)
-    artistools.__main__.main(argsraw=argsraw)
+    artistools.__main__.main(argsraw=[arg for arg in argsraw if arg != "-q"])
     captured = capsys.readouterr()
     assert re.search(r"The command took \d+\.\d seconds", captured.err)
+
+    # the time reports the progress and not a fault, thus --quiet takes it away as well
+    artistools.__main__.main(argsraw=argsraw)
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out, "--quiet keeps the product"
+    assert "seconds" not in captured.err
 
 
 def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) -> None:

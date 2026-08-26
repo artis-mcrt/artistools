@@ -61,9 +61,10 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
                 func(args=args)
 
     # a long run says how long it took, thus a wait was the data and not a fault. A quick run says
-    # nothing, and the line goes to the standard error beside the progress bars
+    # nothing, and the line goes to the standard error beside the progress bars. --quiet takes it away,
+    # because it reports the progress and not a fault
     elapsed = time.monotonic() - starttime
-    if elapsed >= SLOW_COMMAND_SECONDS:
+    if elapsed >= SLOW_COMMAND_SECONDS and not getattr(args, "quiet", False):
         print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)
 
 
