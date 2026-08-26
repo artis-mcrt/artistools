@@ -43,6 +43,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_unsupported
+from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
@@ -1628,6 +1629,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
 
     parser.add_argument(
         "--output_spectra", "--write_spectra", action="store_true", help="Write out all timestep spectra to text files"

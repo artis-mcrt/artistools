@@ -1388,10 +1388,10 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
         artistools.__main__.main(argsraw=["plotspetcra"])
 
     message = capsys.readouterr().err
-    assert "invalid choice" in message
-    # the parser names the closest subcommand in front of the list of every choice
-    assert "Did you mean plotspectra" in message
-    assert message.index("Did you mean") < message.index("choose from")
+    assert "invalid choice 'plotspetcra'" in message
+    # the error names the fault, and the help line that follows names the closest subcommand
+    assert "help: Did you mean plotspectra" in message
+    assert message.index("error: ") < message.index("help: ")
 
 
 def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
@@ -1783,3 +1783,46 @@ def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotspectra", ".", "--plotcmfx"])
     assert "-dist_mpc" not in capsys.readouterr().err
+
+
+def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[str]) -> None:
+    """An error states the fault, and a help line that follows says what to do next.
+
+    The two parts were one sentence, thus a long remedy hid the fault that it followed.
+    """
+    import artistools.__main__
+
+    at.misc.print_error("no time was given", "Give a time or a timestep, e.g. -timedays 250")
+    message = capsys.readouterr().err
+    assert message.splitlines() == ["error: no time was given", "help: Give a time or a timestep, e.g. -timedays 250"]
+
+    # an error of argparse takes the same shape, and it keeps the exit status that argparse gives
+    with pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
+    assert exitinfo.value.code == 2
+    lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith(("error: ", "help: "))]
+    assert lines == [
+        "error: unrecognized arguments: --listvaraibles",
+        "help: Did you mean --listvariables, --listvars, --listnuclides?",
+    ]
+
+
+def test_verbose_means_the_same_on_every_command() -> None:
+    """-v shows the detail of each step, thus it names no other argument on any command.
+
+    -v selected a cell by velocity on three commands, which made one flag carry two meanings.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    for subcommand, subparser in subactions[0].choices.items():
+        flagsofdest = {
+            action.dest: action.option_strings
+            for action in subparser._actions  # ruff:ignore[private-member-access]
+        }
+        for dest, flags in flagsofdest.items():
+            assert "-v" not in flags or dest == "verbose", f"{subcommand} gives -v to {dest}"
+
+        if "verbose" in flagsofdest:
+            assert flagsofdest["verbose"] == ["--verbose", "-v"], subcommand

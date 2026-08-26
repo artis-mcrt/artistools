@@ -458,13 +458,28 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         from artistools.misc import suggest_names
 
         choices = [str(choice) for choice in action.choices]
-        # the list of every choice is long, thus the suggestion goes in front of it
-        message = f"invalid choice: '{value}'{suggest_names(str(value), choices)} (choose from {', '.join(choices)})"
-        raise argparse.ArgumentError(action, message)
+        name = action.metavar or action.dest
+        # a close match answers the question, thus the long list of every choice serves the other case
+        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(choices)}"
+        self.exit_with_help(f"invalid choice '{value}' for {name}", helptext)
 
     def get_visible_flags(self) -> list[str]:
         """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
         return [flag for action in self._actions if action.help != argparse.SUPPRESS for flag in action.option_strings]
+
+    def exit_with_help(self, message: str, helptext: str) -> t.NoReturn:
+        """Report a bad argument as an error line and a help line, then stop.
+
+        argparse writes one line that holds both, thus this prints the usage itself and takes the
+        place of the error method. The exit status of 2 is the one that argparse gives.
+        """
+        import sys
+
+        from artistools.misc import print_error
+
+        self.print_usage(sys.stderr)
+        print_error(message, helptext)
+        raise SystemExit(2)
 
     @t.override
     def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
@@ -480,18 +495,21 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         if leftover:
             from artistools.misc import suggest_names
 
-            message = f"unrecognized arguments: {' '.join(leftover)}"
             flag = next((word.partition("=")[0] for word in leftover if word.startswith("-")), None)
             subparser = getattr(parsednamespace, "argparser", None) or self
+            helptext = ""
             if flag is not None and isinstance(subparser, SuggestingArgumentParser):
-                message += suggest_names(flag, subparser.get_visible_flags())
-            self.error(message)
+                helptext = suggest_names(flag, subparser.get_visible_flags())
+            self.exit_with_help(
+                f"unrecognized arguments: {' '.join(leftover)}",
+                helptext or f"Run `{subparser.prog} --help` to see every argument",
+            )
 
         return parsednamespace
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
-        """Add a suggestion to an ambiguous-option message, as argparse does not."""
+        """Report an error of argparse in the same two-part shape, with a suggestion where one fits."""
         import re
 
         from artistools.misc import suggest_names
@@ -499,10 +517,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant
         ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
-        if ambiguous is not None:
-            message += suggest_names(ambiguous.group(1), self.get_visible_flags())
+        helptext = suggest_names(ambiguous.group(1), self.get_visible_flags()) if ambiguous is not None else ""
 
-        super().error(message)
+        self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
 
 def run_subcommand(*words: str) -> None:

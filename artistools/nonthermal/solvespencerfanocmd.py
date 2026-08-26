@@ -96,7 +96,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_modelgridindex(parser, default=0)
 
-    parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
+    parser.add_argument("-velocity", type=float, default=-1, help="Specify cell by velocity")
 
     parser.add_argument("-npts", type=int, default=4096, help="Number of points in the energy grid")
 
@@ -181,7 +181,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.timedays:
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
         elif args.timestep is None:
-            at.exit_with_error("specify a time or a timestep, e.g. -timedays 250 or -timestep last")
+            at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
 
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:

@@ -42,6 +42,7 @@ from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_verbose
 from artistools.misc import addarg_yscale
 from artistools.misc import color_arg
 from artistools.misc import exit_with_error
@@ -979,7 +980,8 @@ def make_band_lightcurves_plot(
 
         for dirbin in dirbins:
             modelname = at.get_model_name(modelpath)
-            print(f"Reading spectra: {modelname} (angle {dirbin})")
+            if args.verbose:
+                print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
                 modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
             )
@@ -1095,7 +1097,8 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"Reading spectra: {modelname}")
+        if args.verbose:
+            print(f"Reading spectra: {modelname}")
 
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
@@ -1456,6 +1459,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
 
     # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
     #                     help='Calculate band risetime, peak mag and delta m15 values for '

@@ -33,6 +33,7 @@ from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
+from artistools.misc import addarg_verbose
 from artistools.misc import print_warning
 from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
@@ -597,7 +598,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             dfestimators = (
                 at.estimators
-                .scan_estimators(modelpath=modelpath)
+                .scan_estimators(modelpath=modelpath, verbose=args.verbose)
                 .select(["timestep", "modelgridindex", "Te", "nne"])
                 .drop_nulls()
                 .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
@@ -799,6 +800,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_nolegend(parser)
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
 
     parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
 

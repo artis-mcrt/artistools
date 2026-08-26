@@ -22,6 +22,7 @@ from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
+from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
@@ -299,6 +300,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_notitle(parser)
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
     addarg_dpi(parser, default=300)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
@@ -319,7 +321,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     at.plottools.set_mpl_style()
 
     dfestimators = (
-        at.estimators.scan_estimators(modelpath=args.modelpath)
+        at.estimators.scan_estimators(modelpath=args.modelpath, verbose=args.verbose)
         if any(var in {"temperature", "temperature_sigma"} or var.startswith("nnelement_") for var in args.plotvars)
         else None
     )

@@ -45,6 +45,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import print_product
 from artistools.misc import print_warning
@@ -616,8 +617,8 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         # an ion population plot is the reading of last resort, thus reject a name that is no ion at all
         if notions := [var for var in plotvars if isinstance(var, str) and not is_valid_ion(var)]:
             exit_with_error(
-                f"'{notions[0]}' is neither an estimator variable nor an ion."
-                f"{suggest_names(notions[0], estimatorcolumns)}"
+                f"'{notions[0]}' is neither an estimator variable nor an ion",
+                suggest_names(notions[0], estimatorcolumns) or "Run with --listvariables to see the variables",
             )
 
         # plotting this as a variable would cause an error, so interpret it as ion populations instead
@@ -810,10 +811,10 @@ def plot_series(
     else:
         columns = estimators.collect_schema().names()
         if variable not in columns:
-            suggestion = suggest_names(variable, columns)
-            if not suggestion:
-                suggestion = " Run with --listvariables to see the variables of this model."
-            exit_with_error(f"'{variable}' is not an estimator variable.{suggestion}")
+            exit_with_error(
+                f"'{variable}' is not an estimator variable",
+                suggest_names(variable, columns) or "Run with --listvariables to see the variables of this model",
+            )
         colexpr = pl.col(variable)
 
     variablename = colexpr.meta.output_name()
@@ -861,11 +862,11 @@ def get_xlist(
         # hold them. A name that no model gives must still say what the choices are
         columns = estimators.collect_schema().names()
         if xvariable not in columns:
+            suggestion = suggest_names(xvariable, columns)
             exit_with_error(
-                f"'{xvariable}' is not a variable of this model, thus the horizontal axis cannot show it."
-                f"{suggest_names(xvariable, columns)}"
-                " The other choices are time, timestep, velocity, and beta."
-                " Run with --listvariables to see every variable of this model"
+                f"'{xvariable}' is not a variable of this model, thus the horizontal axis cannot show it",
+                f"{suggestion + ' ' if suggestion else ''}The other choices are time, timestep, velocity, and "
+                "beta. Run with --listvariables to see every variable of this model",
             )
 
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
@@ -1012,10 +1013,11 @@ def plot_subplot(
             )
 
         if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
+            suggestion = suggest_names(given, DIRECTIVES)
             exit_with_error(
-                f"'{given}' is not a plot directive."
-                f"{suggest_names(given, DIRECTIVES)}"
-                f" The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}"
+                f"'{given}' is not a plot directive",
+                f"{suggestion + ' ' if suggestion else ''}The directives are "
+                f"{', '.join(f'{name}=' for name in DIRECTIVES)}",
             )
         seriestype = seriestype.removeprefix("_").lower()
         if seriestype == "ymin":
@@ -1330,6 +1332,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
 
     addarg_dpi(parser, default=600)
 
@@ -1575,8 +1578,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modelgridindex=args.modelgridindex,
         timestep=tuple(timesteps_included),
         classicartis=args.classicartis,
+        verbose=args.verbose,
     )
-    estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
+    estimators, modelmeta = at.estimators.join_cell_modeldata(
+        estimators=estimators, modelpath=modelpath, verbose=args.verbose
+    )
 
     # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise

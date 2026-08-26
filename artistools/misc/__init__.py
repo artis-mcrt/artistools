@@ -20,6 +20,7 @@ from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_unsupported as addarg_unsupported
+from artistools.misc.cliutils import addarg_verbose as addarg_verbose
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
 from artistools.misc.cliutils import check_time_selection as check_time_selection

@@ -181,7 +181,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         timestep = args.timestep
         if timestep is None:
-            at.exit_with_error("specify a time or a timestep, e.g. -timedays 250 or -timestep 30")
+            at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 
     dfestimators = (
         at.estimators

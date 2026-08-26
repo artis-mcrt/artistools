@@ -28,6 +28,7 @@ from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
+from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import get_npts_model
 from artistools.misc import print_warning
@@ -808,7 +809,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-modelgridindex", "-cell", "-mgi", default=[], help="Plotted model grid cell, or a range e.g. 3-7"
     )
 
-    cellgroup.add_argument("-velocity", "-v", default=[], type=float, nargs="*", help="Specify cell by velocity")
+    cellgroup.add_argument("-velocity", default=[], type=float, nargs="*", help="Specify cell by velocity")
 
     parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
 
@@ -841,6 +842,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_nolegend(parser)
     addarg_show(parser)
     addarg_quiet(parser)
+    addarg_verbose(parser)
 
     parser.add_argument(
         "-labelfontsize",
@@ -865,10 +867,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath = at.normalize_path_list(args.modelpath)
 
         if not args.ion_stages:
-            at.exit_with_error("specify an ion stage with -ion_stages, e.g. -ion_stages 2")
+            at.exit_with_error("no ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
 
         if not args.levels:
-            at.exit_with_error("specify the levels to plot with -levels, e.g. -levels 0 1 2")
+            at.exit_with_error("no levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
 
     if args.timedays:
         # a command line gives a string, and a keyword argument of the API gives a number

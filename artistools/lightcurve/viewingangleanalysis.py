@@ -594,7 +594,8 @@ def peakmag_risetime_declinerate_init(
             dirbins = [-1]
 
         for dirbin in dirbins:
-            print(f"Reading spectra: {modelname}")
+            if args.verbose:
+                print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
                     modelpath, args, dirbin, modelnumber=modelnumber

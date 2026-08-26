@@ -394,26 +394,34 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
 def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -> str:
     """Return a sentence that names the closest candidates, or an empty string when none is close.
 
-    A name that differs only in case comes first, because that mistake is common and difflib scores a
-    short name such as "te" against "Te" below its own threshold.
+    The sentence goes on the help line of an error, thus it carries no leading space. A name that
+    differs only in case comes first, because that mistake is common and difflib scores a short name
+    such as "te" against "Te" below its own threshold.
     """
     import difflib
 
     names = list(candidates)
     if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
-        return f" Did you mean {samecase[0]}?"
+        return f"Did you mean {samecase[0]}?"
 
     matches = difflib.get_close_matches(name, names, n=count, cutoff=0.6)
 
-    return f" Did you mean {', '.join(matches)}?" if matches else ""
+    return f"Did you mean {', '.join(matches)}?" if matches else ""
 
 
-def print_error(message: str) -> None:
-    """Print an error to the standard error. rich colours the prefix in a terminal alone."""
+def print_error(message: str, helptext: str = "") -> None:
+    """Print an error to the standard error, then a help line that says what to do next.
+
+    The error states the fault alone, thus a reader sees the remedy on its own line. rich colours the
+    prefix in a terminal alone.
+    """
     from rich.console import Console
     from rich.text import Text
 
-    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("error: ", style="bold red") + Text(message))
+    console = Console(stderr=True, highlight=False, soft_wrap=True)
+    console.print(Text("error: ", style="bold red") + Text(message))
+    if helptext:
+        console.print(Text("help: ", style="bold cyan") + Text(helptext))
 
 
 def print_warning(*values: object) -> None:
@@ -428,20 +436,20 @@ def print_warning(*values: object) -> None:
     Console(stderr=True, highlight=False, soft_wrap=True).print(Text("WARNING: ", style="bold yellow") + Text(message))
 
 
-def exit_with_error(message: str) -> t.NoReturn:
+def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
     """Print an error message and stop with a failing exit status.
 
     A mistake in the arguments earns a message rather than a traceback, and a script that runs the
-    command sees that it failed.
+    command sees that it failed. helptext names what the user can do next.
     """
-    print_error(message)
+    print_error(message, helptext)
     raise SystemExit(1)
 
 
 def require_action(args: argparse.Namespace) -> None:
     """Stop with an error message when the caller gave no action."""
     if args.action is None:
-        exit_with_error("no action given. Run with --help to see the available actions.")
+        exit_with_error("no action was given", "Run with --help to see the available actions")
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
@@ -459,6 +467,17 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     """
     arggroup(parser, "output").add_argument(
         "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
+    )
+
+
+def addarg_verbose(parser: argparse.ArgumentParser) -> None:
+    """Add the --verbose argument that shows the detail of each step.
+
+    A command prints a summary of the work by default. --verbose adds the detail, e.g. the name of
+    each file that the command reads, thus -v means the same on every command.
+    """
+    arggroup(parser, "output").add_argument(
+        "--verbose", "-v", action="store_true", help="Show the detail of each step, e.g. each file that is read"
     )
 
 
