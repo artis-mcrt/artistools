@@ -1487,3 +1487,56 @@ def test_help_shows_the_examples() -> None:
         assert description in helptext, description
 
     assert 'Run "artistools <command> --help"' in helptext
+
+
+def test_help_wraps_a_description_and_keeps_the_epilog_lines() -> None:
+    """A description wraps to the terminal, and the examples of the epilog keep their own lines.
+
+    RawDescriptionHelpFormatter would keep both, thus a long description ran past the width.
+    """
+    import artistools.__main__
+
+    parser = argparse.ArgumentParser(
+        prog="demo",
+        formatter_class=at.commands.CustomArgHelpFormatter,
+        description=" ".join(["averylongword"] * 12),
+        epilog="first line\n  second line kept as it is",
+    )
+    helptext = parser.format_help()
+
+    assert "first line\n  second line kept as it is" in helptext
+    # the description holds no line break of its own, thus the formatter breaks it
+    assert max(len(line) for line in helptext.splitlines()) < 200
+    assert helptext.count("averylongword") == 12
+
+    # ArgumentDefaultsHelpFormatter still applies: a real command gives the default of each argument.
+    # The top-level parser holds only -h and --version, thus the check reads one subcommand
+    subactions = [a for a in artistools.__main__.build_parser()._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert "(default:" in subactions[0].choices["plotestimators"].format_help()
+
+
+def test_command_group_help_points_at_one_command() -> None:
+    """A group lists its commands, thus it must also say how to read the help of one of them."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    groupparser = subactions[0].choices["inputmodel"]
+    helptext = groupparser.format_help()
+
+    assert "The inputmodel commands of artistools." in helptext
+    assert 'Run "artistools inputmodel <command> --help"' in helptext
+
+
+def test_command_note_reaches_the_help_and_not_the_listing() -> None:
+    """A note gives the help of one command what the listing of one line has no room for."""
+    import artistools.__main__
+
+    spec = at.commands.subcommandtree["plotnltepops"]
+    assert not isinstance(spec, dict)
+    assert spec.note
+
+    toplevel = artistools.__main__.build_parser().format_help()
+    assert spec.helptext in toplevel
+    # the listing shows one line for each of 36 commands, thus the note stays out of it
+    assert spec.note not in toplevel

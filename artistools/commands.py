@@ -56,6 +56,9 @@ class CommandSpec:
     script: str = ""
     """The per-command console script that runs this subcommand, e.g. plotartisestimators."""
 
+    note: str = ""
+    """Extra text for the help of the command alone. The listing of one line has no room for it."""
+
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
 
@@ -222,7 +225,13 @@ subcommandtree: CommandTree = {
     "plotlogfiles": CommandSpec("logfiles", helptext="Plot per-rank stage durations from ARTIS log files."),
     "plotmacroatom": CommandSpec("macroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."),
     "plotnltepops": CommandSpec(
-        "nltepops.plotnltepops", script="plotartisnltepops", helptext="Plot ARTIS non-LTE populations."
+        "nltepops.plotnltepops",
+        script="plotartisnltepops",
+        helptext="Plot ARTIS non-LTE populations.",
+        note=(
+            "Give a time with -timedays or -timestep. A model of more than one cell also needs a cell,"
+            " which -modelgridindex or -velocity gives."
+        ),
     ),
     "plotradfield": CommandSpec(
         "radfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
@@ -284,17 +293,25 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     return {heading: members for heading, members in grouped.items() if members}
 
 
-class CustomArgHelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
-    """Custom argparse formatter to show default values in help text, sorted with dashes last.
-
-    RawDescriptionHelpFormatter keeps the lines of the epilog, because the examples there are commands
-    that a user copies. It changes no other part of the help text.
-    """
+class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         """Widen the help column so long option names stay on one line."""
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+
+    @t.override
+    def _fill_text(self, text: str, width: int, indent: str) -> str:
+        """Wrap a description of one line, and keep the lines of an epilog.
+
+        The epilog holds the examples, which a user copies, thus its own line breaks must stay. A
+        description is prose of one line, thus it wraps to the width of the terminal.
+        """
+        if "\n" in text.strip():
+            return "".join(f"{indent}{line}\n" for line in text.splitlines())
+
+        return super()._fill_text(text, width, indent)
 
     @t.override
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
@@ -442,7 +459,7 @@ def run_subcommand(*words: str) -> None:
     main(argsraw=[*words, *sys.argv[1:]])
 
 
-def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcommandtree: CommandTree) -> None:
+def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) -> None:
     """Register the subcommands in the tree on the parser."""
 
     def func(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
@@ -456,10 +473,11 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
             subparser = subparsers.add_parser(
                 subcommand,
                 help="command group",
-                description=f"{parentcommand} {subcommand} command group.",
+                description=f"The {subcommand} commands of artistools.",
+                epilog=f'Run "artistools {subcommand} <command> --help" for the arguments of one command.',
                 formatter_class=CustomArgHelpFormatter,
             )
-            addsubparsers(parser=subparser, parentcommand=subcommand, subcommandtree=spec)
+            addsubparsers(parser=subparser, subcommandtree=spec)
         else:
             # omitting help= entirely keeps a hidden entry out of the parent help listing. Do not use
             # help=argparse.SUPPRESS here: argparse only honours it for arguments, not subparsers, and
@@ -467,7 +485,7 @@ def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, subcomman
             addparserkwargs: dict[str, t.Any] = {} if spec.hidden else {"help": spec.helptext}
             subparser = subparsers.add_parser(
                 subcommand,
-                description=spec.helptext,
+                description=f"{spec.helptext} {spec.note}".strip(),
                 aliases=spec.aliases,
                 formatter_class=CustomArgHelpFormatter,
                 **addparserkwargs,

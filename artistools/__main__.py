@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
         parser = SuggestingArgumentParser(**parserkwargs)
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
 
-    addsubparsers(parser, "artistools", subcommandtree)
+    addsubparsers(parser, subcommandtree)
 
     return parser
 
