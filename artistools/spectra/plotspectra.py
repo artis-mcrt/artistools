@@ -1337,7 +1337,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     if args.showemission or args.showabsorption:
         legendncol = 2
-        defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
+        defaultoutputfile = Path("plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf")
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             modelpath=Path(args.specpath[0]),
             axis=axes[-1],
@@ -1347,7 +1347,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         )
     else:
         legendncol = 1
-        defaultoutputfile = Path("plotspec_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
+        defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
 
         if args.multispecplot:
             dfalldata = make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
@@ -1772,11 +1772,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         filenameout = str(args.outputfile)
         if args.timemin is not None:
             filenameout = filenameout.format(
-                time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
+                timemin=args.timemin,
+                timemax=args.timemax,
+                time_days_min=args.timemin,
+                time_days_max=args.timemax,
+                directionbins=strdirectionbins,
             )
         elif "{" in filenameout:
             # no global time range was resolved (e.g. --multispecplot), so the time placeholders can't be filled
-            filenameout = str(Path(filenameout).with_name("plotspec.pdf"))
+            filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
 
         if args.write_data and len(dfalldata.columns) > 0:
             datafilenameout = Path(filenameout).with_suffix(".txt")

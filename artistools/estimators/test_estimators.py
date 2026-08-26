@@ -1123,7 +1123,7 @@ def test_estimator_makegif_writes_one_frame_per_timestep(tmp_path: Path) -> None
     )
 
     assert len(list(tmp_path.glob("*.png"))) == 3
-    assert [giffile.name for giffile in tmp_path.glob("*.gif")] == ["plotestim_evolution_ts000_ts002.gif"]
+    assert [giffile.name for giffile in tmp_path.glob("*.gif")] == ["plotestimators_evolution_ts000-ts002.gif"]
 
 
 def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None:

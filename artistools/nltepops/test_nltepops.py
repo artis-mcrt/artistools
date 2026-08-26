@@ -99,7 +99,7 @@ def test_nltepops_no_estimator_data(
     _, yarr = get_plot_xy(mockplot.call_args_list[2])
     assert np.isclose(yarr[0], 5.31208, rtol=1e-4)
 
-    assert any(tmp_path.glob("plotnlte_Fe_cell000_ts40_*.pdf"))
+    assert any(tmp_path.glob("plotnltepops_Fe_cell00000_ts040_*.pdf"))
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -122,7 +122,7 @@ def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> N
         assert np.allclose(xarr, [8000.0], rtol=1e-4)
         assert np.allclose(yarr, [expected_yval], rtol=1e-4)
 
-    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
+    assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -144,7 +144,7 @@ def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypa
         assert np.allclose(xarr, expected_xarr, rtol=1e-4)
         assert np.allclose(yarr, expected_yarr, rtol=1e-4)
 
-    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
+    assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
 
 
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
@@ -198,7 +198,7 @@ def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_pat
     """A command line gives a string, and a keyword argument of the API gives a number. Both name one time."""
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedays=timedays)
 
-    assert any(tmp_path.glob("plotnlte_Fe_cell000_ts*.pdf"))
+    assert any(tmp_path.glob("plotnltepops_Fe_cell00000_ts*.pdf"))
 
 
 def test_nltepops_subplot_blocks_do_not_overlap() -> None:

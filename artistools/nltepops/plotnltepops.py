@@ -35,10 +35,10 @@ from artistools.plottools import get_figsize
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
-defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
+defaultoutputfile = "plotnltepops_{elsymbol}_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
 # neither can be named after the single cell and timestep that the default filename describes
-defaultoutputfile_timeorvelocity = "plotnltelevelpops_{elsymbol}.pdf"
+defaultoutputfile_timeorvelocity = "plotnltepops_{elsymbol}.pdf"
 
 
 def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
@@ -780,7 +780,11 @@ def make_singletimestep_plot(
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
+        elsymbol=at.get_elsymbol(atomic_number),
+        cell=mgilist[0],
+        timestep=timestep,
+        timedays=time_days,
+        time_days=time_days,
     )
     save_figure(fig, outputfilename, format="pdf", show=args.show)
 

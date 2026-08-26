@@ -1197,14 +1197,14 @@ def make_figure(
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
+        defaultoutputfile = "plotestimators_cell{cell:05d}.{format}"
         args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
-        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0], format=args.format)
+        outfilename = str(args.outputfile).format(cell=mgilist[0], modelgridindex=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
-            strtimestep = f"ts{timestepslist[0]:02d}"
+            strtimestep = f"ts{timestepslist[0]:03d}"
             strtimedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
         else:
             timesteps_flat = at.flatten_list(timestepslist)
@@ -1212,7 +1212,7 @@ def make_figure(
             timestepmax = max(timesteps_flat)
 
             strtimestep = (
-                f"ts{timestepmin:02d}-ts{timestepmax:02d}" if timestepmax != timestepmin else f"ts{timestepmin:02d}"
+                f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
             )
             dftimesteps = at.get_timesteps(modelpath)
             timelow_days = (
@@ -1545,7 +1545,9 @@ def write_snapshot_figures(
             # make_figure resolves args.outputfile to the name of a frame, thus the gif goes beside the frames
             outdir = Path(outputfiles[0]).parent
             firstts, lastts = timesteps_included[0], timesteps_included[-1]
-            at.write_gif(outdir / f"plotestim_evolution_ts{firstts:03d}_ts{lastts:03d}.gif", outputfiles, duration=1000)
+            at.write_gif(
+                outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif", outputfiles, duration=1000
+            )
         elif args.format == "pdf":
             at.merge_pdf_files(outputfiles)
 

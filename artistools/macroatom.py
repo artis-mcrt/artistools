@@ -18,7 +18,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
-defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
+defaultoutputfile = "plotmacroatom_cell{cell:05d}_ts{timestep:03d}-{timestep2:03d}.pdf"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -63,7 +63,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("No macroatom files found")
         raise FileNotFoundError
 
-    outputfile = str(args.outputfile).format(args.modelgridindex, timestepmin, timestepmax)
+    outputfile = str(args.outputfile).format(cell=args.modelgridindex, timestep=timestepmin, timestep2=timestepmax)
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax

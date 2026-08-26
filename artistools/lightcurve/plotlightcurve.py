@@ -1657,12 +1657,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("Enabling --frompackets because topnucs > 0")
         args.frompackets = True
 
-    if args.filter:
-        defaultoutputfile = "plotlightcurves.pdf"
-    elif args.colour_evolution:
-        defaultoutputfile = "plot_colour_evolution.pdf"
-    else:
-        defaultoutputfile = "plotlightcurve.pdf"
+    defaultoutputfile = "plotlightcurves_colour.pdf" if args.colour_evolution else "plotlightcurves.pdf"
 
     args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     outputfolder = args.outputfile.parent

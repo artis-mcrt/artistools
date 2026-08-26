@@ -31,7 +31,7 @@ from artistools.plottools import set_plot_title
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
 
-defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
+defaultoutputfile = "plottransitions_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
 class IonTuple(t.NamedTuple):
@@ -687,7 +687,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if cell is not None:
         print_ionisation_table(cell, depcoeffs)
         outputfilename = str(args.outputfile).format(
-            cell=cell.modelgridindex, timestep=cell.timestep, time_days=cell.time_days
+            cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days, time_days=cell.time_days
         )
     else:
         outputfilename = "plottransitions.pdf"

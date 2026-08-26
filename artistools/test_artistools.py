@@ -1660,3 +1660,34 @@ def test_help_strings_follow_one_style() -> None:
             failures.append(f"{label}: write e.g. in full: {helptext[:60]!r}")
 
     assert not failures, "\n".join(failures)
+
+
+def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each command names its file <command>[_series][_cell.....][_ts...][_days] with one field width.
+
+    The widths were 02d and 03d, the days carried zero to two decimals, and the prefix of a command
+    changed between its modes. A cell of 05d sorts up to the 3D grids, ts of 03d sorts past 100
+    timesteps, and days of .2f keep two sub-day timesteps apart.
+    """
+    monkeypatch.chdir(tmp_path)
+    import artistools.__main__
+
+    runs = [
+        (["plotspectra", str(modelpath), "-t", "300"], "plotspectra_299.81d-300.82d.pdf"),
+        (
+            ["plotestimators", "-modelpath", str(modelpath), "-p", "rho", "-ts", "40"],
+            "plotestimators_ts040_286.02d-286.98d.pdf",
+        ),
+        (["plotlightcurves", str(modelpath)], "plotlightcurves.pdf"),
+        (
+            ["plotnltepops", "-modelpath", str(modelpath), "-t", "300", "-mgi", "0"],
+            "plotnltepops_Fe_cell00000_ts054_300.32d.pdf",
+        ),
+        (["plotradfield", "-modelpath", str(modelpath), "-ts", "40", "-mgi", "0"], "plotradfield_cell00000_ts040.pdf"),
+        (["plottransitions", "-modelpath", str(modelpath), "-t", "300"], "plottransitions_cell00000_ts054_300.32d.pdf"),
+        (["plotmacroatom", "-modelpath", str(modelpath), "-ts", "40"], "plotmacroatom_cell00000_ts040-040.pdf"),
+    ]
+    for argsraw, expectedname in runs:
+        artistools.__main__.main(argsraw=argsraw)
+        assert (tmp_path / expectedname).is_file(), (argsraw[0], sorted(p.name for p in tmp_path.glob("*.pdf")))
+        assert expectedname.startswith(argsraw[0]), "the file must carry the name of its command"

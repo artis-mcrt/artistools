@@ -21,7 +21,7 @@ from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
-defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"
+defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:

@@ -407,7 +407,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.set_mpl_style()
 
-    defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
+    defaultoutputfile = Path("plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf")
 
     args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
@@ -437,7 +437,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         for timestep in timesteplist:
-            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+            outputfile = str(args.outputfile).format(
+                cell=modelgridindex, modelgridindex=modelgridindex, timestep=timestep
+            )
             if plot_celltimestep(
                 modelpath,
                 timestep,
