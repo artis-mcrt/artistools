@@ -104,9 +104,12 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     ndimensions = inputparams["n_dimensions"]
 
     estimators: dict[tuple[int, int], t.Any] = {}
+    # a classic estimator file numbers its timesteps from zero, thus a folder of a restarted run needs
+    # the offset that its log gives. Two folders that both start at zero write the same keys, and the
+    # later one takes the place of the earlier. folderofkey names the folder that wrote each key, so
+    # that this reports the loss rather than passing wrong data to a plot
+    folderofkey: dict[tuple[int, int], Path] = {}
     for estfilepath in estimfiles:
-        # the run log gives the first timestep of the folder. A folder with no log starts at zero, which is
-        # correct when the run was not restarted.
         if str(estfilepath.parent) in first_timesteps_in_dir:
             timestep = first_timesteps_in_dir[str(estfilepath.parent)]
         else:
@@ -121,6 +124,17 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
                 modelgridindex = int(row[0])
 
                 estimcell: dict[str, t.Any] = {}
+                previousfolder = folderofkey.get((timestep, modelgridindex))
+                if previousfolder is not None and previousfolder != estfilepath.parent:
+                    msg = (
+                        f"{estfilepath.parent} and {previousfolder} both give timestep {timestep} of cell "
+                        f"{modelgridindex}. A restarted run numbers each folder from its own first "
+                        "timestep, and output_0-0.txt gives that number. One of these folders holds no "
+                        "such record, thus its data would take the place of the other folder's"
+                    )
+                    raise ValueError(msg)
+
+                folderofkey[timestep, modelgridindex] = estfilepath.parent
                 estimators[timestep, modelgridindex] = estimcell
 
                 if ndimensions == 1:

@@ -1163,3 +1163,51 @@ def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[st
     assert "Did you mean Te?" in message
     assert "time, timestep, velocity, and beta" in message
     assert "--listvariables" in message
+
+
+def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: int | None) -> Path:
+    """Write a classic model of two run folders, as a restarted run leaves behind."""
+    import shutil
+
+    source = at.get_path("testdata") / "test-classicmode_3d"
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(source / name, tmp_path / name)
+    shutil.copy(source / "job0" / "output_0-0.txt", tmp_path / "output_0-0.txt")
+
+    # each row gives a cell index, TR, Te, W, TJ, and then the nine rates that the reader takes from the end
+    rows = "\n".join(" ".join([str(mgi), "5000", "4000", "0.5", "4500", *["0.0"] * 9]) for mgi in (0, 1))
+    for folder in ("job0", "job1"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "estimators_0000.out").write_text(rows + "\n")
+
+    if secondfolderfirsttimestep is not None:
+        (tmp_path / "job1" / "output_0-0.txt").write_text(
+            f"[debug] update_packets: updating packet 0 for timestep {secondfolderfirsttimestep}\n"
+        )
+
+    return tmp_path
+
+
+def test_classic_restart_without_an_offset_is_refused(tmp_path: Path) -> None:
+    """Two run folders that both start at timestep zero write the same keys.
+
+    The later folder took the place of the earlier one in the dictionary, thus a plot showed the wrong
+    data and said nothing.
+    """
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
+    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=None)
+
+    with pytest.raises(ValueError, match="both give timestep 0 of cell 0"):
+        read_classic_estimators(modelpath)
+
+
+def test_classic_restart_with_an_offset_reads_both_folders(tmp_path: Path) -> None:
+    """A folder whose log gives its first timestep keeps its own keys, thus the read succeeds."""
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
+    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=2)
+
+    estimators = read_classic_estimators(modelpath)
+    assert estimators is not None
+    assert sorted(estimators) == [(0, 0), (0, 1), (2, 0), (2, 1)]

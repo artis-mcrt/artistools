@@ -108,8 +108,19 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     """Return whether the path is a reference spectrum file and not an ARTIS model.
 
     This mirrors path_is_reference_lightcurve, so that the two commands classify a path the same way.
+
+    A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
+    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
     """
-    return not path_is_artis_model(filepath) and find_reference_spectrum_file_or_none(filepath) is not None
+    path = Path(filepath)
+    if path.is_dir() or find_reference_spectrum_file_or_none(path) is None:
+        return False
+
+    if not path_is_artis_model(path):
+        return True
+
+    # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
+    return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
 
 
 def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:

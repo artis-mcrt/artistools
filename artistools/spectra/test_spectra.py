@@ -645,3 +645,25 @@ def test_get_spectra_rejects_averaging_over_both_angles() -> None:
             average_over_phi=True,
             average_over_theta=True,
         )
+
+
+def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> None:
+    """A user can name reference data with the .out suffix that ARTIS uses for its own output.
+
+    path_is_artis_model reads that suffix, thus the predicate sent such a file to the ARTIS reader and
+    the command drew nothing. The folder decides: an ARTIS run holds input.txt beside its output.
+    """
+    import shutil
+
+    from artistools.spectra.plotspectra import path_is_reference_spectrum
+
+    reference = at.get_path("artistools_dir") / "data" / "refspectra" / "2010lp_20110928_fors2.txt"
+    shutil.copy(reference, tmp_path / "myref.out")
+    shutil.copy(reference, tmp_path / "myref.txt")
+
+    assert path_is_reference_spectrum(tmp_path / "myref.out")
+    assert path_is_reference_spectrum(tmp_path / "myref.txt")
+
+    # the output of a real run keeps its own reading, whether the user names the folder or the file
+    assert not path_is_reference_spectrum(modelpath)
+    assert not path_is_reference_spectrum(modelpath / "spec.out")
