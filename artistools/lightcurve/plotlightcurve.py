@@ -44,6 +44,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
 from artistools.misc import color_arg
+from artistools.misc import exit_with_error
 from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import path_is_artis_model
@@ -1580,16 +1581,30 @@ def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | 
 
     # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
     # command that plots reference data alone still takes a range in days
-    artispath = next((path for path in modelpaths if path_is_artis_model(path)), None)
-    if artispath is None:
+    artispaths = [path for path in modelpaths if path_is_artis_model(path)]
+    if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
             raise ValueError(msg)
         rangemin, rangemax = dayrange
     else:
         _, _, rangemin, rangemax = at.get_time_range(
-            artispath, timestep_range_str=args.timestep, timedays_range_str=args.timedays
+            artispaths[0], timestep_range_str=args.timestep, timedays_range_str=args.timedays
         )
+
+        # the plot holds one time axis, thus one range in days must serve every model. A timestep
+        # names different days on a different timestep grid, and applying the days of the first
+        # model would show another timestep of the second without a word
+        if args.timestep is not None:
+            for otherpath in artispaths[1:]:
+                _, _, othermin, othermax = at.get_time_range(otherpath, timestep_range_str=args.timestep)
+                if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
+                    exit_with_error(
+                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
+                        f"{at.get_model_name(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
+                        f"{at.get_model_name(otherpath)}, because their timestep grids differ. Give the "
+                        "range in days with -timedays, which means the same for every model"
+                    )
 
     if args.timemin is None:
         args.timemin = rangemin

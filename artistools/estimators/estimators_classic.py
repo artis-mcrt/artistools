@@ -5,6 +5,7 @@ from pathlib import Path
 
 import artistools as at
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import firstexisting
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:
@@ -74,24 +75,29 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     return first_timesteps_in_dir
 
 
-def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
-    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
-    # the trailing wildcard accepts a compressed file, which at.zopen below reads. The macroatom reader
-    # globs the same way.
-    # the trailing wildcard also matches a sibling such as estimators_0000.out.bak, which shares the
-    # stem of the live file and wins the sort. Thus only zopen's own formats take part
-    estimpaths = (
-        path
+def get_classic_estimator_files(modelpath: Path) -> list[Path]:
+    """Return one file for each rank, from the model folder and its run subfolders.
+
+    The trailing wildcard accepts a compressed file, and also a sibling such as .bak, thus only zopen's
+    own formats take part. Two forms of one rank file share a stem, and firstexisting picks between
+    them, thus its order rules here as it does in every other reader.
+    """
+    stems = {
+        path.with_suffix("") if path.suffix != ".out" else path
         for pattern in ("estimators_????.out*", "*/estimators_????.out*")
         for path in Path(modelpath).glob(pattern)
         if path.suffix == ".out" or path.suffix in COMPRESSED_EXTENSIONS
+    }
+
+    return sorted(
+        firstexisting(stem.name, folder=stem.parent, tryzipped=True, search_subfolders=False) for stem in stems
     )
-    # one entry per rank file: a plain file and its compressed copy share a stem, and the plain file wins
-    byplainname: dict[Path, Path] = {}
-    for path in sorted(estimpaths):
-        byplainname.setdefault(path.with_suffix("") if path.suffix != ".out" else path, path)
-    estimfiles = sorted(byplainname.values())
+
+
+def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
+    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    estimfiles = get_classic_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")
         return None

@@ -1558,3 +1558,36 @@ def test_lightcurve_day_range_of_a_model_clamps_to_its_timesteps() -> None:
     assert withmodel.timemax < 300.0
     assert np.isclose(reference.timemin, 260.0)
     assert np.isclose(reference.timemax, 300.0)
+
+
+CLASSIC1DPATH = at.get_path("testdata") / "test-classicmode_1d"
+
+
+@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
+def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
+    """A timestep names different days on a different timestep grid.
+
+    The plot holds one time axis, thus the days of the first model filtered every model, and the second
+    curve showed another timestep without a word. Two grids that disagree now stop the command, and
+    -timedays serves both because a day means the same everywhere.
+    """
+    import argparse
+
+    from artistools.lightcurve.plotlightcurve import apply_time_range_args
+
+    def build(timestep: str | None, timedays: str | None) -> argparse.Namespace:
+        return argparse.Namespace(timestep=timestep, timedays=timedays, timemin=None, timemax=None)
+
+    # one grid, or the same grid twice, resolves the timestep as before
+    sameargs = build("40", None)
+    apply_time_range_args(sameargs, [modelpath, modelpath])
+    assert sameargs.timemin is not None
+
+    with pytest.raises(SystemExit) as excinfo:
+        apply_time_range_args(build("40", None), [modelpath, CLASSIC1DPATH])
+    assert excinfo.value.code == 1
+
+    # a range in days means the same for every model, thus it needs no agreement between the grids
+    daysargs = build(None, "260-300")
+    apply_time_range_args(daysargs, [modelpath, CLASSIC1DPATH])
+    assert daysargs.timemin is not None
