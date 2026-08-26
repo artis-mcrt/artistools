@@ -12,21 +12,37 @@ from types import MappingProxyType
 
 if t.TYPE_CHECKING:
     from collections.abc import Generator
+    from collections.abc import Sequence
 
-# Every line here is a command that a test runs against the test model, thus no example can go stale.
-EXAMPLES: tuple[tuple[str, str], ...] = (
-    ("plotspectra . -t 300", "the spectrum at 300 days"),
-    ("plotlightcurves .", "the light curve of a model"),
-    ("plotestimators -modelpath . -p Te TR -t 300", "two estimator variables against velocity"),
-    ("plotestimators -modelpath . --listvariables", "every variable that a model holds"),
-    ("plotnltepops -modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),
-)
+
+def get_examples() -> tuple[tuple[str, str], ...]:
+    """Return every example of the tree as (command line, description), for the help and for the test."""
+
+    def walk(tree: CommandTree, path: str) -> "Generator[tuple[str, str]]":
+        for name, spec in tree.items():
+            if isinstance(spec, dict):
+                yield from walk(spec, f"{path}{name} ")
+            else:
+                yield from ((f"{path}{name} {arguments}", description) for arguments, description in spec.examples)
+
+    return tuple(walk(subcommandtree, ""))
+
+
+def get_command_epilog(subcommand: str, spec: "CommandSpec") -> str | None:
+    """Return the examples of one command for its own help, or None when it has none."""
+    if not spec.examples:
+        return None
+
+    lines = [f"  artistools {subcommand} {arguments}  # {description}" for arguments, description in spec.examples]
+
+    return "examples (a path of . reads the model in the working folder):\n" + "\n".join(lines)
 
 
 def get_epilog() -> str:
     """Return the examples and the pointer to the help of one command."""
-    width = max(len(command) for command, _ in EXAMPLES)
-    lines = [f"  artistools {command:{width}}  # {description}" for command, description in EXAMPLES]
+    examples = get_examples()
+    width = max(len(command) for command, _ in examples)
+    lines = [f"  artistools {command:{width}}  # {description}" for command, description in examples]
 
     return (
         "examples (a path of . reads the model in the working folder):\n"
@@ -59,6 +75,11 @@ class CommandSpec:
 
     note: str = ""
     """Extra text for the help of the command alone. The listing of one line has no room for it."""
+
+    examples: tuple[tuple[str, str], ...] = ()
+    """Example invocations as (arguments, description) pairs. A test runs each one against the test
+    model, thus an example cannot name an argument that a later commit takes away. A path of "."
+    reads the model in the working folder."""
 
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
@@ -188,6 +209,10 @@ subcommandtree: CommandTree = {
         "estimators.plotestimators",
         script="plotartisestimators",
         helptext="Plot ARTIS estimators.",
+        examples=(
+            ("-modelpath . -p Te TR -t 300", "two estimator variables against velocity"),
+            ("-modelpath . --listvariables", "every variable that a model holds"),
+        ),
         aliases=("estimators",),
     ),
     "plotinitialcomposition": CommandSpec(
@@ -203,6 +228,7 @@ subcommandtree: CommandTree = {
         "lightcurve.plotlightcurve",
         script="plotartislightcurve",
         helptext="Plot ARTIS light curves.",
+        examples=((".", "the light curve of a model"),),
         aliases=("lc", "plotlightcurve"),
     ),
     "plotlinefluxes": CommandSpec(
@@ -214,6 +240,7 @@ subcommandtree: CommandTree = {
         "nltepops.plotnltepops",
         script="plotartisnltepops",
         helptext="Plot ARTIS non-LTE populations.",
+        examples=(("-modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),),
         note=(
             "Give a time with -timedays or -timestep. A model of more than one cell also needs a cell,"
             " which -modelgridindex or -velocity gives."
@@ -226,6 +253,7 @@ subcommandtree: CommandTree = {
         "spectra.plotspectra",
         script="plotartisspectrum",
         helptext="Plot spectra from ARTIS and reference data.",
+        examples=((". -t 300", "the spectrum at 300 days"),),
         aliases=("spec",),
     ),
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
@@ -402,34 +430,69 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
         node = node[word]
 
     assert isinstance(node, CommandSpec)
-    parser = argparse.ArgumentParser(prog=scriptname, description=node.helptext, formatter_class=CustomArgHelpFormatter)
+    parser = SuggestingArgumentParser(
+        prog=scriptname, description=node.helptext, formatter_class=CustomArgHelpFormatter
+    )
     addcommandargs(parser, node)
 
     return parser
 
 
 class SuggestingArgumentParser(argparse.ArgumentParser):
-    """Name the closest subcommand when the given one does not match.
+    """Name the closest subcommand, and the closest argument, when the given one does not match.
 
-    Python 3.14 does this with suggest_on_error, which Python 3.13 does not take. CI runs both, thus
-    this gives the same help on each.
+    Python 3.14 suggests a subcommand with suggest_on_error, which Python 3.13 does not take, and
+    neither version suggests an argument. CI runs both, thus this gives the same help on each.
     """
+
+    def get_visible_flags(self) -> list[str]:
+        """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
+        return [flag for action in self._actions if action.help != argparse.SUPPRESS for flag in action.option_strings]
+
+    @t.override
+    def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
+        self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
+    ) -> argparse.Namespace:
+        """Parse the arguments, and name the closest flag when one is not recognised.
+
+        The dispatcher reports a leftover flag of a subcommand, thus the suggestion must come from the
+        arguments of that subcommand, which the namespace names as argparser.
+        """
+        parsednamespace, leftover = self.parse_known_args(args, namespace)
+        assert parsednamespace is not None
+        if leftover:
+            from artistools.misc import suggest_names
+
+            message = f"unrecognized arguments: {' '.join(leftover)}"
+            flag = next((word.partition("=")[0] for word in leftover if word.startswith("-")), None)
+            subparser = getattr(parsednamespace, "argparser", None) or self
+            if flag is not None and isinstance(subparser, SuggestingArgumentParser):
+                message += suggest_names(flag, subparser.get_visible_flags())
+            self.error(message)
+
+        return parsednamespace
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
-        """Add a suggestion to an invalid-choice message, then report it as argparse does."""
+        """Add a suggestion to an invalid-choice or an ambiguous-option message, as argparse does not."""
         import re
 
         from artistools.misc import suggest_names
 
         given = re.search(r"invalid choice: '([^']*)'", message)
         _, _, choicetext = message.partition("choose from")
-        if given is not None and choicetext:
+        if given is not None and choicetext and "maybe you meant" not in message:
             # Python 3.13 gives the choices without quotation marks, and Python 3.14 gives them with
             choices = [choice.strip(" '\")") for choice in choicetext.split(",")]
             if suggestion := suggest_names(given.group(1), choices):
                 # the list of every choice is long, thus the suggestion goes in front of it
                 message = message.replace(" (choose from", f"{suggestion} (choose from", 1)
+
+        # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
+        # match. A suggestion from the real flags says what the user meant
+        ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
+        if ambiguous is not None:
+            message += suggest_names(ambiguous.group(1), self.get_visible_flags())
 
         super().error(message)
 
@@ -455,7 +518,9 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
         parser.print_help()
 
     parser.set_defaults(func=func)
-    subparsers = parser.add_subparsers(dest="subcommand", required=False, metavar="command")
+    subparsers = parser.add_subparsers(
+        dest="subcommand", required=False, metavar="command", parser_class=SuggestingArgumentParser
+    )
 
     for subcommand, spec in subcommandtree.items():
         if isinstance(spec, dict):
@@ -475,6 +540,7 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
             subparser = subparsers.add_parser(
                 subcommand,
                 description=f"{spec.helptext} {spec.note}".strip(),
+                epilog=get_command_epilog(subcommand, spec),
                 aliases=spec.aliases,
                 formatter_class=CustomArgHelpFormatter,
                 **addparserkwargs,

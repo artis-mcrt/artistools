@@ -29,10 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     }
     if sys.version_info >= (3, 14):
         parserkwargs["suggest_on_error"] = True  # suggest close matches for mistyped subcommands
-        parser = argparse.ArgumentParser(**parserkwargs)
-    else:
-        # Python 3.13 takes no suggest_on_error, thus the subclass gives the same help
-        parser = SuggestingArgumentParser(**parserkwargs)
+    # the subclass suggests a subcommand on Python 3.13, and a flag on every version
+    parser = SuggestingArgumentParser(**parserkwargs)
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
 
     addsubparsers(parser, subcommandtree)

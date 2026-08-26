@@ -1471,7 +1471,7 @@ def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixtur
     assert "-timestep" not in parser.format_help()
 
 
-@pytest.mark.parametrize("example", [command for command, _ in at.commands.EXAMPLES])
+@pytest.mark.parametrize("example", [command for command, _ in at.commands.get_examples()])
 def test_help_examples_run(example: str, tmp_path: Path) -> None:
     """Every example of the help text must run, thus no example can name an argument that went away.
 
@@ -1487,13 +1487,19 @@ def test_help_shows_the_examples() -> None:
     """The help text must carry the examples and the way to read the help of one command."""
     import artistools.__main__
 
-    helptext = artistools.__main__.build_parser().format_help()
+    parser = artistools.__main__.build_parser()
+    helptext = parser.format_help()
 
-    for command, description in at.commands.EXAMPLES:
+    for command, description in at.commands.get_examples():
         assert command in helptext, command
         assert description in helptext, description
 
     assert 'Run "artistools <command> --help"' in helptext
+
+    # the help of a command with examples shows them in its own epilog as well
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    spectrahelp = subactions[0].choices["plotspectra"].format_help()
+    assert "artistools plotspectra . -t 300" in spectrahelp
 
 
 def test_help_wraps_a_description_and_keeps_the_epilog_lines() -> None:
@@ -1747,3 +1753,36 @@ def test_quiet_short_flag_and_slow_command_timing(
     artistools.__main__.main(argsraw=argsraw)
     captured = capsys.readouterr()
     assert re.search(r"The command took \d+\.\d seconds", captured.err)
+
+
+def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) -> None:
+    """A flag that no command takes must name the closest flags of the command that was run.
+
+    The message was "unrecognized arguments: --listvaraibles" with no suggestion, and an ambiguous
+    short flag listed -t because argparse reads -timeday as -t with a joined value.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
+    message = capsys.readouterr().err
+    assert "unrecognized arguments: --listvaraibles" in message
+    assert "Did you mean --listvariables" in message
+
+    # the suggestion comes from the arguments of the subcommand, not from the top-level parser
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", ".", "-timeday", "300"])
+    message = capsys.readouterr().err
+    assert "Did you mean -timedays" in message
+
+    # a per-command console script gives the same help
+    scriptparser = at.commands.build_script_parser("plotartisspectrum")
+    assert scriptparser is not None
+    with pytest.raises(SystemExit):
+        scriptparser.parse_args([".", "--emissionabsorbtion"])
+    assert "Did you mean --emissionabsorption" in capsys.readouterr().err
+
+    # a suggestion never names a hidden alias
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", ".", "--plotcmfx"])
+    assert "-dist_mpc" not in capsys.readouterr().err
