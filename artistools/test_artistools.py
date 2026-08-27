@@ -2160,3 +2160,23 @@ def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) ->
     likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
     at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
     assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
+
+
+def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFixture[str]) -> None:
+    """import_optional names the command that installs a package, thus a traceback adds nothing.
+
+    The handler of the dispatcher took an AssertionError, a FileNotFoundError, and a ValueError, thus
+    a command that needs pypdf or imageio printed a traceback above that message.
+    """
+    import artistools.__main__
+
+    def raise_missing(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
+        at.import_optional("nosuchpackage")
+
+    with mock.patch.object(at.showtimesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath)])
+
+    assert exitinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "This command needs nosuchpackage" in message
+    assert "Traceback" not in message

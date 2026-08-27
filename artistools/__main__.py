@@ -99,10 +99,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     try:
         run_command(func, args)
-    except (AssertionError, FileNotFoundError, ValueError) as exc:
+    except (AssertionError, FileNotFoundError, ModuleNotFoundError, ValueError) as exc:
         if os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
-        # a bad argument or a missing input file is a user problem, thus report it without a traceback.
+        # a bad argument, a missing input file, or a missing optional package is a user problem, thus
+        # report it without a traceback. import_optional names the command that installs the package.
         # An assert that carries no message is an internal check, thus say so rather than let the user
         # read it as a mistake of their own, and name the variable that gives the full traceback
         from artistools.misc import print_error
