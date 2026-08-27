@@ -195,6 +195,18 @@ def parse_timedays_range(timedays_range_str: str | float) -> tuple[float, float]
         raise ValueError(msg) from exc
 
 
+def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
+    """Return the message that names the timesteps of a model, for a timestep that is not one of them."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+
+    return (
+        f"Timestep {timestep} is not in this model. It has {len(tstarts)} timesteps, 0 to "
+        f"{len(tstarts) - 1}, which cover {tstarts[0]:.2f} to {tends[-1]:.2f} days. "
+        '"last" names the final timestep'
+    )
+
+
 def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
     """Return the timestep that a token names, resolving a keyword such as "last"."""
     token = token.strip()
@@ -248,11 +260,7 @@ def get_time_range(
 
         # a range that overshoots the end still starts inside the run, thus only the start must be in it
         if timestepmin > dictvars["last"]:
-            msg = (
-                f"Timestep {timestepmin} is not in this model. It has {len(tmids)} timesteps, 0 to "
-                f"{dictvars['last']}, which cover {tstarts[0]:.2f} to {tends[-1]:.2f} days. "
-                '"last" names the final timestep'
-            )
+            msg = get_bad_timestep_message(modelpath, timestepmin)
             raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:

@@ -1845,3 +1845,18 @@ def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
 
     assert outfolder.is_dir(), "the command must make the folder that -o names"
     assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
+
+
+def test_timesteps_command_refuses_a_timestep_outside_the_model() -> None:
+    """A timestep that the model does not hold must name the range that it holds.
+
+    The command indexed the list of times with the given value, thus 999 gave an IndexError and -1
+    read the last row of the list and gave it the wrong label.
+    """
+    for timestep in ("999", "-1"):
+        with pytest.raises(ValueError, match=r"is not in this model\. It has 100 timesteps, 0 to 99"):
+            at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+
+    # the timesteps at each end of the model are in it
+    for timestep in ("0", "99", "last"):
+        at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])

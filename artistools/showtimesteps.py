@@ -15,6 +15,7 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
+from artistools.misc.timesteps import get_bad_timestep_message
 from artistools.misc.timesteps import parse_timestep_token
 
 
@@ -67,6 +68,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif args.timestep is not None:
         lasttimestep = len(get_timestep_times(args.modelpath, loc="mid")) - 1
         timestep = parse_timestep_token(args.timestep, {"last": lasttimestep})
+        if not 0 <= timestep <= lasttimestep:
+            # a negative index reads a row from the end of the list, thus it must not reach the lookup
+            msg = get_bad_timestep_message(args.modelpath, timestep)
+            raise ValueError(msg)
+
         print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
     else:
         print_product(args, get_timesteps_table(args.modelpath))
