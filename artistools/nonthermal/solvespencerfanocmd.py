@@ -165,12 +165,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    # the import stands in front of the work, thus a missing module stops the command at once
-    pynt = at.import_optional("pynonthermal")
-
     if args.plotstats:
+        # this plot reads a stats file that a former run wrote, thus it calls no solver
         make_ntstats_plot(args.plotstats)
         return
+
+    # the import stands in front of the work, thus a missing module stops the command at once
+    pynt = at.import_optional("pynonthermal")
 
     modelpath = Path(args.modelpath)
 

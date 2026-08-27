@@ -46,9 +46,25 @@ def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame |
     return df.drop(cs.by_index(-1)) if isnullcol.item() else df
 
 
+def open_file(filepath: Path | str) -> None:
+    """Open a file in the application that the platform gives it."""
+    if sys.platform == "win32":
+        # Windows has no opener command that takes a path as an argument, thus it takes its own call
+        os.startfile(filepath)  # ruff:ignore[start-process-with-no-shell]
+        return
+
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    # the command is our own platform opener and a path that the caller has written
+    subprocess.run([get_open_command(), str(filepath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
+
+
 def get_open_command() -> str:
     """Return the command that opens a file with its default application on this platform."""
-    return "open" if sys.platform == "darwin" else "xdg-open"
+    if sys.platform == "darwin":
+        return "open"
+
+    return "start" if sys.platform == "win32" else "xdg-open"
 
 
 def print_saved(filepath: Path | str) -> None:
@@ -541,14 +557,6 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     print(f"No metadata found for: {filepath}")
 
     return {}
-
-
-def open_file(filepath: Path | str) -> None:
-    """Open a file in the application that the platform gives it."""
-    import subprocess  # ruff:ignore[suspicious-subprocess-import]
-
-    # the command is our own platform opener and a path that the caller has written
-    subprocess.run([get_open_command(), str(filepath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
 
 
 def merge_pdf_files(pdf_files: list[str]) -> str:

@@ -1860,3 +1860,24 @@ def test_timesteps_command_refuses_a_timestep_outside_the_model() -> None:
     # the timesteps at each end of the model are in it
     for timestep in ("0", "99", "last"):
         at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+
+
+def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A -o path that has a file extension names the gif, and its folder then holds the frames.
+
+    A path such as movie.gif became a folder, thus the file that the user asked for was never written.
+    """
+    gifpath = tmp_path / "movie.gif"
+    at.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
+    )
+
+    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
+    assert list(gifpath.parent.glob("plotspherical_*.png")), "the frames go in the folder of the gif"
+
+    # a path with no file extension still names a folder that holds the gif and the frames
+    outfolder = tmp_path / "movie"
+    at.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
+    )
+    assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"

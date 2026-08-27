@@ -153,12 +153,29 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     at.print_saved(tmp_path / "with space.pdf")
     assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
 
-    # the other platform gets its own verb, thus a macOS run also covers the Linux line
-    otherplatform = "linux" if sys.platform == "darwin" else "darwin"
-    otherverb = "open" if otherplatform == "darwin" else "xdg-open"
-    monkeypatch.setattr(sys, "platform", otherplatform)
-    at.print_saved("out.pdf")
-    assert capsys.readouterr().out == f"{otherverb} out.pdf\n"
+    # each platform gets its own verb, thus a run on one of them covers the lines of the others
+    for platform, verb in (("darwin", "open"), ("linux", "xdg-open"), ("win32", "start")):
+        monkeypatch.setattr(sys, "platform", platform)
+        assert at.misc.fileio.get_open_command() == verb
+        at.print_saved("out.pdf")
+        assert capsys.readouterr().out == f"{verb} out.pdf\n"
+
+
+def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Windows has no xdg-open, thus it opens a file through its own call and not through a command."""
+    somefile = tmp_path / "out.pdf"
+    somefile.touch()
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    with mock.patch("subprocess.run") as mockrun:
+        at.misc.open_file(somefile)
+    assert mockrun.call_args.args[0] == ["xdg-open", str(somefile)]
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    with mock.patch.object(os, "startfile", create=True) as mockstart, mock.patch("subprocess.run") as mockrun:
+        at.misc.open_file(somefile)
+    assert mockstart.call_args.args[0] == somefile
+    assert not mockrun.called, "Windows must not run a command that it does not have"
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------

@@ -341,6 +341,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"
+        # a -o path that has a file extension names the gif itself. A path without one names a folder,
+        # which then holds the gif and its frames
+        givenpath = Path(args.outputfile) if args.outputfile else Path()
+        gifpath = givenpath if givenpath.suffix and not givenpath.is_dir() else givenpath / "sphericalplot.gif"
     elif args.timestep is not None:
         time_ranges = [
             (tstarts[ts], tends[ts], f"timestep {ts}")
@@ -382,10 +386,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
         if args.makegif:
-            # a gif needs a frame for each time range, thus the given path always names their folder
-            outfolder = Path(args.outputfile) if args.outputfile else Path()
-            outfolder.mkdir(parents=True, exist_ok=True)
-            outpath = outfolder / defaultfilename
+            # a gif needs a frame for each time range, thus the frames go in the folder of the gif
+            gifpath.parent.mkdir(parents=True, exist_ok=True)
+            outpath = gifpath.parent / defaultfilename
         else:
             # a path that has no file extension names a folder, which this makes
             outpath = resolve_outputfile(args.outputfile, defaultfilename)
@@ -399,14 +402,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outputfilenames.append(outfilename)
 
     if args.makegif:
-        gifname = (
-            Path(args.outputfile) / "sphericalplot.gif"
-            if Path(args.outputfile).is_dir()
-            else args.outputfile.format(outformat=outformat)
-        )
-        at.write_gif(gifname, outputfilenames, duration=(1000 * 1 / 1.5))
+        at.write_gif(gifpath, outputfilenames, duration=(1000 * 1 / 1.5))
         if args.open:
-            at.misc.open_file(gifname)
+            at.misc.open_file(gifpath)
 
 
 if __name__ == "__main__":
