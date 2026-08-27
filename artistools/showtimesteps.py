@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_quiet
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import get_model_name
@@ -54,7 +53,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser, default=Path())
     addarg_timedays(parser, kind="float", helptext="Name the timestep that covers this time in days")
     addarg_timestep(parser, kind="rangestr", helptext="Give the days that this timestep covers, e.g. 40 or last")
-    addarg_quiet(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

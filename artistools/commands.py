@@ -405,8 +405,12 @@ def get_subcommand_of_script(scriptname: str) -> tuple[str, ...]:
 
 def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
     """Add the arguments of one subcommand to a parser, and record how to run it."""
+    from artistools.misc import addarg_quiet
+
     submodule = importlib.import_module(f"artistools.{spec.module}")
     submodule.addargs(parser)
+    # run_command alone implements --quiet, thus every command takes it and no module declares it
+    addarg_quiet(parser)
     # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
     # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
     # what the dispatcher gives it

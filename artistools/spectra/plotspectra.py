@@ -36,7 +36,6 @@ from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
 from artistools.misc import addarg_pathoption
-from artistools.misc import addarg_quiet
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
@@ -1620,7 +1619,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser)
 
     addarg_show(parser)
-    addarg_quiet(parser)
     addarg_verbose(parser)
 
     parser.add_argument(

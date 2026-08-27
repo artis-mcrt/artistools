@@ -1813,6 +1813,27 @@ def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[
     ]
 
 
+def test_every_command_takes_quiet() -> None:
+    """run_command alone implements --quiet, thus every command must take it.
+
+    Six commands of 34 declared the flag, and the other 28 refused -q. No module reads args.quiet,
+    thus addcommandargs adds the flag and no module declares it.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    for subcommand, subparser in subactions[0].choices.items():
+        flagsofdest = {
+            action.dest: action.option_strings
+            for action in subparser._actions  # ruff:ignore[private-member-access]
+        }
+        if subparser.get_default("argparser") is None:
+            continue  # a group of subcommands holds no arguments of its own
+
+        assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
+
+
 def test_verbose_means_the_same_on_every_command() -> None:
     """-v shows the detail of each step, thus it names no other argument on any command.
 

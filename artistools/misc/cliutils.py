@@ -634,6 +634,8 @@ def parse_cli_args(
 
     parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
+    # the dispatcher adds --quiet to the parser that it builds, thus a direct call needs it here
+    addarg_quiet(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)

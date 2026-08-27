@@ -40,7 +40,6 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_outputfile
-from artistools.misc import addarg_quiet
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
@@ -1328,7 +1327,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     addarg_show(parser)
-    addarg_quiet(parser)
     addarg_verbose(parser)
 
     addarg_dpi(parser, default=600)
