@@ -39,6 +39,7 @@ from artistools.misc.cliutils import print_error as print_error
 from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action
+from artistools.misc.cliutils import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
@@ -58,6 +59,7 @@ from artistools.misc.dirbins import get_viewingdirectionbincount as get_viewingd
 from artistools.misc.dirbins import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
+from artistools.misc.fileio import combine_frames as combine_frames
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none

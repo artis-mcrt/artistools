@@ -410,6 +410,7 @@ def save_figure(
     args: argparse.Namespace | None = None,
     show: bool = False,
     openfile: bool = False,
+    isframe: bool = False,
     **savefig_kwargs: t.Any,
 ) -> None:
     """Save the figure to outpath, report the path, and close the figure.
@@ -417,7 +418,13 @@ def save_figure(
     A caller passes args, and the --show and --open flags of the command then apply. With show, the
     figure opens in a window first, thus a resize there reaches the saved file. With openfile, the
     saved file opens in its default application, thus --open needs no copied command.
+
+    isframe says that this figure is one part of a product that combine_frames makes, e.g. a frame of a
+    gif. Such a figure does not open on its own, because the product opens in its place.
     """
+    if isframe:
+        args = None
+
     if args is not None:
         show = show or getattr(args, "show", False)
         openfile = openfile or getattr(args, "open", False)

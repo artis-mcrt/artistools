@@ -608,6 +608,38 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
     print(f"Created gif: {giffile}")
 
 
+def combine_frames(
+    framepaths: "Sequence[str | Path]",
+    productpath: Path | str | None,
+    *,
+    openfile: bool = False,
+    gifduration: float | None = None,
+) -> Path | str | None:
+    """Combine the frames of a run into one product, and return the path of that product.
+
+    A gifduration makes a gif at productpath, and no gifduration merges the pdf files. One frame alone
+    is the product of the run. Call this for a run that combines its frames: the frames of such a run
+    do not open one at a time, thus this opens the product when --open asks for it.
+    """
+    if not framepaths:
+        return None
+
+    if len(framepaths) == 1:
+        # a run that holds data for one frame alone makes one figure, and that figure is the product
+        product: Path | str = framepaths[0]
+    elif gifduration is not None:
+        assert productpath is not None
+        write_gif(productpath, framepaths, duration=gifduration)
+        product = productpath
+    else:
+        product = merge_pdf_files([str(framepath) for framepath in framepaths])
+
+    if openfile:
+        open_file(product)
+
+    return product
+
+
 def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
     """Return the device and inode numbers of a file, or None if it does not exist.
 

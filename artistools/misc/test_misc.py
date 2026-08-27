@@ -1415,3 +1415,67 @@ def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
     finally:
         if original is not None:
             mp.set_start_method(original, force=True)
+
+
+def test_resolve_frameset_paths(tmp_path: Path) -> None:
+    """The path arithmetic of a set of frames must give one answer for every command.
+
+    Three commands wrote this by hand, and each one broke the rule of -o in its own way.
+    """
+    framename = "plot_{timestep:03d}.png"
+
+    # a -o path with no file extension names a folder, which holds the frames and the product
+    frametemplate, productpath = at.resolve_frameset_paths(
+        tmp_path / "frames", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert frametemplate == tmp_path / "frames" / framename
+    assert productpath == tmp_path / "frames" / "movie.gif"
+    assert (tmp_path / "frames").is_dir(), "the folder of the frames must exist"
+
+    # a -o path that has a file extension names the product, thus the frames go beside it
+    frametemplate, productpath = at.resolve_frameset_paths(
+        tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert productpath == tmp_path / "out" / "movie.gif"
+    assert frametemplate == tmp_path / "out" / framename
+
+    # the folder of the product can carry a suffix of its own
+    frametemplate, productpath = at.resolve_frameset_paths(
+        tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert productpath == tmp_path / "results.v1" / "movie.gif"
+    assert (tmp_path / "results.v1").is_dir()
+
+    # a merge names its own product, thus this names none
+    frametemplate, productpath = at.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename)
+    assert productpath is None
+    assert frametemplate == tmp_path / "m" / framename
+
+    # a name that holds no field cannot take more than one frame
+    with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):
+        at.resolve_frameset_paths(tmp_path / "one.png", framecount=3, framename=framename)
+
+    # one frame alone may take such a name
+    frametemplate, _ = at.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
+    assert frametemplate == tmp_path / "one.png"
+
+
+def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
+    """The frames of a run do not open one at a time, thus the product opens in their place."""
+    framepaths = [tmp_path / f"frame{i}.png" for i in range(3)]
+    for framepath in framepaths:
+        framepath.write_bytes(b"")
+
+    # one frame alone is the product of the run
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        product = at.misc.combine_frames(framepaths[:1], tmp_path / "movie.gif", openfile=True)
+    assert product == framepaths[0]
+    assert mockopen.call_args.args[0] == framepaths[0]
+
+    # no frame gives no product
+    assert at.misc.combine_frames([], None, openfile=True) is None
+
+    # --open takes nothing when the caller does not ask for it
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        at.misc.combine_frames(framepaths[:1], None, openfile=False)
+    assert not mockopen.called

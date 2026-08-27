@@ -663,6 +663,40 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
     return outputfile
 
 
+def resolve_frameset_paths(
+    outputfile: Path | str | None, *, framecount: int, framename: str, productname: str | None = None
+) -> tuple[Path, Path | None]:
+    """Return the path template of one frame, and the path of the file that holds every frame.
+
+    A run that draws several figures combines them into one product, e.g. a gif or a merged pdf.
+    productname names that product. None says that the combining step names it, as merge_pdf_files
+    takes the names of the first frame and the last one.
+
+    A -o path that has a file extension names the product itself, thus the frames go in the folder that
+    holds it. A -o path with no file extension names a folder. This makes that folder either way.
+    """
+    givenpath = Path(outputfile) if outputfile else Path()
+
+    if productname is not None and givenpath.suffix and not givenpath.is_dir():
+        # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
+        # and let resolve_outputfile read it as a folder and not as the name of one frame
+        givenpath.parent.mkdir(parents=True, exist_ok=True)
+
+        return resolve_outputfile(givenpath.parent, framename), givenpath
+
+    frametemplate = resolve_outputfile(outputfile, framename)
+    if framecount > 1 and "{" not in frametemplate.name:
+        msg = (
+            f"'{frametemplate.name}' names one file, and this command writes {framecount} frames. Give "
+            "a folder with -o, or a name that holds a field, e.g. -o 'frame_{timestep}.png'"
+        )
+        raise ValueError(msg)
+
+    productpath = frametemplate.parent / productname if productname is not None else None
+
+    return frametemplate, productpath
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary."""
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict

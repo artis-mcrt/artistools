@@ -1135,6 +1135,7 @@ def make_figure(
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
     isframe: bool = False,
+    frametemplate: Path | None = None,
     **plotkwargs: t.Any,
 ) -> str:
     """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
@@ -1195,10 +1196,9 @@ def make_figure(
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = "plotestimators_cell{cell:05d}.{format}"
-        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
-        outfilename = str(args.outputfile).format(cell=mgilist[0], format=args.format)
+        # a plot of one cell against time is no frame of a set, thus it names itself
+        outpath = at.resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
+        outfilename = str(outpath).format(cell=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
@@ -1224,15 +1224,16 @@ def make_figure(
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         print("  plotting " + figure_title.replace("\n", " "))
 
-        defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
-        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
         assert isinstance(timestepslist, list)
-        outfilename = str(args.outputfile).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
+        # the caller of a set of frames gives the template, thus every frame lands beside its product
+        outpath = (
+            frametemplate if frametemplate is not None else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
+        )
+        outfilename = str(outpath).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
 
     set_plot_title(axes[0], figure_title, args)
 
-    save_figure(fig, outfilename, args=None if isframe else args, dpi=args.dpi)
+    save_figure(fig, outfilename, args=args, isframe=isframe, dpi=args.dpi)
 
     return outfilename
 
@@ -1424,6 +1425,10 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     )
 
 
+SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"
+CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
+
+
 def get_default_plotlist() -> list[t.Any]:
     """Return the plot items that a command with no -plot argument draws.
 
@@ -1517,31 +1522,20 @@ def write_snapshot_figures(
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
 
-    gifpath: Path | None = None
-    if args.makegif:
-        givenpath = Path(args.outputfile) if args.outputfile else Path()
-        if givenpath.suffix and not givenpath.is_dir():
-            # -o names the gif itself, thus the frames go in the folder that holds it. That folder can
-            # carry a suffix of its own, e.g. results.v1, thus make it here and let it read as a folder
-            gifpath = givenpath
-            gifpath.parent.mkdir(parents=True, exist_ok=True)
-            args.outputfile = str(givenpath.parent)
-
-    outputpath = Path(args.outputfile)
-    # resolve_outputfile takes a path of no extension as a folder, and it makes that folder
-    namesonefile = bool(outputpath.suffix) and not outputpath.is_dir()
-    if len(frames) > 1 and namesonefile and "{timestep" not in outputpath.name:
-        msg = (
-            f"'{outputpath.name}' names one file, and this command writes {len(frames)} frames. Give a "
-            "folder with -o, or a name that holds {timestep}, e.g. -o 'frame_{timestep}.png'"
-        )
-        raise ValueError(msg)
-
     # a gif or a merged pdf holds every frame, thus one product comes out of many figures
     combining = len(frames) > 1 and (args.makegif or args.format == "pdf")
+    firstts, lastts = timesteps_included[0], timesteps_included[-1]
+    frametemplate, gifpath = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(frames),
+        framename=SNAPSHOTFRAMENAME,
+        productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+    )
+
     outputfiles = [
         make_figure(
             isframe=combining,
+            frametemplate=frametemplate,
             modelpath=modelpath,
             timestepslist=frame,
             estimators=estimators,
@@ -1552,19 +1546,8 @@ def write_snapshot_figures(
         for frame in frames
     ]
 
-    if len(outputfiles) > 1:
-        product: Path | str | None = None
-        if args.makegif:
-            # make_figure resolves args.outputfile to the name of a frame, thus the gif goes beside the frames
-            outdir = Path(outputfiles[0]).parent
-            firstts, lastts = timesteps_included[0], timesteps_included[-1]
-            product = gifpath or outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif"
-            at.write_gif(product, outputfiles, duration=1000)
-        elif args.format == "pdf":
-            product = at.merge_pdf_files(outputfiles)
-
-        if product is not None and args.open:
-            at.misc.open_file(product)
+    if combining:
+        at.misc.combine_frames(outputfiles, gifpath, openfile=args.open, gifduration=1000.0 if args.makegif else None)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

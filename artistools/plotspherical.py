@@ -25,7 +25,6 @@ from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
 from artistools.plottools import save_figure
 
 
@@ -339,10 +338,6 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"
-        # a -o path that has a file extension names the gif itself. A path without one names a folder,
-        # which then holds the gif and its frames
-        givenpath = Path(args.outputfile) if args.outputfile else Path()
-        gifpath = givenpath if givenpath.suffix and not givenpath.is_dir() else givenpath / "sphericalplot.gif"
     elif args.timestep is not None:
         time_ranges = [
             (tstarts[ts], tends[ts], f"timestep {ts}")
@@ -354,6 +349,15 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outformat = args.format or "pdf"
 
     print_theta_phi_definitions()
+
+    # one product comes out of the frames of a gif, thus the frames land beside it
+    frametemplate, gifpath = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(time_ranges),
+        framename="plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}",
+        productname="sphericalplot.gif" if args.makegif else None,
+    )
+
     outputfilenames = []
     for tstart, tend, label in time_ranges:
         if tend is not None:
@@ -382,27 +386,14 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
             )
 
-        defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
-        if args.makegif:
-            # a gif needs a frame for each time range, thus the frames go in the folder of the gif
-            gifpath.parent.mkdir(parents=True, exist_ok=True)
-            outpath = gifpath.parent / defaultfilename
-        else:
-            # a path that has no file extension names a folder, which this makes
-            outpath = resolve_outputfile(args.outputfile, defaultfilename)
+        outfilename = str(frametemplate).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        outfilename = str(outpath).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
-
-        save_figure(
-            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=None if args.makegif else args
-        )
+        save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=args.makegif)
 
         outputfilenames.append(outfilename)
 
     if args.makegif:
-        at.write_gif(gifpath, outputfilenames, duration=(1000 * 1 / 1.5))
-        if args.open:
-            at.misc.open_file(gifpath)
+        at.misc.combine_frames(outputfilenames, gifpath, openfile=args.open, gifduration=1000 / 1.5)
 
 
 if __name__ == "__main__":

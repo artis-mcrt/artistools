@@ -412,10 +412,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.set_mpl_style()
 
-    defaultoutputfile = Path("plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf")
-
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
     modelpath = args.modelpath
 
     pdf_list: list[str] = []
@@ -441,10 +437,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
     merging = len(modelgridindexlist) * len(timesteplist) > 1
+    frametemplate, _ = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(modelgridindexlist) * len(timesteplist),
+        framename="plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf",
+    )
+
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         for timestep in timesteplist:
-            outputfile = str(args.outputfile).format(cell=modelgridindex, timestep=timestep)
+            outputfile = str(frametemplate).format(cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(
                 modelpath,
                 timestep,
@@ -458,15 +460,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ):
                 pdf_list.append(outputfile)
 
-    if len(pdf_list) > 1:
-        product: str | None = at.merge_pdf_files(pdf_list)
-    else:
-        # the run took each plot for a part of a merge, thus no plot opened. A run that holds data for
-        # one cell or one timestep alone makes one plot, and that plot is the product
-        product = pdf_list[0] if pdf_list and merging else None
-
-    if product is not None and args.open:
-        at.misc.open_file(product)
+    if merging:
+        # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
+        # takes that plot for the product, because no plot of a merging run opened on its own
+        at.misc.combine_frames(pdf_list, None, openfile=args.open)
 
 
 if __name__ == "__main__":

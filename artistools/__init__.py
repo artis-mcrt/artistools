@@ -157,6 +157,7 @@ from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc import read_wsv as read_wsv
 from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import require_action as require_action
+from artistools.misc import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc import resolve_outputfile as resolve_outputfile
 from artistools.misc import resolve_yscale as resolve_yscale
 from artistools.misc import savgol_filter as savgol_filter
