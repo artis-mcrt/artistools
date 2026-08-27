@@ -1247,6 +1247,17 @@ def test_addarg_modelpath_positional_also_takes_the_option() -> None:
     # the positional already names the paths in the help, thus the option stays out of it
     assert "-modelpath" not in build().format_help()
 
+    # a positional that carries a default of its own must not hide the option. argparse gives that
+    # default as the value of the positional, thus plotinitialabundances read "." for every -modelpath
+    def buildwithdefault() -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser()
+        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+        return parser
+
+    assert buildwithdefault().parse_args([]).modelpath == [Path()]
+    assert buildwithdefault().parse_args(["a"]).modelpath == [Path("a")]
+    assert buildwithdefault().parse_args(["-modelpath", "a"]).modelpath == [Path("a")]
+
 
 def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
     """A cell that the model does not hold must name the cells that it does hold.

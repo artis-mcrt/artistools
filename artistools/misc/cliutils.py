@@ -85,8 +85,9 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
 class KeepGivenPaths(argparse.Action):
     """Store the paths of a positional argument, but keep the paths that the option form already gave.
 
-    argparse applies a positional after an option that shares its dest, thus an empty positional would
-    otherwise hide the value of that option.
+    argparse applies a positional after an option that shares its dest, thus a positional that the user
+    left out would otherwise hide the value of that option. argparse gives the default of the positional
+    as the value in that case, thus a value equal to that default counts as no value at all.
     """
 
     def __call__(
@@ -97,7 +98,8 @@ class KeepGivenPaths(argparse.Action):
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
     ) -> None:
         """Set the paths of the positional argument, unless the option form already gave some."""
-        if values or getattr(namespace, self.dest, None) is None:
+        userwrote = bool(values) and values != self.default
+        if userwrote or getattr(namespace, self.dest, None) is None:
             setattr(namespace, self.dest, values)
 
 
