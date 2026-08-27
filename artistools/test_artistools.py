@@ -1888,6 +1888,8 @@ def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
 
     merge_pdf_files deletes those plots, thus an application that opened one would hold nothing.
     """
+    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
+
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
         at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
