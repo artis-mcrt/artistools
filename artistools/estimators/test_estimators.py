@@ -1316,3 +1316,27 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
         argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timestep="40-41", makegif=True, outputfile=str(dottedgif)
     )
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
+
+
+def test_compact_ion_name_takes_the_longest_element_symbol() -> None:
+    """A name such as SiII must give silicon, and not the sulphur that the shorter symbol S gives.
+
+    The symbols came from a set, which holds no order, thus "SiII" took S and read "iII" as the ion
+    stage 3. The order of a set of strings also changes with the hash seed, thus one run gave Si II
+    and another gave S III for the same name.
+    """
+    from artistools.estimators.plotestimators import get_iontuple
+
+    for ionstr, elsymbol, ion_stage in (
+        ("SiII", "Si", 2),
+        ("SII", "S", 2),
+        ("NiII", "Ni", 2),
+        ("NII", "N", 2),
+        ("CoII", "Co", 2),
+        ("CII", "C", 2),
+        ("ClII", "Cl", 2),
+        ("FeIII", "Fe", 3),
+    ):
+        atomic_number, stage = get_iontuple(ionstr)
+        assert at.get_elsymbol(atomic_number) == elsymbol, f"{ionstr} gave {at.get_elsymbol(atomic_number)}"
+        assert stage == ion_stage, f"{ionstr} gave the ion stage {stage}"

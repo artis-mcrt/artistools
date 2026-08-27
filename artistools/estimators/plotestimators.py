@@ -498,8 +498,10 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
         return (atomic_number, ionstr)
 
-    # for element and ionstage without a space, e.g. FeII
-    for elsymb in at.get_elsymbolset():
+    # for element and ionstage without a space, e.g. FeII. The longest symbol comes first, or "SiII"
+    # takes S and reads "iII" as the ion stage 3. A set holds no order, and the order of one set of
+    # strings changes with the hash seed of the run
+    for elsymb in sorted(at.get_elsymbolset(), key=len, reverse=True):
         if ionstr.startswith(elsymb):
             possible_roman = at.decode_roman_numeral(ionstr.removeprefix(elsymb))
             if possible_roman > 0:

@@ -591,9 +591,11 @@ def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) 
     with Path(resultfilename).open("wb") as resultfile:
         merger.write(resultfile)
 
-    # only remove the inputs once the merged file exists, so a failed write cannot destroy them
+    # only remove the inputs once the merged file exists, so a failed write cannot destroy them. The
+    # merged file can carry the name of one of them, and that one holds the merge now
     for pdfpath in pdf_files:
-        Path(pdfpath).unlink()
+        if Path(pdfpath) != Path(resultfilename):
+            Path(pdfpath).unlink()
 
     print_saved(resultfilename)
 
@@ -638,8 +640,14 @@ def combine_frames(
         write_gif(productpath, framepaths, duration=gifduration)
         product = productpath
     elif len(framepaths) == 1:
-        # a run that holds data for one frame alone makes one figure, and that figure is the product
+        # a run that holds data for one frame alone makes one figure, and that figure is the product.
+        # It takes the name that -o gave the product, because no merge comes to give it that name
         product = framepaths[0]
+        if productpath is not None and Path(product) != Path(productpath):
+            Path(productpath).parent.mkdir(parents=True, exist_ok=True)
+            Path(product).replace(productpath)
+            product = productpath
+            print_saved(product)
     else:
         product = merge_pdf_files([str(framepath) for framepath in framepaths], productpath)
 

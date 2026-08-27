@@ -1477,9 +1477,19 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
     for framepath in framepaths:
         framepath.write_bytes(b"")
 
-    # one frame alone is the product of the run
+    # one frame alone is the product of the run, and it takes the name that -o gave that product
+    named = tmp_path / "named.pdf"
     with mock.patch("artistools.misc.fileio.open_file") as mockopen:
-        product = at.misc.combine_frames(framepaths[:1], tmp_path / "movie.gif", openfile=True)
+        product = at.misc.combine_frames(framepaths[:1], named, openfile=True)
+    assert product == named
+    assert named.is_file(), "the one frame must carry the name of the product"
+    assert not framepaths[0].exists(), "the frame moves to that name"
+    assert mockopen.call_args.args[0] == named
+
+    # without such a name, that frame is the product as it stands
+    framepaths[0].write_bytes(b"")
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        product = at.misc.combine_frames(framepaths[:1], None, openfile=True)
     assert product == framepaths[0]
     assert mockopen.call_args.args[0] == framepaths[0]
 

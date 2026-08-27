@@ -2140,3 +2140,23 @@ def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
     outfolder = tmp_path / "rf"
     at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
     assert list(outfolder.glob("plotradfield_*-plotradfield_*.pdf")), f"no merged pdf in {list(outfolder.iterdir())}"
+
+
+def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) -> None:
+    """A run that holds data for one frame must still write the product that -o named.
+
+    combine_frames took that frame for the product and left the named path empty, thus --open opened
+    the frame. A product that carries the name of a frame also went, because the merge removes its
+    inputs.
+    """
+    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
+
+    # the test model holds no radiation field data before timestep 10, thus one frame comes of the two
+    merged = tmp_path / "merged.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
+    assert merged.is_file(), f"the product must keep its name, but {list(tmp_path.iterdir())}"
+
+    # the name of the product can be the name that a frame would take
+    likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
+    assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
