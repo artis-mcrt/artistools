@@ -252,8 +252,13 @@ def plot_celltimestep(
     modelgridindex: int,
     args: argparse.Namespace,
     normalised: bool = False,
+    isframe: bool = False,
 ) -> bool:
-    """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
+    """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells).
+
+    A plot that the merge takes in is one part of the product, thus --show and --open leave it alone.
+    merge_pdf_files also deletes such a file, thus an application that opened it would hold nothing.
+    """
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.select(pl.len()).item() == 0:
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
@@ -359,7 +364,7 @@ def plot_celltimestep(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf", args=args)
+    save_figure(fig, outputfile, format="pdf", args=None if isframe else args)
     return True
 
 
@@ -436,6 +441,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("Using last timestep.")
         timesteplist = [timesteplast]
 
+    # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
+    merging = len(modelgridindexlist) * len(timesteplist) > 1
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         for timestep in timesteplist:
@@ -449,12 +456,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 modelgridindex=modelgridindex,
                 args=args,
                 normalised=args.normalised,
+                isframe=merging,
             ):
                 pdf_list.append(outputfile)
 
     if len(pdf_list) > 1:
-        print(pdf_list)
-        at.merge_pdf_files(pdf_list)
+        merged = at.merge_pdf_files(pdf_list)
+        if args.open:
+            at.misc.open_file(merged)
 
 
 if __name__ == "__main__":

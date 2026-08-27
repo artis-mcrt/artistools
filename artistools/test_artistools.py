@@ -1881,3 +1881,17 @@ def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
         argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
     )
     assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
+
+
+def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
+    """--open must open the merged pdf and not each plot that the merge takes in.
+
+    merge_pdf_files deletes those plots, thus an application that opened one would hold nothing.
+    """
+    template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
+    with mock.patch("subprocess.run") as mockrun:
+        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
+
+    opened = [call.args[0][1] for call in mockrun.call_args_list]
+    assert len(opened) == 1, f"one file must open, not {len(opened)}"
+    assert Path(opened[0]).is_file(), "the file that opens must be the merged pdf, which still exists"

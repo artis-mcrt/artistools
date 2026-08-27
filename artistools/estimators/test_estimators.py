@@ -1294,3 +1294,18 @@ def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
     assert len(opened) == 1, f"one file must open, not {len(opened)}"
     assert opened[0].endswith(".gif"), opened[0]
     assert len(list(outfolder.glob("*.png"))) == 3, "each timestep must still give a frame"
+
+
+def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
+    """-o names the gif that the run makes, and the frames go in the folder that holds it.
+
+    The test for one file read a name that ends in .gif as one frame, thus it refused the name of the
+    product that the run makes.
+    """
+    gifpath = tmp_path / "movie.gif"
+    at.estimators.plotestimators.main(
+        argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timestep="40-42", makegif=True, outputfile=str(gifpath)
+    )
+
+    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
+    assert len(list(tmp_path.glob("*.png"))) == 3, "the frames go in the folder of the gif"

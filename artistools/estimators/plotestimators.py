@@ -1526,6 +1526,15 @@ def write_snapshot_figures(
         args.format = "png"
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+
+    gifpath: Path | None = None
+    if args.makegif:
+        givenpath = Path(args.outputfile) if args.outputfile else Path()
+        if givenpath.suffix and not givenpath.is_dir():
+            # -o names the gif itself, thus the frames go in the folder that holds it
+            gifpath = givenpath
+            args.outputfile = str(givenpath.parent)
+
     outputpath = Path(args.outputfile)
     # resolve_outputfile takes a path of no extension as a folder, and it makes that folder
     namesonefile = bool(outputpath.suffix) and not outputpath.is_dir()
@@ -1557,7 +1566,7 @@ def write_snapshot_figures(
             # make_figure resolves args.outputfile to the name of a frame, thus the gif goes beside the frames
             outdir = Path(outputfiles[0]).parent
             firstts, lastts = timesteps_included[0], timesteps_included[-1]
-            product = outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif"
+            product = gifpath or outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif"
             at.write_gif(product, outputfiles, duration=1000)
         elif args.format == "pdf":
             product = at.merge_pdf_files(outputfiles)
