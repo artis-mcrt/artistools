@@ -1073,6 +1073,7 @@ def test_parallel_map_works_when_fork_is_the_default_start_method(tmp_path: Path
     script.write_text(
         """
 import multiprocessing as mp
+import sys
 
 import artistools as at
 
@@ -1083,7 +1084,25 @@ def square(x):
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
+
+    # a bar comes first, as the estimator reader and the packet reader make one. Its lock must come
+    # from a spawn context, or the pool below meets a lock of the fork context
+    bar = at.misc.general.get_progress_class()
+    for _ in bar(range(2), desc="a bar before the pool"):
+        pass
+
+    # a bar starts no process, thus the default start method of the caller stands
+    assert mp.get_start_method() == "fork", mp.get_start_method()
+
+    # the thread pool starts no process either, thus it changes no such default
+    assert at.parallel_map(square, range(4), allow_multiprocessing=False) == [0, 1, 4, 9]
+    assert mp.get_start_method() == "fork", mp.get_start_method()
+
     assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
+
+    # a free-threading build takes the thread pool for this call as well, thus it starts no process
+    if sys._is_gil_enabled():
+        assert mp.get_start_method() == "spawn", mp.get_start_method()
     print("OK")
 """,
         encoding="utf-8",
@@ -1371,14 +1390,17 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     assert "estimator variables" in captured.out
 
 
-def test_progress_class_sets_the_spawn_method_first() -> None:
-    """A bar made before parallel_map must not give its workers a fork lock in a spawn pool.
+def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
+    """A bar must take a lock that a spawn pool can hold, and it must set no default start method.
 
     tqdm builds its shared lock from the default multiprocessing context at the first bar. On Linux the
     default was fork before Python 3.14, thus CI stopped with "A SemLock created in a fork context is
-    being shared with a process in a spawn context". get_progress_class sets spawn before any bar.
+    being shared with a process in a spawn context". get_progress_class gives tqdm a lock of a spawn
+    context instead, thus a bar starts no process and the default of the caller stands.
     """
     import multiprocessing as mp
+
+    import tqdm
 
     from artistools.misc.general import get_progress_class
 
@@ -1387,7 +1409,9 @@ def test_progress_class_sets_the_spawn_method_first() -> None:
         mp.set_start_method("fork", force=True)  # the Linux default before Python 3.14
         progressbar = get_progress_class()(total=1, disable=True)
         progressbar.close()
-        assert mp.get_start_method() == "spawn"
+
+        assert mp.get_start_method() == "fork", "a bar starts no process, thus it sets no start method"
+        assert tqdm.tqdm.get_lock() is not None, "the bar must hold the lock that get_progress_class gave"
     finally:
         if original is not None:
             mp.set_start_method(original, force=True)

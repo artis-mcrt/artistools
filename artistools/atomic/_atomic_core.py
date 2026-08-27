@@ -242,7 +242,9 @@ def get_levels(
 ) -> pl.DataFrame:
     """Return a polars DataFrame of energy levels.
 
-    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache.
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
+    clone is cheap, because polars shares the data of the frame, and it keeps a caller that changes the
+    columns in place from changing what the next caller reads.
     """
     return get_levels_cached(
         Path(modelpath),
@@ -253,7 +255,7 @@ def get_levels(
         derived_transitions_columns=(
             tuple(derived_transitions_columns) if derived_transitions_columns is not None else None
         ),
-    )
+    ).clone()
 
 
 @lru_cache(maxsize=2)

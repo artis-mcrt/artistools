@@ -134,23 +134,26 @@ def import_optional(modulename: str) -> "ModuleType":
 
 
 def get_progress_class() -> "type[t.Any]":
-    """Return the rich tqdm class, with the multiprocessing start method set to spawn first.
+    """Return the rich tqdm class, with a progress-bar lock that a spawn pool can take.
 
     tqdm builds its shared progress-bar lock from the default multiprocessing context at the first bar.
     On Linux the default was fork before Python 3.14, thus a bar made before parallel_map gave its
     workers a fork lock in a spawn pool: "A SemLock created in a fork context is being shared with a
-    process in a spawn context". Every bar comes through here, thus the lock is a spawn lock from the
-    start. Spawn is also needed because forking a process that already has polars threads is unsafe.
+    process in a spawn context". Every bar comes through here, thus the lock comes from a spawn context
+    from the start. This sets no default start method, because a bar alone starts no process, and that
+    default belongs to the caller.
     """
     import multiprocessing as mp
     import warnings
 
+    import tqdm
+    import tqdm.rich
     from tqdm import TqdmExperimentalWarning
 
     warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-    mp.set_start_method("spawn", force=True)
-
-    import tqdm.rich
+    spawnlock = mp.get_context("spawn").RLock()
+    tqdm.tqdm.set_lock(spawnlock)
+    tqdm.rich.tqdm.set_lock(spawnlock)
 
     return tqdm.rich.tqdm
 
@@ -172,10 +175,14 @@ def parallel_map[IterableType, ResultType](
                 use_multiprocessing = False
 
     if use_multiprocessing:
+        import multiprocessing as mp
+
         from tqdm.contrib.concurrent import process_map
 
-        # get_progress_class has set the start method to spawn, thus the shared progress-bar lock and
-        # the pool live in one context
+        # the lock of the progress bar comes from a spawn context, thus the pool must live in one as
+        # well. Spawn is also needed because forking a process that already has polars threads is
+        # unsafe. A run that takes the thread pool changes no such default
+        mp.set_start_method("spawn", force=True)
         results = process_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
     else:
         from tqdm.contrib.concurrent import thread_map
