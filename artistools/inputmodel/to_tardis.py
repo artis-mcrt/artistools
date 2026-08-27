@@ -28,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxatomicnumber", default=92, help="Maximum atomic number for elemental abundances")
 
-    at.addarg_outputpath(parser, helptext="Path of output TARDIS model file")
+    at.addarg_output(parser, kind="folder", helptext="Path of output TARDIS model file", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -64,7 +64,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         listspecies = [species for species in listspecies if at.get_atomic_number(species) <= args.maxatomicnumber]
 
     modelname = at.get_model_name(modelpath)
-    outputfilepath = Path(args.outputpath, f"{modelname}.csvy")
+    outputfilepath = Path(args.outputfile, f"{modelname}.csvy")
     dictmeta = {
         "name": modelname,
         "description": "This model was converted from ARTIS format with artistools",

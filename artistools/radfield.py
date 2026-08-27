@@ -26,7 +26,7 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
@@ -403,7 +403,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser, figscaledefault=1.4)
 
-    addarg_outputfile(parser, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

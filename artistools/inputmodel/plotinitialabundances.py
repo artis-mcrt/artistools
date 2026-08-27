@@ -74,13 +74,13 @@ def make_plot(args: argparse.Namespace) -> None:
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
-    outpath = at.resolve_outputfile(args.outputpath, f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf")
+    outpath = at.resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf")
     save_figure(fig, outpath, args=args, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_outputpath(parser, default=Path(), astype=Path)
+    at.addarg_output(parser, kind="file", default=Path(), astype=Path)
     at.addarg_modelpath(
         parser,
         positional=True,

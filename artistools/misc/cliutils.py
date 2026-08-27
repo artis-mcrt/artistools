@@ -145,37 +145,58 @@ def addarg_modelpath(
         parser.add_argument("-modelpath", **kwargs)
 
 
-def addarg_outputfile(
+def addarg_output(
     parser: argparse.ArgumentParser,
     *,
+    kind: t.Literal["file", "folder"],
+    defaultname: str | None = None,
     default: t.Any = None,
     astype: type[Path] | type[str] | None = Path,
-    extraflags: Sequence[str] = (),
-    helptext: str = "Path/filename for the output file",
+    extraflags: "Sequence[str]" = (),
+    helptext: str | None = None,
 ) -> None:
-    """Add the -outputfile/-o argument naming a single output file."""
+    """Add the -outputfile/-o argument, and record what the command writes.
+
+    A command writes one file or a folder of files, and kind says which. resolve_output_argument reads
+    that word after the parse: it gives a file the defaultname of the command when -o names a folder,
+    and it makes the folder that -o names either way. Thus every command keeps the promise of the help
+    text, and no command writes that rule again.
+
+    A command that names its own frames takes no defaultname, because resolve_frameset_paths gives each
+    frame a name of its own.
+    """
+    rule = (
+        "A path with no file extension names a folder, which the command creates"
+        if kind == "file"
+        else "The command creates this folder"
+    )
     kwargs: dict[str, t.Any] = {
         "dest": "outputfile",
         "default": default,
-        "help": f"{helptext}. A path with no file extension names a folder, which the command creates",
+        "help": f"{helptext or ('Path/filename for the output file' if kind == 'file' else 'Path for the output files')}. {rule}",
     }
     if astype is not None:
         kwargs["type"] = astype
-    arggroup(parser, "output").add_argument("-outputfile", *extraflags, "-o", **kwargs)
+
+    arggroup(parser, "output").add_argument("-outputfile", *extraflags, "-outputpath", "-o", **kwargs)
+    parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
 
 
-def addarg_outputpath(
-    parser: argparse.ArgumentParser,
-    *,
-    default: t.Any = ".",
-    astype: type[Path] | None = None,
-    helptext: str = "Path for output files",
-) -> None:
-    """Add the -outputpath/-o argument naming a directory for output files."""
-    kwargs: dict[str, t.Any] = {"default": default, "help": helptext}
-    if astype is not None:
-        kwargs["type"] = astype
-    arggroup(parser, "output").add_argument("-outputpath", "-o", **kwargs)
+def resolve_output_argument(args: argparse.Namespace) -> None:
+    """Apply the rule of -o that addarg_output recorded on the parser of the command.
+
+    A command that writes one file takes the name of that file when -o names a folder. A command that
+    writes a folder of files gets that folder. The folder exists after this either way.
+    """
+    outputfile = getattr(args, "outputfile", None)
+    kind = getattr(args, "outputkind", None)
+    if kind is None or not outputfile:
+        return
+
+    if kind == "folder":
+        Path(outputfile).mkdir(parents=True, exist_ok=True)
+    elif (defaultname := getattr(args, "outputdefaultname", None)) is not None:
+        args.outputfile = resolve_outputfile(outputfile, defaultname)
 
 
 def addarg_modelgridindex(
@@ -677,6 +698,7 @@ def parse_cli_args(
     argcomplete.autocomplete(parser)
     args = parser.parse_args([] if kwargs else argsraw)
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
+    resolve_output_argument(args)
 
     return args
 

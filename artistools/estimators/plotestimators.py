@@ -39,7 +39,7 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
@@ -1332,7 +1332,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_dpi(parser, default=600)
 
-    addarg_outputfile(parser, extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
         "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"

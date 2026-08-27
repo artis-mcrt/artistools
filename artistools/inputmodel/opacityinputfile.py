@@ -87,7 +87,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     at.addarg_modelpath(parser, default=Path())
-    at.addarg_outputpath(parser, astype=Path, helptext="Folder to write opacity.txt into (uniform)")
+    at.addarg_output(
+        parser, kind="folder", astype=Path, helptext="Folder to write opacity.txt into (uniform, default=Path())"
+    )
     parser.add_argument("-kappa", type=float, default=0.1, help="Grey opacity for every cell [cm2/g] (uniform)")
 
 
@@ -101,7 +103,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.action == "uniform":
         _, modelmeta = at.inputmodel.get_modeldata(modelpath)
-        all_cells_same_opacity(Path(args.outputpath), modelmeta["npts_model"], kappa=args.kappa)
+        all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")

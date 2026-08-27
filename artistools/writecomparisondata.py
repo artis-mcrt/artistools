@@ -13,7 +13,7 @@ import polars as pl
 import artistools as at
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_outputpath
+from artistools.misc import addarg_output
 from artistools.misc import print_warning
 
 
@@ -206,7 +206,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
-    addarg_outputpath(parser, astype=Path, default=Path())
+    addarg_output(parser, kind="folder", astype=Path, default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -218,7 +218,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps
 
-    args.outputpath.mkdir(parents=True, exist_ok=True)
+    args.outputfile.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
         model_id = Path(modelpath).name.split("_")[0]
@@ -229,30 +229,30 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         try:
             write_lbol_edep(
-                modelpath, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
+                modelpath, selected_timesteps, Path(args.outputfile, f"lbol_edep_{model_id}_artisnebular.txt")
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")
 
-        write_spectra(modelpath, selected_timesteps, Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt"))
+        write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
+        #                        Path(args.outputfile, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
 
         write_single_estimator(
             modelpath,
             selected_timesteps,
             estimators,
             allnonemptymgilist,
-            Path(args.outputpath, f"edep_{model_id}_artisnebular.txt"),
+            Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
             keyname="total_dep",
         )
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
+        #                        Path(args.outputfile, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
-        write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
-        write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
+        write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
+        write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
 
 
 if __name__ == "__main__":

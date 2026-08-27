@@ -19,7 +19,7 @@ from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
@@ -303,7 +303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
-    addarg_outputfile(parser, astype=str, default="", helptext="Filename for plot output file")
+    addarg_output(parser, kind="file", astype=str, default="", helptext="Filename for plot output file")
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 

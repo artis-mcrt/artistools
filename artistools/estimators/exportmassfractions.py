@@ -9,7 +9,7 @@ import numpy as np
 
 import artistools as at
 
-defaultoutputfile = "massfracs.txt"
+DEFAULTOUTPUTNAME = "massfracs.txt"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -17,7 +17,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     at.addarg_modelpath(parser, default=Path())
     at.addarg_timestep(parser, kind="int", default=14, helptext="Timestep number to export")
     at.addarg_modelgridindex(parser, kind="rangestr", default="0-9", helptext="Range of cell numbers to export")
-    at.addarg_outputpath(parser, default=defaultoutputfile, helptext="Path to output file of mass fractions")
+    at.addarg_output(
+        parser,
+        kind="file",
+        defaultname=DEFAULTOUTPUTNAME,
+        default=DEFAULTOUTPUTNAME,
+        helptext="Path to output file of mass fractions",
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -30,7 +36,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # ARTIS treated in detail. Weighting over a subset would renormalise the fractions to a partial total
     elmass = at.get_atomic_masses()
     tdays = at.get_timestep_time(modelpath, timestep)
-    outfilename = at.resolve_outputfile(args.outputpath, defaultoutputfile)
+    outfilename = args.outputfile
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)

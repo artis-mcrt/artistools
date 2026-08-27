@@ -23,7 +23,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_outputpath
+from artistools.misc import addarg_output
 from artistools.plottools import save_figure
 
 
@@ -683,7 +683,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    addarg_outputpath(parser)
+    addarg_output(parser, kind="folder", default=Path())
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 

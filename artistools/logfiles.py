@@ -105,7 +105,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     at.addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
-    at.addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

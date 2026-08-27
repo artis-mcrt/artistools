@@ -1073,7 +1073,7 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_outputpath(parser, default=None, helptext="Path of output ARTIS model file")
+    at.addarg_output(parser, kind="folder", default=None, helptext="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1189,7 +1189,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"
 
-    if args.outputpath is None:
+    if args.outputfile is None:
         modelname = Path(args.npz).name.replace(".npz", "")
         if args.dimensions is not None and args.dimensions < 2:
             modelname += f"_{args.dimensions}d"
@@ -1197,9 +1197,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_3d"
         else:
             modelname += "_2d"
-        args.outputpath = Path(args.npz).parent / "artis_inputmodels" / modelname
-        args.outputpath.mkdir(parents=True, exist_ok=True)
-        print(args.outputpath)
+        args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
+        args.outputfile.mkdir(parents=True, exist_ok=True)
+        print(args.outputfile)
 
         # model_dim = 1 not covered in this script
     model_dim = 3 if args.mapto3D else 2
@@ -1317,9 +1317,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions=dfgridcontributions,
         )
 
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputpath)
-    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
+    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
 
 
 if __name__ == "__main__":

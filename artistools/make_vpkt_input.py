@@ -8,7 +8,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 
 import artistools as at
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
@@ -447,7 +447,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal",
     )
-    addarg_outputfile(parser, helptext=f"Path/filename for the output file (default {defaultoutputfile})")
+    addarg_output(parser, kind="file", helptext=f"Path/filename for the output file (default {defaultoutputfile})")
 
 
 def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktConfig:

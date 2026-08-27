@@ -70,7 +70,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories"
     )
 
-    at.addarg_outputpath(parser, default=Path(), astype=Path, helptext="Path for output PDF and parquet files")
+    at.addarg_output(
+        parser, kind="folder", default=Path(), astype=Path, helptext="Path for output PDF and parquet files"
+    )
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
@@ -368,7 +370,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     nuc_data = get_nuc_data(nuc_dataset)
     parquet_dir: Path | None = None
     if args.parquet or args.trajparquet:
-        parquet_dir = Path(args.outputpath) / "parquet"
+        parquet_dir = Path(args.outputfile) / "parquet"
         parquet_dir.mkdir(parents=True, exist_ok=True)
         print(f"Writing parquet files to '{parquet_dir}'.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
@@ -522,7 +524,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ax.set_xlabel("Time [days]")
             ax.set_xscale("log")
 
-        outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        outfilepath = args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
         save_figure(fig, outfilepath, bbox_inches="tight")
 
 

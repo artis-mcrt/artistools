@@ -343,7 +343,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     at.addarg_modelpath(parser, default=Path())
 
-    at.addarg_outputfile(parser, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
     parser.add_argument(
         "plotvars",

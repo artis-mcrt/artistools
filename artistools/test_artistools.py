@@ -2015,3 +2015,48 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     # a joined value of a flag of one letter still works, thus -t300 means -timedays 300
     artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
     assert "300 days falls in timestep 54" in capsys.readouterr().out
+
+
+def test_every_output_argument_records_what_the_command_writes() -> None:
+    """addarg_output records a kind, thus the dispatcher keeps the promise of -o for every command.
+
+    Two helpers held two contracts: one promised that a path with no file extension names a folder,
+    which the command creates, and the other promised nothing. 17 modules never applied either rule,
+    and "inputmodel to_tardis -o newfolder" stopped with FileNotFoundError.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    modulebycommand: dict[str, str] = {}
+
+    def walktree(tree: dict[str, t.Any]) -> None:
+        for name, node in tree.items():
+            if isinstance(node, at.commands.CommandSpec):
+                modulebycommand[name] = node.module
+            else:
+                walktree(node)
+
+    walktree(at.commands.subcommandtree)
+
+    withoutput = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if "outputfile" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
+            continue
+
+        withoutput += 1
+        kind = subparser.get_default("outputkind")
+        assert kind in {"file", "folder"}, f"{subcommand} must record what it writes"
+
+        # a command that writes one file names that file, either from the tree or in its own main
+        # an alias of a command names the same module, thus the name of the command covers it
+        if kind == "file" and subparser.get_default("outputdefaultname") is None and subcommand in modulebycommand:
+            modulename = modulebycommand[subcommand]
+            module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
+            text = module.read_text(encoding="utf-8")
+            assert "resolve_outputfile" in text or "resolve_frameset_paths" in text, (
+                f"{subcommand} writes one file, thus it must name that file"
+            )
+
+    assert withoutput > 20, "the tree must hold many commands that write output"

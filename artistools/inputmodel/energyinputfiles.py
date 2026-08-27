@@ -251,7 +251,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     at.addarg_modelpath(parser, default=Path())
-    at.addarg_outputfile(parser, helptext="Path for the plot, or omit to show it interactively")
+    at.addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
 
 

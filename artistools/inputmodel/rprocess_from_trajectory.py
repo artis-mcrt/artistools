@@ -479,7 +479,7 @@ def add_abundancecontributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_outputpath(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -514,7 +514,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
     dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
 
     # write model.txt
 
@@ -544,9 +544,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ],
         orient="row",
     )
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
-    with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
+    with Path(args.outputfile, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
 

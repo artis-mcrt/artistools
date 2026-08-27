@@ -147,8 +147,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections",
     )
 
-    at.addarg_outputfile(
-        parser, default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file if --makeplot is enabled"
+    at.addarg_output(
+        parser,
+        kind="file",
+        default=defaultoutputfile,
+        astype=None,
+        helptext="Path/filename for PDF file if --makeplot is enabled",
     )
 
     parser.add_argument("-ostat", action="store", help="Path/filename for stats output")

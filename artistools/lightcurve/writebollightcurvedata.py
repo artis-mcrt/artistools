@@ -55,7 +55,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Integrate the direction-resolved spectra instead of reading light_curve.out",
     )
-    at.addarg_outputpath(parser, default=Path(), astype=Path)
+    at.addarg_output(parser, kind="folder", default=Path(), astype=Path)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -68,7 +68,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else "# 1st col is time in days, 2nd col is the spherically averaged bolometric luminosity in erg/s"
     )
 
-    outputpath = Path(args.outputpath)
+    outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
 
     for modelpath in at.normalize_path_list(args.modelpath):

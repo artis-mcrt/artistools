@@ -29,7 +29,7 @@ from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
@@ -873,7 +873,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
 
-    addarg_outputfile(parser, helptext="Path/filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

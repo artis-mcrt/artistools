@@ -105,7 +105,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
     parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
-    at.addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

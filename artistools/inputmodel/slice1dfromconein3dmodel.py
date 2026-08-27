@@ -14,7 +14,7 @@ import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_outputpath
+from artistools.misc import addarg_output
 
 if t.TYPE_CHECKING:
     from mpl_toolkits.mplot3d import Axes3D
@@ -235,10 +235,10 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
     abundances_df = slice1d.select(abundancecolumns).with_columns(inputcellid)
 
     at.inputmodel.save_modeldata(
-        dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputpath, "model_1d.txt")
+        dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputfile, "model_1d.txt")
     )
 
-    at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputpath, "abundances_1d.txt"))
+    at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputfile, "abundances_1d.txt"))
 
     # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file
     #     content = f.read()
@@ -327,7 +327,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--coneshellsequalvolume", action="store_true", help="Use equal volume shells when making 1D model from cone"
     )
 
-    addarg_outputpath(parser)
+    addarg_output(parser, kind="folder", default=Path())
 
     parser.add_argument("-rhoscale", default=None, type=float, help="Density scale factor")
 
@@ -351,7 +351,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
     logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=Path(args.outputpath), logfilename="make1dmodellog.txt"
+        outputfolderpath=Path(args.outputfile), logfilename="make1dmodellog.txt"
     )
 
     make_1d_model_files(args, logprint)

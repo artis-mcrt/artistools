@@ -388,7 +388,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
-    at.addarg_outputpath(parser, default=None, helptext="Path for output model files")
+    at.addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -400,7 +400,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "grid.dat is required. Run artistools maptogrid"
         raise FileNotFoundError(msg)
 
-    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
+    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

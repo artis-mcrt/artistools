@@ -21,7 +21,7 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
@@ -303,7 +303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
-    addarg_outputfile(parser, default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file")
+    addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file")
     addarg_show(parser)
 
 

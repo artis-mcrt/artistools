@@ -5,6 +5,7 @@ import math
 import string
 import typing as t
 from collections.abc import Sequence
+from pathlib import Path
 
 import polars as pl
 
@@ -16,7 +17,7 @@ from artistools.constants import Msun_to_g
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
-    at.addarg_outputpath(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -86,8 +87,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"M_tot  = {m_enc_outer / Msun_to_g:.3f} solMass")
     print(f"M_Ni56 = {tot_ni56mass / Msun_to_g:.3f} solMass")
 
-    at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputpath)
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
+    at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputfile)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
 
 
 if __name__ == "__main__":

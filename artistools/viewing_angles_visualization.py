@@ -8,7 +8,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import resolve_outputfile
 
 
@@ -167,8 +167,9 @@ def viewing_angles_visualisation(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("modelfile", help="Path to the ARTIS model")
-    addarg_outputfile(
+    addarg_output(
         parser,
+        kind="file",
         astype=None,
         helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation",
     )

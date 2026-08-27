@@ -415,7 +415,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h",
     )
 
-    at.addarg_outputpath(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -427,7 +427,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
         ncoordgrid=args.ncoordgrid,
-        outputfolderpath=args.outputpath,
+        outputfolderpath=args.outputfile,
         downsamplefactor=args.downsamplefactor,
         dtextra_seconds=args.dtextra_seconds,
         setgrid_fractionrmax=args.setgrid_fractionrmax,

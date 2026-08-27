@@ -25,7 +25,7 @@ from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
@@ -852,7 +852,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_axislimits(parser)
 
     # no default here: which one applies depends on -x, so main chooses it when resolving the path
-    addarg_outputfile(parser, helptext="Path/filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

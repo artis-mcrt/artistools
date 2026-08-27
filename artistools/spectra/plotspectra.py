@@ -34,7 +34,7 @@ from artistools.misc import addarg_filter
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
-from artistools.misc import addarg_outputfile
+from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -1614,7 +1614,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    addarg_outputfile(parser, helptext="Path/filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
 
     addarg_dpi(parser)
 

@@ -11,8 +11,7 @@ from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridin
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
 from artistools.misc.cliutils import addarg_nolegend as addarg_nolegend
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
-from artistools.misc.cliutils import addarg_outputfile as addarg_outputfile
-from artistools.misc.cliutils import addarg_outputpath as addarg_outputpath
+from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
@@ -41,6 +40,7 @@ from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_frameset_paths as resolve_frameset_paths
+from artistools.misc.cliutils import resolve_output_argument as resolve_output_argument
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict

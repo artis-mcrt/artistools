@@ -43,7 +43,7 @@ def test_add_cli_arg_helpers() -> None:
     """The shared argument helpers must define the standard flags, types, and defaults."""
     parser = argparse.ArgumentParser()
     at.addarg_modelpath(parser, multiplepaths=True, default=[])
-    at.addarg_outputfile(parser, default=Path("out.pdf"))
+    at.addarg_output(parser, kind="file", default=Path("out.pdf"))
     at.addarg_timestep(parser)
     at.addarg_timedays(parser)
     at.addarg_timeminmax(parser)
@@ -104,12 +104,14 @@ def test_add_cli_arg_helper_variants() -> None:
     at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
     at.addarg_timestep(parser, kind="int", default=70)
     at.addarg_timedays(parser, kind="float")
-    at.addarg_outputpath(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
     args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
     assert args.modelpath == [Path("model1")]
     assert args.timestep == 12
     assert args.timedays == 45.5
-    assert args.outputpath == "."
+    # one helper serves both kinds, thus the folder of a command is a Path as the file of one is
+    assert args.outputfile == Path()
+    assert args.outputkind == "folder"
 
     parserappend = argparse.ArgumentParser()
     at.addarg_timestep(parserappend, kind="strappend")

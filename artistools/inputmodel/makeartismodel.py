@@ -11,7 +11,7 @@ import polars as pl
 import artistools as at
 from artistools.constants import Msun_to_g
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_outputpath
+from artistools.misc import addarg_output
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -56,7 +56,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    addarg_outputpath(parser, helptext="Folder for output")
+    addarg_output(parser, kind="folder", helptext="Folder for output", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -93,7 +93,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = at.resolve_outputfile(args.outputpath, "model.txt").parent / f"dimreduce_{ndim_out}d"
+            outdir = at.resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
@@ -117,7 +117,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
-        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
+        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
 
 
 if __name__ == "__main__":

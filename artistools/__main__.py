@@ -74,6 +74,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     from artistools.commands import build_script_parser
     from artistools.misc import check_time_selection
+    from artistools.misc import resolve_output_argument
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
     # started it selects one subcommand, and that parser holds no other command. Every entry point then
@@ -93,6 +94,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if (argparser := getattr(args, "argparser", None)) is not None:
         check_time_selection(argparser, args, argsraw)
+        # the parser of the command recorded what it writes, thus -o takes its rule here
+        resolve_output_argument(args)
 
     try:
         run_command(func, args)
