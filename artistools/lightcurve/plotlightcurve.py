@@ -1578,7 +1578,8 @@ def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | 
 
     # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
     # command that plots reference data alone still takes a range in days
-    artispaths = [path for path in modelpaths if path_is_artis_model(path)]
+    # a path can name a light curve file of a run, and get_time_range reads the folder of the run
+    artispaths = [get_model_folder(path) for path in modelpaths if path_is_artis_model(path)]
     if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"

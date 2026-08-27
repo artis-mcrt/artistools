@@ -1592,3 +1592,15 @@ def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
     daysargs = build(None, "260-300")
     apply_time_range_args(daysargs, [modelpath, CLASSIC1DPATH])
     assert daysargs.timemin is not None
+
+
+def test_lightcurve_timestep_takes_a_path_that_names_a_file(tmp_path: Path) -> None:
+    """A path can name the light curve file of a run, and -timestep must read the folder of that run.
+
+    get_time_range reads timesteps.out or input.txt of a run. The file went to it as it came, thus
+    "light_curve.out -timestep 20" asked for light_curve.out/input.txt and stopped.
+    """
+    outputfile = tmp_path / "lc.pdf"
+    at.lightcurve.plot(argsraw=[str(modelpath / "light_curve.out"), "-timestep", "20", "-o", str(outputfile)])
+
+    assert outputfile.is_file(), "the command must draw the light curve of the file"
