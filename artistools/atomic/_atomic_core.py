@@ -321,7 +321,28 @@ def get_levels_cached(
 
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pl.DataFrame(level_lists, orient="row")
+    dfallions = pl.DataFrame(level_lists, orient="row")
+    freeze_photoionisation_arrays(dfallions)
+
+    return dfallions
+
+
+def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
+    """Refuse a write to the photoionisation arrays that the cache holds.
+
+    A clone of a frame shares the numpy array of an object column, thus a caller could change the
+    cross sections that the next caller reads. A copy of those arrays takes 10 ms for each call of a
+    small model, against 0.05 ms for the call itself, and a model of a full run holds far more of them.
+    The arrays take this mark one time instead, thus such a write raises in place of passing.
+    """
+    for dflevels in dfallions["levels"]:
+        for colname in ("phixstargetlist", "phixstable"):
+            if colname not in dflevels.columns:
+                continue
+
+            for value in dflevels[colname]:
+                if isinstance(value, np.ndarray):
+                    value.setflags(write=False)
 
 
 def parse_recombratefile(frecomb: t.IO[str]) -> Generator[tuple[int, int, pl.DataFrame]]:
