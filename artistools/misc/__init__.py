@@ -65,6 +65,7 @@ from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_non
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
+from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
 from artistools.misc.fileio import polars_source as polars_source

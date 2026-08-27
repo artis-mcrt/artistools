@@ -1270,3 +1270,27 @@ def test_classicartis_reads_a_classic_run_through_the_scanner() -> None:
     maxtemperature = estimators["Te"].max()
     assert isinstance(maxtemperature, float)
     assert maxtemperature > 0.0
+
+
+def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
+    """--open must open the product of the run and not each frame that the product holds.
+
+    save_figure reads --open for each figure, thus a run of many timesteps opened a viewer for each
+    frame, and it did not open the gif that holds them.
+    """
+    outfolder = tmp_path / "frames"
+    with mock.patch("subprocess.run") as mockrun:
+        at.estimators.plotestimators.main(
+            argsraw=[],
+            modelpath=modelpath,
+            plotlist=[["Te"]],
+            timestep="40-42",
+            makegif=True,
+            open=True,
+            outputfile=str(outfolder),
+        )
+
+    opened = [call.args[0][1] for call in mockrun.call_args_list]
+    assert len(opened) == 1, f"one file must open, not {len(opened)}"
+    assert opened[0].endswith(".gif"), opened[0]
+    assert len(list(outfolder.glob("*.png"))) == 3, "each timestep must still give a frame"

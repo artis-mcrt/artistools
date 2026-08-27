@@ -1143,9 +1143,14 @@ def make_figure(
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
+    isframe: bool = False,
     **plotkwargs: t.Any,
 ) -> str:
-    """Plot one subplot per entry in plotlist, save the figure, and return the output filename."""
+    """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
+
+    A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
+    and --open leave it alone. The caller opens the file that holds every frame.
+    """
     modelname = at.get_model_name(modelpath)
 
     fig, axes = plt.subplots(
@@ -1236,7 +1241,7 @@ def make_figure(
 
     set_plot_title(axes[0], figure_title, args)
 
-    save_figure(fig, outfilename, args=args, dpi=args.dpi)
+    save_figure(fig, outfilename, args=None if isframe else args, dpi=args.dpi)
 
     return outfilename
 
@@ -1531,8 +1536,11 @@ def write_snapshot_figures(
         )
         raise ValueError(msg)
 
+    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+    combining = len(frames) > 1 and (args.makegif or args.format == "pdf")
     outputfiles = [
         make_figure(
+            isframe=combining,
             modelpath=modelpath,
             timestepslist=frame,
             estimators=estimators,
@@ -1544,15 +1552,18 @@ def write_snapshot_figures(
     ]
 
     if len(outputfiles) > 1:
+        product: Path | str | None = None
         if args.makegif:
             # make_figure resolves args.outputfile to the name of a frame, thus the gif goes beside the frames
             outdir = Path(outputfiles[0]).parent
             firstts, lastts = timesteps_included[0], timesteps_included[-1]
-            at.write_gif(
-                outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif", outputfiles, duration=1000
-            )
+            product = outdir / f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif"
+            at.write_gif(product, outputfiles, duration=1000)
         elif args.format == "pdf":
-            at.merge_pdf_files(outputfiles)
+            product = at.merge_pdf_files(outputfiles)
+
+        if product is not None and args.open:
+            at.misc.open_file(product)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

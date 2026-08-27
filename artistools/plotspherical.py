@@ -392,7 +392,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         outfilename = str(outpath).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
 
-        save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args)
+        save_figure(
+            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=None if args.makegif else args
+        )
 
         outputfilenames.append(outfilename)
 
@@ -403,6 +405,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             else args.outputfile.format(outformat=outformat)
         )
         at.write_gif(gifname, outputfilenames, duration=(1000 * 1 / 1.5))
+        if args.open:
+            at.misc.open_file(gifname)
 
 
 if __name__ == "__main__":

@@ -2036,3 +2036,16 @@ def test_fromcmfgen_isotope_lookup_rejects_bad_tables() -> None:
 
     with pytest.raises(ValueError, match="Duplicate"):
         cmfgen.get_isotope_massfracs(["IRON", "IRON", "NICK"], [52, 52, 56], isofrac, [("IRON", 52)])
+
+
+def test_energyfiles_plotrate_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The path went to save_or_show as it came, thus the command wrote a file that had the name of the
+    folder and no extension.
+    """
+    outfolder = tmp_path / "plots"
+    at.inputmodel.energyinputfiles.main(argsraw=[], action="plotrate", modelpath=modelpath, outputfile=str(outfolder))
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert (outfolder / "energyfiles_plotrate.pdf").is_file(), f"no plot in {list(outfolder.iterdir())}"

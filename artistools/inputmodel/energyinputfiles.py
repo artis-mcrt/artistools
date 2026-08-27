@@ -17,6 +17,7 @@ import artistools as at
 from artistools.constants import day_to_s
 from artistools.misc import addarg_action
 from artistools.misc import require_action
+from artistools.misc import resolve_outputfile
 from artistools.plottools import save_or_show
 
 
@@ -269,7 +270,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        save_or_show(fig, args.outputfile)
+        # -o promises that a path with no file extension names a folder, and an empty -o shows the plot
+        save_or_show(fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

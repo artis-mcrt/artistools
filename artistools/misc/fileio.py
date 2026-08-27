@@ -543,8 +543,16 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def merge_pdf_files(pdf_files: list[str]) -> None:
-    """Merge a list of PDF files into a single PDF file, deleting the inputs once the merged file is written."""
+def open_file(filepath: Path | str) -> None:
+    """Open a file in the application that the platform gives it."""
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    # the command is our own platform opener and a path that the caller has written
+    subprocess.run([get_open_command(), str(filepath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
+
+
+def merge_pdf_files(pdf_files: list[str]) -> str:
+    """Merge a list of PDF files into one, and return its path. The inputs go once the merged file exists."""
     from artistools.misc.general import import_optional
 
     PdfWriter = import_optional("pypdf").PdfWriter
@@ -564,6 +572,8 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
         Path(pdfpath).unlink()
 
     print_saved(resultfilename)
+
+    return resultfilename
 
 
 def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: float) -> None:

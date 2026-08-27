@@ -430,12 +430,9 @@ def save_figure(
     plt.close(fig)
 
     if openfile:
-        import subprocess  # ruff:ignore[suspicious-subprocess-import]
+        from artistools.misc.fileio import open_file
 
-        from artistools.misc.fileio import get_open_command
-
-        # the command is our own platform opener and the path of the file this function just wrote
-        subprocess.run([get_open_command(), str(outpath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
+        open_file(outpath)
 
 
 def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
