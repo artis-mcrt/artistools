@@ -437,10 +437,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
     merging = len(modelgridindexlist) * len(timesteplist) > 1
-    frametemplate, _ = at.resolve_frameset_paths(
+    frametemplate, productpath = at.resolve_frameset_paths(
         args.outputfile,
         framecount=len(modelgridindexlist) * len(timesteplist),
         framename="plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf",
+        combines=merging,
     )
 
     for modelgridindex in modelgridindexlist:
@@ -463,7 +464,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if merging:
         # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
         # takes that plot for the product, because no plot of a merging run opened on its own
-        at.misc.combine_frames(pdf_list, None, openfile=args.open)
+        at.misc.combine_frames(pdf_list, productpath, openfile=args.open)
 
 
 if __name__ == "__main__":

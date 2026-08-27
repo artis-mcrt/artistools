@@ -1525,11 +1525,12 @@ def write_snapshot_figures(
     # a gif or a merged pdf holds every frame, thus one product comes out of many figures
     combining = len(frames) > 1 and (args.makegif or args.format == "pdf")
     firstts, lastts = timesteps_included[0], timesteps_included[-1]
-    frametemplate, gifpath = at.resolve_frameset_paths(
+    frametemplate, productpath = at.resolve_frameset_paths(
         args.outputfile,
         framecount=len(frames),
         framename=SNAPSHOTFRAMENAME,
         productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+        combines=combining,
     )
 
     outputfiles = [
@@ -1547,7 +1548,9 @@ def write_snapshot_figures(
     ]
 
     if combining:
-        at.misc.combine_frames(outputfiles, gifpath, openfile=args.open, gifduration=1000.0 if args.makegif else None)
+        at.misc.combine_frames(
+            outputfiles, productpath, openfile=args.open, gifduration=1000.0 if args.makegif else None
+        )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -1448,10 +1448,19 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     assert productpath == tmp_path / "results.v1" / "movie.gif"
     assert (tmp_path / "results.v1").is_dir()
 
-    # a merge names its own product, thus this names none
-    frametemplate, productpath = at.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename)
+    # a merge names its own product, thus a folder gives no name to it
+    frametemplate, productpath = at.resolve_frameset_paths(
+        tmp_path / "m", framecount=2, framename=framename, combines=True
+    )
     assert productpath is None
     assert frametemplate == tmp_path / "m" / framename
+
+    # a -o path that has a file extension names the merged product, and the frames go beside it
+    frametemplate, productpath = at.resolve_frameset_paths(
+        tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True
+    )
+    assert productpath == tmp_path / "merged.pdf"
+    assert frametemplate == tmp_path / framename
 
     # a name that holds no field cannot take more than one frame
     with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):

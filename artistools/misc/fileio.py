@@ -568,8 +568,11 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def merge_pdf_files(pdf_files: list[str]) -> str:
-    """Merge a list of PDF files into one, and return its path. The inputs go once the merged file exists."""
+def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:
+    """Merge a list of PDF files into one, and return its path. The inputs go once the merged file exists.
+
+    outputpath names the merged file. Without it, the name comes from the first file and the last one.
+    """
     from artistools.misc.general import import_optional
 
     PdfWriter = import_optional("pypdf").PdfWriter
@@ -580,7 +583,11 @@ def merge_pdf_files(pdf_files: list[str]) -> str:
         with Path(pdfpath).open("rb") as pdffile:
             merger.append(pdffile)
 
-    resultfilename = f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    resultfilename = (
+        str(outputpath)
+        if outputpath is not None
+        else f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    )
     with Path(resultfilename).open("wb") as resultfile:
         merger.write(resultfile)
 
@@ -634,7 +641,7 @@ def combine_frames(
         # a run that holds data for one frame alone makes one figure, and that figure is the product
         product = framepaths[0]
     else:
-        product = merge_pdf_files([str(framepath) for framepath in framepaths])
+        product = merge_pdf_files([str(framepath) for framepath in framepaths], productpath)
 
     if openfile:
         open_file(product)

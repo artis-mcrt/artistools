@@ -2120,3 +2120,23 @@ def test_a_command_that_writes_one_file_names_it_without_o(tmp_path: Path, monke
 
     artistools.__main__.main(argsraw=["inputmodel", "opacityfile", "uniform", "-modelpath", str(modelpath)])
     assert (tmp_path / "opacity.txt").is_file(), f"no opacity file in {list(tmp_path.iterdir())}"
+
+
+def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A run that merges its plots must take the name that -o gives the merged pdf.
+
+    Only a gif could take such a name. A merge took the -o path for the name of one frame, thus
+    "plotradfield -timestep 40-41 -o merged.pdf" stopped before it drew anything.
+    """
+    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
+
+    merged = tmp_path / "merged.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
+
+    assert merged.is_file(), f"the merged pdf must keep its name, but {list(tmp_path.iterdir())}"
+    assert not list(tmp_path.glob("plotradfield_*.pdf")), "the merge takes the frames away"
+
+    # a -o path that names a folder still gives the merged pdf the name of its frames
+    outfolder = tmp_path / "rf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
+    assert list(outfolder.glob("plotradfield_*-plotradfield_*.pdf")), f"no merged pdf in {list(outfolder.iterdir())}"

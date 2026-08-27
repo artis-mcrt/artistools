@@ -740,20 +740,26 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
 
 def resolve_frameset_paths(
-    outputfile: Path | str | None, *, framecount: int, framename: str, productname: str | None = None
+    outputfile: Path | str | None,
+    *,
+    framecount: int,
+    framename: str,
+    productname: str | None = None,
+    combines: bool = False,
 ) -> tuple[Path, Path | None]:
     """Return the path template of one frame, and the path of the file that holds every frame.
 
     A run that draws several figures combines them into one product, e.g. a gif or a merged pdf.
-    productname names that product. None says that the combining step names it, as merge_pdf_files
-    takes the names of the first frame and the last one.
+    combines says that such a product comes, and productname gives it a name for a -o path that names a
+    folder. Without that name the combining step names it, as merge_pdf_files takes the names of the
+    first frame and the last one.
 
     A -o path that has a file extension names the product itself, thus the frames go in the folder that
     holds it. A -o path with no file extension names a folder. This makes that folder either way.
     """
     givenpath = Path(outputfile) if outputfile else Path()
 
-    if productname is not None and givenpath.suffix and not givenpath.is_dir():
+    if (combines or productname is not None) and givenpath.suffix and not givenpath.is_dir():
         # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
         # and let resolve_outputfile read it as a folder and not as the name of one frame
         givenpath.parent.mkdir(parents=True, exist_ok=True)
