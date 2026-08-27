@@ -153,12 +153,27 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     at.print_saved(tmp_path / "with space.pdf")
     assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
 
-    # each platform gets its own verb, thus a run on one of them covers the lines of the others
-    for platform, verb in (("darwin", "open"), ("linux", "xdg-open"), ("win32", "start")):
+    # each platform gets its own verb, thus a run on one of them covers the lines of the others.
+    # cmd.exe reads the first quoted argument of start as the title of a window, thus an empty title
+    # stands in front of the path there
+    for platform, verb, line in (
+        ("darwin", "open", "open out.pdf"),
+        ("linux", "xdg-open", "xdg-open out.pdf"),
+        ("win32", "start", 'start "" out.pdf'),
+    ):
         monkeypatch.setattr(sys, "platform", platform)
         assert at.misc.fileio.get_open_command() == verb
         at.print_saved("out.pdf")
-        assert capsys.readouterr().out == f"{verb} out.pdf\n"
+        assert capsys.readouterr().out == f"{line}\n"
+
+    # a name that holds a space takes the quotation marks that the platform reads
+    monkeypatch.setattr(sys, "platform", "win32")
+    at.print_saved("with space.pdf")
+    assert capsys.readouterr().out == 'start "" "with space.pdf"\n'
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    at.print_saved("with space.pdf")
+    assert capsys.readouterr().out == "xdg-open 'with space.pdf'\n"
 
 
 def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

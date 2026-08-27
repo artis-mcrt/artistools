@@ -83,7 +83,16 @@ def print_saved(filepath: Path | str) -> None:
     # the verb of the platform, thus the line runs as a command there. A terminal that shows links also
     # makes the path one, and a pipe gets the plain text
     opencommand = get_open_command()
-    line = Text(f"{opencommand} ") + Text(shlex.quote(str(filepath)), style=f"link {fullpath.as_uri()}")
+    if sys.platform == "win32":
+        # cmd.exe takes the double quotation mark alone, and it reads the first quoted argument of
+        # start as the title of a window. Thus an empty title stands in front of the path
+        verb = f'{opencommand} "" '
+        quotedpath = f'"{filepath}"' if " " in str(filepath) else str(filepath)
+    else:
+        verb = f"{opencommand} "
+        quotedpath = shlex.quote(str(filepath))
+
+    line = Text(verb) + Text(quotedpath, style=f"link {fullpath.as_uri()}")
     Console(highlight=False, soft_wrap=True).print(line)
 
 

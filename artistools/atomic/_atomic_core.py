@@ -201,9 +201,12 @@ def get_transitiondata(
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
 
-    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache.
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
+    copy keeps a caller that takes an ion away from changing what the next caller reads.
     """
-    return get_transitiondata_cached(Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet)
+    return dict(
+        get_transitiondata_cached(Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet)
+    )
 
 
 @lru_cache(maxsize=2)
