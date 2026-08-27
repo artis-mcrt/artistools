@@ -178,11 +178,9 @@ def make_plot(
     outputfilename: str,
     args: argparse.Namespace,
 ) -> None:
-    """Plot one panel per ion plus a combined panel, and save the figure."""
-    npanels = len(ionlist)
-
+    """Plot one panel for each ion, and save the figure."""
     fig, axes = plt.subplots(
-        nrows=npanels,
+        nrows=len(ionlist),
         ncols=1,
         sharex=True,
         sharey=False,
@@ -199,25 +197,17 @@ def make_plot(
         print(figure_title)
     set_plot_title(axes[0], figure_title, args)
 
-    yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
     for seriesindex, temperature in enumerate(temperature_list):
         serieslabel = "NLTE" if temperature == "NOTEMPNLTE" else f"LTE {temperature} = {vardict[temperature]:.0f} K"
-        for ion_index, axis in enumerate(axes[: len(ionlist)]):
-            # an ion subplot
-            yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
-
+        for ion_index, axis in enumerate(axes):
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
             axis.legend(loc="upper left", handlelength=1, frameon=False, numpoints=1, prop={"size": 8})
-
-        if len(axes) > len(ionlist):
-            axes[len(ionlist)].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[IonTuple(Z, ion_stage)]:.1e}/cm³)"
         for (Z, ion_stage) in ionlist
     ]
-    axislabels += ["Total"]
 
     for axis, axislabel in zip(axes, axislabels, strict=False):
         axis.annotate(

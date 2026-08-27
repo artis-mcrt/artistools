@@ -329,14 +329,13 @@ def plot_artis_lightcurve(
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
     """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
-    if args is None:
-        args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -594,12 +593,10 @@ def make_lightcurve_plot(
     showuvoir: bool = True,
     showgamma: bool = False,
     maxpacketfiles: int | None = None,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
 ) -> None:
     """Plot light curves from light_curve.out, gamma_light_curve.out or light_curve_res.out or packets files."""
-    if args is None:
-        args = argparse.Namespace()
-
     if "figwidthscale" not in args:
         args.figwidthscale = 1.0
 

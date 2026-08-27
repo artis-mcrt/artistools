@@ -393,17 +393,28 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
 
 
 @lru_cache(maxsize=16)
+def get_rankassignments(modelpath: Path | str) -> pl.DataFrame | None:
+    """Return the cell-to-MPI-rank assignments, or None when the file is absent.
+
+    get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
+    again for each cell. Do not change the frame that this function returns.
+    """
+    lzrankassignments = get_dfrankassignments(modelpath)
+
+    return lzrankassignments.collect() if lzrankassignments is not None else None
+
+
+@lru_cache(maxsize=16)
 def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
     """Return the count of cells that hold matter for each rank, or None without the assignments file.
 
     ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
     cells alone, thus it writes no output file, and the absence of that file is not a fault.
     """
-    dfrankassignments = get_dfrankassignments(modelpath)
-    if dfrankassignments is None:
+    dfranks = get_rankassignments(modelpath)
+    if dfranks is None:
         return None
 
-    dfranks = dfrankassignments.collect()
     if "ndo_nonempty" not in dfranks.columns:
         return None
 
@@ -419,13 +430,13 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
         msg = f"Cell {modelgridindex} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
 
-    dfrankassignments = get_dfrankassignments(modelpath)
+    dfrankassignments = get_rankassignments(modelpath)
     if dfrankassignments is not None:
         dfselected = dfrankassignments.filter(
             (pl.col("ndo") > 0)
             & (pl.col("nstart") <= modelgridindex)
             & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
-        ).collect()
+        )
         assert dfselected.height == 1
         return int(dfselected["rank"].item())
 

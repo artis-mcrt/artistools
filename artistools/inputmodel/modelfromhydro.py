@@ -212,12 +212,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(
-    griddata: pl.DataFrame,
-    t_model_in_days: float,
-    vmax: float,  # ruff:ignore[unused-function-argument]
-    args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
-) -> pl.DataFrame:
+def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -266,17 +261,16 @@ def makemodelfromgriddata(
     dimensions: int = 3,
     scalemass: float = 1.0,
     scalevelocity: float = 1.0,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
 ) -> None:
     """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
-    if args is None:
-        args = argparse.Namespace()
-    dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
+    dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if getattr(args, "fillcentralhole", False):
-        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
+        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days)
 
     if getattr(args, "getcellopacityfromYe", False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
@@ -418,6 +412,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dimensions=args.dimensions,
         scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
+        args=args,
     )
 
 

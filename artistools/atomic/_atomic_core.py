@@ -199,15 +199,29 @@ def add_transition_columns(
 def get_transitiondata(
     modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
-    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame."""
-    ionlist = set(ionlist) if ionlist else None
+    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
+
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache.
+    """
+    return get_transitiondata_cached(Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet)
+
+
+@lru_cache(maxsize=2)
+def get_transitiondata_cached(
+    modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, quiet: bool = False
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return the transitions of each ion, and keep them for the next caller.
+
+    Do not change the dictionary that this function returns.
+    """
+    ionset = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
     time_start = time.perf_counter()
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionlist)
+    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionset)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -223,7 +237,37 @@ def get_levels(
     quiet: bool = False,
     derived_transitions_columns: Sequence[str] | None = None,
 ) -> pl.DataFrame:
-    """Return a polars DataFrame of energy levels."""
+    """Return a polars DataFrame of energy levels.
+
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache.
+    """
+    return get_levels_cached(
+        Path(modelpath),
+        tuple(ionlist) if ionlist is not None else None,
+        get_transitions=get_transitions,
+        get_photoionisations=get_photoionisations,
+        quiet=quiet,
+        derived_transitions_columns=(
+            tuple(derived_transitions_columns) if derived_transitions_columns is not None else None
+        ),
+    )
+
+
+@lru_cache(maxsize=2)
+def get_levels_cached(
+    modelpath: Path,
+    ionlist: tuple[tuple[int, int], ...] | None = None,
+    *,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+    quiet: bool = False,
+    derived_transitions_columns: tuple[str, ...] | None = None,
+) -> pl.DataFrame:
+    """Return a polars DataFrame of energy levels, and keep it for the next caller.
+
+    adata.txt is large, and a plot of one frame reads the levels of each ion. Thus a run without the
+    cache parsed the same file many times. Do not change the frame that this function returns.
+    """
     adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict: dict[tuple[int, int], pl.DataFrame] = (

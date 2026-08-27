@@ -934,25 +934,17 @@ def get_emission_contributions(
     )
 
 
-def plot_contributions_unstacked(
-    axis: mplax.Axes,
-    contributions: Sequence[atspectra.FluxContributionTuple],
-    arraylambda_angstroms: npt.NDArray[np.floating],
+def collect_emission_and_absorption(
+    contributions: "Sequence[atspectra.FluxContributionTuple]",
+    arraylambda_angstroms: "npt.NDArray[np.floating]",
     args: argparse.Namespace,
-    scalefactor: float,
-    xmin: float,
-    xmax: float,
-) -> tuple[list[Artist], float]:
-    """Draw one line for each contribution, and return the artists and the largest absorption.
+) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
+    """Return the emission spectra and the absorption spectra of every contribution.
 
-    An absorption series goes below the axis, thus the caller reads the largest value to set the limit.
+    One call runs every query together. A collect for each contribution runs them one after the other,
+    which costs about four times as much for the default series count. The emission queries and the
+    absorption queries are independent, thus one call takes both sets.
     """
-    plotobjects: list[Artist] = []
-    max_absorption = 0.0
-
-    # one call runs every query together, as the stacked plot does. A collect for each contribution
-    # runs them one after the other, which costs about four times as much for the default series count.
-    # The emission queries and the absorption queries are independent, thus one call takes both sets
     emissionqueries = (
         [
             get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
@@ -970,8 +962,27 @@ def plot_contributions_unstacked(
         else []
     )
     collected = pl.collect_all([*emissionqueries, *absorptionqueries])
-    emissionspectra = collected[: len(emissionqueries)]
-    absorptionspectra = collected[len(emissionqueries) :]
+
+    return collected[: len(emissionqueries)], collected[len(emissionqueries) :]
+
+
+def plot_contributions_unstacked(
+    axis: mplax.Axes,
+    contributions: Sequence[atspectra.FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+    scalefactor: float,
+    xmin: float,
+    xmax: float,
+) -> tuple[list[Artist], float]:
+    """Draw one line for each contribution, and return the artists and the largest absorption.
+
+    An absorption series goes below the axis, thus the caller reads the largest value to set the limit.
+    """
+    plotobjects: list[Artist] = []
+    max_absorption = 0.0
+
+    emissionspectra, absorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
 
     for index, contribution in enumerate(contributions):
         if args.showemission:
@@ -1020,27 +1031,8 @@ def plot_contributions_stacked(
         None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
     )
 
-    # the emission queries and the absorption queries are independent, thus one call runs both sets
-    # together. The draw order stays the same, because the collect comes before either stackplot
-    emissionqueries = (
-        [
-            get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
-            for contribution in contributions
-        ]
-        if args.showemission
-        else []
-    )
-    absorptionqueries = (
-        [
-            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
-            for contribution in contributions
-        ]
-        if args.showabsorption
-        else []
-    )
-    collected = pl.collect_all([*emissionqueries, *absorptionqueries])
-    dfemissionspectra = collected[: len(emissionqueries)]
-    dfabsorptionspectra = collected[len(emissionqueries) :]
+    # the collect comes before either stackplot, thus the draw order stays the same
+    dfemissionspectra, dfabsorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
 
     facecolors: list[mplt.ColorType] | None
     if args.showemission:

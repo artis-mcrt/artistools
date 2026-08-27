@@ -288,13 +288,10 @@ def plot_average_ionisation(
     params: Sequence[str],
     estimators: pl.LazyFrame,
     startfromzero: bool,
-    args: argparse.Namespace | None = None,
+    args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the mean ion charge of each element in params."""
-    if args is None:
-        args = argparse.Namespace()
-
     ax.set_ylabel("Average ion charge")
 
     # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
@@ -338,13 +335,10 @@ def plot_average_excitation(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     startfromzero: bool,
-    args: argparse.Namespace | None = None,
+    args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the population-weighted mean level excitation energy of each requested ion."""
-    if args is None:
-        args = argparse.Namespace()
-
     ax.set_ylabel("Average excitation energy [eV]")
 
     estimatorcolumns = estimators.collect_schema().names()
@@ -980,7 +974,6 @@ def plot_subplot(
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
     legend_ncols = 1
-    seriescount = 0
     ylabel = None
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
@@ -1115,7 +1108,6 @@ def plot_subplot(
     # data of this model would give an empty panel, thus test each one against the data range first.
     # set_ylim also accepts a bottom above the top, which turns the axis upside down and stays that way
     # through a later autoscale, thus the test has to come before the call and not after it.
-    # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
     if ymin is not None or ymax is not None:
         # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
         quantity = ax.get_ylabel().translate(str.maketrans("", "", "$\\{}")) or "data"
