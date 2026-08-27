@@ -202,11 +202,14 @@ def get_transitiondata(
     """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
 
     A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
-    copy keeps a caller that takes an ion away from changing what the next caller reads.
+    copy of the dictionary and of each frame keeps a caller that changes one of them from changing what
+    the next caller reads. A clone is cheap, because polars shares the data of a frame.
     """
-    return dict(
-        get_transitiondata_cached(Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet)
+    transitionsdict = get_transitiondata_cached(
+        Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet
     )
+
+    return {ion: dftransitions.clone() for ion, dftransitions in transitionsdict.items()}
 
 
 @lru_cache(maxsize=2)
@@ -244,9 +247,10 @@ def get_levels(
 
     A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
     clone is cheap, because polars shares the data of the frame, and it keeps a caller that changes the
-    columns in place from changing what the next caller reads.
+    columns in place from changing what the next caller reads. The levels and the transitions of each
+    ion are frames of their own inside an object column, thus each one needs a clone as well.
     """
-    return get_levels_cached(
+    dflevels = get_levels_cached(
         Path(modelpath),
         tuple(ionlist) if ionlist is not None else None,
         get_transitions=get_transitions,
@@ -256,6 +260,11 @@ def get_levels(
             tuple(derived_transitions_columns) if derived_transitions_columns is not None else None
         ),
     ).clone()
+
+    return dflevels.with_columns([
+        pl.Series(colname, [nested.clone() for nested in dflevels[colname]], dtype=pl.Object)
+        for colname in ("levels", "transitions")
+    ])
 
 
 @lru_cache(maxsize=2)
