@@ -1309,3 +1309,10 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
 
     assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
     assert len(list(tmp_path.glob("*.png"))) == 3, "the frames go in the folder of the gif"
+
+    # the folder of the gif can carry a suffix of its own, and the command makes it
+    dottedgif = tmp_path / "results.v1" / "movie.gif"
+    at.estimators.plotestimators.main(
+        argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timestep="40-41", makegif=True, outputfile=str(dottedgif)
+    )
+    assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"

@@ -461,9 +461,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 pdf_list.append(outputfile)
 
     if len(pdf_list) > 1:
-        merged = at.merge_pdf_files(pdf_list)
-        if args.open:
-            at.misc.open_file(merged)
+        product: str | None = at.merge_pdf_files(pdf_list)
+    else:
+        # the run took each plot for a part of a merge, thus no plot opened. A run that holds data for
+        # one cell or one timestep alone makes one plot, and that plot is the product
+        product = pdf_list[0] if pdf_list and merging else None
+
+    if product is not None and args.open:
+        at.misc.open_file(product)
 
 
 if __name__ == "__main__":

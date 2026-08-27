@@ -1531,8 +1531,10 @@ def write_snapshot_figures(
     if args.makegif:
         givenpath = Path(args.outputfile) if args.outputfile else Path()
         if givenpath.suffix and not givenpath.is_dir():
-            # -o names the gif itself, thus the frames go in the folder that holds it
+            # -o names the gif itself, thus the frames go in the folder that holds it. That folder can
+            # carry a suffix of its own, e.g. results.v1, thus make it here and let it read as a folder
             gifpath = givenpath
+            gifpath.parent.mkdir(parents=True, exist_ok=True)
             args.outputfile = str(givenpath.parent)
 
     outputpath = Path(args.outputfile)

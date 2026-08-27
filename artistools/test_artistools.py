@@ -1897,3 +1897,19 @@ def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"one file must open, not {len(opened)}"
     assert Path(opened[0]).is_file(), "the file that opens must be the merged pdf, which still exists"
+
+
+def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
+    """A range that holds data for one timestep alone makes one plot, and that plot is the product.
+
+    The run took each plot for a part of a merge, thus no plot opened. No merge came, because one
+    plot cannot merge, thus --open did nothing at all.
+    """
+    # the test model holds no radiation field data before timestep 10
+    template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
+    with mock.patch("subprocess.run") as mockrun:
+        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
+
+    opened = [call.args[0][1] for call in mockrun.call_args_list]
+    assert len(opened) == 1, f"the one plot must open, not {len(opened)} files"
+    assert Path(opened[0]).is_file()
