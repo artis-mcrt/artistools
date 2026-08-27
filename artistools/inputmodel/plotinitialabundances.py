@@ -74,7 +74,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
-    outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
+    outpath = at.resolve_outputfile(args.outputpath, f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf")
     save_figure(fig, outpath, args=args, dpi=300)
 
 

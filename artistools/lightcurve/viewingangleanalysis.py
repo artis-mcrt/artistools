@@ -79,7 +79,7 @@ def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-        outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
+        outputfolder = at.resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
         if args.include_delta_m40:
             np.savetxt(
                 outputfolder / f"{band_name}band_{modelname}_viewing_angle_data.txt",

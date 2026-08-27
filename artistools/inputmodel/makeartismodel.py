@@ -93,9 +93,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = (
-                Path(args.outputpath) if Path(args.outputpath).is_dir() else Path(args.outputpath).parent
-            ) / f"dimreduce_{ndim_out}d"
+            outdir = at.resolve_outputfile(args.outputpath, "model.txt").parent / f"dimreduce_{ndim_out}d"
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
