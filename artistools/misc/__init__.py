@@ -35,7 +35,9 @@ from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
+from artistools.misc.cliutils import print_detail as print_detail
 from artistools.misc.cliutils import print_error as print_error
+from artistools.misc.cliutils import print_heading as print_heading
 from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action

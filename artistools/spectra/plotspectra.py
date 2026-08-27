@@ -63,6 +63,8 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
+from artistools.misc import print_detail
+from artistools.misc import print_heading
 from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
@@ -336,9 +338,9 @@ def plot_reference_spectrum(
     assert isinstance(label, str)
     plotkwargs.pop("label", None)
 
-    print(f"====> Reference spectrum '{label}'")
+    print_heading(f"Reference spectrum '{label}'")
     specdata = atspectra.get_reference_spectrum(filepath)
-    print(f" file: {filepath}")
+    print_detail(f"file: {filepath}")
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
@@ -349,7 +351,7 @@ def plot_reference_spectrum(
 
     if scaletoreftime is not None:
         timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
-        print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
+        print_detail(f"scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
 
@@ -370,9 +372,11 @@ def plot_reference_spectrum(
         )
         specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
-    print(f" points: {len(specdata)}")
+    print_detail(f"points: {len(specdata)}")
 
-    print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
+    print_detail(
+        "metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()])
+    )
 
     lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, xunit)
 
@@ -385,7 +389,7 @@ def plot_reference_spectrum(
     specdata = df_filter_minmax_bracketed(specdata, "lambda_angstroms", lambda_min, lambda_max).collect()
 
     if fluxfilterfunc:
-        print(" Applying filter to reference spectrum")
+        print_detail("applying the filter to the reference spectrum")
         specdata = specdata.with_columns(
             cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
         )
@@ -509,10 +513,12 @@ def plot_artis_spectrum(
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
 
         # the label carries LaTeX for the figure, thus the log line shows the plain form
-        print(
-            f"====> '{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+        print_heading(
+            f"'{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} "
+            f"({args.timemin:.3f} to {args.timemax:.3f}d"
+            f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
-        print(f" modelpath {modelpath}")
+        print_detail(f"modelpath: {modelpath}")
 
         check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
@@ -625,7 +631,7 @@ def plot_artis_spectrum(
                 plotkwargs["color"] = None
 
             linelabel_withdirbin = linelabel
-            print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}", end="")
+            print(f"  direction {dirbin:4d}  {dirbin_definitions[dirbin]}", end="")
             if "packetcount" in dfspectrum.collect_schema().names():
                 npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
                 print(f"\t({npkts_selected:.2e} packets)")
@@ -1155,7 +1161,7 @@ def make_emissionabsorption_plot(
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
-    print(f"====> {modelname}")
+    print_heading(modelname)
     clamp_to_timesteps = not args.notimeclamp
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(

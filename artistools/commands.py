@@ -123,27 +123,32 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
 subcommandtree: CommandTree = {
     "comparetogsinetwork": CommandSpec(
         "gsinetwork.plotqdotabund",
-        helptext="Compare the energy release and abundances from ARTIS to a GSI Network calculation.",
+        helptext="Compare ARTIS to a GSI Network calculation.",
+        note="The comparison covers the energy release and the abundances.",
     ),
     "completions": CommandSpec(
-        "commands",
-        funcname="setup_completions",
-        helptext="Generate a shell tab-completion script for artistools commands.",
+        "commands", funcname="setup_completions", helptext="Write a tab-completion script for a shell."
     ),
     "ejectaopacity": CommandSpec(
-        "ejectaopacity", helptext="Compute binned expansion opacities and Planck-mean opacities in postprocessing."
+        "ejectaopacity",
+        helptext="Compute the opacities of the ejecta.",
+        note="This gives the binned expansion opacities and the Planck-mean opacities.",
     ),
     "exportmassfractions": CommandSpec(
-        "estimators.exportmassfractions", helptext="Export elemental mass fractions from the estimators to a text file."
+        "estimators.exportmassfractions",
+        helptext="Write the mass fractions of the elements.",
+        note="The values come from the estimators, and the command writes a text file.",
     ),
-    "getpath": CommandSpec(
-        "commands", funcname="get_artistools_path", helptext="Print the installed artistools package directory."
-    ),
+    "getpath": CommandSpec("commands", funcname="get_artistools_path", helptext="Print the folder of the package."),
     "hesma": CommandSpec(
-        "hesma_scripts", helptext="Convert ARTIS output to the file formats used by the HESMA model archive."
+        "hesma_scripts",
+        helptext="Convert ARTIS output to the HESMA formats.",
+        note="The HESMA model archive takes these file formats.",
     ),
     "gsinetworkdecayproducts": CommandSpec(
-        "gsinetwork.decayproducts", helptext="Load beta-decay energy release data from nucleosynthesis trajectories."
+        "gsinetwork.decayproducts",
+        helptext="Read the beta-decay energy of a trajectory.",
+        note="The data comes from the trajectories of a nucleosynthesis calculation.",
     ),
     "inputmodel": {
         "describe": CommandSpec(
@@ -196,15 +201,16 @@ subcommandtree: CommandTree = {
     },
     "leptontransport": CommandSpec(
         "nonthermal.leptontransport",
-        helptext="Plot the energy loss of a fast lepton to plasma, ionisation, and excitation with distance.",
+        helptext="Plot the energy loss of a fast lepton.",
+        note="The plot gives the loss to plasma, to ionisation, and to excitation against distance.",
     ),
     "makevpktinput": CommandSpec(
-        "make_vpkt_input", helptext="Create a vpkt.txt virtual packet configuration file for an ARTIS simulation."
+        "make_vpkt_input",
+        helptext="Write a vpkt.txt for a run.",
+        note="The file holds the configuration of the virtual packets.",
     ),
     "plotdensity": CommandSpec(
-        "inputmodel.plotdensity",
-        script="plotartisdensity",
-        helptext="Plot the radial density profile of an ARTIS model.",
+        "inputmodel.plotdensity", script="plotartisdensity", helptext="Plot the density against the radius."
     ),
     "plotestimators": CommandSpec(
         "estimators.plotestimators",
@@ -223,7 +229,8 @@ subcommandtree: CommandTree = {
     ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.packetsplots",
-        helptext="Plot last packet interaction properties versus ejecta velocity for selected packets.",
+        helptext="Plot the last interaction of a packet.",
+        note="The plot gives the properties of that interaction against the velocity of the ejecta.",
     ),
     "plotlightcurves": CommandSpec(
         "lightcurve.plotlightcurve",
@@ -233,9 +240,14 @@ subcommandtree: CommandTree = {
         aliases=("lc", "plotlightcurve"),
     ),
     "plotlinefluxes": CommandSpec(
-        "linefluxes", script="plotartislinefluxes", helptext="Plot line flux ratios for comparisons to Floers."
+        "linefluxes",
+        script="plotartislinefluxes",
+        helptext="Plot the ratios of the line fluxes.",
+        note="The ratios serve a comparison to Floers.",
     ),
-    "plotlogfiles": CommandSpec("logfiles", helptext="Plot per-rank stage durations from ARTIS log files."),
+    "plotlogfiles": CommandSpec(
+        "logfiles", helptext="Plot the time that each rank took.", note="The times come from the log files of a run."
+    ),
     "plotmacroatom": CommandSpec("macroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
@@ -259,31 +271,43 @@ subcommandtree: CommandTree = {
     ),
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
     "plottransitions": CommandSpec(
-        "transitions", script="plotartistransitions", helptext="Plot estimated spectra from bound-bound transitions."
+        "transitions",
+        script="plotartistransitions",
+        helptext="Plot the spectrum of the transitions.",
+        note="The spectrum comes from the bound-bound transitions.",
     ),
     "plotviewingangles": CommandSpec(
         "viewing_angles_visualization",
         script="plotartisviewingangles",
-        helptext="Generate a 3D visualization of an ARTIS model.",
+        helptext="Plot a 3D view of a model.",
+        note="The view holds an isosurface of the density and the direction bins.",
     ),
     "spencerfano": CommandSpec(
         "nonthermal.solvespencerfanocmd",
         script="plotartisnonthermal",
-        helptext="Solve the Spencer-Fano equation using data from an ARTIS cell at some timestep.",
+        helptext="Solve the Spencer-Fano equation for a cell.",
+        note="The data comes from one cell of an ARTIS run at one timestep.",
     ),
     "timesteps": CommandSpec(
-        "showtimesteps", helptext="List the timesteps of a model and the days that each one covers."
+        "showtimesteps",
+        helptext="List the timesteps and their days.",
+        note="The table gives the days that each timestep covers.",
     ),
     "version": CommandSpec("commands", funcname="show_version", helptext="Print the artistools version."),
     "writebollightcurvedata": CommandSpec(
         "lightcurve.writebollightcurvedata",
-        helptext="Write the bolometric light curve of each model out as a plain text file.",
+        helptext="Write the bolometric light curve of a model.",
+        note="The command writes a plain text file.",
     ),
     "writecodecomparisondata": CommandSpec(
-        "writecomparisondata", helptext="Write ARTIS model data out in code comparison workshop format."
+        "writecomparisondata",
+        helptext="Write the model in the comparison format.",
+        note="The code comparison workshop takes this format.",
     ),
     "writespectra": CommandSpec(
-        "spectra.writespectra", helptext="Write ARTIS spectra for each timestep to individual text files."
+        "spectra.writespectra",
+        helptext="Write the spectrum of each timestep.",
+        note="The command writes one text file for each timestep.",
     ),
 }
 
@@ -311,6 +335,27 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     return {heading: members for heading, members in grouped.items() if members}
 
 
+# what a group of subcommands does, for the listing of the commands above it
+GROUPHELPTEXT = {"inputmodel": "Make and inspect an ARTIS input model."}
+
+# a usage line that names more flags than this takes more room than a reader gives it
+MAXUSAGEFLAGS = 8
+
+
+def shorten_aliases(metavar: str) -> str:
+    """Return the name of a command with one alias alone, as the listing shows it.
+
+    argparse names every alias, thus "plotlightcurves (lc, plotlightcurve)" took 36 columns of the
+    listing and left 38 for the text, which then wrapped over three lines. Every alias still works, and
+    the help of the command names them all.
+    """
+    name, _, aliases = metavar.partition(" (")
+    if not aliases:
+        return metavar
+
+    return f"{name} ({aliases.rstrip(')').split(', ')[0]})"
+
+
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
@@ -318,6 +363,49 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         """Widen the help column so long option names stay on one line."""
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+
+    @t.override
+    def _get_help_string(self, action: argparse.Action) -> str | None:
+        """Give the default of an argument, unless that default says nothing.
+
+        A default of None or False means that the argument is off, which the help text already says.
+        Naming it filled 45 of the 80 defaults of plotspectra with "(default: None)".
+        """
+        if action.default is None or action.default is False or action.default == []:
+            return action.help
+
+        return super()._get_help_string(action)
+
+    @t.override
+    def _format_usage(
+        self,
+        usage: str | None,
+        actions: "Iterable[argparse.Action]",
+        groups: "Iterable[argparse._MutuallyExclusiveGroup]",
+        prefix: str | None,
+    ) -> str:
+        """Name the options of a long command as "[options]" in place of every flag.
+
+        The usage of plotspectra listed 77 flags over 61 lines, which no reader takes in. The help text
+        below it names each one.
+        """
+        actions = list(actions)
+        # the usage names the flags that the help shows, thus the hidden ones do not count
+        optionals = [action for action in actions if action.option_strings and action.help != argparse.SUPPRESS]
+        if usage is None and len(optionals) > MAXUSAGEFLAGS:
+            positionals = [action for action in actions if not action.option_strings]
+            # a metavar can hold one name for each value that the argument takes, thus join them
+            names = [
+                self._format_args(
+                    action,
+                    " ".join(action.metavar) if isinstance(action.metavar, tuple) else action.metavar or action.dest,
+                )
+                for action in positionals
+            ]
+            # argparse puts the name of the command in place of %(prog)s
+            usage = " ".join(["%(prog)s", "[options]", *names])
+
+        return super()._format_usage(usage, actions, groups, prefix)
 
     @t.override
     def _fill_text(self, text: str, width: int, indent: str) -> str:
@@ -367,7 +455,9 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         self._indent()
         for heading, members in grouped.items():
             yield CommandGroupHeading(option_strings=[], dest=f"{heading}:", help=None)
-            yield from members
+            for member in members:
+                member.metavar = shorten_aliases(str(member.metavar or member.dest))
+                yield member
         self._dedent()
 
 
@@ -758,7 +848,7 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
         if isinstance(spec, dict):
             subparser = subparsers.add_parser(
                 subcommand,
-                help="command group",
+                help=GROUPHELPTEXT.get(subcommand, "command group"),
                 description=f"The {subcommand} commands of artistools.",
                 epilog=f'Run "artistools {subcommand} <command> --help" for the arguments of one command.',
                 formatter_class=CustomArgHelpFormatter,

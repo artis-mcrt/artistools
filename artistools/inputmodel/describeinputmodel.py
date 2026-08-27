@@ -52,7 +52,7 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
 
 def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
-    print(f"====> {modelpath}")
+    at.print_heading(str(modelpath))
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
         modelpath,
         get_elemabundances=not args.noabund,

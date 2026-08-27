@@ -496,8 +496,9 @@ def get_ion_spectra(
         ionindex = ionlist.index(ionid)
         pldftransitions = get_ion_transitions(ion, dftransgfall, args)
 
-        print(
-            f"\n======> {at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
+        print()
+        at.print_heading(
+            f"{at.get_elsymbol(ionid.Z)} {at.roman_numerals[ionid.ion_stage]:3s} "
             f"(pop={conditions.ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
         )
 

@@ -537,6 +537,23 @@ def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def print_heading(text: str) -> None:
+    """Print the name of the model or the series that the lines below it describe.
+
+    Every command marks such a line, thus one style serves them all. rich gives the line its weight in
+    a terminal alone, and a pipe takes the plain text. "====>" stood in front of it before.
+    """
+    from rich.console import Console
+    from rich.text import Text
+
+    Console(highlight=False, soft_wrap=True).print(Text(text, style="bold"))
+
+
+def print_detail(*values: object) -> None:
+    """Print one line of detail below a heading, with the indent that every command uses."""
+    print(" ", *values)
+
+
 def print_product(args: argparse.Namespace, *values: object) -> None:
     """Print the product of a command, which --quiet keeps.
 

@@ -39,6 +39,7 @@ from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import polars_source
+from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
@@ -1730,7 +1731,8 @@ def print_integrated_flux(
     assert isinstance(x_min, int | float)
     assert isinstance(x_max, int | float)
 
-    print(f" integrated flux (x={x_min:.1f} to x={x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
+    # x is the name of the axis in the code, and the line below it names the unit of that axis
+    print_detail(f"integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
     assert isinstance(integrated_flux, float)
     return integrated_flux
 

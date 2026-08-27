@@ -150,6 +150,8 @@ from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import path_is_artis_model as path_is_artis_model
 from artistools.misc import path_is_codecomparison as path_is_codecomparison
 from artistools.misc import polars_source as polars_source
+from artistools.misc import print_detail as print_detail
+from artistools.misc import print_heading as print_heading
 from artistools.misc import print_saved as print_saved
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles

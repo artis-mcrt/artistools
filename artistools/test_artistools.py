@@ -140,7 +140,8 @@ def test_console_script_runs_its_own_subcommand(
         artistools.__main__.main()
 
     helptext = capsys.readouterr().out
-    assert helptext.startswith("usage: plotartisestimators [-h]")
+    # a command of many flags names them "[options]", thus the usage takes one line
+    assert helptext.startswith("usage: plotartisestimators [options]")
     # the parser holds this one command, thus it neither lists nor imports the other commands
     assert "-modelpath" in helptext
     assert "plotspectra" not in helptext
@@ -2060,3 +2061,46 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
             )
 
     assert withoutput > 20, "the tree must hold many commands that write output"
+
+
+def test_the_command_listing_gives_one_line_to_each_command() -> None:
+    """The listing of the commands must take one line for each of them.
+
+    The name of a command with every alias took 36 columns and left 38 for the text, thus almost every
+    description wrapped over two or three lines and the listing ran to 88 lines.
+    """
+    import artistools.__main__
+
+    helptext = artistools.__main__.build_parser().format_help()
+    listing = helptext.partition("positional arguments:")[2].partition("\noptions:")[0]
+
+    # a line of the listing holds a command, or it is the heading of a group, or it is empty
+    for line in listing.splitlines():
+        if not line.strip() or not line.startswith("    "):
+            continue
+        assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
+
+
+def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:
+    """A usage line that names 77 flags over 61 lines tells a reader nothing.
+
+    A command of more flags than MAXUSAGEFLAGS names them "[options]", and the help text below the
+    usage names each one. A command of few flags keeps them in the usage line.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    longcommand = subactions[0].choices["plotspectra"].format_usage()
+    assert "[options]" in longcommand
+    assert longcommand.count("\n") == 1, f"the usage of a long command takes one line: {longcommand!r}"
+
+    shortcommand = subactions[0].choices["timesteps"].format_usage()
+    assert "[options]" not in shortcommand, "a command of few flags names them"
+    assert "-modelpath" in shortcommand
+
+    # a default that says nothing stays out of the help text
+    estimatorshelp = subactions[0].choices["plotestimators"].format_help()
+    assert "(default: None)" not in estimatorshelp
+    assert "(default:" in estimatorshelp, "a default that carries a value still shows"

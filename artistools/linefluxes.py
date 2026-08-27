@@ -375,7 +375,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmax = -math.inf
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
-        print(f"====> {modellabel}")
+        at.print_heading(modellabel)
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 

@@ -357,8 +357,8 @@ def plot_artis_lightcurve(
     if pellet_nucname is not None:
         linelabel = rf"$\;$ {pellet_nucname}"
 
-    print(f"====> {linelabel}")
-    print(f" modelpath: {modelpath.resolve().parts[-1]}")
+    at.print_heading(linelabel)
+    at.print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
         at.plottools.set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
@@ -430,7 +430,7 @@ def plot_artis_lightcurve(
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
-    print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    at.print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
@@ -444,7 +444,7 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
+        at.print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -453,7 +453,7 @@ def plot_artis_lightcurve(
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
-        print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}", end="")
+        print(f"  direction {dirbin:4d}  {angle_definition[dirbin]}", end="")
 
         if "packetcount" in lcdata.collect_schema().names():
             npkts_selected = lcdata.select(pl.col("packetcount").sum()).item()
@@ -512,7 +512,9 @@ def plot_artis_lightcurve(
             ),
             x=lcdata["time_s"],
         )
-        print(f" Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
+        at.print_detail(
+            f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]"
+        )
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -546,8 +548,9 @@ def plot_artis_lightcurve(
         lcdata_valid_tmin = lcdata_valid.select(pl.col("time_days").min()).item()
         lcdata_valid_tmax = lcdata_valid.select(pl.col("time_days").max()).item()
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
-            print(
-                f" Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days): {energy_released:.3e} [erg]"
+            at.print_detail(
+                f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
+                f" {energy_released:.3e} [erg]"
             )
 
         axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
@@ -636,7 +639,7 @@ def make_lightcurve_plot(
             lightcurvelabel = plot_bol_reflightcurve(
                 axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
             )
-            print(f"====> {lightcurvelabel}")
+            at.print_heading(lightcurvelabel)
             plottedsomething = True
 
         else:
