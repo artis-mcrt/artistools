@@ -232,6 +232,11 @@ def test_shared_cli_args_consistent() -> None:
             elif action.dest != "help":
                 command = prefix.strip()
                 flagsbycommand.setdefault(command, {}).setdefault(action.dest, set()).update(action.option_strings)
+                if isinstance(action, at.misc.UnsupportedArgument):
+                    # the name of a flag that this command does not take is no argument of its own, thus
+                    # the rules below pass it by. The flags above still hold it, because a command that
+                    # takes -t must name -timestep in one way or the other
+                    continue
                 if action.option_strings and not all(flag.startswith("--") for flag in action.option_strings):
                     actionsbycommand.setdefault(command, {})[action.dest] = action
                 else:
@@ -1954,3 +1959,59 @@ def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"the one plot must open, not {len(opened)} files"
     assert Path(opened[0]).is_file()
+
+
+def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
+    """The table of the long flag names must hold what the commands declare.
+
+    addarg_collidingflags reads that table, thus a name that no line of it holds gives no message when
+    another command reads it as a joined value. Building the tree to collect the names would import
+    every command module, which the per-command console scripts do not do.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    def islongsingledash(flag: str) -> bool:
+        return flag.startswith("-") and not flag.startswith("--") and len(flag) > 2
+
+    names = {
+        flag
+        for subparser in subactions[0].choices.values()
+        for action in subparser._actions  # ruff:ignore[private-member-access]
+        for flag in action.option_strings
+        if islongsingledash(flag) and not isinstance(action, at.misc.UnsupportedArgument)
+    }
+    names |= {
+        flag
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        for flag in action.option_strings
+        if islongsingledash(flag)
+    }
+
+    missing = names - at.commands.SINGLEDASHLONGFLAGS
+    assert not missing, f"add these names to SINGLEDASHLONGFLAGS: {sorted(missing)}"
+
+
+def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixture[str]) -> None:
+    """Argparse joins a value to a flag of one letter, thus a long name of another command misparses.
+
+    "plotdensity -obsspec 100" read as "-o bsspec" and wrote the plot to a file named bsspec, and
+    "plotspectra -tmin 100" read as "-t min" and left 100 for a positional argument.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotdensity", "-obsspec", "100"])
+    assert "-obsspec is not an argument of this command" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-tmin", "100"])
+    message = capsys.readouterr().err
+    assert "-tmin is not an argument of this command" in message
+    assert "-timemin" in message, "the help line must name the argument that this command takes"
+
+    # a joined value of a flag of one letter still works, thus -t300 means -timedays 300
+    artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
+    assert "300 days falls in timestep 54" in capsys.readouterr().out

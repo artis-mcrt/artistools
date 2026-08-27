@@ -2,6 +2,7 @@
 
 from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
+from artistools.misc.cliutils import addarg_collidingflags as addarg_collidingflags
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
@@ -45,6 +46,7 @@ from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
+from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
