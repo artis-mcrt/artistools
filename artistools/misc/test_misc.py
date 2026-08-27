@@ -1474,6 +1474,13 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
     assert product == framepaths[0]
     assert mockopen.call_args.args[0] == framepaths[0]
 
+    # a gif of one frame is still the gif that the caller asked for
+    gifpath = tmp_path / "movie.gif"
+    with mock.patch("artistools.misc.fileio.write_gif") as mockgif:
+        product = at.misc.combine_frames(framepaths[:1], gifpath, openfile=False, gifduration=1000.0)
+    assert product == gifpath
+    assert mockgif.call_args.args[0] == gifpath, "one frame must still make the gif"
+
     # no frame gives no product
     assert at.misc.combine_frames([], None, openfile=True) is None
 

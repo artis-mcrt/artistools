@@ -188,14 +188,17 @@ def resolve_output_argument(args: argparse.Namespace) -> None:
     A command that writes one file takes the name of that file when -o names a folder. A command that
     writes a folder of files gets that folder. The folder exists after this either way.
     """
-    outputfile = getattr(args, "outputfile", None)
     kind = getattr(args, "outputkind", None)
-    if kind is None or not outputfile:
+    if kind is None:
         return
 
+    outputfile = getattr(args, "outputfile", None)
     if kind == "folder":
-        Path(outputfile).mkdir(parents=True, exist_ok=True)
+        # a command that takes no -o names its own folder, thus there is nothing to make
+        if outputfile:
+            Path(outputfile).mkdir(parents=True, exist_ok=True)
     elif (defaultname := getattr(args, "outputdefaultname", None)) is not None:
+        # resolve_outputfile gives the name of the command when -o names a folder or nothing
         args.outputfile = resolve_outputfile(outputfile, defaultname)
 
 

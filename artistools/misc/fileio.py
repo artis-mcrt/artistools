@@ -624,13 +624,15 @@ def combine_frames(
     if not framepaths:
         return None
 
-    if len(framepaths) == 1:
-        # a run that holds data for one frame alone makes one figure, and that figure is the product
-        product: Path | str = framepaths[0]
-    elif gifduration is not None:
+    product: Path | str
+    if gifduration is not None:
+        # a gif of one frame is still the gif that the caller asked for
         assert productpath is not None
         write_gif(productpath, framepaths, duration=gifduration)
         product = productpath
+    elif len(framepaths) == 1:
+        # a run that holds data for one frame alone makes one figure, and that figure is the product
+        product = framepaths[0]
     else:
         product = merge_pdf_files([str(framepath) for framepath in framepaths])
 

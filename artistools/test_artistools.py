@@ -2104,3 +2104,19 @@ def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:
     estimatorshelp = subactions[0].choices["plotestimators"].format_help()
     assert "(default: None)" not in estimatorshelp
     assert "(default:" in estimatorshelp, "a default that carries a value still shows"
+
+
+def test_a_command_that_writes_one_file_names_it_without_o(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A command that names its output file must write that file when -o names nothing.
+
+    resolve_output_argument passed by a run that gave no -o, thus plotdensity gave None to savefig and
+    stopped, and the uniform opacity file met Path(None).
+    """
+    import artistools.__main__
+
+    monkeypatch.chdir(tmp_path)
+    artistools.__main__.main(argsraw=["plotdensity", str(modelpath)])
+    assert (tmp_path / "densityprofile.pdf").is_file(), f"no plot in {list(tmp_path.iterdir())}"
+
+    artistools.__main__.main(argsraw=["inputmodel", "opacityfile", "uniform", "-modelpath", str(modelpath)])
+    assert (tmp_path / "opacity.txt").is_file(), f"no opacity file in {list(tmp_path.iterdir())}"
