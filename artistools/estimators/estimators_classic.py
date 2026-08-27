@@ -96,9 +96,20 @@ def get_classic_estimator_files(modelpath: Path) -> list[Path]:
     )
 
 
-@lru_cache(maxsize=2)
 def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
-    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found.
+    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no files exist.
+
+    The copy of the dictionary and of the dictionary of each cell keeps a caller that changes one of
+    them from changing what the next caller reads.
+    """
+    estimators = read_classic_estimators_cached(modelpath)
+
+    return None if estimators is None else {key: dict(estimcell) for key, estimcell in estimators.items()}
+
+
+@lru_cache(maxsize=2)
+def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
+    """Return the classic estimators of a run, and keep them for the next caller.
 
     The cache serves the no-data report, which reads the run a second time. Do not change the dict
     that this function returns.

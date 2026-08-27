@@ -392,9 +392,20 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
     return None
 
 
-@lru_cache(maxsize=16)
 def get_rankassignments(modelpath: Path | str) -> pl.DataFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when the file is absent.
+
+    The clone is cheap, because polars shares the data of a frame, and it keeps a caller that changes
+    the columns in place from changing what the next caller reads.
+    """
+    dfrankassignments = get_rankassignments_cached(modelpath)
+
+    return dfrankassignments.clone() if dfrankassignments is not None else None
+
+
+@lru_cache(maxsize=16)
+def get_rankassignments_cached(modelpath: Path | str) -> pl.DataFrame | None:
+    """Return the assignments of the run, and keep the frame for the next caller.
 
     get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
     again for each cell. Do not change the frame that this function returns.
