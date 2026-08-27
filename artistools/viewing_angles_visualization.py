@@ -9,6 +9,7 @@ import polars as pl
 
 import artistools as at
 from artistools.misc import addarg_outputfile
+from artistools.misc import resolve_outputfile
 
 
 def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
@@ -102,7 +103,9 @@ def viewing_angles_visualisation(
     go = at.import_optional("plotly.graph_objects")
 
     # Load model contents
-    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect()
+    # get_modeldata takes the name of each column, and "pos_mid" names none of them, thus the read
+    # gave no position column and the command stopped at the first one that it reads
+    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0].collect()
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
@@ -195,7 +198,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,
-        outfile=args.outputfile,
+        # -o promises that a path with no file extension names a folder, which the command makes
+        outfile=str(resolve_outputfile(args.outputfile, "plotviewingangles.html")) if args.outputfile else None,
         isomin=args.isomin,
         isomax=args.isomax,
         opacity=args.opacity,
@@ -207,4 +211,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

@@ -25,6 +25,9 @@ import pytest
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from collections.abc import Iterable
+
 modelpath = at.get_path("testdata") / "testmodel"
 RETIRED_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
 DISPATCHERTARGET = "artistools.__main__:main"
@@ -168,13 +171,30 @@ def test_module_entry_points_name_a_real_subcommand() -> None:
         assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
         assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
 
-    # a module that advertises --quiet must not call main directly, or the option does nothing
+    # every command takes --quiet, thus no module may call its main function and skip run_command
     for path in sorted(REPOPATH.glob("artistools/**/*.py")):
         text = path.read_text()
-        if "addarg_quiet(" in text and "def addarg_quiet" not in text:
-            assert 'if __name__ == "__main__":\n    main()' not in text, (
-                f"{path.name} advertises --quiet, thus its entry point must call run_subcommand"
-            )
+        if 'if __name__ == "__main__":' not in text or path.name.startswith("test_"):
+            continue
+        block = text.split('if __name__ == "__main__":')[1]
+        if "run_subcommand" in block or "run_module_as_subcommand" in block:
+            continue
+
+        modulename = ".".join(path.relative_to(REPOPATH).with_suffix("").parts)
+        assert at.commands.get_words_of_module(modulename) is None, (
+            f"{modulename} is a subcommand, thus its entry point must run through the dispatcher"
+        )
+
+    # the tree names the module of each subcommand, thus the reverse lookup finds every one of them
+    def walkspecs(tree: dict[str, t.Any]) -> "Iterable[at.commands.CommandSpec]":
+        for node in tree.values():
+            if isinstance(node, at.commands.CommandSpec):
+                yield node
+            else:
+                yield from walkspecs(node)
+
+    for spec in walkspecs(at.commands.subcommandtree):
+        assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
 def test_subcommandtree() -> None:

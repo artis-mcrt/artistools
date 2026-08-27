@@ -13,6 +13,7 @@ from types import MappingProxyType
 if t.TYPE_CHECKING:
     from collections.abc import Generator
     from collections.abc import Sequence
+    from importlib.machinery import ModuleSpec
 
 
 def get_examples() -> tuple[tuple[str, str], ...]:
@@ -526,12 +527,48 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
 
+def get_words_of_module(modulename: str) -> tuple[str, ...] | None:
+    """Return the words that name the subcommand of a module, or None when the tree holds no such module."""
+    modulename = modulename.removeprefix("artistools.")
+
+    def walk(tree: CommandTree, prefix: tuple[str, ...]) -> tuple[str, ...] | None:
+        for name, node in tree.items():
+            if isinstance(node, CommandSpec):
+                if node.module == modulename:
+                    return (*prefix, name)
+            elif (found := walk(node, (*prefix, name))) is not None:
+                return found
+
+        return None
+
+    return walk(subcommandtree, ())
+
+
+def run_module_as_subcommand(modulespec: "ModuleSpec | None") -> None:
+    """Run the subcommand of a module through the dispatcher.
+
+    A module that runs as `python -m artistools.logfiles` gives its own __spec__, and the tree names
+    the module of each subcommand. Thus no module holds the name of its own subcommand, which can
+    drift. A module that runs as a file path carries no spec, and it has no name to look up.
+    """
+    if modulespec is None:
+        msg = "This module holds no spec. Run it as `python -m artistools.<module>` or `artistools <command>`"
+        raise ValueError(msg)
+
+    words = get_words_of_module(modulespec.name)
+    if words is None:
+        msg = f"No subcommand of the tree names the module {modulespec.name}"
+        raise ValueError(msg)
+
+    run_subcommand(*words)
+
+
 def run_subcommand(*words: str) -> None:
     """Run one subcommand of the tree through the dispatcher.
 
     A module that runs as `python -m artistools.radfield` calls its own main function, thus it read no
     --quiet, and it reported a bad argument with a traceback. This gives it the path of a console
-    script. The name of the subcommand comes from the caller, because a module holds no such name.
+    script.
     """
     import sys
 

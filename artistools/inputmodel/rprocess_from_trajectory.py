@@ -587,4 +587,6 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

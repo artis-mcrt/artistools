@@ -187,4 +187,6 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)
