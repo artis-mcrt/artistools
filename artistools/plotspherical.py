@@ -386,7 +386,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
             )
 
-        outfilename = str(frametemplate).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
+        outfilename = at.format_frame_path(
+            frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
+        )
 
         save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=args.makegif)
 

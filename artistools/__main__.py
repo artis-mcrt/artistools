@@ -92,12 +92,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         parser.print_help()
         return
 
-    if (argparser := getattr(args, "argparser", None)) is not None:
-        check_time_selection(argparser, args, argsraw)
-        # the parser of the command recorded what it writes, thus -o takes its rule here
-        resolve_output_argument(args)
-
     try:
+        if (argparser := getattr(args, "argparser", None)) is not None:
+            check_time_selection(argparser, args, argsraw)
+            # the parser of the command recorded what it writes, thus -o takes its rule here
+            resolve_output_argument(args)
+
         run_command(func, args)
     except (AssertionError, FileNotFoundError, ModuleNotFoundError, ValueError) as exc:
         if os.environ.get("ARTISTOOLS_TRACEBACK"):

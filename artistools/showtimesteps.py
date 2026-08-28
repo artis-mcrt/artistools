@@ -13,9 +13,9 @@ from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
 from artistools.misc import print_product
 from artistools.misc.timesteps import get_bad_timestep_message
-from artistools.misc.timesteps import parse_timestep_token
 
 
 def get_timesteps_table(modelpath: Path | str) -> str:
@@ -65,7 +65,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print_product(args, f"{args.timedays:g} days falls in timestep {timestep}, which covers {days}")
     elif args.timestep is not None:
         lasttimestep = len(get_timestep_times(args.modelpath, loc="mid")) - 1
-        timestep = parse_timestep_token(args.timestep, {"last": lasttimestep})
+        # -timestep takes a range on every command, and a caller of the API can give a number
+        timesteps = parse_range_list(str(args.timestep), dictvars={"last": lasttimestep})
+        for timestep in timesteps:
+            if not 0 <= timestep <= lasttimestep:
+                msg = get_bad_timestep_message(args.modelpath, timestep)
+                raise ValueError(msg)
+
+            print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
+
+        return
         if not 0 <= timestep <= lasttimestep:
             # a negative index reads a row from the end of the list, thus it must not reach the lookup
             msg = get_bad_timestep_message(args.modelpath, timestep)

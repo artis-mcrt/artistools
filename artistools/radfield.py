@@ -363,7 +363,7 @@ def plot_celltimestep(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf", args=None if isframe else args)
+    save_figure(fig, outputfile, format="pdf", args=args, isframe=isframe)
     return True
 
 
@@ -447,7 +447,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         for timestep in timesteplist:
-            outputfile = str(frametemplate).format(cell=modelgridindex, timestep=timestep)
+            outputfile = at.format_frame_path(frametemplate, cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(
                 modelpath,
                 timestep,

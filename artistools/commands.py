@@ -598,7 +598,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             helptext = ""
             if flag is not None and isinstance(subparser, SuggestingArgumentParser):
                 helptext = suggest_names(flag, subparser.get_visible_flags())
-            self.exit_with_help(
+            # the usage of the command that the user ran, thus it holds the arguments of that command
+            subparser.exit_with_help(
                 f"unrecognized arguments: {' '.join(leftover)}",
                 helptext or f"Run `{subparser.prog} --help` to see every argument",
             )

@@ -212,7 +212,7 @@ def get_transitiondata(
     return {ion: dftransitions.clone() for ion, dftransitions in transitionsdict.items()}
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=8)
 def get_transitiondata_cached(
     modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
@@ -261,13 +261,17 @@ def get_levels(
         ),
     ).clone()
 
+    if "levels" not in dflevels.columns:
+        # a model that holds none of the ions gives a frame of no rows and no columns
+        return dflevels
+
     return dflevels.with_columns([
         pl.Series(colname, [nested.clone() for nested in dflevels[colname]], dtype=pl.Object)
         for colname in ("levels", "transitions")
     ])
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=8)
 def get_levels_cached(
     modelpath: Path,
     ionlist: tuple[tuple[int, int], ...] | None = None,
@@ -322,7 +326,9 @@ def get_levels_cached(
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
     dfallions = pl.DataFrame(level_lists, orient="row")
-    freeze_photoionisation_arrays(dfallions)
+    if get_photoionisations:
+        # the arrays hold the cross sections of this read alone, thus a run without them needs no walk
+        freeze_photoionisation_arrays(dfallions)
 
     return dfallions
 
@@ -335,6 +341,10 @@ def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
     small model, against 0.05 ms for the call itself, and a model of a full run holds far more of them.
     The arrays take this mark one time instead, thus such a write raises in place of passing.
     """
+    if "levels" not in dfallions.columns:
+        # a model that holds none of the ions gives a frame of no rows and no columns
+        return
+
     for dflevels in dfallions["levels"]:
         for colname in ("phixstargetlist", "phixstable"):
             if colname not in dflevels.columns:

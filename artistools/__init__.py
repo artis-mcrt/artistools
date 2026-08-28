@@ -106,6 +106,7 @@ from artistools.misc import exit_with_error as exit_with_error
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
+from artistools.misc import format_frame_path as format_frame_path
 from artistools.misc import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc import get_costheta_bins as get_costheta_bins

@@ -1507,3 +1507,54 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
     with mock.patch("artistools.misc.fileio.open_file") as mockopen:
         at.misc.combine_frames(framepaths[:1], None, openfile=False)
     assert not mockopen.called
+
+
+def test_a_keyword_that_the_command_does_not_take_raises() -> None:
+    """A name that names no argument of the command must raise, as it did before the marker flags.
+
+    addarg_collidingflags declares the flag of another command, so that a user of the command line gets
+    a message. Such a marker gave argparse a dest, thus the test for an unknown keyword took it for an
+    argument of this command and a wrong keyword passed without a word.
+    """
+    import artistools.showtimesteps
+
+    testmodel = at.get_path("testdata") / "testmodel"
+    with pytest.raises(ValueError, match="Unknown argument names"):
+        artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
+
+    # a real argument of the command still reaches it
+    artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
+
+
+def test_a_range_keeps_a_negative_number_whole() -> None:
+    """A hyphen in front of a number is no separator of a range.
+
+    "-timestep -1" split into an empty text and "1", thus it raised "invalid literal for int()".
+    """
+    assert at.parse_range_list("40-42") == [40, 41, 42]
+    assert at.parse_range_list("-1") == [-1]
+    assert at.parse_range_list("last", dictvars={"last": 99}) == [99]
+    assert at.parse_range_list("40-last", dictvars={"last": 42}) == [40, 41, 42]
+
+    with pytest.raises(ValueError, match="Bad range"):
+        at.parse_range_list("10-20-30")
+
+
+def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
+    """Two spellings of one path name one file, thus the merge must not remove the file that it wrote."""
+    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
+
+    import matplotlib.pyplot as plt
+
+    framepaths = []
+    for i in range(2):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [i, i])
+        framepath = tmp_path / f"frame{i}.pdf"
+        fig.savefig(framepath)
+        plt.close(fig)
+        framepaths.append(str(framepath))
+
+    # the product carries the name of a frame, and the caller gives it as an absolute path
+    product = at.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
+    assert Path(product).is_file(), "the merge must keep the file that it wrote"

@@ -420,20 +420,23 @@ def save_figure(
     saved file opens in its default application, thus --open needs no copied command.
 
     isframe says that this figure is one part of a product that combine_frames makes, e.g. a frame of a
-    gif. Such a figure does not open on its own, because the product opens in its place.
+    gif. Such a figure does not open on its own, because the product opens in its place, and it takes no
+    line of its own, because a merge takes the frames away and that line would name a file that went.
+    --show still opens each figure, because the user asked to see them.
     """
-    if isframe:
-        args = None
-
     if args is not None:
         show = show or getattr(args, "show", False)
         openfile = openfile or getattr(args, "open", False)
+
+    if isframe:
+        openfile = False
 
     if show:
         plt.show()
 
     fig.savefig(outpath, **savefig_kwargs)
-    print_saved(outpath)
+    if not isframe:
+        print_saved(outpath)
     plt.close(fig)
 
     if openfile:

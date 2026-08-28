@@ -152,7 +152,6 @@ def addarg_output(
     defaultname: str | None = None,
     default: t.Any = None,
     astype: type[Path] | type[str] | None = Path,
-    extraflags: "Sequence[str]" = (),
     helptext: str | None = None,
 ) -> None:
     """Add the -outputfile/-o argument, and record what the command writes.
@@ -178,7 +177,7 @@ def addarg_output(
     if astype is not None:
         kwargs["type"] = astype
 
-    arggroup(parser, "output").add_argument("-outputfile", *extraflags, "-outputpath", "-o", **kwargs)
+    arggroup(parser, "output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
     parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
 
 
@@ -196,6 +195,10 @@ def resolve_output_argument(args: argparse.Namespace) -> None:
     if kind == "folder":
         # a command that takes no -o names its own folder, thus there is nothing to make
         if outputfile:
+            if Path(outputfile).exists() and not Path(outputfile).is_dir():
+                msg = f"'{outputfile}' names a file that exists, and this command writes a folder of that name"
+                raise ValueError(msg)
+
             Path(outputfile).mkdir(parents=True, exist_ok=True)
     elif (defaultname := getattr(args, "outputdefaultname", None)) is not None:
         # resolve_outputfile gives the name of the command when -o names a folder or nothing
@@ -273,7 +276,8 @@ def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
 
     for name in sorted(SINGLEDASHLONGFLAGS):
         collides = any(name.startswith(letterflag) for letterflag in oneletter)
-        if collides and name not in declared:
+        # a command that spells the same name with two dashes does take that argument
+        if collides and name not in declared and f"-{name}" not in declared:
             parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
 
 
@@ -733,10 +737,35 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
     outputfile = Path(outputfile)
     if outputfile.is_dir() or not outputfile.suffixes:
+        if outputfile.exists() and not outputfile.is_dir():
+            msg = f"'{outputfile}' names a file that exists, and this command needs a folder of that name"
+            raise ValueError(msg)
+
         outputfile.mkdir(parents=True, exist_ok=True)
         return outputfile / defaultoutputfile
 
     return outputfile
+
+
+def get_template_fields(template: Path | str) -> list[str]:
+    """Return the names of the fields that a template of an output name holds."""
+    import re
+
+    return re.findall(r"\{(\w+)", str(template))
+
+
+def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
+    """Return the path of one frame, and name the fields of the command for a template that holds another.
+
+    A user writes the template, thus a field that the command does not give is a mistake of the
+    arguments and not a fault of artistools.
+    """
+    try:
+        return str(frametemplate).format(**fields)
+    except KeyError as exc:
+        given = ", ".join(f"{{{name}}}" for name in fields)
+        msg = f"the name of the output holds the field {exc}, and this command gives {given}"
+        raise ValueError(msg) from exc
 
 
 def resolve_frameset_paths(
@@ -768,9 +797,11 @@ def resolve_frameset_paths(
 
     frametemplate = resolve_outputfile(outputfile, framename)
     if framecount > 1 and "{" not in frametemplate.name:
+        fields = get_template_fields(framename)
+        example = f"-o 'frame_{{{fields[0]}}}{Path(framename).suffix}'" if fields else "-o myfolder"
         msg = (
             f"'{frametemplate.name}' names one file, and this command writes {framecount} frames. Give "
-            "a folder with -o, or a name that holds a field, e.g. -o 'frame_{timestep}.png'"
+            f"a folder with -o, or a name that holds a field, e.g. {example}"
         )
         raise ValueError(msg)
 
@@ -780,28 +811,44 @@ def resolve_frameset_paths(
 
 
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
-    """Set argparse defaults from a dictionary."""
+    """Set argparse defaults from a dictionary.
+
+    A name that this command does not take raises. addarg_collidingflags declares the flag of another
+    command, so that a user of the command line gets a message. Such a flag is no argument of this
+    command, thus a keyword of that name raises as it did before those declarations.
+    """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
+    realactions = [
+        action
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if not isinstance(action, UnsupportedArgument)
+    ]
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
-    for arg in parser._actions:  # ruff:ignore[private-member-access]
+    for arg in realactions:
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
     # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
-    for arg in parser._actions:  # ruff:ignore[private-member-access]
+    for arg in realactions:
         if arg.default is not None:
             arg.required = False
 
-    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # ruff:ignore[private-member-access]
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in realactions)}:
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
 
 
 def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
-    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
-    strparts = rng.split("-")
+    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars.
+
+    A hyphen also stands in front of a negative number, thus only a hyphen that follows a digit or a
+    letter separates the two ends of the range. "-1" then names one number, which the caller refuses.
+    """
+    import re
+
+    strparts = re.split(r"(?<=[0-9a-zA-Z])-", rng.strip())
 
     if len(strparts) not in {1, 2}:
         msg = f"Bad range: '{rng}'"

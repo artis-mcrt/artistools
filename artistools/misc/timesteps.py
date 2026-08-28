@@ -252,14 +252,18 @@ def get_time_range(
 
         # "last" names the final timestep, so that a command needs no arithmetic to ask for it
         dictvars = {"last": len(tmids) - 1}
-        if "-" in timestep_range_str:
-            timestepmin, timestepmax = (parse_timestep_token(nts, dictvars) for nts in timestep_range_str.split("-"))
+        rangeparts = re.split(r"(?<=[0-9a-zA-Z])-", timestep_range_str.strip())
+        if len(rangeparts) == 2:
+            timestepmin, timestepmax = (parse_timestep_token(nts, dictvars) for nts in rangeparts)
+        elif len(rangeparts) > 2:
+            msg = f"'{timestep_range_str}' names more than one range of timesteps"
+            raise ValueError(msg)
         else:
             timestepmin = parse_timestep_token(timestep_range_str, dictvars)
             timestepmax = timestepmin
 
         # a range that overshoots the end still starts inside the run, thus only the start must be in it
-        if timestepmin > dictvars["last"]:
+        if timestepmin > dictvars["last"] or timestepmin < 0:
             msg = get_bad_timestep_message(modelpath, timestepmin)
             raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:

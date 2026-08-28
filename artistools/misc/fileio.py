@@ -510,7 +510,7 @@ def path_is_codecomparison(filepath: Path | str) -> bool:
     """
     filepath = Path(filepath)
 
-    return not filepath.exists() and filepath.parts[0] == "codecomparison"
+    return not filepath.exists() and filepath.parts[:1] == ("codecomparison",)
 
 
 def readnoncommentline(file: t.IO[str]) -> str:
@@ -592,9 +592,11 @@ def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) 
         merger.write(resultfile)
 
     # only remove the inputs once the merged file exists, so a failed write cannot destroy them. The
-    # merged file can carry the name of one of them, and that one holds the merge now
+    # merged file can carry the name of one of them, and that one holds the merge now. A relative name
+    # and an absolute name of one file differ as text, thus the test reads the paths that they resolve to
+    resultpath = Path(resultfilename).resolve()
     for pdfpath in pdf_files:
-        if Path(pdfpath) != Path(resultfilename):
+        if Path(pdfpath).resolve() != resultpath:
             Path(pdfpath).unlink()
 
     print_saved(resultfilename)
@@ -643,11 +645,16 @@ def combine_frames(
         # a run that holds data for one frame alone makes one figure, and that figure is the product.
         # It takes the name that -o gave the product, because no merge comes to give it that name
         product = framepaths[0]
-        if productpath is not None and Path(product) != Path(productpath):
+        if productpath is not None and Path(product).resolve() != Path(productpath).resolve():
+            import shutil
+
             Path(productpath).parent.mkdir(parents=True, exist_ok=True)
-            Path(product).replace(productpath)
+            # shutil.move takes a frame and a product that sit on two file systems, which rename cannot
+            shutil.move(str(product), str(productpath))
             product = productpath
-            print_saved(product)
+
+        # a frame takes no line from save_figure, thus the product of this run needs one here
+        print_saved(product)
     else:
         product = merge_pdf_files([str(framepath) for framepath in framepaths], productpath)
 

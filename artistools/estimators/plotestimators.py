@@ -1195,7 +1195,7 @@ def make_figure(
 
         # a plot of one cell against time is no frame of a set, thus it names itself
         outpath = at.resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
-        outfilename = str(outpath).format(cell=mgilist[0], format=args.format)
+        outfilename = at.format_frame_path(outpath, cell=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
@@ -1226,7 +1226,7 @@ def make_figure(
         outpath = (
             frametemplate if frametemplate is not None else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
         )
-        outfilename = str(outpath).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
+        outfilename = at.format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
 
     set_plot_title(axes[0], figure_title, args)
 
@@ -1329,7 +1329,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_dpi(parser, default=600)
 
-    addarg_output(parser, kind="file", extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
         "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"

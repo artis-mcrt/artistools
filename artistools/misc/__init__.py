@@ -27,8 +27,10 @@ from artistools.misc.cliutils import check_time_selection as check_time_selectio
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
+from artistools.misc.cliutils import format_frame_path as format_frame_path
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
+from artistools.misc.cliutils import get_template_fields as get_template_fields
 from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
