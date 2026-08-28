@@ -1,6 +1,7 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
+import dataclasses as dc
 import itertools
 import sys
 import typing as t
@@ -808,6 +809,31 @@ def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
         raise ValueError(msg) from exc
 
 
+@dc.dataclass(frozen=True, slots=True)
+class FrameSet:
+    """The frames of a run that draws several figures, and the product that holds them.
+
+    One value says whether the run combines its frames. The command reads it for the figure of each
+    frame, and finish makes the product, thus the three parts of the run cannot disagree.
+    """
+
+    frametemplate: Path
+    productpath: Path | None
+    combines: bool
+    gifduration: float | None = None
+
+    def finish(self, framepaths: "Sequence[str | Path]", args: argparse.Namespace) -> Path | str | None:
+        """Combine the frames into the product, for a run that combines them, and give its path."""
+        if not self.combines:
+            return None
+
+        from artistools.misc.fileio import combine_frames
+
+        return combine_frames(
+            framepaths, self.productpath, openfile=getattr(args, "open", False), gifduration=self.gifduration
+        )
+
+
 def resolve_frameset_paths(
     outputfile: Path | str | None,
     *,
@@ -815,8 +841,9 @@ def resolve_frameset_paths(
     framename: str,
     productname: str | None = None,
     combines: bool = False,
-) -> tuple[Path, Path | None]:
-    """Return the path template of one frame, and the path of the file that holds every frame.
+    gifduration: float | None = None,
+) -> FrameSet:
+    """Return the frames of the run and the product that holds them.
 
     A run that draws several figures combines them into one product, e.g. a gif or a merged pdf.
     combines says that such a product comes, and productname gives it a name for a -o path that names a
@@ -833,7 +860,7 @@ def resolve_frameset_paths(
         # and let resolve_outputfile read it as a folder and not as the name of one frame
         givenpath.parent.mkdir(parents=True, exist_ok=True)
 
-        return resolve_outputfile(givenpath.parent, framename), givenpath
+        return FrameSet(resolve_outputfile(givenpath.parent, framename), givenpath, combines, gifduration)
 
     frametemplate = resolve_outputfile(outputfile, framename)
     if framecount > 1 and "{" not in frametemplate.name:
@@ -847,7 +874,7 @@ def resolve_frameset_paths(
 
     productpath = frametemplate.parent / productname if productname is not None else None
 
-    return frametemplate, productpath
+    return FrameSet(frametemplate, productpath, combines, gifduration)
 
 
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:

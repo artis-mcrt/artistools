@@ -1147,8 +1147,7 @@ def make_figure(
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
-    isframe: bool = False,
-    frametemplate: Path | None = None,
+    frameset: at.FrameSet | None = None,
     **plotkwargs: t.Any,
 ) -> str:
     """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
@@ -1238,15 +1237,17 @@ def make_figure(
         print("  plotting " + figure_title.replace("\n", " "))
 
         assert isinstance(timestepslist, list)
-        # the caller of a set of frames gives the template, thus every frame lands beside its product
+        # the caller of a set of frames gives the frameset, thus every frame lands beside its product
         outpath = (
-            frametemplate if frametemplate is not None else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
+            frameset.frametemplate
+            if frameset is not None
+            else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
         )
         outfilename = at.format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
 
     set_plot_title(axes[0], figure_title, args)
 
-    save_figure(fig, outfilename, args=args, isframe=isframe, dpi=args.dpi)
+    save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
     return outfilename
 
@@ -1536,20 +1537,19 @@ def write_snapshot_figures(
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
 
     # a gif or a merged pdf holds every frame, thus one product comes out of many figures
-    combining = len(frames) > 1 and (args.makegif or args.format == "pdf")
     firstts, lastts = timesteps_included[0], timesteps_included[-1]
-    frametemplate, productpath = at.resolve_frameset_paths(
+    frameset = at.resolve_frameset_paths(
         args.outputfile,
         framecount=len(frames),
         framename=SNAPSHOTFRAMENAME,
         productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
-        combines=combining,
+        combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
+        gifduration=1000.0 if args.makegif else None,
     )
 
     outputfiles = [
         make_figure(
-            isframe=combining,
-            frametemplate=frametemplate,
+            frameset=frameset,
             modelpath=modelpath,
             timestepslist=frame,
             estimators=estimators,
@@ -1560,10 +1560,7 @@ def write_snapshot_figures(
         for frame in frames
     ]
 
-    if combining:
-        at.misc.combine_frames(
-            outputfiles, productpath, openfile=args.open, gifduration=1000.0 if args.makegif else None
-        )
+    frameset.finish(outputfiles, args)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -28,6 +28,7 @@ from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import format_frame_path as format_frame_path
+from artistools.misc.cliutils import FrameSet as FrameSet
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex

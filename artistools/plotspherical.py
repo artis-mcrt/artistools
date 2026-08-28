@@ -351,11 +351,13 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     print_theta_phi_definitions()
 
     # one product comes out of the frames of a gif, thus the frames land beside it
-    frametemplate, gifpath = at.resolve_frameset_paths(
+    frameset = at.resolve_frameset_paths(
         args.outputfile,
         framecount=len(time_ranges),
         framename="plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}",
         productname="sphericalplot.gif" if args.makegif else None,
+        combines=args.makegif,
+        gifduration=1000 / 1.5,
     )
 
     outputfilenames = []
@@ -387,15 +389,16 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             )
 
         outfilename = at.format_frame_path(
-            frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
+            frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
         )
 
-        save_figure(fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=args.makegif)
+        save_figure(
+            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines
+        )
 
         outputfilenames.append(outfilename)
 
-    if args.makegif:
-        at.misc.combine_frames(outputfilenames, gifpath, openfile=args.open, gifduration=1000 / 1.5)
+    frameset.finish(outputfilenames, args)
 
 
 if __name__ == "__main__":

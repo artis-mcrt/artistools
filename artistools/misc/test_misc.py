@@ -1588,48 +1588,44 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     framename = "plot_{timestep:03d}.png"
 
     # a -o path with no file extension names a folder, which holds the frames and the product
-    frametemplate, productpath = at.resolve_frameset_paths(
+    frameset = at.resolve_frameset_paths(
         tmp_path / "frames", framecount=3, framename=framename, productname="movie.gif"
     )
-    assert frametemplate == tmp_path / "frames" / framename
-    assert productpath == tmp_path / "frames" / "movie.gif"
+    assert frameset.frametemplate == tmp_path / "frames" / framename
+    assert frameset.productpath == tmp_path / "frames" / "movie.gif"
     assert (tmp_path / "frames").is_dir(), "the folder of the frames must exist"
 
     # a -o path that has a file extension names the product, thus the frames go beside it
-    frametemplate, productpath = at.resolve_frameset_paths(
+    frameset = at.resolve_frameset_paths(
         tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
     )
-    assert productpath == tmp_path / "out" / "movie.gif"
-    assert frametemplate == tmp_path / "out" / framename
+    assert frameset.productpath == tmp_path / "out" / "movie.gif"
+    assert frameset.frametemplate == tmp_path / "out" / framename
 
     # the folder of the product can carry a suffix of its own
-    frametemplate, productpath = at.resolve_frameset_paths(
+    frameset = at.resolve_frameset_paths(
         tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
     )
-    assert productpath == tmp_path / "results.v1" / "movie.gif"
+    assert frameset.productpath == tmp_path / "results.v1" / "movie.gif"
     assert (tmp_path / "results.v1").is_dir()
 
     # a merge names its own product, thus a folder gives no name to it
-    frametemplate, productpath = at.resolve_frameset_paths(
-        tmp_path / "m", framecount=2, framename=framename, combines=True
-    )
-    assert productpath is None
-    assert frametemplate == tmp_path / "m" / framename
+    frameset = at.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename, combines=True)
+    assert frameset.productpath is None
+    assert frameset.frametemplate == tmp_path / "m" / framename
 
     # a -o path that has a file extension names the merged product, and the frames go beside it
-    frametemplate, productpath = at.resolve_frameset_paths(
-        tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True
-    )
-    assert productpath == tmp_path / "merged.pdf"
-    assert frametemplate == tmp_path / framename
+    frameset = at.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
+    assert frameset.productpath == tmp_path / "merged.pdf"
+    assert frameset.frametemplate == tmp_path / framename
 
     # a name that holds no field cannot take more than one frame
     with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):
         at.resolve_frameset_paths(tmp_path / "one.png", framecount=3, framename=framename)
 
     # one frame alone may take such a name
-    frametemplate, _ = at.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
-    assert frametemplate == tmp_path / "one.png"
+    frameset = at.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
+    assert frameset.frametemplate == tmp_path / "one.png"
 
 
 def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
