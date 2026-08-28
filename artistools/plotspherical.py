@@ -78,16 +78,9 @@ def plot_spherical(
     assert timemindays is not None
     assert timemaxdays is not None
 
-    # phi definition (with syn_dir=[0 0 1])
-    # x=math.cos(-phi)
-    # y=math.sin(-phi)
-
     dfpackets = at.packets.bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
-
-    # for figuring out where the axes are on the plot, make a cut
-    # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
     if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
@@ -207,7 +200,6 @@ def plot_spherical(
 
     assert isinstance(axes, np.ndarray)
 
-    # for ax, axcbar, plotvar in zip(axes[::2], axes[1::2], plotvars):
     for ax, plotvar in zip(axes, plotvars, strict=False):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
@@ -241,22 +233,12 @@ def plot_spherical(
         cbar.outline.set_linewidth(0)
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
-        # cbar.ax.set_title(colorbartitle)
         cbar.ax.set_xlabel(colorbartitle)
         cbar.ax.xaxis.set_label_position("top")
         if r"{}" in colorbartitle:
             cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle))
 
-        # ax.set_xlabel("Azimuthal angle")
-        # ax.set_ylabel("Polar angle")
-        # ax.set_xlabel(r"$\phi$")
-        # ax.set_ylabel(r"$\theta$")
-        # ax.set_xticklabels([])
-        # ax.set_yticklabels([])
-        # ax.grid(visible=True, color="black")
         ax.axis("off")
-        # xticks_deg = np.arange(0, 360, 90)[1:]
-        # ax.set_xticks(ticks=xticks_deg / 180 * np.pi - np.pi, labels=[rf"${deg:.0f}\degree$" for deg in xticks_deg])
 
         # yticks_deg = np.linspace(0, 180, 7)
         # ax.set_yticks(

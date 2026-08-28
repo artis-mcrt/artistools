@@ -593,7 +593,6 @@ def scan_estimators(
     # fall through to the shared filter/derive/join tail rather than returning early and skipping it
     is_codecomparison = path_is_codecomparison(modelpath)
 
-    # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
     if is_codecomparison:
         pldflazy = lazyframe_from_estimator_dict(
             at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)

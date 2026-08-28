@@ -278,8 +278,6 @@ def plot_celltimestep(
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
 
     label = r"Dilute blackbody model "
-    # label += r'(T$_{\mathrm{R}}$'
-    # label += f'= {row["T_R"]} K)')
     axis.plot(xlist, yvalues, label=label, color="purple", linewidth=1.5)
     ymax = float(np.max(yvalues))
 
@@ -339,7 +337,6 @@ def plot_celltimestep(
     )
 
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
-    # figure_title += '\ncell {modelgridindex} timestep {timestep}'
 
     set_plot_title(axis, figure_title, args)
 

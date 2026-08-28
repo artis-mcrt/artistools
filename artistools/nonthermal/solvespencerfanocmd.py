@@ -282,7 +282,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 outputfilename = str(args.outputfile).format(
                     cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
                 )
-                # outputfilename = "spencerfano.pdf"
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:

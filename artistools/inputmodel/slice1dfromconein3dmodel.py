@@ -243,22 +243,10 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
 
     at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputfile, "abundances_1d.txt"))
 
-    # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file
-    #     content = f.read()
-    #     f.seek(0, 0)
-    #     f.write(f"{model_df.shape[0]}\n{args.t_model}".rstrip("\r\n") + "\n" + content)
-
     print("Saved abundances_1d.txt and model_1d.txt")
 
 
 # with open(args.modelpath[0]/"model
-
-# print(cone)
-
-# cone = (merge_dfs.loc[merge_dfs[f'pos_{args.other_axis2}'] <= - (1/(np.tan(theta))
-# * np.sqrt((merge_dfs[f'pos_{slice_on_axis}'])**2 + (merge_dfs[f'pos_{args.other_axis1}'])**2))])
-# cone = merge_dfs
-# cone = cone.loc[cone['rho_model'] > 0.0]
 
 
 def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
@@ -269,16 +257,12 @@ def make_plot(args: argparse.Namespace, logprint: Callable[..., None]) -> None:
     fig = plt.figure()
     ax: Axes3D = fig.add_subplot(projection="3d")  # type: ignore[no-any-unimported]
 
-    # print(cone['rho_model'])
-
     # set up for big model. For scaled down artis input model switch x and z
     x = cone["pos_z_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
     y = cone["pos_y_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
     z = cone["pos_x_min"] / km_to_cm / (args.t_model * day_to_s) / 1e3
 
     _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
-
-    # fig.colorbar(_surf, shrink=0.5, aspect=5)
 
     ax.set_xlabel(r"x [10$^3$ km/s]")
     ax.set_ylabel(r"y [10$^3$ km/s]")
@@ -358,8 +342,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     make_1d_model_files(args, logprint)
-
-    # make_plot(args, logprint) # Uncomment to make 3D plot todo: add command line option
 
 
 if __name__ == "__main__":

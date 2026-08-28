@@ -179,7 +179,6 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         xtraj[i, :] = xiso0[i2, :]
-        # ttraj[i] = dattem.f.T9[i2] * 1e9
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
         atraj[i] = dat.f.pos[i2, 1]
@@ -188,12 +187,8 @@ def get_grid(
     for i1 in dynid:  # index of my original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
-        # if len(i2)<nsplit:
-        #     print('missing dyn ejecta at i=',i,len(i2))
         weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i4]) * msol)
         xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
-        # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
-        # yetraj[i] = np.sum(weights * ye_summ_file[int(i1)])
         yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
         vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
         atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
@@ -247,7 +242,6 @@ def get_grid(
         else:
             pos_z_min = np.array([vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)])
         pos_z_mid = pos_z_min + 0.5 * wid_init_z
-        # pos_z_max = pos_z_min + wid_init_z
 
         rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for _n_z in range(nvz)]).reshape(nvr, nvz)
         # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
@@ -259,8 +253,6 @@ def get_grid(
             for _n_z in range(nvz)
         ]).reshape(nvr, nvz)
     elif model_dim == 3:
-        # nvx = numb_cells_ARTIS_x
-        # nvy = numb_cells_ARTIS_y
         nvz = (
             numb_cells_ARTIS_z // eqsymfac
         )  # number of mapping grid cells in z direction depends on equatorial symmetry
@@ -293,7 +285,6 @@ def get_grid(
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
     for i in [int(j) for j in np.arange(ntraj)]:
-        # print(i)
         cont = True
         hl, hr = 0.00001 * CLIGHT * t_model_init_s, 1.0 * CLIGHT * t_model_init_s
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
@@ -353,7 +344,6 @@ def get_grid(
             2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
         )  # limiting to 0.5*h seems to prevent artefacts near the axis
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
-        # xin2 = np.tensordot(xtraj.T, weinor, axes=(1, 2))  # for testing
     elif model_dim == 3:
         rhoint = rho2d / (2.0 * np.pi * R3d)
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * R3d)
@@ -416,10 +406,6 @@ def get_grid(
     test = np.sum(xint, axis=0) - 1.0
     test = np.where(test > -1, test, 0.0)
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
-
-    # test = np.sum(xin2, axis=0) - 1.0
-    # test = np.where(test > -1, test, 0.0)
-    # print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell
     dfcontributions_particleids = []

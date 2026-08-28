@@ -115,7 +115,6 @@ def parse_phixsdata(
             upperionlevel = int(ionheader[2]) - firstlevelnumber
             lowerion_stage = int(ionheader[3])
             lowerionlevel = int(ionheader[4]) - firstlevelnumber
-            # threshold_ev = float(ionheader[5])
 
             assert upperion_stage == lowerion_stage + 1
 

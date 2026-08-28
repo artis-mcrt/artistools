@@ -149,13 +149,9 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
                     .fill_null(math.nan)
                 )
                 tau_s = dfnuc["half_life_sec"].item(0) / math.log(2)
-                # tau_s = hrow["tau[s]"]
                 Q_MeV = dfnuc["q"].item(0) / 1000
                 E_elec = (dfnuc["intensity_beta"] * dfnuc["mean_energy"]).sum() / 100 / 1000
                 E_nu = (dfnuc["intensity_beta"] * dfnuc["anti_nu_mean_energy"]).sum() / 100 / 1000
-                # dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
-                # E_gamma = (dfnuc["intensity_beta"] * dfnuc["E_gamma"]).sum() / 1000
-                # E_gamma = max(0, E_gamma)
                 E_gamma = Q_MeV - E_elec - E_nu
                 rows.append({
                     "A": A,
@@ -315,9 +311,6 @@ def process_trajectory(
                 decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
                 decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
                 decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
-    # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
-    #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
-    #     # import shutil
 
     # dump to parquet
     if traj_parquet_dir is not None:
@@ -410,7 +403,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
-        # max_workers=1,
     )
 
     print()
@@ -497,12 +489,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ax0.set_ylim(0.15, 0.55)
         ax0.set_ylabel("energy release rate / Qdot")
         ax1 = axes[1]
-        # ax1.plot(arr_t_day, decay_powers["hbeta"], linestyle="-", label=f"Traj {labelfull} hbeta")
-        # ax1.plot(arr_t_day, decay_powers["htot"], linestyle="-", label=f"Traj {labelfull} htot")
         ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_gamma"], linestyle="-", label=f"Traj {labelfull} abund -> gamma")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_elec"], linestyle="-", label=f"Traj {labelfull} abund -> elec")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_nu"], linestyle="-", label=f"Traj {labelfull} abund -> nu")
         ax1.plot(
             arr_t_day,
             decay_powers["abundweighted_gammanuelec"],

@@ -210,7 +210,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     pl.Config.set_tbl_cols(20)
     pl.Config.set_tbl_rows(5000)
-    # pl.Config.set_engine_affinity("streaming")
     cellcount = dfestimators.select(pl.len()).item()
     cells_processed = 0
     time_start = time.perf_counter()

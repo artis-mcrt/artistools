@@ -752,11 +752,6 @@ def add_derived_cols_to_modeldata(
         assert modelpath is not None
         dfmodel = get_cell_angle(dfmodel.collect()).lazy()
 
-    # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
-    #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
-    # if "Q" in derived_cols and os.path.isfile(modelpath / "Q_energy.txt"):
-    #     dfmodel["Q"] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
-
     return dfmodel
 
 
@@ -785,7 +780,6 @@ def get_cell_angle(dfmodel: pl.DataFrame) -> pl.DataFrame:
     # assert at.get_viewingdirection_phibincount() == 10
 
     phibins = [math.pi * frac / 5 for frac in (1, 2, 3, 4, 5, 6, 7, 8, 9)]
-    # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
     phi_labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
 
     return dfmodel.with_columns(

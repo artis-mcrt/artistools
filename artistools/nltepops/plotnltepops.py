@@ -76,15 +76,12 @@ def plot_reference_data(
     elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
     if Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").exists():
-        # ax.set_ylim(bottom=2e-3)
-        # ax.set_ylim(top=4)
         with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r", encoding="utf-8") as levelmapfile:
             levelnumofconfigterm = {}
             for line in levelmapfile:
                 row = line.split()
                 levelnumofconfigterm[row[0], row[1]] = int(row[2]) - 1
 
-        # ax.set_ylim(bottom=5e-4)
         for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ion_stage}_*.txt")):
             with depfilepath.open("r", encoding="utf-8") as depfile:
                 firstline = depfile.readline()
@@ -92,7 +89,6 @@ def plot_reference_data(
                 file_Te = float(firstline[firstline.find("Te = ") + 5 :].split(",")[0])
                 file_TR = float(firstline[firstline.find("TR = ") + 5 :].split(",")[0])
                 file_W = float(firstline[firstline.find("W = ") + 5 :].split(",")[0])
-                # print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
                 if math.isclose(file_nne, nne, rel_tol=0.01) and math.isclose(file_Te, Te, abs_tol=10):
                     if file_W > 0:
                         bbstr = " with dilute blackbody"
@@ -153,7 +149,6 @@ def get_floers_data(
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
             dffloers_levelpops = at.read_wsv(modelpath / floersfilename, comment_prefix="#").sort("energypercm")
-            # floers_levelnums = floers_levelpops['index'].values - 1
             floers_levelnums = list(range(dffloers_levelpops.height))
             floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
@@ -457,7 +452,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
 
     ion_data = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
     levelconfignames = ion_data["levels"]["levelname"].to_list()
-    # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
     if args.timedayslist:
         rows = len(args.timedayslist)
@@ -545,10 +539,7 @@ def plot_populations_with_time_or_velocity(
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
-        # modelname = at.get_model_name(modelpath)
-
         populations = {}
-        # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
@@ -575,7 +566,6 @@ def plot_populations_with_time_or_velocity(
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
             linelabel = str(levelconfignames[ionlevel])
-            # linelabel = f'level {ionlevel} {modelname}'
 
             if args.x == "time":
                 ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
@@ -624,7 +614,6 @@ def make_singletimestep_plot(
 
     dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
-    # top_ion = 9999
     max_ion_stage = dfpop["ion_stage"].max()
 
     assert isinstance(max_ion_stage, int)
@@ -695,7 +684,6 @@ def make_singletimestep_plot(
 
         dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
-        # top_ion = 9999
         max_ion_stage = dfpop["ion_stage"].max()
 
         assert isinstance(max_ion_stage, int)

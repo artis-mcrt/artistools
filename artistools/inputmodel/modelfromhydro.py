@@ -221,11 +221,6 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.Dat
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
     mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
-    # # Just (2021) Fig. 16 4th down, left panel
-    # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
-    # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
-    # mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
-
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole**3  # cm^3
@@ -331,9 +326,6 @@ def makemodelfromgriddata(
 
     if "cellYe" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
-
-    # if "Q" in dfmodel and args.makeenergyinputfiles:
-    #     at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(

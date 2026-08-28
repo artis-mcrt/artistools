@@ -78,7 +78,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
         max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
 
-        # total_mass = dfmodel.mass_g.sum() / Msun_to_g
         dfmodel = dfmodel.sort(by="vel_r_mid")
 
         cols = ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
@@ -106,7 +105,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # if we want to include the corners, then use this
             xmax = dfmodelcollect.select(pl.col("vel_r_mid").max()).item()
             # to exclude the corners:
-            # xmax = modelmeta["vmax_cmps"]
             xdeltamax = dfmodelcollect.select(pl.col("vel_r_mid").sort().diff().max()).item()
             ncoarsevelbins = int((xmax - xmin) / xdeltamax)
             print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")

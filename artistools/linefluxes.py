@@ -149,15 +149,12 @@ def get_line_luminosities_from_pops(
     if arr_tend is None:
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
-    # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
-
-    # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     # read_files is uncached, so read every rank's nlte output once rather than once per feature
     dfnltepops_allions = at.nltepops.read_files(modelpath)
@@ -301,9 +298,6 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
             f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
         )
         labelandlineindices.append(feature)
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 12570, 12470, 12670)))
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 28, 2, 7378, 7373, 7383)))
 
     return labelandlineindices
 
@@ -349,8 +343,6 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
 
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     """Plot the luminosity ratio of pairs of spectral features against time, and save the figure."""
-    # font = {'size': 16}
-    # matplotlib.rc('font', **font)
     nrows = 1
     fig, axesgrid = make_frame_figure(args, rows=nrows, sharey=False)
     axes = axesgrid[:, 0]
@@ -359,9 +351,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     axis = axes[0]
     axis.set_yscale("log")
-    # axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
-    # axis.set_xlim(left=supxmin, right=supxmax)
     tmin = math.inf
     tmax = -math.inf
 
@@ -421,7 +411,6 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
             plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args)
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
-    # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
     m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
     m18_pew[28, 2, 7378] = np.array([157, 256, 236, 309])
     if args.emfeaturesearch[1][:3] in m18_pew and args.emfeaturesearch[0][:3] in m18_pew:
@@ -463,12 +452,6 @@ def plot_nne_te_points(
     arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
-
-    # arr_weight = arr_weight / float(max(arr_weight))
-    # arr_color = np.zeros((len(arr_x), 4))
-    # arr_color[:, :3] = np.array([[c for c in mpl.colors.to_rgb(color)] for x in arr_weight])
-    # arr_color[:, 3] = (arr_weight + 0.2) / 1.2
-    # np.array([[c * z for c in mpl.colors.to_rgb(color)] for z in arr_z])
 
     # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
     #              edgecolors='none')
@@ -523,9 +506,6 @@ def plot_nne_te_bars(
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
-    # font = {'size': 16}
-    # matplotlib.rc('font', **font)
-    # 'floers_te_nne.json',
     refdatafilenames = ["floers_te_nne.json"]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
     refdatalabels = ["Flörs+2020"]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
@@ -699,8 +679,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     mplmarkers.MarkerStyle(mplmarkers.CARETUPBASE),
                     mplmarkers.MarkerStyle(mplmarkers.CARETDOWNBASE),
                 ]
-                # featurecolours = ['C0', 'C3']
-                # featurebarcolours = ['blue', 'red']
 
                 normtotalpackets = float(
                     np.sum([

@@ -1210,8 +1210,6 @@ def get_flux_contributions(
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
             for selectedcolumn, emissiontypeclass in ionserieslist:
-                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
-                #     continue
                 if getemission:
                     array_fnu_emission = weighted_average_spectra([
                         (

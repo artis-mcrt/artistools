@@ -181,8 +181,6 @@ def maptogrid(
         f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
     )
     x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
-    # Default is 50% (but is hand waving - choose) #
-    # x0 = - rmean
 
     dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
 
@@ -276,9 +274,6 @@ def maptogrid(
             if dis2 <= maxdist2:
                 wtij = kernelvals2(dis2, float(h[n]), wij)
 
-                # USED PREVIOUSLY: less accurate?
-                # grho_contrib = pmass[n] * wtij
-
                 # this particle's contribution to mass density (rho) in the cell
                 grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
 
@@ -367,7 +362,6 @@ def maptogrid(
                     fgrid.write(
                         f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n"
                     )
-                    # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
                     gridindex += 1
 

@@ -309,7 +309,6 @@ def plot_qdot(
 
     axis.legend(loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
 
-    # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
@@ -376,7 +375,6 @@ def plot_cell_abund_evolution(
     print(f"{'':7s}  gsi_abund artis_abund")
 
     for axis, strspecies in zip(axes, arr_species, strict=False):
-        # axis.set_yscale('log')
         axis.set_ylabel("Mass fraction")
 
         strnuc_latex = strnuc_to_latex(strspecies)

@@ -313,8 +313,6 @@ def get_time_range(
                 timestepmax = timestepmin
                 timemin = tstarts[timestepmin]
                 timemax = tends[timestepmax]
-                # timedelta = 10
-                # timemin, timemax = timeavg - timedelta, timeavg + timedelta
 
         assert timemin is not None
 

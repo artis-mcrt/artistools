@@ -75,7 +75,6 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 
     cumulative_energy = _cumulative_trapezoid(y=qdot, x=times)
     E_tot = float(cumulative_energy[-1])
-    # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
     rate = cumulative_energy / E_tot
 
@@ -89,22 +88,9 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
     print(np.mean(scale_factor_energy_diff))
     E_tot *= scale_factor_energy_diff
-    # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")
 
     dE = np.diff(dftimes_and_rate["rate"] * E_tot)
     dt = np.diff(times * 24 * 60 * 60)
-
-    # check energy rate is on top of power law line
-    # plt.plot(dftimes_and_rate["times"][1:], (dE / dt) * 0.01 * Msun_to_g)
-    # plt.plot(dftimes_and_rate["times"], qdot * 0.01 * Msun_to_g)
-    # plt.yscale("log")
-    # plt.xscale("log")
-
-    # plt.xlabel("Time [days]")
-    # plt.ylabel("Q [erg/g/s]")
-    # # plt.xlim(0.1, 20)
-    # # plt.ylim(5e39, 2e41)
-    # plt.show()
 
     return dftimes_and_rate, E_tot
 
@@ -183,7 +169,6 @@ def energy_from_rprocess_calculation(
 ) -> float | tuple[pl.DataFrame, float]:
     """Integrate a trajectory Qdot to get the total energy [erg/g], and the cumulative rate when get_rate is set."""
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
-    # print("Dropping times later than 116 days")
 
     skipfirstnrows = 0  # not sure first values look sensible -- check this
     times = energy_thermo_data["time/s"][skipfirstnrows:]

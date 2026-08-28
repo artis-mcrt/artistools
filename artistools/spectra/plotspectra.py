@@ -742,7 +742,6 @@ def make_spectrum_plot(
                     )
             refspecindex += 1
         elif path_is_codecomparison(specpath):
-            # timeavg = (args.timemin + args.timemax) / 2.
             (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays
             )
@@ -753,7 +752,6 @@ def make_spectrum_plot(
             refspecindex += 1
         else:
             # ARTIS model spectrum
-            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.3
 
@@ -802,27 +800,6 @@ def make_spectrum_plot(
             if not args.normalised:
                 print_warning("the filter functions plot normalised values, thus give -normalised as well")
             plot_filter_functions(axis)
-
-        # H = 6.6260755e-27  # Planck constant [erg s]
-        # KB = 1.38064852e-16  # Boltzmann constant [erg/K]
-
-        # for temp in [2900]:
-        #     bbspec_lambda = np.linspace(3000, 25000, num=1000)
-        #     bbspec_nu_hz = 2.99792458e18 / bbspec_lambda
-        #     bbspec_j_nu = np.array(
-        #         [1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / temp / KB)) for nu_hz in bbspec_nu_hz]
-        #     )
-
-        #     arr_j_lambda = bbspec_j_nu * bbspec_nu_hz / bbspec_lambda
-        #     bbspec_y = arr_j_lambda * 6e-14 / arr_j_lambda.max()
-        #     axis.plot(
-        #         bbspec_lambda,
-        #         bbspec_y,
-        #         label=f"{temp}K Planck function (scaled)",
-        #         color="black",
-        #         alpha=0.5,
-        #         zorder=-1,
-        #     )
 
         # make_plot has already applied args.ymax, thus reading the top back would inflate the value
         # that the user asked for by five percent

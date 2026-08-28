@@ -75,7 +75,6 @@ def plot_slice_modelcolumn(
             ])
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
-        # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -129,13 +128,6 @@ def plot_slice_modelcolumn(
         vmax=vmax,
     )
 
-    # plot_vmax = 0.2
-    # ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
-    # ax.set_xlim(left=-plot_vmax, right=plot_vmax)
-
-    # ax.set_xlim(left=vmin_ax1, right=vmax_ax1)
-    # ax.set_ylim(bottom=vmin_ax2, top=vmax_ax2)
-
     if "_" in colname:
         ax.annotate(
             colname.split("_")[1],
@@ -144,7 +136,6 @@ def plot_slice_modelcolumn(
             xycoords="axes fraction",
             horizontalalignment="right",
             verticalalignment="top",
-            # fontsize=10,
         )
 
     return im, scaledmap
@@ -201,15 +192,6 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     axcbar = fig.add_subplot(gs[0, :])
     axes = [fig.add_subplot(gs[1, y]) for y in range(ncols)]
-    # fig, axes = plt.subplots(
-    #     nrows=nrows,
-    #     ncols=ncols,
-    #     sharex=True,
-    #     sharey=True,
-    #     squeeze=False,
-    #     figsize=(figwidth * xfactor * ncols, figwidth * 1.4 * nrows),
-    #     tight_layout=None,
-    # )
 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
@@ -276,7 +258,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     print(mesh)  # tells you the properties of the mesh
 
     mesh[coloursurfaceby] = surfacecolorscale.ravel(order="F")  # add data to the mesh
-    # mesh.plot()
     minval = np.min(mesh[coloursurfaceby][np.nonzero(mesh[coloursurfaceby])])  # minimum non zero value
     print(f"{coloursurfaceby} minumin {minval}, maximum {max(mesh[coloursurfaceby])}")
 
@@ -288,7 +269,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
 
-    # surf.plot(opacity="linear", screenshot=modelpath / "3Dplot.png")  # plot surfaces and save screenshot
     sargs = {
         "height": 0.25,
         "vertical": True,
@@ -299,9 +279,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     }
 
     plotter: t.Any = pv.Plotter()
-    # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
-    # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
         mesh,
         grid=False,
@@ -315,23 +293,12 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         bold=False,
     )
     plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
-    # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
-
-    # plotter.remove_scalar_bar() # removes colorbar
 
     plotter.camera_position = "xz"
     assert plotter.camera is not None
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
-    # plotter.camera.azimuth = 15
     plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
-
-    # Make gif:
-    # # viewup = [0.5, 0.5, 1]
-    # path = plotter.generate_orbital_path(n_points=150, shift=mesh.length / 5)
-    # plotter.open_gif("orbit.gif")
-    # plotter.orbit_on_path(path, write_frames=True)
-    # plotter.close()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

@@ -564,7 +564,6 @@ def plot_artis_lightcurve(
                 assert label_with_tags is not None
                 label_with_tags += " (cmf)"
             plotkwargs["linestyle"] = "dashed"
-            # plotkwargs['color'] = 'tab:orange'
             axis.plot(
                 lcdata["time_days"],
                 lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
@@ -894,7 +893,6 @@ def make_colorbar_viewingangles(
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarcostheta:
-        # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "cos θ"
@@ -914,7 +912,6 @@ def make_colorbar_viewingangles(
             "2π",
         ]
         ticklabels = phi_viewing_angle_bins_reordered
-        # ticklabels = phi_viewing_angle_bins
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "ϕ bin"
 
@@ -1151,17 +1148,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
 # Just in case it's needed...
 
-# if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-#     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
-#     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
-#     linestyle = '--'
-#     color='darkmagenta'
-#     linelabel = args.label[1]
-# else:
-#     linestyle = '-'
-#     color='k'
-#     color='k'
-
 
 def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
     """Return the reference wavelength of the band in Angstroms, from the filter transmission file."""
@@ -1208,8 +1194,6 @@ def plot_lightcurve_from_refdata(
 
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
-        # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
-        # else:
 
         if "a_v" in metadata or "e_bminusv" in metadata:
             print("Correcting for reddening")
@@ -1259,12 +1243,6 @@ def plot_color_evolution_from_data(
                 metadata["a_v"] = metadata["e_bminusv"] * metadata["r_v"]
 
             filter_data[i] = deredden_band_magnitudes(filter_data[i], lambda0, metadata["a_v"], metadata["r_v"])
-
-    # for i in range(2):
-    #     # if metadata['label'] == 'SN 2018byg':
-    #     #     filter_data[i] = filter_data[i][filter_data[i].e_magnitude != -99.00]
-    #     if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
-    #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
     merge_dataframes = filter_data[0].join(
         filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"

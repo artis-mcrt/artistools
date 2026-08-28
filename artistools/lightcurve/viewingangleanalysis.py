@@ -421,11 +421,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
     linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
-    # a0, datalabel = at.lightcurve.get_sn_sample_bol()
-    # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
-    # args.plotvalues.append((a0, a0))
-    # linelabels.append(datalabel)
-
     set_legend(
         ax,
         args,
@@ -439,7 +434,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         columnspacing=1,
         frameon=False,
     )
-    # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         xlabel = rf"$\Delta$m$_{{15}}$({key})"
@@ -447,7 +441,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         xlabel = "Rise Time [days]"
 
     ax.set_xlabel(xlabel, fontsize=14)
-    # ax.set_ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max", fontsize=14)
     set_scatterplot_plot_params(fig, ax, args)
 
@@ -635,10 +628,6 @@ def peakmag_risetime_declinerate_init(
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
     write_viewing_angle_data(plottinglist[0], modelnames, args)
-
-    # if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-    #     make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, plottinglist[0], args)
-    #     return
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)

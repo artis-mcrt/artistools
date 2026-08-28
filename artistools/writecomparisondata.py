@@ -25,8 +25,6 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
     freqs = spec_data[1:, 0]
     lambdas = at.constants.c_ang_per_s / freqs
 
-    # print("\n".join(["{0}, {1}".format(*x) for x in enumerate(times)]))
-
     fluxes_nu = spec_data[1:, 1:]
 
     # area in cm^2 of a sphere of radius 1 Mpc

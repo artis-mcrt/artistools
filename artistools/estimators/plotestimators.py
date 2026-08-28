@@ -459,7 +459,6 @@ def plot_levelpop(
             assert isinstance(modelgridindex, int)
             valuesum = 0.0
             tdeltasum = 0.0
-            # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timestepslist:
                 levelpop = levelpop_of_mgi_ts[modelgridindex, timestep]
@@ -661,8 +660,6 @@ def plot_multi_ion_series(
     **plotkwargs: t.Any,
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""
-    # if seriestype == 'populations':
-
     plotted_something = False
 
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
@@ -745,7 +742,6 @@ def plot_multi_ion_series(
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
         dashes: tuple[float, ...] = ()
         styleindex = 0
         if isinstance(ion_stage, str):

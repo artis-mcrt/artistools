@@ -90,8 +90,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fileout.write(",".join(["velocity", "density", "t_rad", "dilution_factor", *listspecies]))
         fileout.write("\n")
 
-        # fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
-
         for cell in dfmodel.iter_rows(named=True):
             abundlist = [f"{cell[f'X_{strnuc}']:.4e}" for strnuc in listspecies]
             fileout.write(

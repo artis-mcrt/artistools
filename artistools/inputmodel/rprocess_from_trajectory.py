@@ -304,8 +304,6 @@ def get_trajectory_abund_q(
     massfractotal = dftrajnucabund["massfrac"].sum()
     dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)
 
-    # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
-    # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert math.isclose(massfractotal, 1.0, rel_tol=0.02)
     check_traj_time_matches(particleid, traj_time_s, t_model_s)
 
@@ -489,7 +487,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     traj_root = Path(
         Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
     )
-    # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f"trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
@@ -508,7 +505,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
     dfdensities = dfdensities.with_columns(inputcellid=pl.col("mgi") + 1)
-    # print(dfdensities)
 
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
