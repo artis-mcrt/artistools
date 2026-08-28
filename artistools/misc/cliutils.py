@@ -165,7 +165,6 @@ def addarg_output(
     kind: t.Literal["file", "folder"],
     defaultname: str | None = None,
     default: t.Any = None,
-    astype: type[Path] | type[str] | None = Path,
     helptext: str | None = None,
 ) -> None:
     """Add the -outputfile/-o argument, and record what the command writes.
@@ -183,13 +182,13 @@ def addarg_output(
         if kind == "file"
         else "The command creates this folder"
     )
+    # -o is a Path on every command, thus no command reads a text where another reads a Path
     kwargs: dict[str, t.Any] = {
         "dest": "outputfile",
         "default": default,
+        "type": Path,
         "help": f"{helptext or ('Path/filename for the output file' if kind == 'file' else 'Path for the output files')}. {rule}",
     }
-    if astype is not None:
-        kwargs["type"] = astype
 
     arggroup(parser, "output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
     parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)

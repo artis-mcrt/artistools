@@ -303,7 +303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
-    addarg_output(parser, kind="file", astype=str, default="", helptext="Filename for plot output file")
+    addarg_output(parser, kind="file", helptext="Filename for plot output file")
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 

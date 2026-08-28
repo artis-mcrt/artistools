@@ -206,7 +206,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
-    addarg_output(parser, kind="folder", astype=Path, default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

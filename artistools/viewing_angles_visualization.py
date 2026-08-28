@@ -2,6 +2,7 @@
 
 import argparse
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -170,7 +171,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(
         parser,
         kind="file",
-        astype=None,
         helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation",
     )
     parser.add_argument("-isomin", type=float, help="Minimum density for color coding")
@@ -184,7 +184,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving")
 
     # deprecated double-dash spellings kept as hidden aliases
-    parser.add_argument("--outfile", dest="outputfile", help=argparse.SUPPRESS)
+    parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--isomin", dest="isomin", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--isomax", dest="isomax", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--opacity", dest="opacity", type=float, help=argparse.SUPPRESS)

@@ -304,7 +304,8 @@ def test_deprecated_flag_spellings_still_work() -> None:
         ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
     ):
         args = parser.parse_args(rawargs)
-        assert args.outputfile == "vis.html"
+        # -o gives a Path on every command, thus the older spelling gives one as well
+        assert args.outputfile == Path("vis.html")
         assert args.opacity == 0.5
         assert args.surface_count == 10
 

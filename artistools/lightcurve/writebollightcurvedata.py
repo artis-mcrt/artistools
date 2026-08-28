@@ -55,7 +55,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Integrate the direction-resolved spectra instead of reading light_curve.out",
     )
-    at.addarg_output(parser, kind="folder", default=Path(), astype=Path)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

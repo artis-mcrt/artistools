@@ -181,7 +181,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     at.addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
-    at.addarg_output(parser, kind="folder", astype=Path, helptext="Folder for the written HESMA files", default=Path())
+    at.addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
     # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
     at.addarg_timeminmax(parser)

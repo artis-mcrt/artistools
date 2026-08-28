@@ -70,9 +70,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories"
     )
 
-    at.addarg_output(
-        parser, kind="folder", default=Path(), astype=Path, helptext="Path for output PDF and parquet files"
-    )
+    at.addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:

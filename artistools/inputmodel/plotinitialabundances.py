@@ -80,7 +80,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_output(parser, kind="file", default=Path(), astype=Path)
+    at.addarg_output(parser, kind="file", default=Path())
     at.addarg_modelpath(
         parser,
         positional=True,

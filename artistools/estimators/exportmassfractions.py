@@ -18,11 +18,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     at.addarg_timestep(parser, kind="int", default=14, helptext="Timestep number to export")
     at.addarg_modelgridindex(parser, default="0-9", helptext="Range of cell numbers to export")
     at.addarg_output(
-        parser,
-        kind="file",
-        defaultname=DEFAULTOUTPUTNAME,
-        default=DEFAULTOUTPUTNAME,
-        helptext="Path to output file of mass fractions",
+        parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions"
     )
 
 
