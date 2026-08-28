@@ -618,10 +618,12 @@ def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) 
         page = pypdf.PdfReader(outpath).pages[0].mediabox
         sizes[name] = (float(page.width) / 72.0, float(page.height) / 72.0, *frames[0])
 
-    # the geometry of the figure holds every inch that it declares, thus the margin of the labels
-    # stays empty in place of the file becoming smaller. Each panel of a grid then takes one room
-    assert sizes["shown"] == pytest.approx(sizes["hidden"]), "the file and the frame must not change"
+    # the width of the file and the frame hold. The height falls by the labels that went, because a
+    # crop takes the part of a margin that no label fills
+    assert sizes["shown"][0] == pytest.approx(sizes["hidden"][0]), "the width of the file must not change"
+    assert sizes["shown"][2:] == pytest.approx(sizes["hidden"][2:]), "the frame must not change"
     assert sizes["shown"][2:] == pytest.approx((pt.FRAMEWIDTH_INCHES, pt.FRAMEHEIGHT_INCHES))
+    assert sizes["hidden"][1] < sizes["shown"][1], "the file loses the height of the labels"
 
 
 def test_obsspec_draws_the_reference_spectrum(capsys: pytest.CaptureFixture[str]) -> None:

@@ -82,10 +82,12 @@ def test_a_frame_figure_holds_the_size_of_every_frame(
     plt.close(fig)
 
 
-def test_a_frame_figure_keeps_its_size_when_a_command_hides_the_labels(tmp_path: Path) -> None:
-    """A file of a fixed geometry holds its size and its frame when the x tick labels go.
+def test_a_frame_figure_keeps_its_frame_when_a_command_hides_the_labels(tmp_path: Path) -> None:
+    """The frame and the width of a file hold when the x tick labels go, and the height falls.
 
-    The margin that the labels take stays empty, thus each panel of a grid takes the same room.
+    A crop takes the part of a margin that no label fills, thus the file loses the height of the
+    labels that went. It moves no artist, thus the frame keeps the size that it holds in inches, and
+    each panel of a grid draws the same frame.
     """
     import pypdf
 
@@ -107,7 +109,10 @@ def test_a_frame_figure_keeps_its_size_when_a_command_hides_the_labels(tmp_path:
         page = pypdf.PdfReader(outpath).pages[0].mediabox
         sizes[name] = (round(float(page.width) / 72.0, 3), round(float(page.height) / 72.0, 3), frames)
 
-    assert sizes["shown"] == sizes["hidden"], sizes
+    # the width and the frame hold, and the height falls by the labels that the file no longer draws
+    assert sizes["shown"][0] == sizes["hidden"][0], sizes
+    assert sizes["shown"][2] == sizes["hidden"][2], sizes
+    assert sizes["hidden"][1] < sizes["shown"][1], sizes
 
 
 def test_a_saved_figure_keeps_an_artist_that_reaches_past_it(tmp_path: Path) -> None:

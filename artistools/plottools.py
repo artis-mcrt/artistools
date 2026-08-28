@@ -567,22 +567,6 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
-def warn_if_artists_overflow(fig: mplfig.Figure, outpath: "Path | str") -> None:
-    """Report an artist that reaches past a figure whose geometry is fixed, because the file cuts it.
-
-    make_frame_figure holds the size of each frame, thus the margins cannot grow for a label that
-    needs more room. A message names the room that it needs, so that the plot loses nothing quietly.
-    """
-    fig.canvas.draw()
-    figwidth, figheight = fig.get_size_inches()
-    inkbox = fig.get_tightbbox()
-    overflows = {"left": -inkbox.x0, "right": inkbox.x1 - figwidth, "bottom": -inkbox.y0, "top": inkbox.y1 - figheight}
-    if toobig := {side: over for side, over in overflows.items() if over > 0.005}:
-        sides = ", ".join(f"{side} by {over:.2f} inches" for side, over in sorted(toobig.items()))
-        name = str(outpath).rpartition("/")[2]
-        print_warning(f"{name}: the labels reach past the figure ({sides}) and the file cuts them")
-
-
 def save_figure(
     fig: mplfig.Figure,
     outpath: "Path | str",
@@ -618,14 +602,11 @@ def save_figure(
     # and an artist that reaches past the figure, e.g. a long label or an annotation that a command
     # places outside the axes, stays whole in place of being cut at the edge of the page. The small
     # pad keeps a stroke that lies on the boundary from losing its outer half.
-    # make_frame_figure places each frame at a size in inches, and it holds a margin for the labels.
-    # A crop would take the empty part of that margin, thus the size of the file would follow the
-    # labels again. Such a figure keeps every inch that it declares
-    if any(axis.get_axes_locator() is not None for axis in fig.axes):
-        warn_if_artists_overflow(fig, outpath)
-    else:
-        savefig_kwargs.setdefault("bbox_inches", "tight")
-        savefig_kwargs.setdefault("pad_inches", 0.02)
+    # a crop takes the part of a margin that no label fills, and it moves no artist, thus the frame
+    # keeps the size in inches that make_frame_figure gave it. The file then carries no border of
+    # white, and an artist that reaches past the figure stays whole in place of being cut
+    savefig_kwargs.setdefault("bbox_inches", "tight")
+    savefig_kwargs.setdefault("pad_inches", 0.02)
 
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:
