@@ -94,7 +94,8 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
             axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
             axis.legend()
-            pdf.savefig(fig)
+            # save_figure holds this rule for a figure of its own, and this pdf writes its own pages
+            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
             plt.close(fig)
 
     at.print_saved(outputfile)

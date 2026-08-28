@@ -16,6 +16,7 @@ import typing as t
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.testing as pltest
@@ -37,6 +38,69 @@ def _write_timesteps_out(modeldir: Path) -> None:
 
 
 # --- cliutils.py -------------------------------------------------------------------------------
+
+
+def test_a_saved_figure_keeps_an_artist_that_reaches_past_it(tmp_path: Path) -> None:
+    """A file of a plot holds every artist, thus a long label or an annotation is not cut.
+
+    The page took the size of the figure, thus an artist outside it went. It takes the size of the
+    artists now, which also leaves no border of white around the plot.
+    """
+    import pypdf
+    from PIL import Image
+
+    import artistools.plottools as pt
+
+    figwidth, figheight = 3.0, 2.0
+    sizes = {}
+    for name, overflows in (("plain", False), ("overflowing", True)):
+        fig, axis = plt.subplots(figsize=(figwidth, figheight), tight_layout={"pad": 0.2})
+        axis.plot([0, 1], [0, 1])
+        if overflows:
+            # annotation_clip=False draws the text outside the axes, and outside the figure
+            axis.annotate("A" * 30, xy=(0.5, 1.6), xycoords="axes fraction", annotation_clip=False, fontsize=14)
+
+        outpath = tmp_path / f"{name}.png"
+        pt.save_figure(fig, outpath)
+        sizes[name] = Image.open(outpath).size
+
+    # the figure of both is the same size, thus the file grows only because it holds the annotation
+    assert sizes["overflowing"][1] > sizes["plain"][1], sizes
+
+    # a pdf of a plot that fits carries no border: its page is the size of the artists and no more
+    fig, axis = plt.subplots(figsize=(figwidth, figheight), tight_layout={"pad": 0.2})
+    axis.plot([0, 1], [0, 1])
+    pdfpath = tmp_path / "plot.pdf"
+    pt.save_figure(fig, pdfpath)
+    page = pypdf.PdfReader(pdfpath).pages[0].mediabox
+    assert float(page.width) / 72.0 < figwidth, "the page must lose the border of the figure"
+    assert float(page.height) / 72.0 < figheight, "the page must lose the border of the figure"
+
+
+def test_a_gif_holds_the_largest_of_its_frames(tmp_path: Path) -> None:
+    """Every frame of a gif keeps its content, whatever size the other frames take.
+
+    A gif holds one canvas, and the first frame gave its size, thus a frame that is wider or taller
+    lost what lay outside it.
+    """
+    from PIL import Image
+
+    framepaths = []
+    for index, figsize in enumerate(((3, 2), (4, 3))):
+        fig, axis = plt.subplots(figsize=figsize)
+        axis.plot([0, 1], [0, 1])
+        framepath = tmp_path / f"frame{index}.png"
+        fig.savefig(framepath)
+        plt.close(fig)
+        framepaths.append(framepath)
+
+    widths, heights = zip(*(Image.open(framepath).size for framepath in framepaths), strict=True)
+    assert len(set(widths)) > 1, "this test needs frames that differ in size"
+
+    gifpath = tmp_path / "frames.gif"
+    at.misc.write_gif(gifpath, framepaths, duration=200.0)
+
+    assert Image.open(gifpath).size == (max(widths), max(heights))
 
 
 def test_one_rule_finds_the_reference_data_of_each_kind(tmp_path: Path) -> None:
@@ -1568,8 +1632,6 @@ def test_a_range_keeps_a_negative_number_whole() -> None:
 
 def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
     """Two spellings of one path name one file, thus the merge must not remove the file that it wrote."""
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     import matplotlib.pyplot as plt
 
     framepaths = []

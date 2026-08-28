@@ -501,6 +501,13 @@ def save_figure(
     if show:
         plt.show()
 
+    # crop the file to the artists that the figure holds. The page then carries no border of white,
+    # and an artist that reaches past the figure, e.g. a long label or an annotation that a command
+    # places outside the axes, stays whole in place of being cut at the edge of the page. The small
+    # pad keeps a stroke that lies on the boundary from losing its outer half
+    savefig_kwargs.setdefault("bbox_inches", "tight")
+    savefig_kwargs.setdefault("pad_inches", 0.02)
+
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:
         print_saved(outpath)

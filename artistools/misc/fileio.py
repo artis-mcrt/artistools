@@ -643,11 +643,28 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
 
     iio = import_optional("imageio.v2")
 
+    import numpy as np
+    from PIL import Image
+
+    # a gif holds one canvas, and the first frame gives its size, thus a frame that is wider or
+    # taller loses what lies outside. Each frame takes a border of white up to the largest size.
+    # Image.open reads the header alone, thus this costs no decode of the image
+    sizes = [Image.open(imagefile).size for imagefile in imagefiles]
+    width, height = max(size[0] for size in sizes), max(size[1] for size in sizes)
+
     # bind the writer outside the with, because __enter__ is typed as returning the reader/writer base class
     writer = iio.get_writer(giffile, mode="I", duration=duration)
     with writer:
         for imagefile in imagefiles:
-            writer.append_data(iio.imread(imagefile))
+            frame = iio.imread(imagefile)
+            padtop = (height - frame.shape[0]) // 2
+            padleft = (width - frame.shape[1]) // 2
+            padding = [
+                (padtop, height - frame.shape[0] - padtop),
+                (padleft, width - frame.shape[1] - padleft),
+                *[(0, 0)] * (frame.ndim - 2),
+            ]
+            writer.append_data(np.pad(frame, padding, constant_values=255))
 
     print(f"Created gif: {giffile}")
 

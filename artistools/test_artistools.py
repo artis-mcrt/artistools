@@ -1096,8 +1096,6 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
     """The input files must survive until the merged file exists."""
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     pdfpaths = []
     for i in range(2):
         fig, ax = plt.subplots()
@@ -2089,8 +2087,6 @@ def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
 
     merge_pdf_files deletes those plots, thus an application that opened one would hold nothing.
     """
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
         at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
@@ -2282,8 +2278,6 @@ def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
     Only a gif could take such a name. A merge took the -o path for the name of one frame, thus
     "plotradfield -timestep 40-41 -o merged.pdf" stopped before it drew anything.
     """
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     merged = tmp_path / "merged.pdf"
     at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
 
@@ -2303,8 +2297,6 @@ def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) ->
     the frame. A product that carries the name of a frame also went, because the merge removes its
     inputs.
     """
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     # the test model holds no radiation field data before timestep 10, thus one frame comes of the two
     merged = tmp_path / "merged.pdf"
     at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))

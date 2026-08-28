@@ -70,6 +70,7 @@ dev = [
     "imageio>=2.37.4",
     "prek>=0.4.14",
     "pynonthermal>=2026.8.9",
+    "pypdf>=6.16.2",
     "pyrefly>=1.2.0",
     "pytest>=9.1.1",
     "pytest-codspeed>=5.0.3",
