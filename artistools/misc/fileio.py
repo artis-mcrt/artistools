@@ -7,9 +7,11 @@ import re
 import shlex
 import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
+from functools import cache
 from functools import lru_cache
 from pathlib import Path
 
@@ -45,12 +47,54 @@ def drop_trailing_null_column(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame |
     return df.drop(cs.by_index(-1)) if isnullcol.item() else df
 
 
+def open_file(filepath: Path | str) -> None:
+    """Open a file in the application that the platform gives it."""
+    if sys.platform == "win32":
+        # Windows has no opener command that takes a path as an argument, thus it takes its own call
+        os.startfile(filepath)  # ruff:ignore[start-process-with-no-shell]
+        return
+
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    # the command is our own platform opener and a path that the caller has written
+    subprocess.run([get_open_command(), str(filepath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
+
+
+def get_open_command() -> str:
+    """Return the command that opens a file with its default application on this platform."""
+    if sys.platform == "darwin":
+        return "open"
+
+    return "start" if sys.platform == "win32" else "xdg-open"
+
+
 def print_saved(filepath: Path | str) -> None:
     """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
-    filepath = Path(filepath).resolve()
+    from rich.console import Console
+    from rich.text import Text
+
+    fullpath = Path(filepath).resolve()
+    filepath = fullpath
     with contextlib.suppress(ValueError):
-        filepath = filepath.relative_to(Path.cwd(), walk_up=True)
-    print(f"open {shlex.quote(str(filepath))}")
+        relativepath = fullpath.relative_to(Path.cwd(), walk_up=True)
+        # a file outside the working folder gives a chain of "..", which is longer than the full path
+        if len(str(relativepath)) < len(str(fullpath)):
+            filepath = relativepath
+
+    # the verb of the platform, thus the line runs as a command there. A terminal that shows links also
+    # makes the path one, and a pipe gets the plain text
+    opencommand = get_open_command()
+    if sys.platform == "win32":
+        # cmd.exe takes the double quotation mark alone, and it reads the first quoted argument of
+        # start as the title of a window. Thus an empty title stands in front of the path
+        verb = f'{opencommand} "" '
+        quotedpath = f'"{filepath}"' if " " in str(filepath) else str(filepath)
+    else:
+        verb = f"{opencommand} "
+        quotedpath = shlex.quote(str(filepath))
+
+    line = Text(verb) + Text(quotedpath, style=f"link {fullpath.as_uri()}")
+    Console(highlight=False, soft_wrap=True).print(line)
 
 
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
@@ -63,7 +107,7 @@ def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     return None
 
 
-def get_decompress_open(ext: str) -> t.Any:
+def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
     """Return the open() function of the compression module that handles the given file extension."""
     if sys.version_info >= (3, 14):
         # only available in Python 3.14+
@@ -80,41 +124,29 @@ def get_decompress_open(ext: str) -> t.Any:
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.zst, filename.gz or filename.xz."""
-    if found := find_compressed(filename):
-        ext, filepath = found
-        return get_decompress_open(ext)(filepath, mode=mode, encoding=encoding)
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
+    """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
-    # open() can raise file not found if this file doesn't exist
-    return Path(filename).open(mode=mode, encoding=encoding)
-
-
-def zopen_unshadowed(filename: Path | str, encoding: str | None = None, errors: str | None = None) -> t.Any:
-    """Open filename, falling back to a compressed sibling only when the named file does not exist.
-
-    Unlike zopen, a stale compressed copy never shadows a freshly written uncompressed file. This is the
-    same precedence read_wsv uses, and is what a plain Path.open call is replaced by. The errors argument
-    takes the value that the open functions take, e.g. "replace" for a file that holds a bad byte.
+    The named file wins, thus a stale compressed copy never shadows a file that a run has just written.
+    This is the same precedence that read_wsv and firstexisting use. The errors argument takes the value
+    that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
         if found is None:
             # let open() raise the FileNotFoundError naming the file the caller actually asked for
-            return filepath.open(encoding=encoding, errors=errors)
+            return filepath.open(mode=mode, encoding=encoding, errors=errors)
         ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode="rt", encoding=encoding, errors=errors)
+        return get_decompress_open(ext)(foundpath, mode=mode, encoding=encoding, errors=errors)
 
-    # the named file exists, so open it directly. Going through zopen here would re-run find_compressed
-    # and hand back a compressed sibling instead, which is the shadowing this function exists to avoid.
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        return get_decompress_open(filepath.suffix)(filepath, mode="rt", encoding=encoding, errors=errors)
+        return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding, errors=errors)
 
-    return filepath.open(encoding=encoding, errors=errors)
+    return filepath.open(mode=mode, encoding=encoding, errors=errors)
 
 
-def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
+def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
     """Return the path of a file that polars reads itself, or a file object that decompresses it.
 
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
@@ -124,18 +156,21 @@ def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = 
     if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
         return filepath
 
-    # get_decompress_open() erases the three backends' differing signatures to Any, so the file
-    # object is Any by design and the annotation says so rather than leaving it implicit
-    fileobj: t.Any = get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
-    return fileobj
+    # the default mode "r" opens a binary stream in all three backends, which is what polars reads
+    return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
 
 
-def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.Any | Path:
-    """Open filename, filename.zst, filename.gz or filename.xz. If polars.read_csv can read the file directly, return a Path object instead of a file object."""
-    if found := find_compressed(filename):
+def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
+    """Return a polars source for filename, or for a compressed sibling when the named file does not exist.
+
+    The named file wins, for the same reason as in zopen. If polars can read the file directly, this
+    returns a Path rather than a file object.
+    """
+    filepath = Path(filename)
+    if not filepath.is_file() and (found := find_compressed(filename)):
         return polars_source(found[1], mode=mode, encoding=encoding)
 
-    return Path(filename)
+    return polars_source(filepath, mode=mode, encoding=encoding)
 
 
 @contextlib.contextmanager
@@ -304,7 +339,7 @@ def read_wsv(
         # re-running find_compressed and reading the header out of a stale compressed sibling
         # the comment holds the column names, and it can hold a byte that is not valid UTF-8, thus
         # replace such a byte here as the read of the lines below also does
-        with zopen_unshadowed(filepath, errors="replace") as fin:
+        with zopen(filepath, errors="replace") as fin:
             first_line = fin.readline()
         if first_line.lstrip().startswith(comment_prefix):
             new_columns = first_line.lstrip().removeprefix(comment_prefix).split()
@@ -377,8 +412,13 @@ def firstexisting(
     folder: Path | str = ".",
     tryzipped: bool = True,
     search_subfolders: bool = True,
+    purpose: str = "",
 ) -> Path:
-    """Return the first existing file in file list. If none exist, raise exception."""
+    """Return the first existing file in file list. If none exist, raise exception.
+
+    A caller gives purpose to say what the file holds and which commands read it, because a list of
+    names alone does not tell a user what to do next.
+    """
     if isinstance(filelist, str | Path):
         filelist = [Path(filelist)]
     else:
@@ -421,6 +461,9 @@ def firstexisting(
     strfilelist = "\n  ".join([str(x.relative_to(folder)) if x.is_relative_to(folder) else str(x) for x in fullpaths])
     orsub = " or subfolders" if search_subfolders else ""
     msg = f"None of these files exist in {folder}{orsub}: \n  {strfilelist}"
+    if purpose:
+        msg += f"\n{purpose}"
+
     raise FileNotFoundError(msg)
 
 
@@ -439,6 +482,40 @@ def firstexisting_or_none(
         return None
 
     return filepath
+
+
+@cache
+def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
+    """Return the path of a file of reference data, or None when no such file exists.
+
+    The file is either at the given path or in the named folder of the data that the package holds,
+    and a compressed file of the same name is also accepted. The light curves and the spectra each
+    hold reference data of their own, thus the caller names the folder that holds its kind.
+    """
+    from artistools.commands import get_path
+
+    for folder in (Path(), Path(get_path("artistools_dir"), bundledsubfolder)):
+        if found := firstexisting_or_none(filename, folder=folder, tryzipped=True, search_subfolders=False):
+            return found
+
+    return None
+
+
+def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
+    """Return whether the path names a file of reference data and not the output of an ARTIS run.
+
+    A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
+    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
+    """
+    path = Path(filepath)
+    if path.is_dir() or find_reference_data_file(path, bundledsubfolder) is None:
+        return False
+
+    if not path_is_artis_model(path):
+        return True
+
+    # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
+    return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
 
 
 def stripallsuffixes(f: Path) -> Path:
@@ -460,7 +537,18 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     return filepath.is_dir() or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
 
 
-def readnoncommentline(file: io.TextIOBase) -> str:
+def path_is_codecomparison(filepath: Path | str) -> bool:
+    """Return whether the path is a virtual codecomparison path and not a real folder on disk.
+
+    A codecomparison path has the form "codecomparison/<model>/<code>". It names a data set of the
+    radiative transfer code comparison workshop, thus no such folder exists.
+    """
+    filepath = Path(filepath)
+
+    return not filepath.exists() and filepath.parts[:1] == ("codecomparison",)
+
+
+def readnoncommentline(file: t.IO[str]) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #.
 
     Raise EOFError if the end of the file is reached before any non-blank, non-comment line is found.
@@ -515,9 +603,14 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return {}
 
 
-def merge_pdf_files(pdf_files: list[str]) -> None:
-    """Merge a list of PDF files into a single PDF file, deleting the inputs once the merged file is written."""
-    from pypdf import PdfWriter
+def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:
+    """Merge a list of PDF files into one, and return its path. The inputs go once the merged file exists.
+
+    outputpath names the merged file. Without it, the name comes from the first file and the last one.
+    """
+    from artistools.misc.general import import_optional
+
+    PdfWriter = import_optional("pypdf").PdfWriter
 
     merger = PdfWriter()
 
@@ -525,28 +618,101 @@ def merge_pdf_files(pdf_files: list[str]) -> None:
         with Path(pdfpath).open("rb") as pdffile:
             merger.append(pdffile)
 
-    resultfilename = f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    resultfilename = (
+        str(outputpath)
+        if outputpath is not None
+        else f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    )
     with Path(resultfilename).open("wb") as resultfile:
         merger.write(resultfile)
 
-    # only remove the inputs once the merged file exists, so a failed write cannot destroy them
+    # only remove the inputs once the merged file exists, so a failed write cannot destroy them. The
+    # merged file can carry the name of one of them, and that one holds the merge now. A relative name
+    # and an absolute name of one file differ as text, thus the test reads the paths that they resolve to
+    resultpath = Path(resultfilename).resolve()
     for pdfpath in pdf_files:
-        Path(pdfpath).unlink()
+        if Path(pdfpath).resolve() != resultpath:
+            Path(pdfpath).unlink()
 
     print_saved(resultfilename)
+
+    return resultfilename
 
 
 def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: float) -> None:
     """Combine image files into an animated gif, showing each frame for duration milliseconds."""
-    import imageio.v2 as iio
+    from artistools.misc.general import import_optional
+
+    iio = import_optional("imageio.v2")
+
+    import numpy as np
+    from PIL import Image
+
+    # a gif holds one canvas, thus pad every frame to the largest size or lose what lies outside.
+    # Image.open reads the header alone, thus this decodes no image
+    sizes = [Image.open(imagefile).size for imagefile in imagefiles]
+    width, height = max(size[0] for size in sizes), max(size[1] for size in sizes)
 
     # bind the writer outside the with, because __enter__ is typed as returning the reader/writer base class
     writer = iio.get_writer(giffile, mode="I", duration=duration)
     with writer:
         for imagefile in imagefiles:
-            writer.append_data(iio.imread(imagefile))
+            frame = iio.imread(imagefile)
+            padtop = (height - frame.shape[0]) // 2
+            padleft = (width - frame.shape[1]) // 2
+            padding = [
+                (padtop, height - frame.shape[0] - padtop),
+                (padleft, width - frame.shape[1] - padleft),
+                *[(0, 0)] * (frame.ndim - 2),
+            ]
+            writer.append_data(np.pad(frame, padding, constant_values=255))
 
     print(f"Created gif: {giffile}")
+
+
+def combine_frames(
+    framepaths: "Sequence[str | Path]",
+    productpath: Path | str | None,
+    *,
+    openfile: bool = False,
+    gifduration: float | None = None,
+) -> Path | str | None:
+    """Combine the frames of a run into one product, and return the path of that product.
+
+    A gifduration makes a gif at productpath, and no gifduration merges the pdf files. One frame alone
+    is the product of the run. Call this for a run that combines its frames: the frames of such a run
+    do not open one at a time, thus this opens the product when --open asks for it.
+    """
+    if not framepaths:
+        return None
+
+    product: Path | str
+    if gifduration is not None:
+        # a gif of one frame is still the gif that the caller asked for
+        assert productpath is not None
+        write_gif(productpath, framepaths, duration=gifduration)
+        product = productpath
+    elif len(framepaths) == 1:
+        # a run that holds data for one frame alone makes one figure, and that figure is the product.
+        # It takes the name that -o gave the product, because no merge comes to give it that name
+        product = framepaths[0]
+        if productpath is not None and Path(product).resolve() != Path(productpath).resolve():
+            import shutil
+
+            Path(productpath).parent.mkdir(parents=True, exist_ok=True)
+            # shutil.move takes a frame and a product that sit on two file systems, which rename cannot
+            shutil.move(str(product), str(productpath))
+            product = productpath
+
+        # a frame takes no line from save_figure, thus the product of this run needs one here
+        print_saved(product)
+    else:
+        product = merge_pdf_files([str(framepath) for framepath in framepaths], productpath)
+
+    if openfile:
+        open_file(product)
+
+    return product
 
 
 def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:

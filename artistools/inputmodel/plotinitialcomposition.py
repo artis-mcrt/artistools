@@ -20,6 +20,7 @@ from matplotlib.image import AxesImage
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -31,17 +32,12 @@ def get_2D_slice_through_3d_model(
     modelmeta: dict[str, t.Any] | None = None,
     plotaxis1: AxisType | None = None,
     plotaxis2: AxisType | None = None,
-    sliceindex: int | None = None,
 ) -> pl.DataFrame:
-    """Return the cells of a 3D model at one position along sliceaxis, defaulting to the slice nearest the origin."""
-    if sliceindex is None:
-        # Choose position to slice. This gets minimum absolute value as the closest to 0
-        argmin = dfmodel["pos_x_min"].abs().arg_min()
-        assert argmin is not None
-        sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
-    else:
-        cell_boundaries = dfmodel[f"pos_{sliceaxis}_min"].unique(maintain_order=True).to_list()
-        sliceposition = cell_boundaries[sliceindex]
+    """Return the cells of a 3D model at the position along sliceaxis that lies nearest the origin."""
+    # the minimum absolute value is the position closest to 0
+    argmin = dfmodel["pos_x_min"].abs().arg_min()
+    assert argmin is not None
+    sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
 
     slicedf = dfmodel.filter(pl.col(f"pos_{sliceaxis}_min") == sliceposition)
 
@@ -79,7 +75,6 @@ def plot_slice_modelcolumn(
             ])
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
-        # np.nan_to_num(colorscale, posinf=-99, neginf=-99)
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -133,13 +128,6 @@ def plot_slice_modelcolumn(
         vmax=vmax,
     )
 
-    # plot_vmax = 0.2
-    # ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
-    # ax.set_xlim(left=-plot_vmax, right=plot_vmax)
-
-    # ax.set_xlim(left=vmin_ax1, right=vmax_ax1)
-    # ax.set_ylim(bottom=vmin_ax2, top=vmax_ax2)
-
     if "_" in colname:
         ax.annotate(
             colname.split("_")[1],
@@ -148,7 +136,6 @@ def plot_slice_modelcolumn(
             xycoords="axes fraction",
             horizontalalignment="right",
             verticalalignment="top",
-            # fontsize=10,
         )
 
     return im, scaledmap
@@ -166,8 +153,9 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
-        print(
-            f"Scaling positions/densities to {targetmodeltime_days} days. \nWARNING: abundances not updated for radioactive decays"
+        print_warning(
+            f"Scaling positions/densities to {targetmodeltime_days} days. "
+            "The abundances are not updated for radioactive decays"
         )
 
         dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
@@ -204,15 +192,6 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     axcbar = fig.add_subplot(gs[0, :])
     axes = [fig.add_subplot(gs[1, y]) for y in range(ncols)]
-    # fig, axes = plt.subplots(
-    #     nrows=nrows,
-    #     ncols=ncols,
-    #     sharex=True,
-    #     sharey=True,
-    #     squeeze=False,
-    #     figsize=(figwidth * xfactor * ncols, figwidth * 1.4 * nrows),
-    #     tight_layout=None,
-    # )
 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
@@ -236,12 +215,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
 
-    save_figure(fig, outfilename, format="pdf")
+    save_figure(fig, outfilename, args=args, format="pdf")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
-    import pyvista as pv
+    pv = at.import_optional("pyvista")
 
     # set white background
     pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
@@ -279,7 +258,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     print(mesh)  # tells you the properties of the mesh
 
     mesh[coloursurfaceby] = surfacecolorscale.ravel(order="F")  # add data to the mesh
-    # mesh.plot()
     minval = np.min(mesh[coloursurfaceby][np.nonzero(mesh[coloursurfaceby])])  # minimum non zero value
     print(f"{coloursurfaceby} minumin {minval}, maximum {max(mesh[coloursurfaceby])}")
 
@@ -291,7 +269,6 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
 
-    # surf.plot(opacity="linear", screenshot=modelpath / "3Dplot.png")  # plot surfaces and save screenshot
     sargs = {
         "height": 0.25,
         "vertical": True,
@@ -302,9 +279,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     }
 
     plotter: t.Any = pv.Plotter()
-    # plotter.add_mesh(mesh.outline(), color="k")
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
-    # plotter.set_scale(0.95, 0.95, 0.95) # adjusts fig resolution
     plotter.show_bounds(
         mesh,
         grid=False,
@@ -318,30 +293,19 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         bold=False,
     )
     plotter.add_mesh(surf, opacity=plotcoloropacity, scalar_bar_args=sargs, cmap="coolwarm_r")
-    # plotter.add_mesh(surf, opacity=plotcoloropacity, use_transparency=True, cmap='coolwarm_r') #magma
-
-    # plotter.remove_scalar_bar() # removes colorbar
 
     plotter.camera_position = "xz"
     assert plotter.camera is not None
     plotter.camera.azimuth = 45.0
     plotter.camera.elevation = 10.0
-    # plotter.camera.azimuth = 15
     plotter.show(screenshot=modelpath / "3Dplot.png", auto_close=False)
-
-    # Make gif:
-    # # viewup = [0.5, 0.5, 1]
-    # path = plotter.generate_orbital_path(n_points=150, shift=mesh.length / 5)
-    # plotter.open_gif("orbit.gif")
-    # plotter.orbit_on_path(path, write_frames=True)
-    # plotter.close()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(parser, default=Path())
+    at.addarg_modelpath(parser, default=Path())
 
-    parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
+    at.addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
     parser.add_argument(
         "plotvars",
@@ -362,9 +326,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
-    parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
+    parser.add_argument("-surfaces3d", type=float, nargs="+", help="Define positions of surfaces for 3D plots")
 
-    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float.")
+    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float")
 
     parser.add_argument(
         "-axis",
@@ -372,6 +336,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
         help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
+    at.addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -391,4 +356,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

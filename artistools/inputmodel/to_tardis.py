@@ -28,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxatomicnumber", default=92, help="Maximum atomic number for elemental abundances")
 
-    at.add_outputpath_arg(parser, helptext="Path of output TARDIS model file")
+    at.addarg_output(parser, kind="folder", helptext="Path of output TARDIS model file", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -64,7 +64,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         listspecies = [species for species in listspecies if at.get_atomic_number(species) <= args.maxatomicnumber]
 
     modelname = at.get_model_name(modelpath)
-    outputfilepath = Path(args.outputpath, f"{modelname}.csvy")
+    outputfilepath = Path(args.outputfile, f"{modelname}.csvy")
     dictmeta = {
         "name": modelname,
         "description": "This model was converted from ARTIS format with artistools",
@@ -90,8 +90,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fileout.write(",".join(["velocity", "density", "t_rad", "dilution_factor", *listspecies]))
         fileout.write("\n")
 
-        # fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
-
         for cell in dfmodel.iter_rows(named=True):
             abundlist = [f"{cell[f'X_{strnuc}']:.4e}" for strnuc in listspecies]
             fileout.write(
@@ -102,4 +100,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

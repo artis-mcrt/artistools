@@ -1,6 +1,7 @@
 """Matplotlib-related plotting functions."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -11,15 +12,89 @@ import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
-import numpy.typing as npt
 
 from artistools.commands import get_path
 from artistools.misc import print_saved
+from artistools.misc import print_warning
+
+# the ratio across the middle half of the values, above which a log scale wins. A kilonova light
+# curve gives 23 and its spectrum 7. Wider percentiles read the tails, not the data: the 5th and
+# 95th give 456 and 182, which no threshold parts.
+LOGSCALE_MINRATIO: t.Final[float] = 15.0
+
+# a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
+# still shows the data. This fraction of the values is the most that a log axis may hide.
+LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
+
+
+def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
+    """Return the y values of every line that the axes holds."""
+    import numpy as np
+
+    columns = [np.asarray(line.get_ydata(), dtype=np.float64).ravel() for axis in iter_axes(ax) for line in axis.lines]
+    return np.concatenate(columns) if columns else np.empty(0, dtype=np.float64)
+
+
+def get_quartile_ratio(values: "npt.NDArray[np.float64]") -> float:
+    """Return the ratio that the middle half of a series of values above zero covers.
+
+    The quartiles hold the range of the data itself. A point of noise near zero changes nothing, and
+    neither does the end of a spectrum, where the flux falls away over a few points. A series that
+    decays over decades puts its quartiles decades apart, which is the difference that the scale of
+    the axis must answer.
+    """
+    import numpy as np
+
+    quartile1, quartile3 = np.percentile(values, [25.0, 75.0])
+    return float(quartile3 / quartile1)
+
+
+def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
+    """Return True when a log scale shows the values better than a linear scale.
+
+    A linear axis draws the middle half of the values in a small part of itself when that half
+    covers more than the ratio, thus such a series needs a log axis. A value of zero or below has no
+    place on a log axis, thus many of them keep the linear one.
+    """
+    import numpy as np
+
+    # a mask costs one byte per value, thus this counts them without a copy
+    isfinite = np.isfinite(values)
+    ispositive = isfinite & (values > 0.0)
+    countfinite = int(isfinite.sum())
+    countpositive = int(ispositive.sum())
+    if countpositive < 4 or (countfinite - countpositive) > LOGSCALE_MAXHIDDEN * countfinite:
+        return False
+
+    return get_quartile_ratio(values[ispositive]) > LOGSCALE_MINRATIO
+
+
+def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
+    """Set the scale of the vertical axis from the drawn values, when -yscale asks the command to choose.
+
+    Call this after the command draws the data. It sets args.logscaley for the code that reads it,
+    and it puts the log scale on the axes, because a command can set the scale before it draws.
+    -yscale log and -yscale linear each give an answer already, thus this changes nothing for them.
+    """
+    if getattr(args, "yscale", "auto") != "auto" or getattr(args, "logscaley", False):
+        return
+
+    args.logscaley = wants_log_scale(get_drawn_yvalues(ax))
+    if args.logscaley:
+        for axis in iter_axes(ax):
+            axis.set_yscale("log")
+
+
+# subplots() gives a single axes, a 1D array, or a 2D array, thus the type nests to any depth
+type AxesTree = mplax.Axes | Iterable[AxesTree]
 
 if t.TYPE_CHECKING:
     from pathlib import Path
 
+    import matplotlib.legend as mpllegend
     import matplotlib.typing as mplt
+    import numpy as np
+    import numpy.typing as npt
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -281,9 +356,13 @@ glasbey_category20 = [
     (0.345098, 0.745098, 0.556863),
 ]
 
-glasbey_category20_nogreys = [
-    color for color in glasbey_category20 if color[0] != color[1] or color[1] != color[2] or color[0] != color[2]
-]
+
+def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
+    """Return the colours of palette that are not grey, i.e. those whose red, green and blue differ."""
+    return [color for color in palette if len(set(mplcolors.to_rgb(color))) > 1]
+
+
+glasbey_category20_nogreys = remove_greys(glasbey_category20)
 
 # the plot colours of the reference data series, in the order that the code uses them
 refseries_colors = ("0.0", "0.4", "0.6", "0.7")
@@ -337,6 +416,115 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
+# the size in inches of one subplot frame at a figure scale of 1, measured from a plot of one row
+# and one column
+FRAMEWIDTH_INCHES: t.Final[float] = 6.47
+FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
+
+# the y label and its tick numbers to the left of each frame, and the x label below the lowest one.
+# Each column pays the width, which a log tick number such as 10^-12 drives to 0.63 inches
+LABELWIDTH_INCHES: t.Final[float] = 0.78
+LABELHEIGHT_INCHES: t.Final[float] = 0.47
+
+
+# a saved file crops to about 7.0 inches, which is the full text width of a two-column page:
+# 180 mm in MNRAS and in A&A. One column of such a page is less than half of that
+FIGWIDTH_INCHES: t.Final[float] = FRAMEWIDTH_INCHES + LABELWIDTH_INCHES
+
+
+# the margin to the right of the widest frame, which holds the last tick number of the x axis
+RIGHTMARGIN_INCHES: t.Final[float] = 0.10
+
+# the margin above the highest frame. It holds the last tick number of the y axis and the text of
+# the exponent that a formatter puts above that axis, which reaches further
+TOPMARGIN_INCHES: t.Final[float] = 0.28
+
+
+def make_frame_figure(
+    args: argparse.Namespace,
+    *,
+    rows: int = 1,
+    cols: int = 1,
+    aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
+    sharex: bool = True,
+    sharey: bool = False,
+) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
+    """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
+
+    A paper puts several of these files in a grid that the author builds by hand. Each file goes in
+    at one width, thus every file must draw a frame of the same size, whatever its labels take.
+
+    Divider places each frame at a size in inches, thus the size of a frame does not follow the
+    length of a tick number, the number of rows, or a label that a command hides. The figure holds
+    the margins that the labels need, and no layout engine takes that space back.
+
+    save_figure crops the part of a margin that no label fills. The crop moves no artist, thus a
+    file that hides its x labels keeps its width and loses only the height of those labels.
+
+    The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
+    """
+    from mpl_toolkits.axes_grid1 import Divider
+    from mpl_toolkits.axes_grid1 import Size
+
+    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0) * args.figscale
+    frameheight = FRAMEWIDTH_INCHES * aspect * args.figscale
+
+    # a column that shows its own y label needs the width of one beside it, and likewise a row
+    colgap = RIGHTMARGIN_INCHES if sharey else LABELWIDTH_INCHES
+    rowgap = TOPMARGIN_INCHES if sharex else LABELHEIGHT_INCHES
+
+    horizontal = [Size.Fixed(LABELWIDTH_INCHES)]
+    for column in range(cols):
+        horizontal += [Size.Fixed(colgap)] if column else []
+        horizontal += [Size.Fixed(framewidth)]
+    horizontal += [Size.Fixed(RIGHTMARGIN_INCHES)]
+
+    # Divider counts the vertical sizes from the bottom, thus the lowest row comes first
+    vertical = [Size.Fixed(LABELHEIGHT_INCHES)]
+    for row in range(rows):
+        vertical += [Size.Fixed(rowgap)] if row else []
+        vertical += [Size.Fixed(frameheight)]
+    vertical += [Size.Fixed(TOPMARGIN_INCHES)]
+
+    figwidth = sum(size.fixed_size for size in horizontal)
+    figheight = sum(size.fixed_size for size in vertical)
+    fig = plt.figure(figsize=(figwidth, figheight))
+    divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
+
+    import numpy as np
+
+    axes = np.empty((rows, cols), dtype=object)
+    for row in range(rows):
+        for col in range(cols):
+            # the index of this frame among the sizes, which hold a margin or a gap between them
+            nx = 1 + col * 2
+            ny = 1 + (rows - 1 - row) * 2
+            first = axes[0][0] if (row or col) else None
+            axis = fig.add_axes(
+                divider.get_position(),
+                axes_locator=divider.new_locator(nx=nx, ny=ny),
+                sharex=first if sharex else None,
+                sharey=first if sharey else None,
+            )
+            axes[row][col] = axis
+
+            # the labels of an axis that another one carries would draw twice
+            if sharex and row < rows - 1:
+                axis.tick_params(axis="x", which="both", labelbottom=False)
+            if sharey and col > 0:
+                axis.tick_params(axis="y", which="both", labelleft=False)
+
+    return fig, axes
+
+
+def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> "mpllegend.Legend | None":
+    """Draw the legend of the axes and return it. Return None when -nolegend was given."""
+    if getattr(args, "nolegend", False):
+        return None
+
+    return ax.legend(**legendkwargs)
+
+
 def get_unused_colors(
     palette: Sequence["mplt.ColorType"], seriescolors: Sequence[str | None]
 ) -> list["mplt.ColorType"]:
@@ -347,7 +535,17 @@ def get_unused_colors(
     """
     assignedcolors = get_assigned_colors(seriescolors)
 
-    return [color for color in palette if mplcolors.to_hex(color) not in assignedcolors]
+    # a palette can hold one colour twice, e.g. a tab10 colour and the rounded glasbey copy of it, and
+    # handing the same colour to two series is the thing this function exists to prevent
+    unused: list[mplt.ColorType] = []
+    seen: set[str] = set()
+    for color in palette:
+        hexcolor = mplcolors.to_hex(color)
+        if hexcolor not in assignedcolors and hexcolor not in seen:
+            seen.add(hexcolor)
+            unused.append(color)
+
+    return unused
 
 
 def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequence[str | None]) -> None:
@@ -363,20 +561,69 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
-def save_figure(fig: mplfig.Figure, outpath: "Path | str", **savefig_kwargs: t.Any) -> None:
-    """Save the figure to outpath, report the path, and close the figure."""
+def save_figure(
+    fig: mplfig.Figure,
+    outpath: "Path | str",
+    *,
+    args: argparse.Namespace | None = None,
+    show: bool = False,
+    openfile: bool = False,
+    isframe: bool = False,
+    **savefig_kwargs: t.Any,
+) -> None:
+    """Save the figure to outpath, report the path, and close the figure.
+
+    A caller passes args, and the --show and --open flags of the command then apply. With show, the
+    figure opens in a window first, thus a resize there reaches the saved file. With openfile, the
+    saved file opens in its default application, thus --open needs no copied command.
+
+    isframe says that this figure is one part of a product that combine_frames makes, e.g. a frame of a
+    gif. Such a figure does not open on its own, because the product opens in its place, and it takes no
+    line of its own, because a merge takes the frames away and that line would name a file that went.
+    --show still opens each figure, because the user asked to see them.
+    """
+    if args is not None:
+        show = show or getattr(args, "show", False)
+        openfile = openfile or getattr(args, "open", False)
+
+    if isframe:
+        openfile = False
+
+    if show:
+        plt.show()
+
+    # a crop moves no artist, thus a fixed frame keeps its size and a file that hides its x labels
+    # keeps its width. The pad keeps a stroke on the boundary whole.
+    savefig_kwargs.setdefault("bbox_inches", "tight")
+    savefig_kwargs.setdefault("pad_inches", 0.02)
+
     fig.savefig(outpath, **savefig_kwargs)
-    print_saved(outpath)
+    if not isframe:
+        print_saved(outpath)
     plt.close(fig)
+
+    if openfile:
+        from artistools.misc.fileio import open_file
+
+        open_file(outpath)
+
+
+def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
+    """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
+    if outputfile:
+        save_figure(fig, outputfile)
+    else:
+        plt.show()
+        plt.close(fig)
 
 
 def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:
     """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
-    if args.notitle or not title:
+    # a command that defines neither flag still gets a title, thus a caller does not have to declare a
+    # flag just to use this helper (set_axis_properties and set_legend default the same way)
+    if getattr(args, "notitle", False) or not title:
         return
 
-    # five parsers define --notitle but only plotspectra defines --inset_title, so default it here rather
-    # than making every other caller add the flag just to use this helper (set_axis_properties does the same)
     if getattr(args, "inset_title", False):
         ax.annotate(
             title,
@@ -389,7 +636,7 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
             fontsize="large",
         )
     else:
-        ax.set_title(title, fontsize=11)
+        ax.set_title(title)
 
 
 def get_next_color(ax: mplax.Axes) -> str:
@@ -409,7 +656,7 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
 
     def __init__(self, labeltemplate: str) -> None:
         """Store the axis label template, which must contain a placeholder for the exponent."""
-        assert "{" in labeltemplate
+        assert "{}" in labeltemplate
         self.labeltemplate = labeltemplate
 
         super().__init__(useOffset=False, useMathText=True)
@@ -446,7 +693,78 @@ class ExponentLabelFormatter(mplticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def iter_axes(ax: mplax.Axes | Iterable[t.Any]) -> list[mplax.Axes]:
+class PrunedLogLocator(mplticker.LogLocator):
+    """Place the major ticks of a log axis, but leave out the ones against either end.
+
+    Stacked subplots put the lowest label of one axes beside the highest label of the axes below, and the
+    outer labels touch the title and the axis label of the figure. MaxNLocator takes a prune argument and
+    LogLocator takes none, thus this drops the locations within a fraction of the axis length of each end.
+
+    It prunes each time that matplotlib draws, thus the ticks follow the view. A FixedLocator of one
+    view would keep those ticks through a zoom. save_figure shows the figure before it writes the
+    file, thus a zoom in that window would reach the file with the wrong ticks.
+    """
+
+    def __init__(self, *args: t.Any, fraction: float = 0.04, minticks: int = 3, **kwargs: t.Any) -> None:
+        """Take the margin as a fraction of the axis length, and the fewest ticks to leave."""
+        super().__init__(*args, **kwargs)
+        self.fraction = fraction
+        self.minticks = minticks
+
+    @t.override
+    def tick_values(self, vmin: float, vmax: float) -> Sequence[float]:
+        """Return the tick locations of the view, without the ones against either end."""
+        ticks = super().tick_values(vmin, vmax)
+        low, high = min(vmin, vmax), max(vmin, vmax)
+        if low <= 0.0 or high <= low:
+            return ticks
+
+        loglow, loghigh = math.log10(low), math.log10(high)
+        margin = self.fraction * (loghigh - loglow)
+        inview = [loc for loc in ticks if loc > 0.0 and loglow <= math.log10(loc) <= loghigh]
+        keep = [loc for loc in inview if loglow + margin < math.log10(loc) < loghigh - margin]
+
+        # a log axis of many decades carries few major ticks, thus keep them all rather than leave too few
+        return keep if self.minticks <= len(keep) < len(inview) else ticks
+
+
+def plain_label(label: str) -> str:
+    r"""Return a plot label as plain text, for a log line that a terminal shows.
+
+    A label carries LaTeX for the figure, e.g. "$\\pm$". A terminal shows those marks as they are,
+    thus this gives the symbol that they stand for.
+    """
+    # a terminal of any encoding shows these, thus the plain form stays in ASCII
+    replacements = {r"$\pm$": "+/-", r"$\times$": "x", r"\odot": "sun", "$": "", "{": "", "}": ""}
+    for latex, plain in replacements.items():
+        label = label.replace(latex, plain)
+
+    return label
+
+
+def prune_log_ticks(axis: mplaxis.Axis) -> None:
+    """Give a log axis a locator that leaves out the ticks against either end."""
+    if axis.get_scale() == "log":
+        axis.set_major_locator(PrunedLogLocator())
+
+
+def set_exponent_label(axis: mplax.Axes) -> None:
+    """Move the power-of-ten offset of the y axis into the axis label, when the label has a place for it.
+
+    The label carries a "{}" placeholder that ExponentLabelFormatter fills. A label without one keeps the
+    offset text that matplotlib draws above the axis.
+    """
+    if "{}" not in axis.get_ylabel():
+        return
+
+    axis.yaxis.set_major_formatter(ExponentLabelFormatter(axis.get_ylabel()))
+    axis.yaxis.set_major_locator(
+        mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune="both")
+    )
+    axis.yaxis.set_minor_locator(mplticker.AutoMinorLocator())
+
+
+def iter_axes(ax: AxesTree) -> list[mplax.Axes]:
     """Return a flat list of the axes, whether the figure has a single axes or a grid of them.
 
     Iterating a 2D array of axes yields its rows, so the rows are flattened rather than returned as they are.
@@ -464,17 +782,15 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     argument that asked for it.
     """
     if limit is not None and logscale and limit <= 0.0:
-        print(f"WARNING: ignoring {argname} {limit}, which a log axis cannot show")
+        print_warning(f"ignoring {argname} {limit}, which a log axis cannot show")
         return None
 
     return limit
 
 
 def set_axis_properties(
-    ax: Iterable[mplax.Axes] | mplax.Axes,
-    args: argparse.Namespace,
-    xlimits: tuple[float | None, float | None, str] | None = None,
-) -> t.Any:
+    ax: AxesTree, args: argparse.Namespace, xlimits: tuple[float | None, float | None, str] | None = None
+) -> AxesTree:
     """Apply the standard tick, minor tick, and font size settings to one or more axes.
 
     A command whose x range has its own argument name, e.g. the -timemin/-timemax of the light curve
@@ -484,8 +800,9 @@ def set_axis_properties(
     """
     if "subplots" not in args:
         args.subplots = False
-    if "labelfontsize" not in args:
-        args.labelfontsize = 18
+    # a Namespace membership test matches the name, thus a parser default of None reached tick_params
+    # as labelsize=None, which is a silent no-op that left the rcParams size in place
+    labelfontsize = getattr(args, "labelfontsize", None)
 
     if xlimits is None:
         xlimits = (getattr(args, "xmin", None), getattr(args, "xmax", None), "-xmin")
@@ -497,11 +814,14 @@ def set_axis_properties(
     xmin = log_axis_limit(xlimits[0], logscale=logscalex, argname=xargname)
     xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
 
-    for axis in iter_axes(ax):
-        axis.minorticks_on()
-        # the tick length and the tick width come from the artistools matplotlibrc. These axes then match
-        # the spectra figures, which set no tick style of their own
-        axis.tick_params(axis="both", which="both", top=True, right=True, labelsize=args.labelfontsize, direction="in")
+    axeslist = iter_axes(ax)
+    for axis in axeslist:
+        # the tick direction, the top and right ticks, the minor ticks and the default label size all
+        # come from the artistools matplotlibrc, thus only a command that asks for a different label
+        # size sets one here
+
+        if labelfontsize is not None:
+            axis.tick_params(axis="both", which="both", labelsize=labelfontsize)
 
         # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
         # padding on a log axis. A limit of None on both sides is left alone for the same reason
@@ -509,6 +829,12 @@ def set_axis_properties(
             axis.set_xscale("log")
         if logscaley:
             axis.set_yscale("log")
+
+        # the lowest label of one axes meets the highest label of the axes below, thus a stack needs its
+        # end ticks pruned. A single axes keeps them, because they mark the ends of the data. set_yscale
+        # installs the default locators of the scale, thus this must follow it
+        if len(axeslist) > 1:
+            prune_log_ticks(axis.yaxis)
 
         if ymin is not None or ymax is not None:
             axis.set_ylim(ymin, ymax)
@@ -520,12 +846,7 @@ def set_axis_properties(
 
 
 def set_axis_labels(
-    fig: mplfig.Figure,
-    ax: mplax.Axes | npt.ArrayLike,
-    xlabel: str,
-    ylabel: str,
-    labelfontsize: int | None,
-    args: argparse.Namespace,
+    fig: mplfig.Figure, ax: AxesTree, xlabel: str, ylabel: str, labelfontsize: int | None, args: argparse.Namespace
 ) -> None:
     """Set the x and y axis labels, placing them on the figure rather than the axes when there are subplots."""
     if args.subplots:

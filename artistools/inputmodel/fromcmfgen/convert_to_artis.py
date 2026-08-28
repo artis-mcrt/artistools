@@ -13,6 +13,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
@@ -50,7 +51,7 @@ CMFGEN_SPECIES_ATOMIC_NUMBER: t.Final[Mapping[str, int]] = MappingProxyType({
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
-    at.add_outputpath_arg(parser, default=Path(), astype=Path, helptext="Folder to write model.txt/abundances.txt to")
+    at.addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write model.txt/abundances.txt to")
 
 
 def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
@@ -66,9 +67,9 @@ def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
 def get_isotope_massfracs(
     isonames: Sequence[str],
     massnumbers: Sequence[int],
-    isofrac: npt.NDArray[t.Any],
+    isofrac: npt.NDArray[np.floating],
     nuclides: Sequence[tuple[str, int]],
-) -> dict[str, npt.NDArray[t.Any]]:
+) -> dict[str, npt.NDArray[np.floating]]:
     """Return the per-cell mass fraction column of each (CMFGEN species name, mass number) nuclide.
 
     The isotope table is looked up by name and mass number rather than by a hardcoded column index, so the
@@ -104,7 +105,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    outputpath = Path(args.outputpath)
+    outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
 
     a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot, reverse=True)
@@ -132,7 +133,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfmodel = pl.DataFrame(
         {
             "inputcellid": inputcellid,
-            "vel_r_max_kmps": rout / (a["time"] * day_to_s) / 1e5,
+            "vel_r_max_kmps": rout / (a["time"] * day_to_s) / km_to_cm,
             "logrho": np.log10(a["dens"]),
             "X_Fegroup": a["specfrac"][:, ige_index].sum(axis=1),
         }
@@ -156,4 +157,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

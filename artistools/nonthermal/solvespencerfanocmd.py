@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,14 +12,16 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import EV_to_erg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_modelgridindex
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
-defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"
+defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
@@ -87,13 +88,13 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=".")
+    addarg_modelpath(parser, default=Path())
 
-    add_timedays_arg(parser, kind="str")
+    addarg_timedays(parser, kind="str")
 
-    add_timestep_arg(parser, kind="int")
+    addarg_timestep(parser)
 
-    parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, default=0)
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -146,12 +147,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections",
     )
 
-    parser.add_argument(
-        "-o",
-        action="store",
-        dest="outputfile",
-        default=defaultoutputfile,
-        help="Path/filename for PDF file if --makeplot is enabled",
+    at.addarg_output(
+        parser,
+        kind="file",
+        defaultname=defaultoutputfile,
+        helptext="Path/filename for PDF file if --makeplot is enabled",
     )
 
     parser.add_argument("-ostat", action="store", help="Path/filename for stats output")
@@ -169,24 +169,32 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.plotstats:
+        # this plot reads a stats file that a former run wrote, thus it calls no solver
         make_ntstats_plot(args.plotstats)
         return
 
+    # the import stands in front of the work, thus a missing module stops the command at once
+    pynt = at.import_optional("pynonthermal")
+
     modelpath = Path(args.modelpath)
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     dfpops: pl.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        elif args.timestep is None:
-            print("A time or timestep must be specified.")
-            sys.exit()
+        else:
+            args.timestep = at.get_single_timestep(args.timestep, modelpath)
+            if args.timestep is None:
+                at.exit_with_error(
+                    "no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last"
+                )
 
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+        else:
+            args.modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
         assert isinstance(args.modelgridindex, int)
         estimators = at.estimators.read_estimators(
             modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
@@ -198,78 +206,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
         if dfpops.is_empty():
-            print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
-            raise AssertionError
+            at.exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]
         x_e = estim["nne"] / nntot
         T_e = estim["Te"]
-        print("WARNING: Use LTE pops at Te for now")
+        print_warning("Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / EV_to_erg
         ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
         args.timedays = at.get_timestep_time(modelpath, args.timestep)
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
-
-    # x_e = 1.e-2
-    # deposition_density_ev = 5.e3
-    # nntot = 1.
-    # ionpopdict = {}
-    # # nne = nntot * x_e
-    # # nne = .1
-    # dfpops = None
-
-    # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * 1.
-    # ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot * 0.5
-    # ionpopdict[(at.get_atomic_number('Fe'), 4)] = nntot * 0.3
-
-    # KF1992 Figure 2. Pure-Oxygen Plasma
-    # x_e = 1.e-2
-    # deposition_density_ev = 5.e3
-    # nntot = 1.
-    # ionpopdict = {}
-    # dfpops = None
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = nntot * (1. - x_e)
-    # ionpopdict[(at.get_atomic_number('O'), 2)] = nntot * x_e
-
-    # KF1992 Figure 3. Pure-Helium Plasma
-    # compelement = args.composition
-    # compelement_atomicnumber = at.get_atomic_number(compelement)
-    # x_e = args.x_e
-    # deposition_density_ev = 5.e3
-    # nntot = 1.
-    # ionpopdict = {}
-    # dfpops = None
-    # ionpopdict[(at.get_atomic_number('He'), 1)] = nntot * (1. - x_e)
-    # ionpopdict[(at.get_atomic_number('He'), 2)] = nntot * x_e
-
-    # KF1992 Figure 5. Pure-Iron Plasma
-    # x_e = 1.e-2
-    # deposition_density_ev = 5.e3
-    # nntot = 1.
-    # ionpopdict = {}
-    # dfpops = None
-    # ionpopdict[(at.get_atomic_number('Fe'), 1)] = nntot * (1. - x_e)
-    # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * x_e
-
-    # KF1992 D. The Oxygen-Carbon Zone
-    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
-    # ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.82 * nntot
-    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.82 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
-
-    # # KF1992 G. The Silicon-Calcium Zone
-    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.38e-5 * nntot
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.94e-4 * nntot
-    # ionpopdict[(at.get_atomic_number('Si'), 1)] = 0.63 * nntot
-    # ionpopdict[(at.get_atomic_number('Si'), 2)] = 0.63 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('S'), 1)] = 0.29 * nntot
-    # ionpopdict[(at.get_atomic_number('S'), 2)] = 0.29 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('Ar'), 1)] = 0.041 * nntot
-    # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
-    # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
 
     stepcount = 9 if args.vary else 1
     for step in range(stepcount):
@@ -315,8 +263,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
             Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
 
-        import pynonthermal as pynt
-
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:
                 nnion = ionpopdict[Z, ion_stage]
@@ -336,7 +282,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 outputfilename = str(args.outputfile).format(
                     cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
                 )
-                # outputfilename = "spencerfano.pdf"
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:
@@ -357,4 +302,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

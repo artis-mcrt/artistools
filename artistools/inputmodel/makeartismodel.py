@@ -10,13 +10,13 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import Msun_to_g
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Path to input model file")
+    addarg_modelpath(parser, multiplepaths=True, default=[], helptext="Path to input model file")
 
     parser.add_argument(
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
@@ -56,7 +56,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    add_outputpath_arg(parser, helptext="Folder for output")
+    addarg_output(parser, kind="folder", helptext="Folder for output", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -82,10 +82,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 raise ValueError(msg)
 
             dfelabundances = at.inputmodel.get_initelemabundances(modelpath)
-            dfgridcontributions = (
-                at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-                if Path(modelpath, "gridcontributions.txt").is_file()
-                else None
+            dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(
+                modelpath
             )
 
             (dfmodel_out, dfelabundances_out, _, modelmeta_out) = at.inputmodel.dimension_reduce_model(
@@ -95,9 +93,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = (
-                Path(args.outputpath) if Path(args.outputpath).is_dir() else Path(args.outputpath).parent
-            ) / f"dimreduce_{ndim_out}d"
+            outdir = at.resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
@@ -121,8 +117,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
-        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
+        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

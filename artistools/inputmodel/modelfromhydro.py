@@ -17,6 +17,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
+from artistools.misc import print_warning
 
 
 def read_ejectasnapshot(
@@ -99,7 +100,8 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
-        with snapshotinfofile.open("rt", encoding="utf-8") as fsnapshotinfo:
+        # the glob above accepts a compressed info file, thus the read has to accept one too
+        with at.zopen(snapshotinfofile, encoding="utf-8") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
@@ -210,12 +212,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(
-    griddata: pl.DataFrame,
-    t_model_in_days: float,
-    vmax: float,  # ruff:ignore[unused-function-argument]
-    args: argparse.Namespace,  # ruff:ignore[unused-function-argument]
-) -> pl.DataFrame:
+def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -223,11 +220,6 @@ def add_mass_to_center(
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
     mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
-
-    # # Just (2021) Fig. 16 4th down, left panel
-    # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
-    # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
-    # mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
@@ -264,26 +256,21 @@ def makemodelfromgriddata(
     dimensions: int = 3,
     scalemass: float = 1.0,
     scalevelocity: float = 1.0,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
 ) -> None:
     """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
-    if args is None:
-        args = argparse.Namespace()
-    dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
+    dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if getattr(args, "fillcentralhole", False):
-        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
+        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days)
 
     if getattr(args, "getcellopacityfromYe", False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
 
-    dfgridcontributions = (
-        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-        if Path(gridfolderpath, "gridcontributions.txt").is_file()
-        else None
-    )
+    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(gridfolderpath)
 
     dfmodel = dfmodel.sort("inputcellid")
     assert dfmodel.schema["inputcellid"].is_integer()
@@ -325,7 +312,7 @@ def makemodelfromgriddata(
             )
         )
     else:
-        print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
+        print_warning("No abundances will be set because no nuclear network trajectories folder was specified")
         dfelabundances = None
 
     if dimensions < 3:
@@ -339,9 +326,6 @@ def makemodelfromgriddata(
 
     if "cellYe" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
-
-    # if "Q" in dfmodel and args.makeenergyinputfiles:
-    #     at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
@@ -396,7 +380,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
-    at.add_outputpath_arg(parser, default=None, helptext="Path for output model files")
+    at.addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -408,7 +392,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "grid.dat is required. Run artistools maptogrid"
         raise FileNotFoundError(msg)
 
-    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
+    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 
@@ -420,8 +404,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dimensions=args.dimensions,
         scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
+        args=args,
     )
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

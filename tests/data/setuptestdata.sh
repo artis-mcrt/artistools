@@ -15,6 +15,9 @@ tar -xf vspecpolmodel.tar.xz
 if [ ! -f test_classicmode_3d.tar.xz ]; then curl -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/test_classicmode_3d.tar.xz; fi
 tar -xf test_classicmode_3d.tar.xz
 
+# git holds this archive, because it is small. Thus it needs no download
+tar -xf test_classicmode_1d.tar.xz
+
 
 cp grid.out testmodel/
 

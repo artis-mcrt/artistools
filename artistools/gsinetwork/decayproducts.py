@@ -13,18 +13,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-import polars.selectors as cs
 
 import artistools as at
 from artistools.commands import get_path
+from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
-amu_g = 1.66e-24
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -37,9 +38,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
-    parser.add_argument("-tmin", type=float, default=0.1, help="Minimum time in days")
+    parser.add_argument("-timemin", "-tmin", dest="tmin", type=float, default=0.1, help="Minimum time in days")
 
-    parser.add_argument("-tmax", type=float, default=80.0, help="Maximum time in days")
+    parser.add_argument("-timemax", "-tmax", dest="tmax", type=float, default=80.0, help="Maximum time in days")
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 
@@ -66,10 +67,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nuclides", action="store_true", help="Calculates contributions of individual nuclides")
 
     parser.add_argument(
-        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories."
+        "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories"
     )
 
-    at.add_outputpath_arg(parser, default=Path(), astype=Path, helptext="Path for output PDF and parquet files")
+    at.addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
@@ -148,13 +149,9 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
                     .fill_null(math.nan)
                 )
                 tau_s = dfnuc["half_life_sec"].item(0) / math.log(2)
-                # tau_s = hrow["tau[s]"]
                 Q_MeV = dfnuc["q"].item(0) / 1000
                 E_elec = (dfnuc["intensity_beta"] * dfnuc["mean_energy"]).sum() / 100 / 1000
                 E_nu = (dfnuc["intensity_beta"] * dfnuc["anti_nu_mean_energy"]).sum() / 100 / 1000
-                # dfnuc["E_gamma"] = (Q_MeV * 1000 - dfnuc["mean_energy"] - dfnuc["anti_nu_mean_energy"]) / 1000
-                # E_gamma = (dfnuc["intensity_beta"] * dfnuc["E_gamma"]).sum() / 1000
-                # E_gamma = max(0, E_gamma)
                 E_gamma = Q_MeV - E_elec - E_nu
                 rows.append({
                     "A": A,
@@ -205,15 +202,7 @@ def process_trajectory(
             )
         )
         .select("#count", "hbeta", "htot")
-        .with_columns(
-            # repair Fortran triple-digit exponents like 1.735904-244 (missing "e"), which make a
-            # column parse as strings, then cast strictly so genuinely corrupt values still raise
-            pl
-            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-            .otherwise(cs.by_dtype(pl.String))
-            .cast(pl.Float64)
-        )
+        .with_columns(fix_fortran_exponents(pl.Float64))
         .join(
             at.read_wsv(
                 get_tar_member_extracted_path(
@@ -322,9 +311,6 @@ def process_trajectory(
                 decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
                 decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
                 decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
-    # if not np.all(np.diff(decay_powers["abundweighted_Qdot"]) <= 0.01 * decay_powers["abundweighted_Qdot"][0]):
-    #     print(f"\nTraj {traj_ID} has inconsistent Qdot values. delete {Path(traj_root, str(traj_ID))} and rerun")
-    #     # import shutil
 
     # dump to parquet
     if traj_parquet_dir is not None:
@@ -375,7 +361,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     nuc_data = get_nuc_data(nuc_dataset)
     parquet_dir: Path | None = None
     if args.parquet or args.trajparquet:
-        parquet_dir = Path(args.outputpath) / "parquet"
+        parquet_dir = Path(args.outputfile) / "parquet"
         parquet_dir.mkdir(parents=True, exist_ok=True)
         print(f"Writing parquet files to '{parquet_dir}'.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
@@ -417,7 +403,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         desc="Processing trajectories",
         unit="traj",
         smoothing=0.0,
-        # max_workers=1,
     )
 
     print()
@@ -443,7 +428,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:
-                print(f"Warning! No trajectories found for eject state {state}")
+                print_warning(f"No trajectories found for eject state {state}")
                 continue
             labelfull = ej_names[i]
             label = ej_names[i]
@@ -504,12 +489,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ax0.set_ylim(0.15, 0.55)
         ax0.set_ylabel("energy release rate / Qdot")
         ax1 = axes[1]
-        # ax1.plot(arr_t_day, decay_powers["hbeta"], linestyle="-", label=f"Traj {labelfull} hbeta")
-        # ax1.plot(arr_t_day, decay_powers["htot"], linestyle="-", label=f"Traj {labelfull} htot")
         ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_gamma"], linestyle="-", label=f"Traj {labelfull} abund -> gamma")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_elec"], linestyle="-", label=f"Traj {labelfull} abund -> elec")
-        # ax1.plot(arr_t_day, decay_powers["abundweighted_nu"], linestyle="-", label=f"Traj {labelfull} abund -> nu")
         ax1.plot(
             arr_t_day,
             decay_powers["abundweighted_gammanuelec"],
@@ -520,19 +500,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ax1.plot(
             arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta"
         )
-        ax1.set_ylabel("energy release rate (erg/s)")
+        ax1.set_ylabel("Energy release rate [erg/s]")
         ax1.set_yscale("log")
         ax1.legend()
 
         for ax in axes:
             ax.legend()
-            ax.set_xlabel("time (days)")
+            ax.set_xlabel("Time [days]")
             ax.set_xscale("log")
 
-        outfilepath = args.outputpath / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
+        outfilepath = args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
         save_figure(fig, outfilepath, bbox_inches="tight")
 
 
 if __name__ == "__main__":
+    from artistools.commands import run_module_as_subcommand
+
     mp.freeze_support()
-    main()
+    run_module_as_subcommand(__spec__)

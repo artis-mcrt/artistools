@@ -220,10 +220,13 @@ def test_makeartismodelfrom_sph_particles() -> None:
             "grid.dat": "b179427dc76e3b465d83fb303c866812fa9cb775114d1b8c45411dd36bf295b2",
             "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
         },
+        # the model and abundance files carry eight significant figures, and the vmax header nine, so
+        # that a model round-trips through the Float32 of the reader. Both checksums changed when
+        # write_artis_csv went from five significant figures to eight.
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-            "abundances.txt": "1ec73f89579a1fc2a9004f2fb6e3ac034143f48527f9a4a4d73d131bc777c25d",
-            "model.txt": "e0deb71db1854a63ac126fba8de37cb195ec0fef9e419b84352c39e663f92327",
+            "abundances.txt": "3fa70e381e9d538d7c07d8447b3b8a23d34a2bcc996370b4b71990e42f219baf",
+            "model.txt": "c0af5ae9e2dda0cf27656f8488030dd03f016d53e3869c0fa4478a2ed1634d9c",
         },
     }
 
@@ -306,6 +309,43 @@ def test_make1dmodelfromcone() -> None:
         nshells=4,
         coneangle=60,
     )
+
+
+def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--quiet hides the standard output alone, thus the warning for an empty shell takes the standard error.
+
+    The command removes the empty shell and every shell outside it. A run with --quiet gave the new
+    model and no warning, because the warning went to the standard output that --quiet hides.
+    """
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, derived_cols=["vel_r_mid"])
+    dfmodel = dfmodel.collect()
+    vmax = dfmodel["vel_r_mid"].max()
+    assert isinstance(vmax, float)
+
+    # empty the outer part of the model, thus every cell of an outer shell has a density of zero
+    dfmodel = dfmodel.with_columns(
+        pl.when(pl.col("vel_r_mid") > 0.4 * vmax).then(pl.lit(0.0)).otherwise(pl.col("rho")).alias("rho")
+    ).drop("vel_r_mid")
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    shutil.copy(modelpath_3d / "abundances.txt.xz", tmp_path / "abundances.txt.xz")
+
+    outputpath_cone = tmp_path / "out"
+    outputpath_cone.mkdir()
+    at.inputmodel.slice1dfromconein3dmodel.main(
+        argsraw=[],
+        modelpath=[tmp_path],
+        outputpath=outputpath_cone,
+        axis="-z",
+        coneshellspacingexponent=2.0,
+        nshells=4,
+        coneangle=60,
+    )
+
+    captured = capsys.readouterr()
+    assert "WARNING: Shell" in captured.err
+    assert "WARNING: Shell" not in captured.out
+    logtext = "".join(logfile.read_text(encoding="utf-8") for logfile in outputpath_cone.rglob("make1dmodellog.txt"))
+    assert "WARNING: Shell" in logtext, "the log file must keep the warning"
 
 
 def test_makefromcone_arg_can_be_disabled() -> None:
@@ -1542,7 +1582,7 @@ def test_get_trajectory_abund_q() -> None:
         (101, 162): 2.626364863419118e-18,
         (102, 159): 2.0727160885628824e-18,
         (102, 161): 4.2496685570656285e-20,
-        # the Qdot integration reads time/s at float64 precision (an earlier pandas reader downcast it to float32)
+        # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
         "q": 5737336759237193.0,
     }
 
@@ -2033,3 +2073,16 @@ def test_fromcmfgen_isotope_lookup_rejects_bad_tables() -> None:
 
     with pytest.raises(ValueError, match="Duplicate"):
         cmfgen.get_isotope_massfracs(["IRON", "IRON", "NICK"], [52, 52, 56], isofrac, [("IRON", 52)])
+
+
+def test_energyfiles_plotrate_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The path went to save_or_show as it came, thus the command wrote a file that had the name of the
+    folder and no extension.
+    """
+    outfolder = tmp_path / "plots"
+    at.inputmodel.energyinputfiles.main(argsraw=[], action="plotrate", modelpath=modelpath, outputfile=str(outfolder))
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert (outfolder / "energyfiles_plotrate.pdf").is_file(), f"no plot in {list(outfolder.iterdir())}"

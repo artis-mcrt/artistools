@@ -1,5 +1,4 @@
 import contextlib
-import io
 import string
 import time
 import typing as t
@@ -23,15 +22,14 @@ from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
-from artistools.misc.fileio import zopen_unshadowed
 
 if t.TYPE_CHECKING:
     import os
 
 
 def parse_adata(
-    fadata: io.TextIOBase,
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]],
+    fadata: t.IO[str],
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]],
     ionlist: Collection[tuple[int, int]] | None,
 ) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
     """Generate ions and their level lists from adata.txt."""
@@ -48,7 +46,7 @@ def parse_adata(
 
         if not ionlist or (Z, ion_stage) in ionlist:
             level_list: list[
-                tuple[float, float, int, str | None, npt.NDArray[t.Any] | None, npt.NDArray[t.Any] | None]
+                tuple[float, float, int, str | None, npt.NDArray[np.void] | None, npt.NDArray[np.void] | None]
             ] = []
             for levelindex in range(level_count):
                 row = fadata.readline().split(maxsplit=4)
@@ -98,9 +96,9 @@ def parse_adata(
 
 def parse_phixsdata(
     phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
-) -> dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]]:
+) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]]:
     firstlevelnumber = 1
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
     with at.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
@@ -117,11 +115,10 @@ def parse_phixsdata(
             upperionlevel = int(ionheader[2]) - firstlevelnumber
             lowerion_stage = int(ionheader[3])
             lowerionlevel = int(ionheader[4]) - firstlevelnumber
-            # threshold_ev = float(ionheader[5])
 
             assert upperion_stage == lowerion_stage + 1
 
-            nptargetlist: npt.NDArray[t.Any]
+            nptargetlist: npt.NDArray[np.void]
             if upperionlevel >= 0:
                 nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
             else:
@@ -201,15 +198,35 @@ def add_transition_columns(
 def get_transitiondata(
     modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
-    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame."""
-    ionlist = set(ionlist) if ionlist else None
+    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
+
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
+    copy of the dictionary and of each frame keeps a caller that changes one of them from changing what
+    the next caller reads. A clone is cheap, because polars shares the data of a frame.
+    """
+    transitionsdict = get_transitiondata_cached(
+        Path(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet
+    )
+
+    return {ion: dftransitions.clone() for ion, dftransitions in transitionsdict.items()}
+
+
+@lru_cache(maxsize=8)
+def get_transitiondata_cached(
+    modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, quiet: bool = False
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Return the transitions of each ion, and keep them for the next caller.
+
+    Do not change the dictionary that this function returns.
+    """
+    ionset = set(ionlist) if ionlist else None
     transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
 
     time_start = time.perf_counter()
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionlist)
+    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionset)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -225,14 +242,56 @@ def get_levels(
     quiet: bool = False,
     derived_transitions_columns: Sequence[str] | None = None,
 ) -> pl.DataFrame:
-    """Return a polars DataFrame of energy levels."""
+    """Return a polars DataFrame of energy levels.
+
+    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
+    clone is cheap, because polars shares the data of the frame, and it keeps a caller that changes the
+    columns in place from changing what the next caller reads. The levels and the transitions of each
+    ion are frames of their own inside an object column, thus each one needs a clone as well.
+    """
+    dflevels = get_levels_cached(
+        Path(modelpath),
+        tuple(ionlist) if ionlist is not None else None,
+        get_transitions=get_transitions,
+        get_photoionisations=get_photoionisations,
+        quiet=quiet,
+        derived_transitions_columns=(
+            tuple(derived_transitions_columns) if derived_transitions_columns is not None else None
+        ),
+    ).clone()
+
+    if "levels" not in dflevels.columns:
+        # a model that holds none of the ions gives a frame of no rows and no columns
+        return dflevels
+
+    return dflevels.with_columns([
+        pl.Series(colname, [nested.clone() for nested in dflevels[colname]], dtype=pl.Object)
+        for colname in ("levels", "transitions")
+    ])
+
+
+@lru_cache(maxsize=8)
+def get_levels_cached(
+    modelpath: Path,
+    ionlist: tuple[tuple[int, int], ...] | None = None,
+    *,
+    get_transitions: bool = False,
+    get_photoionisations: bool = False,
+    quiet: bool = False,
+    derived_transitions_columns: tuple[str, ...] | None = None,
+) -> pl.DataFrame:
+    """Return a polars DataFrame of energy levels, and keep it for the next caller.
+
+    adata.txt is large, and a plot of one frame reads the levels of each ion. Thus a run without the
+    cache parsed the same file many times. Do not change the frame that this function returns.
+    """
     adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict: dict[tuple[int, int], pl.DataFrame] = (
         get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
     )
 
-    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[t.Any], npt.NDArray[t.Any]]] = {}
+    phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
     if get_photoionisations:
         phixs_filename = Path(modelpath, "phixsdata_v2.txt")
 
@@ -265,10 +324,37 @@ def get_levels(
 
             level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    return pl.DataFrame(level_lists, orient="row")
+    dfallions = pl.DataFrame(level_lists, orient="row")
+    if get_photoionisations:
+        # the arrays hold the cross sections of this read alone, thus a run without them needs no walk
+        freeze_photoionisation_arrays(dfallions)
+
+    return dfallions
 
 
-def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl.DataFrame]]:
+def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
+    """Refuse a write to the photoionisation arrays that the cache holds.
+
+    A clone of a frame shares the numpy array of an object column, thus a caller could change the
+    cross sections that the next caller reads. A copy of those arrays takes 10 ms for each call of a
+    small model, against 0.05 ms for the call itself, and a model of a full run holds far more of them.
+    The arrays take this mark one time instead, thus such a write raises in place of passing.
+    """
+    if "levels" not in dfallions.columns:
+        # a model that holds none of the ions gives a frame of no rows and no columns
+        return
+
+    for dflevels in dfallions["levels"]:
+        for colname in ("phixstargetlist", "phixstable"):
+            if colname not in dflevels.columns:
+                continue
+
+            for value in dflevels[colname]:
+                if isinstance(value, np.ndarray):
+                    value.setflags(write=False)
+
+
+def parse_recombratefile(frecomb: t.IO[str]) -> Generator[tuple[int, int, pl.DataFrame]]:
     """Parse recombrates.txt file."""
     for line in frecomb:
         Z, upper_ion_stage, t_count = (int(x) for x in line.split())
@@ -297,7 +383,7 @@ def parse_recombratefile(frecomb: io.TextIOBase) -> Generator[tuple[int, int, pl
 def get_ionrecombratecalibration(modelpath: str | Path) -> dict[tuple[int, int], pl.DataFrame]:
     """Read recombrates.txt file."""
     recombdata = {}
-    with zopen_unshadowed(Path(modelpath, "recombrates.txt"), encoding="utf-8") as frecomb:
+    with zopen(Path(modelpath, "recombrates.txt"), encoding="utf-8") as frecomb:
         for Z, upper_ion_stage, dfrrc in parse_recombratefile(frecomb):
             recombdata[Z, upper_ion_stage] = dfrrc
 
@@ -335,7 +421,7 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     rows = []
-    with zopen_unshadowed(filename, encoding="utf-8") as fcompdata:
+    with zopen(filename, encoding="utf-8") as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
@@ -367,7 +453,7 @@ def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
     lowermost_ion_stage: list[int | None] = []
     uppermost_ion_stage: list[int | None] = []
 
-    with zopen_unshadowed(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
+    with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         Z: int | None = None
         elementindex = -1
         for row in foutput:
@@ -421,6 +507,16 @@ def _get_elements_df() -> pl.DataFrame:
     return pl.read_csv(
         get_path("datadir") / "elements.csv", has_header=True, separator=",", schema_overrides={"Z": pl.Int32}
     )
+
+
+@lru_cache(maxsize=1)
+def get_elsymbolset() -> frozenset[str]:
+    """Return the element symbols as a set, for a test of membership.
+
+    get_elsymbolslist gives a tuple, thus "in" reads all 119 symbols. The listing of the estimator
+    variables makes that test one time for each candidate split of every column name.
+    """
+    return frozenset(get_elsymbolslist())
 
 
 @lru_cache(maxsize=1)
@@ -484,6 +580,32 @@ def get_atomic_number(elsymbol: str) -> int:
     return _get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
 
 
+ROMANNUMERALCHARS = frozenset("IVXLCDM")
+
+
+def split_compact_ion_name(ionstr: str) -> tuple[int, int] | None:
+    """Return the atomic number and the ion stage of a name such as SiII, or None for another name.
+
+    The roman numeral of an ion stage is always in upper case, thus the lower case "i" of "SiII"
+    belongs to the symbol of the element and that name gives Si II. The symbol itself is not case
+    sensitive, thus "siII" gives Si II as well.
+
+    The longest run of roman numerals at the end comes first. Thus "SIII" gives S III, and not the
+    Si II that the symbol "SI" and a shorter run would give.
+    """
+    for splitpos in range(1, len(ionstr)):
+        elsymbol, ionstagestr = ionstr[:splitpos], ionstr[splitpos:]
+        if any(char not in ROMANNUMERALCHARS for char in ionstagestr):
+            continue
+
+        atomic_number = get_atomic_number(elsymbol)
+        ion_stage = decode_roman_numeral(ionstagestr)
+        if atomic_number > 0 and ion_stage > 0:
+            return atomic_number, ion_stage
+
+    return None
+
+
 def decode_roman_numeral(strin: str) -> int:
     """Return the integer corresponding to a Roman numeral."""
     if strin.upper() in roman_numerals:
@@ -537,16 +659,16 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
         elem, strion_stage = ionstr.split(" ", maxsplit=1)
     elif "_" in ionstr:
         elem, strion_stage = ionstr.split("_", maxsplit=1)
+    elif (compaction := split_compact_ion_name(ionstr)) is not None:
+        # no separator, e.g. 'FeII'
+        return compaction
     else:
-        # no separator, e.g. 'FeII'. Longest symbols first, so that 'Fe' is preferred over 'F', and only accept a
-        # match where the remainder is a valid ion stage (otherwise 'Co' would be split as C + 'o')
+        # a mass number in place of an ion stage, e.g. 'Fe56'
         for elsym in get_elsymbols_longestfirst():
-            if ionstr.startswith(elsym):
-                remainder = ionstr.removeprefix(elsym)
-                if remainder.isdigit() or decode_roman_numeral(remainder) > 0:
-                    elem = elsym
-                    strion_stage = remainder
-                    break
+            if ionstr.startswith(elsym) and ionstr.removeprefix(elsym).isdigit():
+                elem = elsym
+                strion_stage = ionstr.removeprefix(elsym)
+                break
 
     if elem in {"?", ""} or strion_stage in {"?", ""}:
         msg = f"Could not parse ionstr {ionstr}"
@@ -684,7 +806,16 @@ def read_linestatfile(
 ]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     if Path(filepath).is_dir():
-        filepath = firstexisting("linestat.out", folder=filepath, tryzipped=True)
+        filepath = firstexisting(
+            "linestat.out",
+            folder=filepath,
+            tryzipped=True,
+            purpose=(
+                "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
+                "The commands that identify a line read it, e.g. plotlinefluxes and "
+                "plotspectra --emissionabsorption."
+            ),
+        )
 
     print(f"Reading {filepath}")
 
@@ -715,7 +846,15 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
-    textfile = firstexisting("linestat.out", folder=modelpath)
+    textfile = firstexisting(
+        "linestat.out",
+        folder=modelpath,
+        purpose=(
+            "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
+            "The commands that identify a line read it, e.g. plotlinefluxes and "
+            "plotspectra --emissionabsorption."
+        ),
+    )
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     parquetstat: os.stat_result | None = None

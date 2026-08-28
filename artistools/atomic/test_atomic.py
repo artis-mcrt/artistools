@@ -183,3 +183,27 @@ def test_get_bflist_reads_transitions() -> None:
     assert dfbflist["atomic_number"].sum() == 289060
     assert dfbflist["ion_stage"].sum() == 23822
     assert dfbflist["ion_str"].to_list()[0] == "Fe I"
+
+
+def test_the_cached_photoionisation_arrays_refuse_a_write() -> None:
+    """A caller must not change the cross sections that the cache holds.
+
+    A clone of a frame shares the numpy array of an object column. A copy of those arrays takes 10 ms
+    for each call of this small model, against 0.05 ms for the call itself, thus the arrays carry the
+    read-only mark instead and such a write raises.
+    """
+    import numpy as np
+
+    dflevels = at.atomic.get_levels(modelpath, get_photoionisations=True)
+    arrays = [
+        value
+        for dfions in dflevels["levels"]
+        for colname in ("phixstargetlist", "phixstable")
+        if colname in dfions.columns
+        for value in dfions[colname]
+        if isinstance(value, np.ndarray) and value.size > 0
+    ]
+    assert arrays, "the test model must hold photoionisation arrays"
+
+    with pytest.raises(ValueError, match="read-only"):
+        arrays[0][0] = 0.0

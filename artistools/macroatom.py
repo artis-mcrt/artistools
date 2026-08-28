@@ -10,48 +10,50 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timestep_arg
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelgridindex
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import addarg_timestep
 from artistools.plottools import save_figure
 
-defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
+defaultoutputfile = "plotmacroatom_cell{cell:05d}_ts{timestep:03d}-{timestep2:03d}.pdf"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
-    add_timestep_arg(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
+    addarg_timestep(parser, default=10, helptext="Timestep number to plot, e.g. 40 or last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
-    parser.add_argument("-modelgridindex", "-cell", type=int, default=0, help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, default=0)
     parser.add_argument("element", nargs="?", default="Fe", help="Plotted element")
-    add_axis_limit_args(
+    addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=1000,
         xmaxdefault=15000,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
         include_y=False,
+        wavelength_aliases=True,
     )
-    add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
-        print(f"Could not find element '{args.element}'")
-        raise AssertionError
+        at.exit_with_error(f"could not find element '{args.element}'")
 
-    timestepmin = args.timestep
+    modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
+    timestepmin = at.get_single_timestep(args.timestep, args.modelpath)
+    assert timestepmin is not None, "-timestep holds a default, thus it names a timestep"
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
@@ -61,21 +63,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("No macroatom files found")
         raise FileNotFoundError
 
-    specfilename = Path(args.modelpath, "spec.out")
-
-    if not specfilename.is_file():
-        print(f"Could not find {specfilename}")
-        raise FileNotFoundError
-
-    outputfile = str(args.outputfile).format(args.modelgridindex, timestepmin, timestepmax)
+    # the template took {0}, {1}, and {2} before it took names, thus a script holds those fields
+    outputfile = str(args.outputfile).format(
+        modelgridindex, timestepmin, timestepmax, cell=modelgridindex, timestep=timestepmin, timestep2=timestepmax
+    )
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax
-    modelgridindex = args.modelgridindex
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
-    dfmacroatom = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
+    dfmacroatom = read_files(input_files, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axis = plt.subplots(
@@ -94,7 +92,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     with np.errstate(divide="ignore"):
         lambda_cmf_in = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_in"].to_numpy()
         lambda_cmf_out = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_out"].to_numpy()
-    # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
     axis.plot(
         lambda_cmf_in,
         lambda_cmf_out,
@@ -106,13 +103,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     axis.set_xlabel(r"Wavelength in ($\AA$)")
     axis.set_ylabel(r"Wavelength out ($\AA$)")
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_xlim(xmin, xmax)
     axis.set_ylim(xmin, xmax)
 
-    # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
-
-    save_figure(fig, outputfile, format="pdf")
+    save_figure(fig, outputfile, args=args, format="pdf")
 
 
 def read_files(
@@ -152,4 +146,6 @@ def read_files(
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

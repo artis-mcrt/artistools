@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -26,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-outputfolder", action="store", default="1dslice", help="Path to folder in which to store 1D output files"
     )
 
-    parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot.")
+    parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -138,8 +140,8 @@ def slice_abundance_file(
         # the loop only writes a block when the next one starts, so the last block still has to be flushed
         if currentblock:
             if blocklens and len(currentblock) < max(blocklens):
-                print(
-                    f"WARNING: the last block has {len(currentblock)} values, but earlier blocks have"
+                print_warning(
+                    f"the last block has {len(currentblock)} values, but earlier blocks have"
                     f" {max(blocklens)}. The input file looks truncated"
                 )
             if keepcurrentblock:
@@ -156,7 +158,7 @@ def append_cell_to_output(
 ) -> None:
     """Append one cell to the 1D model output lines and to the density and abundance plot series."""
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = dist / float(t_model) / day_to_s / 1.0e5
+    velocity = dist / float(t_model) / day_to_s / km_to_cm
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "
@@ -174,8 +176,8 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )
-    axis.set_xlabel(r"v (km/s)")
-    axis.set_ylabel(r"Density (g/cm$^3$) or mass fraction")
+    axis.set_xlabel(r"Velocity [km/s]")
+    axis.set_ylabel(r"Density [g/cm$^3$] or mass fraction")
     ylabels = [r"$\rho$", "fNi56", "fCo"]
     for ylist, ylabel in zip(ylists, ylabels, strict=False):
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
@@ -185,4 +187,6 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

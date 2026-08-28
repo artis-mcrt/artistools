@@ -1,6 +1,8 @@
 """Timestep definitions, time range selection, and deposition rates."""
 
+import contextlib
 import math
+import re
 import typing as t
 from collections.abc import Iterable
 from functools import lru_cache
@@ -10,8 +12,10 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source
 from artistools.misc.fileio import read_wsv
 from artistools.misc.modelinfo import get_inputparams
@@ -77,7 +81,7 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
-    if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
+    if path_is_codecomparison(modelpath):
         from artistools.codecomparison import get_timestep_times as cc_get_times
 
         return (
@@ -139,7 +143,16 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
         # could be a string like '330d'
         timedays = timedays.rstrip("d")
 
-    timedays_float = float(timedays)
+    try:
+        timedays_float = float(timedays)
+    except ValueError as exc:
+        msg = f"Cannot read {timedays!r} as a time in days"
+        if isinstance(timedays, str) and timedays[:1].isalpha() and timedays.lstrip("s").replace(".", "").isdigit():
+            # a value joins only a flag of one letter, thus -ts70 reads as -t with the value s70
+            msg += (
+                f". A joined value such as -ts{timedays.lstrip('s')} reads as -t {timedays}, thus put a space after -ts"
+            )
+        raise ValueError(msg) from exc
 
     arr_tstart = get_timestep_times(modelpath, loc="start")
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)
@@ -150,13 +163,86 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
         if tstart <= timedays_float < tend:
             return ts
 
-    msg = f"Could not find timestep bracketing time {timedays_float}"
+    msg = (
+        f"No timestep of this model covers {timedays_float:g} days. It has {len(arr_tstart)} timesteps, "
+        f"which cover {arr_tstart[0]:.2f} to {arr_tend[-1]:.2f} days. Give -timedays in that range, or "
+        "-timestep to name one directly"
+    )
     raise ValueError(msg)
+
+
+def parse_timedays_range(timedays_range_str: str | float) -> tuple[float, float] | None:
+    """Return the two ends of a time range like 2.2-2.8, or None when the text names a single time.
+
+    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative time. The text is
+    read as one number first, thus only a hyphen that separates two numbers splits the range.
+    """
+    text = str(timedays_range_str).strip()
+    with contextlib.suppress(ValueError):
+        float(text)
+        return None
+
+    # a digit or a decimal point in front of the hyphen means it separates two numbers
+    parts = re.split(r"(?<=[0-9.])-", text)
+    if len(parts) != 2:
+        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
+        raise ValueError(msg)
+
+    try:
+        return float(parts[0]), float(parts[1])
+    except ValueError as exc:
+        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
+        raise ValueError(msg) from exc
+
+
+def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
+    """Return the message that names the timesteps of a model, for a timestep that is not one of them."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+
+    return (
+        f"Timestep {timestep} is not in this model. It has {len(tstarts)} timesteps, 0 to "
+        f"{len(tstarts) - 1}, which cover {tstarts[0]:.2f} to {tends[-1]:.2f} days. "
+        '"last" names the final timestep'
+    )
+
+
+def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> int | None:
+    """Return the one timestep that -timestep names, or None when it names none.
+
+    Every command reads the same grammar, thus "40" and "last" work on each one. A command that plots
+    one timestep cannot take a range, thus a range earns a message that says so.
+    """
+    if timestep is None:
+        return None
+
+    from artistools.misc.cliutils import parse_range_list
+
+    lasttimestep = len(get_timestep_times(modelpath, loc="mid")) - 1
+    timesteps = parse_range_list(str(timestep), dictvars={"last": lasttimestep})
+    if len(timesteps) > 1:
+        msg = (
+            f"-timestep '{timestep}' names {len(timesteps)} timesteps, and this command plots one. "
+            "Give one timestep, e.g. -ts 40 or -ts last"
+        )
+        raise ValueError(msg)
+
+    if not 0 <= timesteps[0] <= lasttimestep:
+        raise ValueError(get_bad_timestep_message(modelpath, timesteps[0]))
+
+    return timesteps[0]
+
+
+def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
+    """Return the timestep that a token names, resolving a keyword such as "last"."""
+    token = token.strip()
+
+    return dictvars[token] if token in dictvars else int(token)
 
 
 def get_time_range(
     modelpath: Path | str,
-    timestep_range_str: str | None = None,
+    timestep_range_str: str | int | None = None,
     timemin: float | str | None = None,
     timemax: float | str | None = None,
     timedays_range_str: str | float | None = None,
@@ -171,22 +257,41 @@ def get_time_range(
     time_days_lower, time_days_upper = None, None
 
     if timemin is not None and float(timemin) > tends[-1]:
-        print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
+        print_warning(f"{get_model_name(modelpath)}: timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
     if timemax is not None and float(timemax) < tstarts[0]:
-        print(
-            f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
+        print_warning(
+            f"{get_model_name(modelpath)}: timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 
     if timestep_range_str is not None:
-        assert timemin is None
-        assert timemax is None
-        if "-" in timestep_range_str:
-            timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
+        # a keyword argument of the API gives an int, e.g. plot(timestep=11), and a command line gives
+        # the string "11" or a range such as "10-20"
+        timestep_range_str = str(timestep_range_str)
+        # a silent precedence hid the argument that the user gave and did not get, thus this refuses the
+        # combination. Only -timedays takes part. A caller assigns the timemin and timemax that this
+        # function returns back onto its own arguments, thus a second call would see its own output.
+        if timedays_range_str is not None:
+            msg = "Specify only one of -timestep and -timedays"
+            raise ValueError(msg)
+
+        # "last" names the final timestep, so that a command needs no arithmetic to ask for it
+        dictvars = {"last": len(tmids) - 1}
+        rangeparts = re.split(r"(?<=[0-9a-zA-Z])-", timestep_range_str.strip())
+        if len(rangeparts) == 2:
+            timestepmin, timestepmax = (parse_timestep_token(nts, dictvars) for nts in rangeparts)
+        elif len(rangeparts) > 2:
+            msg = f"'{timestep_range_str}' names more than one range of timesteps"
+            raise ValueError(msg)
         else:
-            timestepmin = int(timestep_range_str)
+            timestepmin = parse_timestep_token(timestep_range_str, dictvars)
             timestepmax = timestepmin
+
+        # a range that overshoots the end still starts inside the run, thus only the start must be in it
+        if timestepmin > dictvars["last"] or timestepmin < 0:
+            msg = get_bad_timestep_message(modelpath, timestepmin)
+            raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:
             timemin = -1.0
@@ -197,8 +302,8 @@ def get_time_range(
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
-            if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
-                timemin, timemax = (float(timedays) for timedays in timedays_range_str.split("-"))
+            if (timedaysrange := parse_timedays_range(timedays_range_str)) is not None:
+                timemin, timemax = timedaysrange
                 if not clamp_to_timesteps:
                     time_days_lower = timemin
                     time_days_upper = timemax
@@ -208,8 +313,6 @@ def get_time_range(
                 timestepmax = timestepmin
                 timemin = tstarts[timestepmin]
                 timemax = tends[timestepmax]
-                # timedelta = 10
-                # timemin, timemax = timeavg - timedelta, timeavg + timedelta
 
         assert timemin is not None
 
@@ -239,12 +342,15 @@ def get_time_range(
                 raise ValueError(msg)
             timestepmax = timestepmin
     else:
-        msg = "Either time or timesteps must be specified."
+        msg = (
+            "No time was given. Give one with -timedays (e.g. -t 300 or -t 290-320), with -timestep "
+            "(e.g. -ts 40 or -ts last), or with -timemin and -timemax"
+        )
         raise ValueError(msg)
 
     timesteplast = len(tmids) - 1
     if timestepmax > timesteplast:
-        print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
+        print_warning(f"timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
 
     # when the range was given as timesteps there is no requested time in days, so the timestep bounds are the only
@@ -300,7 +406,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
         # get_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except FileNotFoundError:
-        print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
+        print_warning("No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1
 
     assert isinstance(nts_last, int)

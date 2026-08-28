@@ -16,6 +16,7 @@ import typing as t
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.testing as pltest
@@ -39,26 +40,188 @@ def _write_timesteps_out(modeldir: Path) -> None:
 # --- cliutils.py -------------------------------------------------------------------------------
 
 
+def get_frame_sizes(fig: t.Any, axes: t.Any) -> set[tuple[float, float]]:
+    """Return the size in inches of each frame of a figure, to four decimal places."""
+    fig.canvas.draw()
+    figwidth, figheight = fig.get_size_inches()
+    return {
+        (round(axis.get_position().width * figwidth, 4), round(axis.get_position().height * figheight, 4))
+        for axis in axes.flat
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "rows", "cols", "ylabel", "sharex"),
+    [
+        ("one frame", 1, 1, "T$_e$ [K]", True),
+        ("a y label that is long", 1, 1, "T$_e$ [K] " + "x" * 30, True),
+        ("three rows that share an x axis", 3, 1, "T$_e$ [K]", True),
+        ("three rows with an x label each", 3, 1, "T$_e$ [K]", False),
+        ("two rows and three columns", 2, 3, "T$_e$ [K]", True),
+    ],
+)
+def test_a_frame_figure_holds_the_size_of_every_frame(
+    name: str, rows: int, cols: int, ylabel: str, sharex: bool
+) -> None:
+    """Every frame takes the same size in inches, whatever the labels and the number of rows.
+
+    A paper puts these files in a grid that the author builds by hand, thus a frame that follows the
+    length of a tick number or the number of rows draws a panel of the wrong size beside its
+    neighbour.
+    """
+    import artistools.plottools as pt
+
+    args = argparse.Namespace(figscale=1.0, figwidthscale=1.0)
+    fig, axes = pt.make_frame_figure(args, rows=rows, cols=cols, sharex=sharex)
+    for axis in axes.flat:
+        axis.plot([0, 1e7], [0, 1e-12])
+        axis.set_ylabel(ylabel)
+        axis.set_xlabel("velocity [km/s]")
+
+    assert get_frame_sizes(fig, axes) == {(pt.FRAMEWIDTH_INCHES, pt.FRAMEHEIGHT_INCHES)}, name
+    plt.close(fig)
+
+
+def test_a_frame_figure_keeps_its_frame_when_a_command_hides_the_labels(tmp_path: Path) -> None:
+    """The frame and the width of a file hold when the x tick labels go, and the height falls.
+
+    A crop takes the part of a margin that no label fills, thus the file loses the height of the
+    labels that went. It moves no artist, thus the frame keeps the size that it holds in inches, and
+    each panel of a grid draws the same frame.
+    """
+    import pypdf
+
+    import artistools.plottools as pt
+
+    args = argparse.Namespace(figscale=1.0, figwidthscale=1.0)
+    sizes = {}
+    for name, hide in (("shown", False), ("hidden", True)):
+        fig, axes = pt.make_frame_figure(args)
+        axes[0][0].plot([0, 1e7], [0, 1e-12])
+        axes[0][0].set_ylabel("T$_e$ [K]")
+        axes[0][0].set_xlabel("velocity [km/s]")
+        if hide:
+            axes[0][0].tick_params(axis="x", which="both", labelbottom=False)
+
+        frames = get_frame_sizes(fig, axes)
+        outpath = tmp_path / f"{name}.pdf"
+        pt.save_figure(fig, outpath)
+        page = pypdf.PdfReader(outpath).pages[0].mediabox
+        sizes[name] = (round(float(page.width) / 72.0, 3), round(float(page.height) / 72.0, 3), frames)
+
+    # the width and the frame hold, and the height falls by the labels that the file no longer draws
+    assert sizes["shown"][0] == sizes["hidden"][0], sizes
+    assert sizes["shown"][2] == sizes["hidden"][2], sizes
+    assert sizes["hidden"][1] < sizes["shown"][1], sizes
+
+
+def test_a_saved_figure_keeps_an_artist_that_reaches_past_it(tmp_path: Path) -> None:
+    """A file of a plot holds every artist, thus a long label or an annotation is not cut.
+
+    The page took the size of the figure, thus an artist outside it went. It takes the size of the
+    artists now, which also leaves no border of white around the plot.
+    """
+    import pypdf
+    from PIL import Image
+
+    import artistools.plottools as pt
+
+    figwidth, figheight = 3.0, 2.0
+    sizes = {}
+    for name, overflows in (("plain", False), ("overflowing", True)):
+        fig, axis = plt.subplots(figsize=(figwidth, figheight), tight_layout={"pad": 0.2})
+        axis.plot([0, 1], [0, 1])
+        if overflows:
+            # annotation_clip=False draws the text outside the axes, and outside the figure
+            axis.annotate("A" * 30, xy=(0.5, 1.6), xycoords="axes fraction", annotation_clip=False, fontsize=14)
+
+        outpath = tmp_path / f"{name}.png"
+        pt.save_figure(fig, outpath)
+        sizes[name] = Image.open(outpath).size
+
+    # the figure of both is the same size, thus the file grows only because it holds the annotation
+    assert sizes["overflowing"][1] > sizes["plain"][1], sizes
+
+    # a pdf of a plot that fits carries no border: its page is the size of the artists and no more
+    fig, axis = plt.subplots(figsize=(figwidth, figheight), tight_layout={"pad": 0.2})
+    axis.plot([0, 1], [0, 1])
+    pdfpath = tmp_path / "plot.pdf"
+    pt.save_figure(fig, pdfpath)
+    page = pypdf.PdfReader(pdfpath).pages[0].mediabox
+    assert float(page.width) / 72.0 < figwidth, "the page must lose the border of the figure"
+    assert float(page.height) / 72.0 < figheight, "the page must lose the border of the figure"
+
+
+def test_a_gif_holds_the_largest_of_its_frames(tmp_path: Path) -> None:
+    """Every frame of a gif keeps its content, whatever size the other frames take.
+
+    A gif holds one canvas, and the first frame gave its size, thus a frame that is wider or taller
+    lost what lay outside it.
+    """
+    from PIL import Image
+
+    framepaths = []
+    for index, figsize in enumerate(((3, 2), (4, 3))):
+        fig, axis = plt.subplots(figsize=figsize)
+        axis.plot([0, 1], [0, 1])
+        framepath = tmp_path / f"frame{index}.png"
+        fig.savefig(framepath)
+        plt.close(fig)
+        framepaths.append(framepath)
+
+    widths, heights = zip(*(Image.open(framepath).size for framepath in framepaths), strict=True)
+    assert len(set(widths)) > 1, "this test needs frames that differ in size"
+
+    gifpath = tmp_path / "frames.gif"
+    at.misc.write_gif(gifpath, framepaths, duration=200.0)
+
+    assert Image.open(gifpath).size == (max(widths), max(heights))
+
+
+def test_one_rule_finds_the_reference_data_of_each_kind(tmp_path: Path) -> None:
+    """The light curves and the spectra hold reference data in folders of their own, under one rule.
+
+    Each command carried its own copy of "look here, then in the folder of the package, and accept a
+    compressed name", thus a change to that rule reached one command and not the other.
+    """
+    # the folder of the package holds the reference data of both kinds
+    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/refspectra") is not None
+    assert at.find_reference_data_file("AT2017gfo_smarttetal2017.txt", "data/lightcurves/bollightcurves") is not None
+
+    # a name that no folder holds gives None, and the kind of the data selects the folder
+    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/lightcurves/bollightcurves") is None
+    assert at.find_reference_data_file("nosuchfile.txt", "data/refspectra") is None
+
+    # a file of the working folder comes first, and a compressed name of it counts
+    reffile = tmp_path / "myref.txt.xz"
+    reffile.write_bytes(b"")
+    assert at.find_reference_data_file(tmp_path / "myref.txt", "data/refspectra") == reffile
+
+    # a folder is no file of reference data, and neither is a name that no folder holds
+    assert not at.path_is_reference_data(tmp_path, "data/refspectra")
+    assert not at.path_is_reference_data(tmp_path / "nosuchfile.txt", "data/refspectra")
+
+
 def test_add_cli_arg_helpers() -> None:
     """The shared argument helpers must define the standard flags, types, and defaults."""
     parser = argparse.ArgumentParser()
-    at.add_modelpath_arg(parser, multiplepaths=True, default=[])
-    at.add_outputfile_arg(parser, default=Path("out.pdf"))
-    at.add_timestep_arg(parser)
-    at.add_timedays_arg(parser)
-    at.add_timeminmax_args(parser)
-    at.add_axis_limit_args(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
-    at.add_series_style_args(parser, colordefault=["C0", "C1"], include_linealpha=True)
-    at.add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
-    at.add_filter_args(parser)
-    at.add_maxpacketfiles_arg(parser)
+    at.addarg_modelpath(parser, multiplepaths=True, default=[])
+    at.addarg_output(parser, kind="file", default=Path("out.pdf"))
+    at.addarg_timestep(parser)
+    at.addarg_timedays(parser)
+    at.addarg_timeminmax(parser)
+    at.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
+    at.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
+    at.addarg_figscale(parser, include_figwidthscale=True)
+    at.addarg_filter(parser)
+    at.addarg_maxpacketfiles(parser)
 
     args = parser.parse_args([])
     assert args.modelpath == []
     assert args.outputfile == Path("out.pdf")
     assert args.timestep is None
     assert args.timedays is None
-    assert args.figscale == 1.8
+    assert args.figscale == 1.0
     assert args.figwidthscale == 1.0
     assert args.xmin == 1000
     assert args.xmax == 2000
@@ -101,22 +264,32 @@ def test_add_cli_arg_helpers() -> None:
 def test_add_cli_arg_helper_variants() -> None:
     """The non-default helper modes must reproduce the per-command argument shapes."""
     parser = argparse.ArgumentParser()
-    at.add_modelpath_arg(parser, positional=True, multiplepaths=True, default=[])
-    at.add_timestep_arg(parser, kind="int", default=70)
-    at.add_timedays_arg(parser, kind="float")
-    at.add_outputpath_arg(parser)
+    at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+    at.addarg_timestep(parser, default=70)
+    at.addarg_timedays(parser, kind="float")
+    at.addarg_output(parser, kind="folder", default=Path())
     args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
     assert args.modelpath == [Path("model1")]
-    assert args.timestep == 12
+    # -timestep holds the text that the user wrote, and get_single_timestep reads one timestep
+    assert args.timestep == "12"
     assert args.timedays == 45.5
-    assert args.outputpath == "."
+    # one helper serves both kinds, thus the folder of a command is a Path as the file of one is
+    assert args.outputfile == Path()
+    assert args.outputkind == "folder"
 
-    parserappend = argparse.ArgumentParser()
-    at.add_timestep_arg(parserappend, kind="strappend")
-    assert parserappend.parse_args(["-ts", "5", "-ts", "6"]).timestep == ["5", "6"]
+    # a repeated flag joins with a comma, thus no occurrence takes the place of an earlier one
+    parserrepeat = argparse.ArgumentParser()
+    at.addarg_timestep(parserrepeat, default=70)
+    at.addarg_modelgridindex(parserrepeat)
+    argsrepeat = parserrepeat.parse_args(["-ts", "5", "-ts", "6", "-mgi", "3", "-mgi", "5-7"])
+    assert argsrepeat.timestep == "5,6"
+    assert argsrepeat.modelgridindex == "3,5-7"
+    assert at.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
+    # one occurrence replaces the default and does not join to it
+    assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
 
     parserrequired = argparse.ArgumentParser()
-    at.add_modelpath_arg(parserrequired, required=True)
+    at.addarg_modelpath(parserrequired, required=True)
     with pytest.raises(SystemExit):
         parserrequired.parse_args([])
 
@@ -137,20 +310,60 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
 
 
 def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    """print_saved must emit a runnable macOS open command with a path relative to the working directory."""
+    """print_saved must emit a runnable open command with a path relative to the working directory."""
     monkeypatch.chdir(tmp_path)
 
     at.print_saved(tmp_path / "subdir" / "out.pdf")
-    assert capsys.readouterr().out == "open subdir/out.pdf\n"
+    opencommand = "open" if sys.platform == "darwin" else "xdg-open"
+    assert capsys.readouterr().out == f"{opencommand} subdir/out.pdf\n"
 
     at.print_saved("out.pdf")
-    assert capsys.readouterr().out == "open out.pdf\n"
+    assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
     at.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
-    assert capsys.readouterr().out == "open out.pdf\n"
+    assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
     at.print_saved(tmp_path / "with space.pdf")
-    assert capsys.readouterr().out == "open 'with space.pdf'\n"
+    assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
+
+    # each platform gets its own verb, thus a run on one of them covers the lines of the others.
+    # cmd.exe reads the first quoted argument of start as the title of a window, thus an empty title
+    # stands in front of the path there
+    for platform, verb, line in (
+        ("darwin", "open", "open out.pdf"),
+        ("linux", "xdg-open", "xdg-open out.pdf"),
+        ("win32", "start", 'start "" out.pdf'),
+    ):
+        monkeypatch.setattr(sys, "platform", platform)
+        assert at.misc.fileio.get_open_command() == verb
+        at.print_saved("out.pdf")
+        assert capsys.readouterr().out == f"{line}\n"
+
+    # a name that holds a space takes the quotation marks that the platform reads
+    monkeypatch.setattr(sys, "platform", "win32")
+    at.print_saved("with space.pdf")
+    assert capsys.readouterr().out == 'start "" "with space.pdf"\n'
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    at.print_saved("with space.pdf")
+    assert capsys.readouterr().out == "xdg-open 'with space.pdf'\n"
+
+
+def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Windows has no xdg-open, thus it opens a file through its own call and not through a command."""
+    somefile = tmp_path / "out.pdf"
+    somefile.touch()
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    with mock.patch("subprocess.run") as mockrun:
+        at.misc.open_file(somefile)
+    assert mockrun.call_args.args[0] == ["xdg-open", str(somefile)]
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    with mock.patch.object(os, "startfile", create=True) as mockstart, mock.patch("subprocess.run") as mockrun:
+        at.misc.open_file(somefile)
+    assert mockstart.call_args.args[0] == somefile
+    assert not mockrun.called, "Windows must not run a command that it does not have"
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------
@@ -196,31 +409,32 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read().decode("utf-8") == "xz contents\n"
 
 
-def test_zopen_unshadowed(tmp_path: Path) -> None:
+def test_zopen_does_not_let_a_stale_compressed_sibling_shadow_a_named_file(tmp_path: Path) -> None:
     """A stale compressed sibling never shadows a freshly written uncompressed file."""
     (tmp_path / "both.txt").write_text("fresh contents\n")
     with gzip.open(tmp_path / "both.txt.gz", "wt", encoding="utf-8") as f:
         f.write("stale contents\n")
 
-    # zopen prefers the compressed sibling, which is why the plain-open call sites need the other helper
+    # the named file wins, thus re-running the simulation is enough to change what a plot shows
     with at.zopen(tmp_path / "both.txt") as f:
-        assert f.read() == "stale contents\n"
-
-    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
         assert f.read() == "fresh contents\n"
+
+    # zopenpl applies the same precedence, so the two readers never disagree about which file to read
+    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt"
 
     # with the plain file gone, the compressed sibling is used after all
     (tmp_path / "both.txt").unlink()
-    with at.zopen_unshadowed(tmp_path / "both.txt") as f:
+    with at.zopen(tmp_path / "both.txt") as f:
         assert f.read() == "stale contents\n"
+    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt.gz"
 
     # a compressed file addressed by its own name is decompressed, not opened raw
-    with at.zopen_unshadowed(tmp_path / "both.txt.gz") as f:
+    with at.zopen(tmp_path / "both.txt.gz") as f:
         assert f.read() == "stale contents\n"
 
     # a name with no file and no compressed sibling reports the name the caller asked for
     with pytest.raises(FileNotFoundError):
-        at.zopen_unshadowed(tmp_path / "absent.txt")
+        at.zopen(tmp_path / "absent.txt")
 
 
 def test_read_wsv(tmp_path: Path) -> None:
@@ -869,7 +1083,8 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
     assert at.get_timestep_of_timedays(tmp_path, 149) == 4
     assert at.get_timestep_of_timedays(tmp_path, "125d") == 2  # accepts a "<days>d" string
 
-    with pytest.raises(ValueError, match="Could not find timestep"):
+    # the message names the range that the run covers, so that the user can correct the value
+    with pytest.raises(ValueError, match=r"No timestep of this model covers 500 days.*100\.00 to 150\.00 days"):
         at.get_timestep_of_timedays(tmp_path, 500)
 
 
@@ -1006,7 +1221,7 @@ def test_check_averaging_angles() -> None:
 def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
     """The two averaging flags are rejected by argparse itself, for every command that defines them."""
     parser = argparse.ArgumentParser()
-    at.add_viewingangle_args(parser)
+    at.addarg_viewingangle(parser)
 
     assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
     assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
@@ -1031,6 +1246,7 @@ def test_parallel_map_works_when_fork_is_the_default_start_method(tmp_path: Path
     script.write_text(
         """
 import multiprocessing as mp
+import sys
 
 import artistools as at
 
@@ -1041,7 +1257,25 @@ def square(x):
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
+
+    # a bar comes first, as the estimator reader and the packet reader make one. Its lock must come
+    # from a spawn context, or the pool below meets a lock of the fork context
+    bar = at.misc.general.get_progress_class()
+    for _ in bar(range(2), desc="a bar before the pool"):
+        pass
+
+    # a bar starts no process, thus the default start method of the caller stands
+    assert mp.get_start_method() == "fork", mp.get_start_method()
+
+    # the thread pool starts no process either, thus it changes no such default
+    assert at.parallel_map(square, range(4), allow_multiprocessing=False) == [0, 1, 4, 9]
+    assert mp.get_start_method() == "fork", mp.get_start_method()
+
     assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
+
+    # a free-threading build takes the thread pool for this call as well, thus it starts no process
+    if sys._is_gil_enabled():
+        assert mp.get_start_method() == "spawn", mp.get_start_method()
     print("OK")
 """,
         encoding="utf-8",
@@ -1098,3 +1332,396 @@ def test_get_series_label() -> None:
     # an empty label is a series deliberately left out of the legend, not a missing one
     # the return type is str, so falsy is the empty string rather than the model name
     assert not at.get_series_label([""], 0, "modelname")
+
+
+def test_shorten_middle_keeps_both_ends() -> None:
+    """A long run folder name keeps the model at the start and the run details at the end."""
+    name = "w7_outercut_20260816_150_410d_2e9pkt_develop_3dgrid50_virgo"
+    short = at.misc.modelinfo.shorten_middle(name, 50)
+
+    assert len(short) == 50
+    assert short.startswith("w7_outercut")
+    assert short.endswith("virgo")
+    assert "..." in short
+
+    # a name that fits stays whole, and no maximum length leaves it alone
+    assert at.misc.modelinfo.shorten_middle("testmodel", 50) == "testmodel"
+    assert at.misc.modelinfo.shorten_middle(name, None) == name
+
+
+def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
+    """-timestep, -timedays, and the pair -timemin/-timemax each name a time range, thus one may come.
+
+    get_time_range reads the range of -timedays alone, thus "-timedays 250-300 -timemin 280" gave the
+    range of -timedays and took no notice of the bound.
+    """
+    import artistools.spectra.plotspectra
+
+    parser = at.commands.SuggestingArgumentParser()
+    artistools.spectra.plotspectra.addargs(parser)
+
+    for argsraw in (
+        [".", "-timestep", "40", "-timemin", "100", "-timemax", "200"],
+        [".", "-timedays", "250-300", "-timemin", "280"],
+        [".", "-timestep", "40", "-timedays", "300"],
+        [".", "-timedays", "250-300", "-timemax", "280"],
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            at.misc.check_time_selection(parser, parser.parse_args(argsraw), argsraw)
+        assert excinfo.value.code == 1, argsraw
+
+    # each way on its own is accepted
+    for argsraw in ([".", "-timestep", "40"], [".", "-timedays", "300"], [".", "-timemin", "290", "-timemax", "310"]):
+        at.misc.check_time_selection(parser, parser.parse_args(argsraw))
+
+
+def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
+    """A value that the user typed counts, even when it is the same as the default of the parser."""
+    import artistools.transitions
+
+    parser = at.commands.SuggestingArgumentParser()
+    artistools.transitions.addargs(parser)
+    default = parser.get_default("timestep")
+    assert default is not None, "this test needs a command whose -timestep has a default"
+
+    # the user names both, and the timestep happens to be the default, thus a test of the value alone
+    # would miss the conflict
+    argsraw = ["-timestep", str(default), "-timedays", "300"]
+    with pytest.raises(SystemExit) as excinfo:
+        at.misc.check_time_selection(parser, parser.parse_args(argsraw), argsraw)
+    assert excinfo.value.code == 1
+
+
+def test_check_time_selection_counts_a_default_as_absent() -> None:
+    """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
+    import artistools.transitions
+
+    parser = at.commands.SuggestingArgumentParser()
+    artistools.transitions.addargs(parser)
+    assert parser.get_default("timestep") is not None, "this test needs a command whose -timestep has a default"
+
+    # the user named only -timedays, thus the default timestep must not raise
+    at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))
+
+
+def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
+    """modelgridrankassignments.out gives the count of cells that hold matter for each rank.
+
+    ARTIS assigns no 3D cell to a shell that holds no matter, thus the rank of such a shell writes no
+    output file. That absence is normal, and it must not read as a file that went missing.
+    """
+    from artistools.misc.modelinfo import get_nonempty_cellcounts
+
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n1 1 1 0\n2 2 1 3\n")
+
+    counts = get_nonempty_cellcounts(tmp_path)
+    assert counts == {0: 0, 1: 0, 2: 3}
+
+    # a model that holds no such file gives None, thus the caller keeps its own error
+    assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
+
+
+def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
+    """A cell that holds no matter must say so, and not name a file that it never had."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
+    # a folder counts as a run folder when it holds an estimators file
+    (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n")
+    (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
+
+    with pytest.raises(ValueError, match="Cell 0 holds no matter"):
+        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
+
+
+def test_addarg_modelpath_positional_also_takes_the_option() -> None:
+    """A command whose path is positional must also accept -modelpath.
+
+    Some commands take -modelpath and others take a positional path. A user who learns one form must
+    not meet "unrecognized arguments" with the other.
+    """
+
+    def build() -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser()
+        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+        return parser
+
+    assert build().parse_args([]).modelpath == []
+    assert build().parse_args(["a", "b"]).modelpath == [Path("a"), Path("b")]
+    assert build().parse_args(["-modelpath", "a"]).modelpath == [Path("a")]
+    assert build().parse_args(["-modelpath", "a", "b"]).modelpath == [Path("a"), Path("b")]
+
+    # the positional already names the paths in the help, thus the option stays out of it
+    assert "-modelpath" not in build().format_help()
+
+    # a positional that carries a default of its own must not hide the option. argparse gives that
+    # default as the value of the positional, thus plotinitialabundances read "." for every -modelpath
+    def buildwithdefault() -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser()
+        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+        return parser
+
+    assert buildwithdefault().parse_args([]).modelpath == [Path()]
+    assert buildwithdefault().parse_args(["a"]).modelpath == [Path("a")]
+    assert buildwithdefault().parse_args(["-modelpath", "a"]).modelpath == [Path("a")]
+
+
+def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
+    """A cell that the model does not hold must name the cells that it does hold.
+
+    The check was a bare assert, thus the dispatcher reported "an internal check of artistools failed",
+    which points a user away from their own argument.
+    """
+    from artistools.misc.modelinfo import get_mpirankofcell
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    with pytest.raises(ValueError, match=r"Cell 999 is not in this model\. Its cells are 0 to 0"):
+        get_mpirankofcell(999, modelpath=modelpath)
+
+    with pytest.raises(ValueError, match="Cell -1 is not in this model"):
+        get_mpirankofcell(-1, modelpath=modelpath)
+
+    # the one cell of the test model still resolves
+    assert get_mpirankofcell(0, modelpath=modelpath) >= 0
+
+
+def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
+    """The test of the command line must give each string the reading that the parser gives it.
+
+    A value joined to a flag of more than one letter counts for that flag, e.g. -ts70 names the
+    timestep 70. The command took such a value for -t, thus "-ts70 -t 300" named the time range two
+    times and ran without a word, on a command whose -timestep holds that value as its default.
+    """
+    import artistools.transitions
+
+    def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
+        parser = at.commands.SuggestingArgumentParser()
+        artistools.transitions.addargs(parser)
+        return parser, parser.parse_args(argsraw)
+
+    # each spelling of the timestep names the range beside -t, and the value is the default here
+    for argsraw in (
+        ["-t300", "-ts", "70"],
+        ["-ts=70", "-t", "300"],
+        ["-ts", "70", "-t", "300"],
+        ["-ts70", "-t", "300"],
+        ["-timestep70", "-t", "300"],
+    ):
+        parser, namespace = parse(argsraw)
+        assert str(namespace.timestep) == str(parser.get_default("timestep")), argsraw
+        with pytest.raises(SystemExit) as excinfo:
+            at.misc.check_time_selection(parser, namespace, argsraw)
+        assert excinfo.value.code == 1, argsraw
+
+
+def test_timedays_of_a_joined_ts_value_names_the_mistake() -> None:
+    """-ts70 reads as -t s70, thus the message must say to put a space after -ts."""
+    with pytest.raises(ValueError, match=r"reads as -t s70, thus put a space after -ts"):
+        at.get_timestep_of_timedays(at.get_path("testdata") / "testmodel", "s70")
+
+
+def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing optional dependency must say how to install it, and not give a bare traceback."""
+    import builtins
+
+    realimport = builtins.__import__
+
+    def failing_import(name: str, *importargs: t.Any, **importkwargs: t.Any) -> object:
+        if name.startswith("pyvista"):
+            raise ImportError(name)
+        return realimport(name, *importargs, **importkwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    with pytest.raises(ModuleNotFoundError, match=r"needs pyvista.*artistools\[extras\]"):
+        at.import_optional("pyvista")
+
+    # an installed module comes back as the import statement gives it
+    assert at.import_optional("math").sqrt(4.0) == 2.0
+
+
+def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str]) -> None:
+    """A warning goes to the standard error, thus --quiet keeps it and a script reads a clean product.
+
+    Every warning went to the standard output before, thus --quiet discarded all of them.
+    """
+    at.misc.print_warning("the model is on fire")
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err == "WARNING: the model is on fire\n"
+
+    # the dispatcher redirects the standard output alone, thus the warning of a --quiet run appears
+    import artistools.__main__
+
+    artistools.__main__.main(
+        argsraw=[
+            "plotestimators",
+            "-modelpath",
+            str(at.get_path("testdata") / "testmodel"),
+            "--listvariables",
+            "--quiet",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out
+
+
+def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
+    """A bar must take a lock that a spawn pool can hold, and it must set no default start method.
+
+    tqdm builds its shared lock from the default multiprocessing context at the first bar. On Linux the
+    default was fork before Python 3.14, thus CI stopped with "A SemLock created in a fork context is
+    being shared with a process in a spawn context". get_progress_class gives tqdm a lock of a spawn
+    context instead, thus a bar starts no process and the default of the caller stands.
+    """
+    import multiprocessing as mp
+
+    import tqdm
+
+    from artistools.misc.general import get_progress_class
+
+    original = mp.get_start_method(allow_none=True)
+    try:
+        mp.set_start_method("fork", force=True)  # the Linux default before Python 3.14
+        progressbar = get_progress_class()(total=1, disable=True)
+        progressbar.close()
+
+        assert mp.get_start_method() == "fork", "a bar starts no process, thus it sets no start method"
+        assert tqdm.tqdm.get_lock() is not None, "the bar must hold the lock that get_progress_class gave"
+    finally:
+        if original is not None:
+            mp.set_start_method(original, force=True)
+
+
+def test_resolve_frameset_paths(tmp_path: Path) -> None:
+    """The path arithmetic of a set of frames must give one answer for every command.
+
+    Three commands wrote this by hand, and each one broke the rule of -o in its own way.
+    """
+    framename = "plot_{timestep:03d}.png"
+
+    # a -o path with no file extension names a folder, which holds the frames and the product
+    frameset = at.resolve_frameset_paths(
+        tmp_path / "frames", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert frameset.frametemplate == tmp_path / "frames" / framename
+    assert frameset.productpath == tmp_path / "frames" / "movie.gif"
+    assert (tmp_path / "frames").is_dir(), "the folder of the frames must exist"
+
+    # a -o path that has a file extension names the product, thus the frames go beside it
+    frameset = at.resolve_frameset_paths(
+        tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert frameset.productpath == tmp_path / "out" / "movie.gif"
+    assert frameset.frametemplate == tmp_path / "out" / framename
+
+    # the folder of the product can carry a suffix of its own
+    frameset = at.resolve_frameset_paths(
+        tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+    )
+    assert frameset.productpath == tmp_path / "results.v1" / "movie.gif"
+    assert (tmp_path / "results.v1").is_dir()
+
+    # a merge names its own product, thus a folder gives no name to it
+    frameset = at.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename, combines=True)
+    assert frameset.productpath is None
+    assert frameset.frametemplate == tmp_path / "m" / framename
+
+    # a -o path that has a file extension names the merged product, and the frames go beside it
+    frameset = at.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
+    assert frameset.productpath == tmp_path / "merged.pdf"
+    assert frameset.frametemplate == tmp_path / framename
+
+    # a name that holds no field cannot take more than one frame
+    with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):
+        at.resolve_frameset_paths(tmp_path / "one.png", framecount=3, framename=framename)
+
+    # one frame alone may take such a name
+    frameset = at.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
+    assert frameset.frametemplate == tmp_path / "one.png"
+
+
+def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
+    """The frames of a run do not open one at a time, thus the product opens in their place."""
+    framepaths = [tmp_path / f"frame{i}.png" for i in range(3)]
+    for framepath in framepaths:
+        framepath.write_bytes(b"")
+
+    # one frame alone is the product of the run, and it takes the name that -o gave that product
+    named = tmp_path / "named.pdf"
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        product = at.misc.combine_frames(framepaths[:1], named, openfile=True)
+    assert product == named
+    assert named.is_file(), "the one frame must carry the name of the product"
+    assert not framepaths[0].exists(), "the frame moves to that name"
+    assert mockopen.call_args.args[0] == named
+
+    # without such a name, that frame is the product as it stands
+    framepaths[0].write_bytes(b"")
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        product = at.misc.combine_frames(framepaths[:1], None, openfile=True)
+    assert product == framepaths[0]
+    assert mockopen.call_args.args[0] == framepaths[0]
+
+    # a gif of one frame is still the gif that the caller asked for
+    gifpath = tmp_path / "movie.gif"
+    with mock.patch("artistools.misc.fileio.write_gif") as mockgif:
+        product = at.misc.combine_frames(framepaths[:1], gifpath, openfile=False, gifduration=1000.0)
+    assert product == gifpath
+    assert mockgif.call_args.args[0] == gifpath, "one frame must still make the gif"
+
+    # no frame gives no product
+    assert at.misc.combine_frames([], None, openfile=True) is None
+
+    # --open takes nothing when the caller does not ask for it
+    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+        at.misc.combine_frames(framepaths[:1], None, openfile=False)
+    assert not mockopen.called
+
+
+def test_a_keyword_that_the_command_does_not_take_raises() -> None:
+    """A name that names no argument of the command must raise, as it did before the marker flags.
+
+    addarg_collidingflags declares the flag of another command, so that a user of the command line gets
+    a message. Such a marker gave argparse a dest, thus the test for an unknown keyword took it for an
+    argument of this command and a wrong keyword passed without a word.
+    """
+    import artistools.showtimesteps
+
+    testmodel = at.get_path("testdata") / "testmodel"
+    with pytest.raises(ValueError, match="Unknown argument names"):
+        artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
+
+    # a real argument of the command still reaches it
+    artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
+
+
+def test_a_range_keeps_a_negative_number_whole() -> None:
+    """A hyphen in front of a number is no separator of a range.
+
+    "-timestep -1" split into an empty text and "1", thus it raised "invalid literal for int()".
+    """
+    assert at.parse_range_list("40-42") == [40, 41, 42]
+    assert at.parse_range_list("-1") == [-1]
+    assert at.parse_range_list("last", dictvars={"last": 99}) == [99]
+    assert at.parse_range_list("40-last", dictvars={"last": 42}) == [40, 41, 42]
+
+    with pytest.raises(ValueError, match="Bad range"):
+        at.parse_range_list("10-20-30")
+
+
+def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
+    """Two spellings of one path name one file, thus the merge must not remove the file that it wrote."""
+    import matplotlib.pyplot as plt
+
+    framepaths = []
+    for i in range(2):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [i, i])
+        framepath = tmp_path / f"frame{i}.pdf"
+        fig.savefig(framepath)
+        plt.close(fig)
+        framepaths.append(str(framepath))
+
+    # the product carries the name of a frame, and the caller gives it as an absolute path
+    product = at.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
+    assert Path(product).is_file(), "the merge must keep the file that it wrote"

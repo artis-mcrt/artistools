@@ -70,6 +70,7 @@ dev = [
     "imageio>=2.37.4",
     "prek>=0.4.14",
     "pynonthermal>=2026.8.9",
+    "pypdf>=6.16.2",
     "pyrefly>=1.2.0",
     "pytest>=9.1.1",
     "pytest-codspeed>=5.0.3",
@@ -77,7 +78,7 @@ dev = [
     "pytest-xdist[psutil]>=3.8.0",
     "refurb>=2.3.1",
     "ruff>=0.16.4,<0.17",
-    "ty>=0.0.74",
+    "ty>=0.0.75",
     "types-pyyaml>=6.0.12.20260408",
     "types-tqdm>=4.67.3.20260408",
     "vulture>=2.14",
@@ -87,23 +88,26 @@ dev = [
 Repository = "https://github.com/artis-mcrt/artistools"
 Issues = "https://github.com/artis-mcrt/artistools/issues"
 
+# Every script runs the same dispatcher. The name that starts it gives the subcommand, which
+# get_script_subcommands reads from subcommandtree. Name a new script in that tree as well as here,
+# because test_console_scripts holds the two lists to each other.
 [project.scripts]
 at = 'artistools.__main__:main'
 artistools = 'artistools.__main__:main'
-makeartismodel1dslicefromcone = 'artistools.inputmodel.slice1dfromconein3dmodel:main'
-makeartismodel = 'artistools.inputmodel.makeartismodel:main'
-plotartisdensity = 'artistools.inputmodel.plotdensity:main'
-plotartisestimators = 'artistools.estimators.plotestimators:main'
-plotartislightcurve = 'artistools.lightcurve.plotlightcurve:main'
-plotartislinefluxes = 'artistools.linefluxes:main'
-plotartismacroatom = 'artistools.macroatom:main'
-plotartisnltepops = 'artistools.nltepops.plotnltepops:main'
-plotartisnonthermal = 'artistools.nonthermal:main'
-plotartisradfield = 'artistools.radfield:main'
-plotartisspectrum = 'artistools.spectra.plotspectra:main'
-plotartistransitions = 'artistools.transitions:main'
-plotartisinitialcomposition = 'artistools.inputmodel.plotinitialcomposition:main'
-plotartisviewingangles = 'artistools.viewing_angles_visualization:main'
+makeartismodel1dslicefromcone = 'artistools.__main__:main'
+makeartismodel = 'artistools.__main__:main'
+plotartisdensity = 'artistools.__main__:main'
+plotartisestimators = 'artistools.__main__:main'
+plotartislightcurve = 'artistools.__main__:main'
+plotartislinefluxes = 'artistools.__main__:main'
+plotartismacroatom = 'artistools.__main__:main'
+plotartisnltepops = 'artistools.__main__:main'
+plotartisnonthermal = 'artistools.__main__:main'
+plotartisradfield = 'artistools.__main__:main'
+plotartisspectrum = 'artistools.__main__:main'
+plotartistransitions = 'artistools.__main__:main'
+plotartisinitialcomposition = 'artistools.__main__:main'
+plotartisviewingangles = 'artistools.__main__:main'
 
 [tool.cibuildwheel]
 build-frontend = "uv"
@@ -187,6 +191,7 @@ ignore-missing-imports = [
 unbound-name = false
 implicit-any-empty-container = true
 implicit-any-lambda = true
+no-any-return-explicit = true
 no-any-return-implicit = true
 string-as-iterable = true
 unnecessary-type-conversion = true

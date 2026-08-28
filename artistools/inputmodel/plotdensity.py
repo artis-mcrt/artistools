@@ -12,16 +12,17 @@ import polars as pl
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
-from artistools.misc import add_series_style_args
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
 from artistools.plottools import save_figure
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -29,22 +30,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to model.txt file(s) or folders containing model.txt)",
     )
 
-    add_series_style_args(
+    addarg_seriesstyle(
         parser, colordefault=[f"C{i}" for i in range(10)], include_linestyles=False, include_dashes=False
     )
 
-    add_axis_limit_args(parser, include_y=False)
+    addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
-        "-nbins",
-        type=int,
-        default=None,
-        help="Use specified number of fixed velocity bins up to maximum plot velocity.",
+        "-nbins", type=int, default=None, help="Use specified number of fixed velocity bins up to maximum plot velocity"
     )
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
-    add_outputpath_arg(parser)
+    addarg_output(parser, kind="file", defaultname="densityprofile.pdf")
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -79,7 +78,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
         max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
 
-        # total_mass = dfmodel.mass_g.sum() / Msun_to_g
         dfmodel = dfmodel.sort(by="vel_r_mid")
 
         cols = ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
@@ -107,7 +105,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # if we want to include the corners, then use this
             xmax = dfmodelcollect.select(pl.col("vel_r_mid").max()).item()
             # to exclude the corners:
-            # xmax = modelmeta["vmax_cmps"]
             xdeltamax = dfmodelcollect.select(pl.col("vel_r_mid").sort().diff().max()).item()
             ncoarsevelbins = int((xmax - xmin) / xdeltamax)
             print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
@@ -151,10 +148,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
-    outfilepath = at.resolve_outputfile(args.outputpath, "densityprofile.pdf")
+    outfilepath = args.outputfile
 
-    save_figure(fig, outfilepath)
+    save_figure(fig, outfilepath, args=args)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

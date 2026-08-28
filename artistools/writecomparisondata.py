@@ -11,19 +11,19 @@ import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.constants import km_to_cm
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import print_warning
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    spec_data = np.loadtxt(Path(modelpath, "spec.out"))
+    spec_data = np.loadtxt(at.zopen(at.firstexisting("spec.out", folder=modelpath, tryzipped=True)))
 
     times = spec_data[0, 1:]
     freqs = spec_data[1:, 0]
     lambdas = at.constants.c_ang_per_s / freqs
-
-    # print("\n".join(["{0}, {1}".format(*x) for x in enumerate(times)]))
 
     fluxes_nu = spec_data[1:, 1:]
 
@@ -44,7 +44,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
         for n in reversed(range(len(lambdas))):
             outfile.write(
-                f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n"
+                f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.4e}" for ts in selected_timesteps]) + "\n"
             )
 
 
@@ -77,10 +77,10 @@ def write_single_estimator(
         elif keyname == "Te":
             f.write("#vel_mid[km/s] Tgas_t0[K] Tgas_t1[K] ... Tgas_tn[K]\n")
         for modelgridindex, vel_r_mid in lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows():
-            f.write(f"{vel_r_mid / 1e5:.2f}")
+            f.write(f"{vel_r_mid / km_to_cm:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[timestep, modelgridindex][keyname]
-                f.write(f" {cellvalue:.3e}")
+                f.write(f" {cellvalue:.4e}")
             f.write("\n")
 
 
@@ -116,7 +116,7 @@ def write_ionfracts(
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
                 f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion}' for ion in range(nions)])}\n")
                 for modelgridindex, vel_r_mid in cellrows:
-                    f.write(f"{vel_r_mid / 1e5:.2f}")
+                    f.write(f"{vel_r_mid / km_to_cm:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist["lowermost_ion_stage"].item(elementindex)
@@ -159,7 +159,7 @@ def write_phys(
                     10 ** cell["logrho"] * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
-                f.write(f"{cell['vel_r_mid'] / 1e5:.2f}")
+                f.write(f"{cell['vel_r_mid'] / km_to_cm:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):
                     estvalue = estimators[timestep, modelgridindex][keyname]
                     f.write(f" {estvalue:.4e}")
@@ -172,7 +172,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     # light curve's row index. The columns are time_days and luminosity_Lsun, not the time and lum this used to read
     dflightcurve = (
         at.lightcurve
-        .readfile(Path(modelpath, "light_curve.out"))[-1]
+        .readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
         .join(at.get_deposition(modelpath), on="timestep", how="inner")
@@ -183,7 +183,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     )
 
     if missing := sorted(set(selected_timesteps) - set(dflightcurve["timestep"])):
-        print(f"WARNING: no light curve or deposition data for timesteps {missing}. They are left out of the file")
+        print_warning(f"no light curve or deposition data for timesteps {missing}. They are left out of the file")
 
     with outputpath.open("w", encoding="utf-8") as f:
         # the row count, not len(selected_timesteps): a selected timestep missing from either input is dropped by
@@ -193,18 +193,18 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
         for time_days, luminosity_Lsun, total_dep_Lsun in dflightcurve.drop("timestep").iter_rows():
             f.write(
-                f"{time_days:.2f} {luminosity_Lsun * at.constants.Lsun_to_erg_per_s:.2e}"
-                f" {total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.2e}\n"
+                f"{time_days:.2f} {luminosity_Lsun * at.constants.Lsun_to_erg_per_s:.4e}"
+                f" {total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.4e}\n"
             )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders")
+    addarg_modelpath(parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders")
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
-    add_outputpath_arg(parser, astype=Path, default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -216,42 +216,44 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps
 
-    args.outputpath.mkdir(parents=True, exist_ok=True)
+    args.outputfile.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
         model_id = Path(modelpath).name.split("_")[0]
         print(f"{model_id=}")
 
-        estimators = at.estimators.read_estimators(modelpath=modelpath)
+        estimators = at.estimators.read_estimators(modelpath=modelpath, timestep=tuple(selected_timesteps))
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators if ts == selected_timesteps[0]})
 
         try:
             write_lbol_edep(
-                modelpath, selected_timesteps, Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt")
+                modelpath, selected_timesteps, Path(args.outputfile, f"lbol_edep_{model_id}_artisnebular.txt")
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")
 
-        write_spectra(modelpath, selected_timesteps, Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt"))
+        write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
+        #                        Path(args.outputfile, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
 
         write_single_estimator(
             modelpath,
             selected_timesteps,
             estimators,
             allnonemptymgilist,
-            Path(args.outputpath, f"edep_{model_id}_artisnebular.txt"),
+            Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
             keyname="total_dep",
         )
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
+        #                        Path(args.outputfile, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
-        write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
-        write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
+        write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
+        write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

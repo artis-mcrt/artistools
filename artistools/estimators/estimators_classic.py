@@ -1,10 +1,13 @@
 """Read estimator files written by classic (pre-2020) versions of ARTIS."""
 
-import itertools
 import typing as t
+from functools import lru_cache
 from pathlib import Path
 
 import artistools as at
+from artistools.misc import print_warning
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import firstexisting
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:
@@ -17,7 +20,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
     """
     atomic_composition = {}
 
-    with at.zopen_unshadowed(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
+    with at.zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         ioncount = 0
         Z = None
         for row in foutput:
@@ -46,11 +49,9 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
             outdict[f"nnion_{ionstr}"] = value_thision
             i += 1
 
-            elpop = outdict.get(f"nnelement_{atomic_number}", 0)
-            outdict[f"nnelement_{atomic_number}"] = elpop + value_thision
-
-            totalpop = outdict.get("nntot", 0)
-            outdict["nntot"] = totalpop + value_thision
+            elsymbol = at.get_elsymbol(atomic_number)
+            elpop = outdict.get(f"nnelement_{elsymbol}", 0)
+            outdict[f"nnelement_{elsymbol}"] = elpop + value_thision
 
 
 def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
@@ -62,24 +63,59 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     for folder in folderlist_all:
         outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
         if outputfile is not None:
-            with at.zopen_unshadowed(outputfile, encoding="utf-8") as output_0:
+            with at.zopen(outputfile, encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip(".\n").split(" ")[-1]
                     for line in output_0
                     if "[debug] update_packets: updating packet 0 for timestep" in line
                 ]
-            first_ts = timesteps_in_dir[0]
-            first_timesteps_in_dir[str(folder)] = int(first_ts)
+            # a log that records no packet update gives no first timestep, thus the folder is left out and
+            # the caller starts it at zero
+            if timesteps_in_dir:
+                first_timesteps_in_dir[str(folder)] = int(timesteps_in_dir[0])
 
     return first_timesteps_in_dir
 
 
-def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
-    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no estimator files are found."""
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
-    estimfiles = list(
-        itertools.chain(Path(modelpath).glob("estimators_????.out"), Path(modelpath).glob("*/estimators_????.out"))
+def get_classic_estimator_files(modelpath: Path) -> list[Path]:
+    """Return one file for each rank, from the model folder and its run subfolders.
+
+    The trailing wildcard accepts a compressed file, and also a sibling such as .bak, thus only zopen's
+    own formats take part. Two forms of one rank file share a stem, and firstexisting picks between
+    them, thus its order rules here as it does in every other reader.
+    """
+    stems = {
+        path.with_suffix("") if path.suffix != ".out" else path
+        for pattern in ("estimators_????.out*", "*/estimators_????.out*")
+        for path in Path(modelpath).glob(pattern)
+        if path.suffix == ".out" or path.suffix in COMPRESSED_EXTENSIONS
+    }
+
+    return sorted(
+        firstexisting(stem.name, folder=stem.parent, tryzipped=True, search_subfolders=False) for stem in stems
     )
+
+
+def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
+    """Return the classic estimators keyed by (timestep, modelgridindex), or None when no files exist.
+
+    The copy of the dictionary and of the dictionary of each cell keeps a caller that changes one of
+    them from changing what the next caller reads.
+    """
+    estimators = read_classic_estimators_cached(modelpath)
+
+    return None if estimators is None else {key: dict(estimcell) for key, estimcell in estimators.items()}
+
+
+@lru_cache(maxsize=2)
+def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
+    """Return the classic estimators of a run, and keep them for the next caller.
+
+    The cache serves the no-data report, which reads the run a second time. Do not change the dict
+    that this function returns.
+    """
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    estimfiles = get_classic_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")
         return None
@@ -92,21 +128,50 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     ndimensions = inputparams["n_dimensions"]
 
     estimators: dict[tuple[int, int], t.Any] = {}
+    # a classic estimator file numbers its timesteps from zero, thus a folder of a restarted run needs
+    # the offset that its log gives. Two folders that both start at zero write the same keys, and the
+    # later one takes the place of the earlier. folderofkey names the folder that wrote each key, so
+    # that this reports the loss rather than passing wrong data to a plot
+    folderofkey: dict[tuple[int, int], Path] = {}
     for estfilepath in estimfiles:
-        # If classic plots break it's probably getting first timestep here
-        # Try either of the next two lines
-        timestep = first_timesteps_in_dir[str(estfilepath.parent)]  # get the starting timestep for the estfile
-        # timestep = first_timesteps_in_dir[str(estfile[:-20])]
-        # timestep = 0  # if the first timestep in the file is 0 then this is fine
+        if str(estfilepath.parent) in first_timesteps_in_dir:
+            timestep = first_timesteps_in_dir[str(estfilepath.parent)]
+        else:
+            print_warning(f"no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
+            timestep = 0
         with at.zopen(estfilepath) as estfile:
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
+                # a classic ARTIS run writes a row of numbers that starts with the cell index. A modern
+                # run writes "timestep 0 modelgridindex 0 ...", and it does so even with the options of
+                # the classic code, thus the name of --classicartis misleads
+                if row and row[0] == "timestep":
+                    msg = (
+                        f"{estfilepath} holds the estimator format of a modern ARTIS run, thus "
+                        "--classicartis does not read it. That argument reads the output of the classic "
+                        "ARTIS code, which writes one row of numbers for each cell. A modern run that "
+                        "takes the classic options still writes the modern format, thus give it no "
+                        "--classicartis"
+                    )
+                    raise ValueError(msg)
+
                 if int(row[0]) <= modelgridindex:
                     timestep += 1
                 modelgridindex = int(row[0])
 
                 estimcell: dict[str, t.Any] = {}
+                previousfolder = folderofkey.get((timestep, modelgridindex))
+                if previousfolder is not None and previousfolder != estfilepath.parent:
+                    msg = (
+                        f"{estfilepath.parent} and {previousfolder} both give timestep {timestep} of cell "
+                        f"{modelgridindex}. A restarted run numbers each folder from its own first "
+                        "timestep, and output_0-0.txt gives that number. One of these folders holds no "
+                        "such record, thus its data would take the place of the other folder's"
+                    )
+                    raise ValueError(msg)
+
+                folderofkey[timestep, modelgridindex] = estfilepath.parent
                 estimators[timestep, modelgridindex] = estimcell
 
                 if ndimensions == 1:

@@ -1,15 +1,16 @@
 """Animate the ARTIS viewing angle bins as vectors around a 3D model."""
 
 import argparse
-import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import polars as pl
 
 import artistools as at
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_output
+from artistools.misc import resolve_outputfile
 
 
 def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
@@ -99,15 +100,13 @@ def viewing_angles_visualisation(
     isomin, isomax : float | int, float
 
     """
-    try:
-        import plotly.express as px
-        import plotly.graph_objects as go
-    except ModuleNotFoundError:
-        print("Cannot run visualization without plotly...")
-        sys.exit()
+    px = at.import_optional("plotly.express")
+    go = at.import_optional("plotly.graph_objects")
 
     # Load model contents
-    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_mid"])[0].collect()
+    # get_modeldata takes the name of each column, and "pos_mid" names none of them, thus the read
+    # gave no position column and the command stopped at the first one that it reads
+    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0].collect()
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
@@ -168,24 +167,24 @@ def viewing_angles_visualisation(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("modelfile", help="Path to the ARTIS model.")
-    add_outputfile_arg(
+    parser.add_argument("modelfile", help="Path to the ARTIS model")
+    addarg_output(
         parser,
-        astype=None,
-        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation.",
+        kind="file",
+        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation",
     )
-    parser.add_argument("-isomin", type=float, help="Minimum density for color coding.")
-    parser.add_argument("-isomax", type=float, help="Maximum density for color coding.")
-    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value.")
-    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted.")
-    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines.")
+    parser.add_argument("-isomin", type=float, help="Minimum density for color coding")
+    parser.add_argument("-isomax", type=float, help="Maximum density for color coding")
+    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value")
+    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted")
+    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines")
     parser.add_argument(
-        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize."
+        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize"
     )
-    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving.")
+    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving")
 
     # deprecated double-dash spellings kept as hidden aliases
-    parser.add_argument("--outfile", dest="outputfile", help=argparse.SUPPRESS)
+    parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--isomin", dest="isomin", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--isomax", dest="isomax", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--opacity", dest="opacity", type=float, help=argparse.SUPPRESS)
@@ -200,7 +199,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,
-        outfile=args.outputfile,
+        # -o promises that a path with no file extension names a folder, which the command makes
+        outfile=str(resolve_outputfile(args.outputfile, "plotviewingangles.html")) if args.outputfile else None,
         isomin=args.isomin,
         isomax=args.isomax,
         opacity=args.opacity,
@@ -212,4 +212,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

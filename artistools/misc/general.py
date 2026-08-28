@@ -4,6 +4,9 @@ import contextlib
 import functools
 import sys
 import typing as t
+
+if t.TYPE_CHECKING:
+    from types import ModuleType
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -111,6 +114,50 @@ def gaussian_filter_wrap(data: npt.NDArray[np.floating], sigma: float) -> npt.ND
     return out
 
 
+def import_optional(modulename: str) -> "ModuleType":
+    """Import a module of the optional dependencies, or say how to install them.
+
+    A bare import of pyvista or pynonthermal stops with a traceback that names no fix. This raises one
+    message that gives the install command.
+    """
+    import importlib
+
+    try:
+        return importlib.import_module(modulename)
+    except ImportError as exc:
+        packagename = modulename.partition(".")[0]
+        msg = (
+            f"This command needs {packagename}, which is not installed. Install the optional "
+            "dependencies with: uv pip install 'artistools[extras]'"
+        )
+        raise ModuleNotFoundError(msg) from exc
+
+
+def get_progress_class() -> "type[t.Any]":
+    """Return the rich tqdm class, with a progress-bar lock that a spawn pool can take.
+
+    tqdm builds its shared progress-bar lock from the default multiprocessing context at the first bar.
+    On Linux the default was fork before Python 3.14, thus a bar made before parallel_map gave its
+    workers a fork lock in a spawn pool: "A SemLock created in a fork context is being shared with a
+    process in a spawn context". Every bar comes through here, thus the lock comes from a spawn context
+    from the start. This sets no default start method, because a bar alone starts no process, and that
+    default belongs to the caller.
+    """
+    import multiprocessing as mp
+    import warnings
+
+    import tqdm
+    import tqdm.rich
+    from tqdm import TqdmExperimentalWarning
+
+    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+    spawnlock = mp.get_context("spawn").RLock()
+    tqdm.tqdm.set_lock(spawnlock)
+    tqdm.rich.tqdm.set_lock(spawnlock)
+
+    return tqdm.rich.tqdm
+
+
 def parallel_map[IterableType, ResultType](
     fn: Callable[[IterableType], ResultType],
     *iterables: Iterable[IterableType],
@@ -118,13 +165,7 @@ def parallel_map[IterableType, ResultType](
     **kwargs: t.Any,
 ) -> list[ResultType]:
     """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
-    import multiprocessing as mp
-    import warnings
-
-    import tqdm.rich
-    from tqdm import TqdmExperimentalWarning
-
-    warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
+    progressclass = get_progress_class()
 
     use_multiprocessing = allow_multiprocessing
     if allow_multiprocessing:
@@ -134,20 +175,19 @@ def parallel_map[IterableType, ResultType](
                 use_multiprocessing = False
 
     if use_multiprocessing:
+        import multiprocessing as mp
+
         from tqdm.contrib.concurrent import process_map
 
-        # Set the start method globally rather than passing mp_context to the pool. process_map shares one
-        # progress-bar lock with its workers, and tqdm builds that lock from the *default* context, so a pool
-        # running in a different context gets a lock it cannot use: on Linux, where the default was fork before
-        # Python 3.14, that raises "A SemLock created in a fork context is being shared with a process in a spawn
-        # context". Spawn is needed because forking a process that already has polars/rayon threads is unsafe.
+        # the lock of the progress bar comes from a spawn context, thus the pool must live in one as
+        # well. Spawn is also needed because forking a process that already has polars threads is
+        # unsafe. A run that takes the thread pool changes no such default
         mp.set_start_method("spawn", force=True)
-
-        results = process_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
+        results = process_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
     else:
         from tqdm.contrib.concurrent import thread_map
 
-        results = thread_map(fn, *iterables, tqdm_class=tqdm.rich.tqdm, **kwargs)  # type: ignore[arg-type]
+        results = thread_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
 
     assert isinstance(results, list)
     return results

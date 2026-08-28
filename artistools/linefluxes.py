@@ -11,7 +11,6 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
-import matplotlib.pyplot as plt
 import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
@@ -20,15 +19,23 @@ from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_series_style_args
+from artistools.constants import km_to_cm
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_output
+from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
+from artistools.misc import addarg_verbose
+from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 # the Fe II 7155 Å / 12570 Å pair used for the Flörs et al. (2020) ratio comparison
 DEFAULT_EMFEATURESEARCH: tuple[tuple[int, ...], ...] = ((26, 2, 7155, 7150, 7160), (26, 2, 12570, 12470, 12670))
@@ -142,15 +149,12 @@ def get_line_luminosities_from_pops(
     if arr_tend is None:
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
-    # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
-
-    # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     # read_files is uncached, so read every rank's nlte output once rather than once per feature
     dfnltepops_allions = at.nltepops.read_files(modelpath)
@@ -178,8 +182,8 @@ def get_line_luminosities_from_pops(
             levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
 
         # the shell velocities do not change with time, so take them out of the loop and scale the volume by t^3
-        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * 1e5
-        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * 1e5
+        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
+        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
         shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
 
         # the transition data is the same for every cell and timestep, so look it up once per line. An IndexError
@@ -294,9 +298,6 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
             f"[{feature.lowestlambda:.1f} Å, {feature.highestlambda:.1f} Å]"
         )
         labelandlineindices.append(feature)
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 12570, 12470, 12670)))
-    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 28, 2, 7378, 7373, 7383)))
 
     return labelandlineindices
 
@@ -324,7 +325,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
-        print(f"WARNING: no rows for Flörs model w7 in {floersmodelratiopath}")
+        print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
         return
 
     axis.plot(
@@ -342,32 +343,20 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
 
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     """Plot the luminosity ratio of pairs of spectral features against time, and save the figure."""
-    # font = {'size': 16}
-    # matplotlib.rc('font', **font)
     nrows = 1
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=1,
-        sharey=False,
-        figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.4)),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    if nrows == 1:
-        axes = np.array([axes])
+    fig, axesgrid = make_frame_figure(args, rows=nrows, sharey=False)
+    axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
 
     axis = axes[0]
     axis.set_yscale("log")
-    # axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
-    # axis.set_xlim(left=supxmin, right=supxmax)
     tmin = math.inf
     tmax = -math.inf
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
-        print(f"====> {modellabel}")
+        at.print_heading(modellabel)
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
@@ -422,7 +411,6 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
             plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args)
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
-    # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
     m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
     m18_pew[28, 2, 7378] = np.array([157, 256, 236, 309])
     if args.emfeaturesearch[1][:3] in m18_pew and args.emfeaturesearch[0][:3] in m18_pew:
@@ -433,12 +421,11 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     for ax in axes:
         ax.set_xlabel(r"Time [days]")
-        if not args.nolegend:
-            ax.legend(loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1, prop={"size": 9})
+        set_legend(ax, args, loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1)
 
     args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", args=args)
 
 
 def plot_nne_te_points(
@@ -465,12 +452,6 @@ def plot_nne_te_points(
     arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
-
-    # arr_weight = arr_weight / float(max(arr_weight))
-    # arr_color = np.zeros((len(arr_x), 4))
-    # arr_color[:, :3] = np.array([[c for c in mpl.colors.to_rgb(color)] for x in arr_weight])
-    # arr_color[:, 3] = (arr_weight + 0.2) / 1.2
-    # np.array([[c * z for c in mpl.colors.to_rgb(color)] for z in arr_z])
 
     # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
     #              edgecolors='none')
@@ -525,9 +506,6 @@ def plot_nne_te_bars(
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
-    # font = {'size': 16}
-    # matplotlib.rc('font', **font)
-    # 'floers_te_nne.json',
     refdatafilenames = ["floers_te_nne.json"]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
     refdatalabels = ["Flörs+2020"]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ["0.0", "C1", "C2", "C4"]
@@ -590,7 +568,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             dfestimators = (
                 at.estimators
-                .scan_estimators(modelpath=modelpath)
+                .scan_estimators(modelpath=modelpath, verbose=args.verbose)
                 .select(["timestep", "modelgridindex", "Te", "nne"])
                 .drop_nulls()
                 .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
@@ -646,14 +624,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         for tmid in times_days:
             print(f"  Plot at {tmid} days")
 
-            fig, axis = plt.subplots(
-                nrows=nrows,
-                ncols=1,
-                sharey=False,
-                sharex=False,
-                figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + nrows * 0.7)),
-                tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
-            )
+            fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=0.955, sharex=False, sharey=False)
+            axis = axesgrid[0][0]
             assert isinstance(axis, mplax.Axes)
 
             for refdataindex in range(len(refdatafilenames)):
@@ -707,8 +679,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     mplmarkers.MarkerStyle(mplmarkers.CARETUPBASE),
                     mplmarkers.MarkerStyle(mplmarkers.CARETDOWNBASE),
                 ]
-                # featurecolours = ['C0', 'C3']
-                # featurebarcolours = ['blue', 'red']
 
                 normtotalpackets = float(
                     np.sum([
@@ -753,8 +723,10 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                         else:
                             plot_nne_te_bars(axis, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex])
 
-            if tmid == times_days[-1] and not args.nolegend:
-                axis.legend(
+            if tmid == times_days[-1]:
+                set_legend(
+                    axis,
+                    args,
                     loc="best",
                     frameon=False,
                     handlelength=1,
@@ -776,22 +748,24 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
-            save_figure(fig, outputfile, format="pdf")
+            save_figure(fig, outputfile, format="pdf", args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders with spec.out or packets files"
     )
 
-    add_series_style_args(parser, colordefault=[f"C{i}" for i in range(10)])
+    addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
+    addarg_show(parser)
+    addarg_verbose(parser)
 
     parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
 
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
 
     parser.add_argument(
         "-emfeaturesearch",
@@ -831,13 +805,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # parser.add_argument('-timemax', type=float,
     #                     help='Upper time in days to integrate spectrum')
     #
-    add_axis_limit_args(
+    # the x axis of this command is a time in days, thus it takes no wavelength aliases
+    addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=50,
         xmaxdefault=450,
-        xminhelp="Plot range: minimum wavelength in Angstroms",
-        xmaxhelp="Plot range: maximum wavelength in Angstroms",
+        xminhelp="Plot range: minimum time in days",
+        xmaxhelp="Plot range: maximum time in days",
     )
 
     parser.add_argument(
@@ -856,13 +830,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Time bin end values in days. Defaults to the model timestep ends",
     )
 
-    add_figscale_args(parser, figscaledefault=1.8)
+    addarg_figscale(parser)
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
     parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
 
-    add_outputfile_arg(parser, helptext="path/filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -922,4 +896,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotlinefluxes")

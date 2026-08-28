@@ -16,6 +16,7 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -114,7 +115,6 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         for i, column_name in enumerate(packet_properties):
             if column_name in replacements_dict:
                 packet_properties[i] = replacements_dict[column_name]
-        print(packet_properties)
 
         return packet_properties
 
@@ -207,7 +207,7 @@ def add_derived_columns_lazy(
     elif modelmeta["dimensions"] == 1:
         assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
 
-        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * 100000.0).collect().to_series().to_list())]
+        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
 
         def velocity_to_mgi(velcol: str) -> pl.Expr:
             return pl.col(velcol).cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
@@ -249,7 +249,6 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
 def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
     """Read a packets*.out(.xz/.zst) space-separated text file into a polars DataFrame."""
     packetsfiletext = Path(packetsfiletext)
-    print(f"  reading {packetsfiletext}")
     dtype_overrides = {
         "absorption_freq": pl.Float32,
         "absorption_type": pl.Int32,
@@ -458,10 +457,18 @@ def get_packets_rankbatch_parquetfile(
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
-        pldf_batch = pl.concat(
-            (ftextreader(text_file_path, column_names=column_names).lazy() for text_file_path in text_file_paths),
-            how="vertical",
-        )
+        from artistools.misc.general import get_progress_class
+
+        with get_progress_class()(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
+
+            def read_with_progress(text_file_path: Path) -> pl.LazyFrame:
+                frame = ftextreader(text_file_path, column_names=column_names).lazy()
+                progressbar.update(1)
+                return frame
+
+            pldf_batch = pl.concat(
+                (read_with_progress(text_file_path) for text_file_path in text_file_paths), how="vertical"
+            )
 
         assert pldf_batch is not None
 

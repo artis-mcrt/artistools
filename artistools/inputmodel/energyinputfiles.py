@@ -15,6 +15,10 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.misc import addarg_action
+from artistools.misc import require_action
+from artistools.misc import resolve_outputfile
+from artistools.plottools import save_or_show
 
 
 def _cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -71,7 +75,6 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 
     cumulative_energy = _cumulative_trapezoid(y=qdot, x=times)
     E_tot = float(cumulative_energy[-1])
-    # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
     rate = cumulative_energy / E_tot
 
@@ -85,22 +88,9 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
     print(np.mean(scale_factor_energy_diff))
     E_tot *= scale_factor_energy_diff
-    # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")
 
     dE = np.diff(dftimes_and_rate["rate"] * E_tot)
     dt = np.diff(times * 24 * 60 * 60)
-
-    # check energy rate is on top of power law line
-    # plt.plot(dftimes_and_rate["times"][1:], (dE / dt) * 0.01 * Msun_to_g)
-    # plt.plot(dftimes_and_rate["times"], qdot * 0.01 * Msun_to_g)
-    # plt.yscale("log")
-    # plt.xscale("log")
-
-    # plt.xlabel("Time [days]")
-    # plt.ylabel("Q [erg/g/s]")
-    # # plt.xlim(0.1, 20)
-    # # plt.ylim(5e39, 2e41)
-    # plt.show()
 
     return dftimes_and_rate, E_tot
 
@@ -179,7 +169,6 @@ def energy_from_rprocess_calculation(
 ) -> float | tuple[pl.DataFrame, float]:
     """Integrate a trajectory Qdot to get the total energy [erg/g], and the cumulative rate when get_rate is set."""
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
-    # print("Dropping times later than 116 days")
 
     skipfirstnrows = 0  # not sure first values look sensible -- check this
     times = energy_thermo_data["time/s"][skipfirstnrows:]
@@ -237,19 +226,17 @@ def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument(
-        "action",
-        nargs="?",
-        default=None,
+    addarg_action(
+        parser,
         choices=["plotrate", "describe", "fromtrajectory"],
-        help=(
+        helptext=(
             "plotrate: plot the analytic nuclear heating power against time."
             " describe: report the total energy and rate from the written energy files."
-            " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate."
+            " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),
     )
-    at.add_modelpath_arg(parser, default=Path())
-    at.add_outputfile_arg(parser, helptext="Path for the plot, or omit to show it interactively")
+    at.addarg_modelpath(parser, default=Path())
+    at.addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
 
 
@@ -257,9 +244,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot and inspect the ARTIS energy input files."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.action is None:
-        print("ERROR: no action given. Run with --help to see the available actions.")
-        raise SystemExit(1)
+    require_action(args)
 
     modelpath = Path(args.modelpath)
 
@@ -270,12 +255,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        if args.outputfile:
-            fig.savefig(args.outputfile)
-            at.print_saved(args.outputfile)
-        else:
-            plt.show()
-        plt.close(fig)
+        # -o promises that a path with no file extension names a folder, and an empty -o shows the plot
+        save_or_show(fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)
@@ -298,4 +279,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

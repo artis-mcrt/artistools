@@ -8,23 +8,32 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timestep_arg
+from artistools.constants import km_to_cm
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelgridindex
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
+from artistools.misc import addarg_verbose
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
+from artistools.plottools import set_plot_title
 
 
 def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
@@ -241,8 +250,13 @@ def plot_celltimestep(
     modelgridindex: int,
     args: argparse.Namespace,
     normalised: bool = False,
+    isframe: bool = False,
 ) -> bool:
-    """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
+    """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells).
+
+    A plot that the merge takes in is one part of the product, thus --show and --open leave it alone.
+    merge_pdf_files also deletes such a file, thus an application that opened it would hold nothing.
+    """
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.select(pl.len()).item() == 0:
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
@@ -254,13 +268,8 @@ def plot_celltimestep(
     T_R = radfielddata.filter(pl.col("bin_num") == -1).select("T_R").item()
     print(f"T_R = {T_R}")
 
-    fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        figsize=(args.figscale * 5.0, args.figscale * 5.0 * (0.25 + 0.4)),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    fig, axesgrid = make_frame_figure(args)
+    axis = axesgrid[0][0]
 
     assert isinstance(axis, mplax.Axes)
 
@@ -269,8 +278,6 @@ def plot_celltimestep(
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
 
     label = r"Dilute blackbody model "
-    # label += r'(T$_{\mathrm{R}}$'
-    # label += f'= {row["T_R"]} K)')
     axis.plot(xlist, yvalues, label=label, color="purple", linewidth=1.5)
     ymax = float(np.max(yvalues))
 
@@ -294,7 +301,7 @@ def plot_celltimestep(
         axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
     )
 
-    ymax = args.ymax if args.ymax >= 0 else max(ymax, ymax3)
+    ymax = args.ymax if args.ymax is not None else max(ymax, ymax3)
     try:
         specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
@@ -326,14 +333,12 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
     velocity_kmps = (
-        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / 1e5
+        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / km_to_cm
     )
 
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
-    # figure_title += '\ncell {modelgridindex} timestep {timestep}'
 
-    if not args.notitle:
-        axis.set_title(figure_title, fontsize=11)
+    set_plot_title(axis, figure_title, args)
 
     # axis.annotate(figure_title,
     #               xy=(0.02, 0.96), xycoords='axes fraction',
@@ -345,25 +350,27 @@ def plot_celltimestep(
 
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
-    axis.set_ylim(bottom=0.0, top=ymax)
+    # the parser accepts -ymin and -ymax, thus the axis must take what the user asked for. A radiation
+    # field is not negative, thus zero is the default bottom
+    axis.set_ylim(bottom=args.ymin if args.ymin is not None else 0.0, top=args.ymax if args.ymax is not None else ymax)
 
-    axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
+    at.plottools.set_exponent_label(axis)
 
-    axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, fontsize=9)
+    set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf")
+    save_figure(fig, outputfile, format="pdf", args=args, isframe=isframe)
     return True
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=".")
+    addarg_modelpath(parser, default=Path())
 
-    add_timedays_arg(parser, kind="str")
+    addarg_timedays(parser, kind="str")
 
-    add_timestep_arg(parser, kind="strappend")
+    addarg_timestep(parser)
 
-    parser.add_argument("-modelgridindex", "-cell", action="append", help="Modelgridindex to plot")
+    addarg_modelgridindex(parser, helptext="Model grid cell to plot, or a range e.g. 3-7")
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -371,27 +378,27 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--showbinedges", action="store_true", help="Plot vertical lines at the bin edges")
 
-    add_axis_limit_args(
+    addarg_axislimits(
         parser,
-        xlimtype=int,
         xmindefault=1000,
         xmaxdefault=20000,
         xminhelp="Plot range: minimum wavelength in Angstroms",
         xmaxhelp="Plot range: maximum wavelength in Angstroms",
-        include_y=False,
+        wavelength_aliases=True,
     )
-
-    parser.add_argument("-ymax", type=int, default=-1, help="Plot range: maximum J_nu")
 
     parser.add_argument("--normalised", action="store_true", help="Normalise the spectra to their peak values")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
+    addarg_nolegend(parser)
+    addarg_show(parser)
+    addarg_verbose(parser)
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
-    add_figscale_args(parser)
+    addarg_figscale(parser)
 
-    add_outputfile_arg(parser, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -399,10 +406,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     at.set_mpl_style()
-
-    defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
-
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     modelpath = args.modelpath
 
@@ -427,10 +430,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("Using last timestep.")
         timesteplist = [timesteplast]
 
+    # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
+    frameset = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(modelgridindexlist) * len(timesteplist),
+        framename="plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf",
+        combines=len(modelgridindexlist) * len(timesteplist) > 1,
+    )
+
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         for timestep in timesteplist:
-            outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+            outputfile = at.format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(
                 modelpath,
                 timestep,
@@ -440,13 +451,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 modelgridindex=modelgridindex,
                 args=args,
                 normalised=args.normalised,
+                isframe=frameset.combines,
             ):
                 pdf_list.append(outputfile)
 
-    if len(pdf_list) > 1:
-        print(pdf_list)
-        at.merge_pdf_files(pdf_list)
+    # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
+    # takes that plot for the product, because no plot of a merging run opened on its own
+    frameset.finish(pdf_list, args)
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotradfield")

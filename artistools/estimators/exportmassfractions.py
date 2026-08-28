@@ -9,15 +9,17 @@ import numpy as np
 
 import artistools as at
 
-defaultoutputfile = "massfracs.txt"
+DEFAULTOUTPUTNAME = "massfracs.txt"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(parser, default=Path())
-    at.add_timestep_arg(parser, kind="int", default=14, helptext="Timestep number to export")
-    parser.add_argument("-modelgridindex", "-cell", default="0-9", help="Range of cell numbers to export")
-    at.add_outputpath_arg(parser, default=defaultoutputfile, helptext="Path to output file of mass fractions")
+    at.addarg_modelpath(parser, default=Path())
+    at.addarg_timestep(parser, default=14, helptext="Timestep number to export")
+    at.addarg_modelgridindex(parser, default="0-9", helptext="Range of cell numbers to export")
+    at.addarg_output(
+        parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -25,12 +27,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     modelpath = Path(args.modelpath)
-    timestep = args.timestep
+    timestep = at.get_single_timestep(args.timestep, modelpath)
+    assert timestep is not None, "-timestep holds a default, thus it names a timestep"
     # the standard atomic weights, not the masses in compositiondata.txt, which only cover the elements that
     # ARTIS treated in detail. Weighting over a subset would renormalise the fractions to a partial total
     elmass = at.get_atomic_masses()
     tdays = at.get_timestep_time(modelpath, timestep)
-    outfilename = at.resolve_outputfile(args.outputpath, defaultoutputfile)
+    outfilename = args.outputfile
     with Path(outfilename).open("w", encoding="utf-8") as fout:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
@@ -61,4 +64,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

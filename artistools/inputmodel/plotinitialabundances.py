@@ -12,6 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -47,7 +48,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
         massfracsum = df["massfraction"].sum()
         if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
-            print(f"WARNING: mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
+            print_warning(f"mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
 
         df = (
             df
@@ -73,14 +74,14 @@ def make_plot(args: argparse.Namespace) -> None:
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
-    outpath = Path(args.outputpath) / f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf"
-    save_figure(fig, outpath, dpi=300)
+    outpath = at.resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf")
+    save_figure(fig, outpath, args=args, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_outputpath_arg(parser, default=Path(), astype=Path)
-    at.add_modelpath_arg(
+    at.addarg_output(parser, kind="file", default=Path())
+    at.addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -104,6 +105,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["massfraction", "abundance"],
         help="Vertical axis quantity: mass fraction or number abundance",
     )
+    at.addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -114,4 +116,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

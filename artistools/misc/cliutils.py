@@ -1,17 +1,64 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
+import dataclasses as dc
 import itertools
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
+from artistools.commands import SuggestingArgumentParser
+
+if t.TYPE_CHECKING:
+    from collections.abc import Collection
+
+    import numpy as np
+    import numpy.typing as npt
+
+# a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
+type PathArg = Path | str | Sequence[PathArg] | None
 
 
-def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
+class CommaJoinAction(argparse.Action):
+    """Join a repeated flag: "-cell 3 -cell 5" gives "3,5", which parse_range_list expands.
+
+    Without this the last occurrence replaces the first, and the command drops a cell silently.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: str | Sequence[t.Any] | None,
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Put the joined text of every occurrence of this flag in the namespace."""
+        previous = getattr(namespace, self.dest, None)
+        text = ",".join(str(value) for value in values) if isinstance(values, list) else str(values)
+        isfirstoccurrence = previous is self.default or previous is None
+        setattr(namespace, self.dest, text if isfirstoccurrence else f"{previous},{text}")
+
+
+def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
+    """Return the argument group of the parser with this title, and make it if the parser has none.
+
+    The flagship commands hold more than 70 options, thus a flat listing is hard to read. Each shared
+    helper puts its arguments into a titled group, and the help of every command gains the same shape.
+    """
+    for group in parser._action_groups:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        if group.title == title:
+            return group
+
+    return parser.add_argument_group(title)
+
+
+def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
     """Add the viewing direction selection and averaging arguments shared by the plotting commands."""
     parser.add_argument(
         "-plotvspecpol",
@@ -59,7 +106,47 @@ def add_viewingangle_args(parser: argparse.ArgumentParser, allow_select_all: boo
     )
 
 
-def add_modelpath_arg(
+class KeepGivenPaths(argparse.Action):
+    """Store the paths of a positional argument, but keep the paths that the option form already gave.
+
+    argparse applies a positional after an option that shares its dest, thus a positional that the user
+    left out would otherwise hide the value of that option. argparse gives the default of the positional
+    as the value in that case, thus a value equal to that default counts as no value at all.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Set the paths of the positional argument, unless the option form already gave some."""
+        userwrote = bool(values) and values != self.default
+        if userwrote or getattr(namespace, self.dest, None) is None:
+            setattr(namespace, self.dest, values)
+
+
+def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
+    """Accept an option that names the same paths as a positional argument.
+
+    Some commands take the paths as a positional argument and others take -modelpath. A user who learns
+    one form must not meet "unrecognized arguments" with the other, thus the option stands beside the
+    positional. It stays out of the help text, because the positional already gives the paths a name.
+    """
+    optionkwargs: dict[str, t.Any] = {
+        "dest": dest,
+        "type": Path,
+        "default": argparse.SUPPRESS,
+        "help": argparse.SUPPRESS,
+    }
+    if multiplepaths:
+        optionkwargs["nargs"] = "*"
+
+    parser.add_argument(flag, **optionkwargs)
+
+
+def addarg_modelpath(
     parser: argparse.ArgumentParser,
     *,
     positional: bool = False,
@@ -73,91 +160,235 @@ def add_modelpath_arg(
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
-        parser.add_argument("modelpath", **kwargs)
+        parser.add_argument("modelpath", action=KeepGivenPaths, **kwargs)
+        addarg_pathoption(parser, "-modelpath", "modelpath", multiplepaths=multiplepaths)
     else:
         if required:
             kwargs["required"] = True
         parser.add_argument("-modelpath", **kwargs)
 
 
-def add_outputfile_arg(
+def make_output_folder(folder: Path | str, verb: str) -> Path:
+    """Make the folder that holds the output of a command, and refuse a name that a file holds."""
+    folder = Path(folder)
+    if folder.exists() and not folder.is_dir():
+        msg = f"'{folder}' names a file that exists, and this command {verb} a folder of that name"
+        raise ValueError(msg)
+
+    folder.mkdir(parents=True, exist_ok=True)
+
+    return folder
+
+
+def addarg_output(
     parser: argparse.ArgumentParser,
     *,
-    default: t.Any = None,
-    astype: type[Path] | type[str] | None = Path,
-    extraflags: Sequence[str] = (),
-    helptext: str = "Path/filename for the output file",
-) -> None:
-    """Add the -outputfile/-o argument naming a single output file."""
-    kwargs: dict[str, t.Any] = {"dest": "outputfile", "default": default, "help": helptext}
-    if astype is not None:
-        kwargs["type"] = astype
-    parser.add_argument("-outputfile", *extraflags, "-o", **kwargs)
-
-
-def add_outputpath_arg(
-    parser: argparse.ArgumentParser,
-    *,
-    default: t.Any = ".",
-    astype: type[Path] | None = None,
-    helptext: str = "Path for output files",
-) -> None:
-    """Add the -outputpath/-o argument naming a directory for output files."""
-    kwargs: dict[str, t.Any] = {"default": default, "help": helptext}
-    if astype is not None:
-        kwargs["type"] = astype
-    parser.add_argument("-outputpath", "-o", **kwargs)
-
-
-def add_timestep_arg(
-    parser: argparse.ArgumentParser,
-    *,
-    kind: t.Literal["rangestr", "int", "strappend"] = "rangestr",
+    kind: t.Literal["file", "folder"],
+    defaultname: str | None = None,
     default: t.Any = None,
     helptext: str | None = None,
 ) -> None:
-    """Add the -timestep/-ts argument: a range string like 45-65, a single int, or an appendable list."""
-    flags = ("-timestep", "-ts")
-    if kind == "rangestr":
-        parser.add_argument(
-            *flags, dest="timestep", nargs="?", default=default, help=helptext or "First timestep or a range e.g. 45-65"
+    """Add the -outputfile/-o argument, and record what the command writes.
+
+    A command writes one file or a folder of files, and kind says which. resolve_output_argument reads
+    that word after the parse: it gives a file the defaultname of the command when -o names a folder,
+    and it makes the folder that -o names either way. Thus every command keeps the promise of the help
+    text, and no command writes that rule again.
+
+    A command that names its own frames takes no defaultname, because resolve_frameset_paths gives each
+    frame a name of its own.
+    """
+    rule = (
+        "A path with no file extension names a folder, which the command creates"
+        if kind == "file"
+        else "The command creates this folder"
+    )
+    # -o is a Path on every command, thus no command reads a text where another reads a Path
+    kwargs: dict[str, t.Any] = {
+        "dest": "outputfile",
+        "default": default,
+        "type": Path,
+        "help": f"{helptext or ('Path/filename for the output file' if kind == 'file' else 'Path for the output files')}. {rule}",
+    }
+
+    arggroup(parser, "output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
+    parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
+
+
+def resolve_output_argument(args: argparse.Namespace) -> None:
+    """Apply the rule of -o that addarg_output recorded on the parser of the command.
+
+    A command that writes one file takes the name of that file when -o names a folder. A command that
+    writes a folder of files gets that folder. The folder exists after this either way.
+    """
+    kind = getattr(args, "outputkind", None)
+    if kind is None:
+        return
+
+    outputfile = getattr(args, "outputfile", None)
+    if kind == "folder":
+        # a command that takes no -o names its own folder, thus there is nothing to make
+        if outputfile:
+            make_output_folder(outputfile, "writes")
+    elif (defaultname := getattr(args, "outputdefaultname", None)) is not None:
+        # resolve_outputfile gives the name of the command when -o names a folder or nothing
+        args.outputfile = resolve_outputfile(outputfile, defaultname)
+
+
+def addarg_modelgridindex(
+    parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None
+) -> None:
+    """Add the -modelgridindex/-cell/-mgi argument that selects the model grid cell or cells.
+
+    Every command reads the same text: a number, or a range such as 3-7, or a list such as 1,4,9.
+    parse_range_list expands it, and get_single_modelgridindex gives the one cell that a command
+    which reads one cell needs.
+    """
+    arggroup(parser, "cell selection").add_argument(
+        "-modelgridindex",
+        "-cell",
+        "-mgi",
+        action=CommaJoinAction,
+        default=default,
+        help=helptext or "Model grid cell to plot, e.g. 12 or a range 3-7",
+    )
+
+
+def get_single_modelgridindex(modelgridindex: str | int | None) -> int | None:
+    """Return the one cell that -modelgridindex names, or None when it names none.
+
+    Every command reads the same text, thus a range reaches a command that plots one cell. Such a
+    range earns a message that says so, in place of a cell that the text does not name.
+    """
+    # a default of None, of an empty list, or of an empty string each name no cell
+    if not modelgridindex and modelgridindex != 0:
+        return None
+
+    cells = parse_range_list(modelgridindex)
+    if len(cells) > 1:
+        msg = (
+            f"-modelgridindex '{modelgridindex}' names {len(cells)} cells, and this command reads one. "
+            "Give one cell, e.g. -cell 12"
         )
-    elif kind == "int":
-        parser.add_argument(*flags, type=int, default=default, help=helptext or "Timestep number to plot")
-    else:
-        parser.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
+        raise ValueError(msg)
+
+    return cells[0]
 
 
-def add_timedays_arg(
+class UnsupportedArgument(argparse.Action):
+    """Stop the command, and name the argument to give in place of the one that the user gave."""
+
+    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str = "", **kwargs: t.Any) -> None:
+        """Take the name of the argument that this command does take."""
+        super().__init__(option_strings, dest, nargs="?", help=argparse.SUPPRESS, **kwargs)
+        self.instead = instead
+
+    @t.override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,
+    ) -> None:
+        """Report that this command does not take the argument."""
+        assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
+        helptext = self.instead and f"Give {self.instead} instead"
+        parser.exit_with_help(
+            f"{option_string} is not an argument of this command",
+            helptext
+            or suggest_names(str(option_string), parser.get_visible_flags())
+            or f"Run `{parser.prog} --help` to see every argument",
+        )
+
+
+def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
+    """Declare the flag names of other commands that this command would read as a joined value.
+
+    argparse joins a value to a flag of one letter, thus "-obsspec 100" on a command that takes -o but
+    no -obsspec reads as "-o bsspec" and writes the plot to a file named bsspec. A declared name gives
+    a message in place of that.
+
+    An exact name comes before a prefix for argparse, thus a declared name keeps every flag of this
+    command and every abbreviation of one. A measurement over the tree gives the same 2208 abbreviations
+    with these names and without them.
+    """
+    from artistools.commands import SINGLEDASHLONGFLAGS_BYLETTER
+
+    declared = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
+    oneletter = [flag for flag in declared if len(flag) == 2 and not flag.startswith("--")]
+
+    # only a name that starts with a flag of this command can collide, thus each letter reads the
+    # names that start with it rather than the whole set of 155 names
+    for letterflag in sorted(oneletter):
+        for name in SINGLEDASHLONGFLAGS_BYLETTER.get(letterflag, ()):
+            # a command that spells the same name with two dashes does take that argument
+            if name not in declared and f"-{name}" not in declared:
+                parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
+
+
+def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
+    """Declare an argument that this command does not take, so that a user gets a clear message.
+
+    argparse joins a value to a single-dash flag, thus "-timestep 30" on a parser that declares -t but
+    no -timestep reads as "-t imestep". A declared name gives a message that names the right argument.
+    """
+    parser.add_argument(*flags, action=UnsupportedArgument, instead=instead, default=argparse.SUPPRESS)
+
+
+def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None) -> None:
+    """Add the -timestep/-ts argument that selects the timestep or the timesteps.
+
+    Every command reads the same text: a number, a range such as 45-65, a list such as 4,9, or
+    "last". parse_range_list expands it, and get_single_timestep gives the one timestep that a
+    command which plots one timestep needs.
+    """
+    arggroup(parser, "time selection").add_argument(
+        "-timestep",
+        "-ts",
+        action=CommaJoinAction,
+        default=default,
+        help=helptext or "Timestep to plot, e.g. 40, a range 45-65, or last",
+    )
+
+
+def addarg_timedays(
     parser: argparse.ArgumentParser,
     *,
     kind: t.Literal["rangestr", "str", "float"] = "rangestr",
     helptext: str | None = None,
 ) -> None:
-    """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value."""
+    """Add the -timedays/-time/-t argument, either as a range string like 50-100 or a single value.
+
+    -t means -timedays on every command, thus a user needs no knowledge of which other arguments a
+    command takes. A command that takes no -timestep calls addarg_unsupported for that name, because
+    argparse joins a value to a single-dash flag and would read "-timestep 30" as "-t imestep".
+    """
+    group = arggroup(parser, "time selection")
     flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
-        parser.add_argument(
+        group.add_argument(
             *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
         )
     elif kind == "float":
-        parser.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
     else:
-        parser.add_argument(*flags, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, help=helptext or "Time in days to plot")
 
 
-def add_timeminmax_args(
+def addarg_timeminmax(
     parser: argparse.ArgumentParser,
     *,
     helptext_min: str = "Lower time in days",
     helptext_max: str = "Upper time in days",
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
-    parser.add_argument("-timemin", type=float, help=helptext_min)
-    parser.add_argument("-timemax", type=float, help=helptext_max)
+    group = arggroup(parser, "time selection")
+    group.add_argument("-timemin", type=float, help=helptext_min)
+    group.add_argument("-timemax", type=float, help=helptext_max)
 
 
-def add_axis_limit_args(
+def addarg_axislimits(
     parser: argparse.ArgumentParser,
     *,
     xlimtype: type[int] | type[float] = float,
@@ -167,14 +398,22 @@ def add_axis_limit_args(
     xmaxhelp: str = "Plot range: maximum x value",
     include_x: bool = True,
     include_y: bool = True,
+    wavelength_aliases: bool = False,
 ) -> None:
-    """Add the -xmin/-xmax and -ymin/-ymax plot range arguments."""
+    """Add the -xmin/-xmax and -ymin/-ymax plot range arguments.
+
+    A command whose x axis is a wavelength in Angstroms takes wavelength_aliases, which adds the
+    -lambdamin and -lambdamax spellings of the same arguments.
+    """
+    group = arggroup(parser, "appearance")
     if include_x:
-        parser.add_argument("-xmin", type=xlimtype, default=xmindefault, help=xminhelp)
-        parser.add_argument("-xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
+        xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
+        xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
+        group.add_argument(*xminflags, dest="xmin", type=xlimtype, default=xmindefault, help=xminhelp)
+        group.add_argument(*xmaxflags, dest="xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
     if include_y:
-        parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
-        parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
+        group.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
+        group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
 def color_arg(value: str) -> str:
@@ -192,7 +431,7 @@ def color_arg(value: str) -> str:
     return value
 
 
-def add_series_style_args(
+def addarg_seriesstyle(
     parser: argparse.ArgumentParser,
     *,
     colordefault: Sequence[str] | None = None,
@@ -201,8 +440,9 @@ def add_series_style_args(
     include_dashes: bool = True,
 ) -> None:
     """Add the per-series style list arguments shared by the multi-series plotting commands."""
-    parser.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
-    parser.add_argument(
+    group = arggroup(parser, "appearance")
+    group.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    group.add_argument(
         "-color",
         "-colors",
         dest="color",
@@ -212,40 +452,296 @@ def add_series_style_args(
         help="List of line colors",
     )
     if include_linestyles:
-        parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-        parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
+        group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
+        group.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
     if include_linealpha:
-        parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
+        group.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:
-        parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+        group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
 
-def add_figscale_args(
-    parser: argparse.ArgumentParser, *, figscaledefault: float = 1.0, include_figwidthscale: bool = False
-) -> None:
+def addarg_figscale(parser: argparse.ArgumentParser, *, include_figwidthscale: bool = False) -> None:
     """Add the figure size scale factor arguments."""
-    parser.add_argument(
-        "-figscale", type=float, default=figscaledefault, help="Scale factor for plot area. 1.0 is for single-column"
+    group = arggroup(parser, "appearance")
+    group.add_argument(
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 fills the text width of a page"
     )
     if include_figwidthscale:
-        parser.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
+        group.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")
 
 
-def add_filter_args(parser: argparse.ArgumentParser) -> None:
+def addarg_filter(parser: argparse.ArgumentParser) -> None:
     """Add the spectrum smoothing filter arguments (get_filterfunc reads exactly these dests)."""
-    parser.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
-    parser.add_argument(
+    group = arggroup(parser, "appearance")
+    group.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
+    group.add_argument(
         "-filtersavgol",
         nargs=2,
         help="Savitzky-Golay filter. Specify the window_length and poly_order, e.g. -filtersavgol 5 3",
     )
 
 
-def add_maxpacketfiles_arg(parser: argparse.ArgumentParser) -> None:
+def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helptext: str) -> None:
+    """Add the positional action argument that selects what the subcommand does."""
+    parser.add_argument(
+        "action",
+        # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores
+        # argsraw as soon as any keyword argument is given
+        nargs="?",
+        default=None,
+        choices=choices,
+        help=helptext,
+    )
+
+
+def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -> str:
+    """Return a sentence that names the closest candidates, or an empty string when none is close.
+
+    The sentence goes on the help line of an error, thus it carries no leading space. A name that
+    differs only in case comes first, because that mistake is common and difflib scores a short name
+    such as "te" against "Te" below its own threshold.
+    """
+    import difflib
+
+    names = list(candidates)
+    if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
+        return f"Did you mean {samecase[0]}?"
+
+    matches = difflib.get_close_matches(name, names, n=count, cutoff=0.6)
+
+    return f"Did you mean {', '.join(matches)}?" if matches else ""
+
+
+def print_error(message: str, helptext: str = "") -> None:
+    """Print an error to the standard error, then a help line that says what to do next.
+
+    The error states the fault alone, thus a reader sees the remedy on its own line. rich colours the
+    prefix in a terminal alone.
+    """
+    from rich.console import Console
+    from rich.text import Text
+
+    console = Console(stderr=True, highlight=False, soft_wrap=True)
+    console.print(Text("error: ", style="bold red") + Text(message))
+    if helptext:
+        console.print(Text("help: ", style="bold cyan") + Text(helptext))
+
+
+def print_warning(*values: object) -> None:
+    """Print a warning to the standard error, thus --quiet keeps it and a script reads a clean product.
+
+    rich colours the prefix in a terminal, and it writes plain text into a pipe or under NO_COLOR.
+    """
+    from rich.console import Console
+    from rich.text import Text
+
+    message = " ".join(str(value) for value in values)
+    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("WARNING: ", style="bold yellow") + Text(message))
+
+
+def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
+    """Print an error message and stop with a failing exit status.
+
+    A mistake in the arguments earns a message rather than a traceback, and a script that runs the
+    command sees that it failed. helptext names what the user can do next.
+    """
+    print_error(message, helptext)
+    raise SystemExit(1)
+
+
+def require_action(args: argparse.Namespace) -> None:
+    """Stop with an error message when the caller gave no action."""
+    if args.action is None:
+        exit_with_error("no action was given", "Run with --help to see the available actions")
+
+
+def addarg_show(parser: argparse.ArgumentParser) -> None:
+    """Add --show, which opens the figure in a window before the save, and --open, which opens the file after it."""
+    group = arggroup(parser, "output")
+    group.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
+    group.add_argument("--open", action="store_true", help="Open the saved file with its default application")
+
+
+def addarg_quiet(parser: argparse.ArgumentParser) -> None:
+    """Add the --quiet argument that hides the progress messages.
+
+    A command writes its product with print_product, thus --quiet keeps that product and hides only the
+    progress messages around it.
+    """
+    arggroup(parser, "output").add_argument(
+        "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
+    )
+
+
+def addarg_verbose(parser: argparse.ArgumentParser) -> None:
+    """Add the --verbose argument that shows the detail of each step.
+
+    A command prints a summary of the work by default. --verbose adds the detail, e.g. the name of
+    each file that the command reads.
+
+    -v is the short form, but four commands gave -v to -velocity or to -rhoscale before this
+    argument existed. A script holds such a command, thus -v keeps that meaning there, and
+    --verbose is the only form. Declare the argument of the command first, then call this function.
+    """
+    flags = ["--verbose"] if "-v" in parser._option_string_actions else ["--verbose", "-v"]  # ruff:ignore[private-member-access]
+    arggroup(parser, "output").add_argument(
+        *flags, action="store_true", help="Show the detail of each step, e.g. each file that is read"
+    )
+
+
+def print_heading(text: str) -> None:
+    """Print the name of the model or the series that the lines below it describe.
+
+    Every command marks such a line, thus one style serves them all. rich gives the line its weight in
+    a terminal alone, and a pipe takes the plain text. "====>" stood in front of it before.
+    """
+    from rich.console import Console
+    from rich.text import Text
+
+    Console(highlight=False, soft_wrap=True).print(Text(text, style="bold"))
+
+
+def print_detail(*values: object) -> None:
+    """Print one line of detail below a heading, with the indent that every command uses."""
+    print(" ", *values)
+
+
+def print_product(args: argparse.Namespace, *values: object) -> None:
+    """Print the product of a command, which --quiet keeps.
+
+    --quiet sends the progress messages to the null device. The product of the command, e.g. the table
+    of --print_data or the listing of --listvariables, must reach the standard output even so. A script
+    then reads that product with no progress message around it.
+    """
+    print(*values, file=getattr(args, "productstream", None) or sys.stdout)
+
+
+def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
+    """Add the -dpi argument setting the resolution of a raster output file."""
+    arggroup(parser, "output").add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
+
+
+def addarg_yscale(parser: argparse.ArgumentParser) -> None:
+    """Add the -yscale argument that selects the scale of the vertical axis.
+
+    "auto" reads the drawn values and takes a log scale when they cover more than one order of
+    magnitude. It keeps --logscaley working, which asks for a log scale whatever the values are.
+    "lin" means "linear".
+    """
+    arggroup(parser, "appearance").add_argument(
+        "-yscale",
+        choices=["log", "linear", "lin", "auto"],
+        default="auto",
+        help="Scale of the vertical axis. auto takes a log scale for values that cover a wide range",
+    )
+
+
+def resolve_yscale(args: argparse.Namespace) -> None:
+    """Set args.logscaley from -yscale, which every plot helper reads.
+
+    --logscaley is the older spelling of "-yscale log". Two arguments that ask for a different scale
+    get a message rather than a silent precedence.
+    """
+    yscale = getattr(args, "yscale", "auto")
+    if yscale == "auto":
+        return
+
+    wantlog = yscale == "log"
+    if getattr(args, "logscaley", False) and not wantlog:
+        exit_with_error(f"specify only one of --logscaley and -yscale {yscale}")
+
+    args.logscaley = wantlog
+
+
+def addarg_notitle(parser: argparse.ArgumentParser) -> None:
+    """Add the --notitle argument that suppresses the plot title (set_plot_title reads this dest)."""
+    arggroup(parser, "appearance").add_argument(
+        "--notitle", action="store_true", help="Suppress the top title from the plot"
+    )
+
+
+def addarg_nolegend(parser: argparse.ArgumentParser) -> None:
+    """Add the --nolegend argument that suppresses the plot legend."""
+    arggroup(parser, "appearance").add_argument(
+        "--nolegend", action="store_true", help="Suppress the legend from the plot"
+    )
+
+
+def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
     """Add the -maxpacketfiles argument limiting how many packet files are read."""
     parser.add_argument(
         "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
     )
+
+
+def check_time_selection(
+    parser: SuggestingArgumentParser,
+    args: argparse.Namespace,
+    argsraw: "Sequence[str] | None" = None,
+    kwargs: "Collection[str] | None" = None,
+) -> None:
+    """Stop when the arguments name a time range in more than one way.
+
+    get_time_range cannot make this test. A caller assigns the times that it returns back onto its own
+    arguments, thus a second call for a second model path would read its own output as a second range.
+
+    The test reads the arguments that the user wrote, because a value can be the same as the default of
+    the parser: plottransitions gives -timestep a default of 70, and a user can also type that value.
+
+    set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
+    that differs from the default counts, and so does a name that kwargs holds. A name that carries
+    None counts for nothing, because a caller can forward an argument that it does not use.
+    """
+    # split a joined value such as -ts70 here as well, or the scan below reads it as -t
+    argstrings = parser.split_joined_flags(list(sys.argv[1:] if argsraw is None else argsraw))
+    keywordnames = set(kwargs or ())
+    flagsofdest = {
+        action.dest: action.option_strings
+        for action in parser._actions  # ruff:ignore[private-member-access]
+    }
+    allflags = list(itertools.chain.from_iterable(flagsofdest.values()))
+
+    def givesflag(argstring: str, flag: str) -> bool:
+        """Report whether the string of the command line gives the flag its value, as argparse reads it.
+
+        The split above separates a value from a flag of more than one letter, thus only a flag of
+        one letter still carries a joined value here, e.g. -t300. A string that names another flag,
+        exactly or as a start of its name, belongs to that flag.
+        """
+        if argstring == flag or argstring.startswith(f"{flag}="):
+            return True
+
+        if len(flag) != 2 or flag.startswith("--") or not argstring.startswith(flag):
+            return False
+
+        base = argstring.partition("=")[0]
+
+        return not any(other != flag and (base == other or other.startswith(base)) for other in allflags)
+
+    def wasgiven(dest: str) -> bool:
+        # a value of None selects no time, thus a caller that forwards an unused argument gives nothing
+        if not hasattr(args, dest) or getattr(args, dest) is None:
+            return False
+
+        flags = flagsofdest.get(dest, [])
+        # set_args_from_dict takes the dest of an argument or any of its option strings as a key
+        if dest in keywordnames or any(flag.lstrip("-") in keywordnames for flag in flags):
+            return True
+
+        if any(givesflag(argstring, flag) for flag in flags for argstring in argstrings):
+            return True
+
+        return bool(getattr(args, dest) != parser.get_default(dest))
+
+    given = [name for name in ("timestep", "timedays", "timemin", "timemax") if wasgiven(name)]
+    # -timemin and -timemax bound one range, thus the pair counts as one way to give it. get_time_range
+    # reads the range of -timedays alone, thus a bound beside it has no effect and must not pass
+    ways = [f"-{name}" for name in ("timestep", "timedays") if name in given]
+    if bounds := [f"-{name}" for name in ("timemin", "timemax") if name in given]:
+        ways.append(" and ".join(bounds))
+
+    if len(ways) > 1:
+        exit_with_error(f"{', '.join(ways)} name the time range in more than one way", "Give only one of them")
 
 
 def parse_cli_args(
@@ -264,12 +760,20 @@ def parse_cli_args(
 
     import argcomplete
 
-    parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
+    parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
+    # the dispatcher adds these to the parser that it builds, thus a direct call needs them here
+    addarg_quiet(parser)
+    addarg_collidingflags(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
-    return parser.parse_args([] if kwargs else argsraw)
+    args = parser.parse_args([] if kwargs else argsraw)
+    check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
+    resolve_output_argument(args)
+    resolve_yscale(args)
+
+    return args
 
 
 def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | str) -> Path:
@@ -282,35 +786,145 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
     outputfile = Path(outputfile)
     if outputfile.is_dir() or not outputfile.suffixes:
-        outputfile.mkdir(parents=True, exist_ok=True)
-        return outputfile / defaultoutputfile
+        return make_output_folder(outputfile, "needs") / defaultoutputfile
 
     return outputfile
 
 
+def get_template_fields(template: Path | str) -> list[str]:
+    """Return the names of the fields that a template of an output name holds."""
+    import re
+
+    return re.findall(r"\{(\w+)", str(template))
+
+
+# the older name of each output template field, which a script can still hold. The help names one
+# spelling for each field, thus the message that lists them leaves these out
+OLDTEMPLATEFIELDS: t.Final[Mapping[str, str]] = MappingProxyType({"modelgridindex": "cell", "time_days": "timedays"})
+
+
+def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
+    """Return the path of one frame, and name the fields of the command for a template that holds another.
+
+    A user writes the template, thus a field that the command does not give is a mistake of the
+    arguments and not a fault of artistools.
+    """
+    withold = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
+    try:
+        return str(frametemplate).format(**withold)
+    except KeyError as exc:
+        given = ", ".join(f"{{{name}}}" for name in fields)
+        msg = f"the name of the output holds the field {exc}, and this command gives {given}"
+        raise ValueError(msg) from exc
+
+
+@dc.dataclass(frozen=True, slots=True)
+class FrameSet:
+    """The frames of a run that draws several figures, and the product that holds them.
+
+    One value says whether the run combines its frames. The command reads it for the figure of each
+    frame, and finish makes the product, thus the three parts of the run cannot disagree.
+    """
+
+    frametemplate: Path
+    productpath: Path | None
+    combines: bool
+    gifduration: float | None = None
+
+    def finish(self, framepaths: "Sequence[str | Path]", args: argparse.Namespace) -> Path | str | None:
+        """Combine the frames into the product, for a run that combines them, and give its path."""
+        if not self.combines:
+            return None
+
+        from artistools.misc.fileio import combine_frames
+
+        return combine_frames(
+            framepaths, self.productpath, openfile=getattr(args, "open", False), gifduration=self.gifduration
+        )
+
+
+def resolve_frameset_paths(
+    outputfile: Path | str | None,
+    *,
+    framecount: int,
+    framename: str,
+    productname: str | None = None,
+    combines: bool = False,
+    gifduration: float | None = None,
+) -> FrameSet:
+    """Return the frames of the run and the product that holds them.
+
+    A run that draws several figures combines them into one product, e.g. a gif or a merged pdf.
+    combines says that such a product comes, and productname gives it a name for a -o path that names a
+    folder. Without that name the combining step names it, as merge_pdf_files takes the names of the
+    first frame and the last one.
+
+    A -o path that has a file extension names the product itself, thus the frames go in the folder that
+    holds it. A -o path with no file extension names a folder. This makes that folder either way.
+    """
+    givenpath = Path(outputfile) if outputfile else Path()
+
+    if (combines or productname is not None) and givenpath.suffix and not givenpath.is_dir():
+        # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
+        # and let resolve_outputfile read it as a folder and not as the name of one frame
+        givenpath.parent.mkdir(parents=True, exist_ok=True)
+
+        return FrameSet(resolve_outputfile(givenpath.parent, framename), givenpath, combines, gifduration)
+
+    frametemplate = resolve_outputfile(outputfile, framename)
+    if framecount > 1 and "{" not in frametemplate.name:
+        fields = get_template_fields(framename)
+        example = f"-o 'frame_{{{fields[0]}}}{Path(framename).suffix}'" if fields else "-o myfolder"
+        msg = (
+            f"'{frametemplate.name}' names one file, and this command writes {framecount} frames. Give "
+            f"a folder with -o, or a name that holds a field, e.g. {example}"
+        )
+        raise ValueError(msg)
+
+    productpath = frametemplate.parent / productname if productname is not None else None
+
+    return FrameSet(frametemplate, productpath, combines, gifduration)
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
-    """Set argparse defaults from a dictionary."""
+    """Set argparse defaults from a dictionary.
+
+    A name that this command does not take raises. addarg_collidingflags declares the flag of another
+    command, so that a user of the command line gets a message. Such a flag is no argument of this
+    command, thus a keyword of that name raises as it did before those declarations.
+    """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
+    realactions = [
+        action
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if not isinstance(action, UnsupportedArgument)
+    ]
     # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
-    for arg in parser._actions:  # ruff:ignore[private-member-access]
+    for arg in realactions:
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
     # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
-    for arg in parser._actions:  # ruff:ignore[private-member-access]
+    for arg in realactions:
         if arg.default is not None:
             arg.required = False
 
-    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in parser._actions)}:  # ruff:ignore[private-member-access]
+    if unknown := {k: v for k, v in kwargs.items() if k not in (arg.dest for arg in realactions)}:
         msg = f"Unknown argument names: {unknown}"
         raise ValueError(msg)
 
 
-def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
-    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
-    strparts = rng.split("-")
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
+    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars.
+
+    A hyphen also stands in front of a negative number, thus only a hyphen that follows a digit or a
+    letter separates the two ends of the range. "-1" then names one number, which the caller refuses.
+    """
+    import re
+
+    strparts = re.split(r"(?<=[0-9a-zA-Z])-", rng.strip())
 
     if len(strparts) not in {1, 2}:
         msg = f"Bad range: '{rng}'"
@@ -326,17 +940,16 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[t.Any]:
+def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[int]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
     """
     if isinstance(rngs, list):
         rngs = ",".join(str(x) for x in rngs)
-    elif not hasattr(rngs, "split"):
+    elif not isinstance(rngs, str):
         return [rngs]
 
-    assert isinstance(rngs, str)
     return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
@@ -383,7 +996,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def normalize_path_list(paths: t.Any, default: Path | str = ".") -> list[Path]:
+def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
     """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
     if not paths:
         return [Path(default)]
@@ -392,14 +1005,14 @@ def normalize_path_list(paths: t.Any, default: Path | str = ".") -> list[Path]:
     return [Path(p) for p in flatten_list(list(paths))]
 
 
-def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
+def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
     """Use command line arguments to determine the appropriate filter function."""
     filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
 
-        def movavgfilterfunc(ylist: t.Any) -> t.Any:
+        def movavgfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
             import numpy as np
 
             n = args.filtermovingavg
@@ -414,7 +1027,7 @@ def get_filterfunc(args: argparse.Namespace) -> Callable[[t.Any], t.Any] | None:
 
         window_length, polyorder = (int(x) for x in args.filtersavgol)
 
-        def savgolfilterfunc(ylist: t.Any) -> t.Any:
+        def savgolfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
             return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
 
         assert filterfunc is None

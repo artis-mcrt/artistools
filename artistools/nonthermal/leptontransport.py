@@ -45,10 +45,6 @@ def calculate_dE_on_dx_plasma(energy: float, n_e_free: float) -> float:
         * (7e-15 * (energy_mev**-0.5) * (n_e_free / 1e6) * 10 * (1.0 - 3.9 / 7.7 * T_mev / energy_mev))
     )
 
-    # print(f'{energy_mev=} {de_on_dt=} J/s {(de_on_dt / CONST_EV_IN_J)=} eV/s')
-    # if energy_ev > 900 and energy_ev < 1100:
-    #     print(f'{energy_mev=} {de_on_dt=} J/s {(de_on_dt / CONST_EV_IN_J)=} eV/s')
-
     de_on_dx = de_on_dt / v
     if de_on_dx < 0.0:
         print(f"plasma loss negative {energy_ev=} {de_on_dt=} J/s {(de_on_dt / CONST_EV_IN_J)=} eV/s")
@@ -72,7 +68,6 @@ def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
     Z = 26
 
     I_ev = 9.1 * Z * (1 + 1.9 * Z ** (-2 / 3.0))  # mean ionisation potential [eV]
-    # I_ev = 287.8  # [eV]
 
     g = 1 + tau**2 / 8 - (2 * tau + 1) * math.log(2)
 
@@ -89,7 +84,6 @@ def calculate_dE_on_dx_ionexc(energy: float, n_e_bound: float) -> float:
         (2 * math.log(energy_ev / I_ev) + math.log(1 + tau / 2.0) + (1 - beta**2) * g)
     )
 
-    # print(f'{energy_ev=} {de_on_dt=} J/s {(de_on_dt / 1.602176634e-19)=} eV/s')
     de_on_dx = de_on_dt / v
 
     if de_on_dx < 0.0:
@@ -105,14 +99,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
     parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
-    at.add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Integrate a fast lepton's energy loss over distance and plot the result."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfile = args.outputfile
 
     E_0 = args.energy * CONST_EV_IN_J  # initial energy [J]
     n_e_bound_cgs = args.nnebound  # density of bound electrons in [cm-3]
@@ -196,4 +190,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

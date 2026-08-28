@@ -18,16 +18,33 @@ import polars as pl
 import artistools as at
 
 
+def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
+    """Return the data folder, the model name, and the code name of a virtual codecomparison path."""
+    virtualfolder, inputmodel, codename = Path(modelpath).parts
+    assert virtualfolder == "codecomparison"
+
+    return Path(at.get_path("codecomparisondata1path"), inputmodel), inputmodel, codename
+
+
+def read_header_int(fileobj: t.TextIO, key: str) -> int:
+    """Return the integer value of a header line of the form "#KEY: value"."""
+    return int(fileobj.readline().replace(f"#{key}:", ""))
+
+
+def read_header_times(fileobj: t.TextIO) -> npt.NDArray[np.floating]:
+    """Return the times [days] of a header line of the form "#TIMES[d]: t0 t1 ... tn"."""
+    return np.array([float(x) for x in fileobj.readline().replace("#TIMES[d]:", "").split()])
+
+
 def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid") -> list[float]:
     """Return the timestep times [days] of a code comparison workshop model."""
-    modelpath = Path(modelpath)
-    _, modelname, codename = modelpath.parts
+    inputmodelfolder, modelname, codename = split_codecomparison_path(modelpath)
 
-    filepath = Path(at.get_path("codecomparisondata1path"), modelname, f"phys_{modelname}_{codename}.txt")
+    filepath = Path(inputmodelfolder, f"phys_{modelname}_{codename}.txt")
 
     with filepath.open(encoding="utf-8") as fphys:
-        _ = int(fphys.readline().replace("#NTIMES:", ""))
-        tmids = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
+        _ = read_header_int(fphys, "NTIMES")
+        tmids = read_header_times(fphys)
 
     tstarts = np.zeros_like(tmids)
     tstarts[1:] = (tmids[1:] + tmids[:-1]) / 2.0
@@ -56,10 +73,7 @@ def read_reference_estimators(
     timestep: int | Sequence[int] | None = None,  # ruff:ignore[unused-function-argument]
 ) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
-    virtualfolder, inputmodel, codename = Path(modelpath).parts
-    assert virtualfolder == "codecomparison"
-
-    inputmodelfolder = Path(at.get_path("codecomparisondata1path"), inputmodel)
+    inputmodelfolder, inputmodel, codename = split_codecomparison_path(modelpath)
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
 
@@ -67,8 +81,8 @@ def read_reference_estimators(
     cur_timestep = -1
     cur_modelgridindex = -1
     with physfilepath.open(encoding="utf-8") as fphys:
-        ntimes = int(fphys.readline().replace("#NTIMES:", ""))
-        arr_timedays = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
+        ntimes = read_header_int(fphys, "NTIMES")
+        arr_timedays = read_header_times(fphys)
         assert len(arr_timedays) == ntimes
 
         for line in fphys:
@@ -101,12 +115,12 @@ def read_reference_estimators(
     for ionfracfilepath in ionfracfilepaths:
         with Path(ionfracfilepath).open(encoding="utf-8") as fions:
             print(ionfracfilepath)
-            ntimes_2 = int(fions.readline().replace("#NTIMES:", ""))
+            ntimes_2 = read_header_int(fions, "NTIMES")
             assert ntimes_2 == ntimes
 
-            nstages = int(fions.readline().replace("#NSTAGES:", ""))
+            nstages = read_header_int(fions, "NSTAGES")
 
-            arr_timedays_2 = np.array([float(x) for x in fions.readline().replace("#TIMES[d]:", "").split()])
+            arr_timedays_2 = read_header_times(fions)
             assert np.allclose(arr_timedays, arr_timedays_2, rtol=0.01)
 
             cur_timestep = -1
@@ -172,16 +186,13 @@ def read_reference_estimators(
 
 def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
     """Return the spectra of a code comparison workshop model, and the time [days] of each spectrum."""
-    modelpath = Path(modelpath)
-    virtualfolder, inputmodel, codename = modelpath.parts
-    assert virtualfolder == "codecomparison"
-
-    inputmodelfolder = Path(at.get_path("codecomparisondata1path"), inputmodel)
+    inputmodelfolder, inputmodel, codename = split_codecomparison_path(modelpath)
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
     with specfilepath.open(encoding="utf-8") as fspec:
-        ntimes = int(fspec.readline().replace("#NTIMES:", ""))
-        _ = int(fspec.readline().replace("#NWAVE:", ""))
+        ntimes = read_header_int(fspec, "NTIMES")
+        # the times line of this file has a leading label, thus read_header_times does not apply
+        _ = read_header_int(fspec, "NWAVE")
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 

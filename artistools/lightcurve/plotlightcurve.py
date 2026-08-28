@@ -3,13 +3,11 @@
 
 import argparse
 import math
-import sys
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
@@ -23,6 +21,7 @@ import polars as pl
 from polars import selectors as cs
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -30,23 +29,37 @@ from artistools.constants import Msun_to_g
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_filter_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_series_style_args
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_filter
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
+from artistools.misc import addarg_output
+from artistools.misc import addarg_seriesstyle
+from artistools.misc import addarg_show
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
+from artistools.misc import addarg_verbose
+from artistools.misc import addarg_yscale
 from artistools.misc import color_arg
+from artistools.misc import exit_with_error
 from artistools.misc import get_series_label
 from artistools.misc import makelist
+from artistools.misc import path_is_artis_model
+from artistools.misc import print_product
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
+from artistools.plottools import AxesTree
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
+from artistools.plottools import set_legend
 from artistools.plottools import set_prop_cycle_unusedcolors
 
 if t.TYPE_CHECKING:
@@ -81,9 +94,7 @@ def shows_deposition(args: argparse.Namespace) -> bool:
     return bool(args.plotdeposition or args.plotalphadeposition or args.plotthermalisation)
 
 
-def convert_lum_lsun_to_plotunits(
-    lum_lsun: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
-) -> npt.NDArray[np.floating[t.Any]]:
+def convert_lum_lsun_to_plotunits(lum_lsun: npt.NDArray[np.floating], lumunit: LumUnit) -> npt.NDArray[np.floating]:
     """Convert a luminosity in solar luminosities to the y axis units: bolometric magnitude, Lsun, or erg/s."""
     if lumunit == "mag":
         return lum_lsun_to_mag(lum_lsun)
@@ -92,8 +103,8 @@ def convert_lum_lsun_to_plotunits(
 
 
 def convert_lum_ergs_to_plotunits(
-    lum_erg_per_s: npt.NDArray[np.floating[t.Any]], lumunit: LumUnit
-) -> npt.NDArray[np.floating[t.Any]]:
+    lum_erg_per_s: npt.NDArray[np.floating], lumunit: LumUnit
+) -> npt.NDArray[np.floating]:
     """Convert a luminosity in erg/s to the y axis units: bolometric magnitude, Lsun, or erg/s."""
     if lumunit == "erg/s":
         return lum_erg_per_s
@@ -102,11 +113,11 @@ def convert_lum_ergs_to_plotunits(
 
 
 def get_reflightcurve_yerr(
-    lum_erg_per_s: npt.NDArray[np.floating[t.Any]],
-    errminus_erg_per_s: npt.NDArray[np.floating[t.Any]],
-    errplus_erg_per_s: npt.NDArray[np.floating[t.Any]],
+    lum_erg_per_s: npt.NDArray[np.floating],
+    errminus_erg_per_s: npt.NDArray[np.floating],
+    errplus_erg_per_s: npt.NDArray[np.floating],
     lumunit: LumUnit,
-) -> tuple[list[npt.NDArray[np.floating[t.Any]]], npt.NDArray[np.bool_]]:
+) -> tuple[list[npt.NDArray[np.floating]], npt.NDArray[np.bool_]]:
     """Return the [lower, upper] error bar sizes in the y axis units, and which faint sides are unbounded.
 
     A magnitude bar whose luminosity reaches zero has no faintest magnitude. Putting NaN there makes
@@ -317,15 +328,13 @@ def plot_artis_lightcurve(
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    usedegrees: bool = False,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
     """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
-    if args is None:
-        args = argparse.Namespace()
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -336,7 +345,7 @@ def plot_artis_lightcurve(
     modelpath = inputpath.parent if lcfilename else inputpath
 
     if not modelpath.is_dir():
-        print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
+        print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
     linelabel_is_custom = linelabel is not None
@@ -348,11 +357,11 @@ def plot_artis_lightcurve(
     if pellet_nucname is not None:
         linelabel = rf"$\;$ {pellet_nucname}"
 
-    print(f"====> {linelabel}")
-    print(f" modelpath: {modelpath.resolve().parts[-1]}")
+    at.print_heading(linelabel)
+    at.print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
-        axis.set_title(args.title if isinstance(args.title, str) else linelabel)
+        at.plottools.set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
 
     if directionbins is None:
         directionbins = [-1]
@@ -374,19 +383,16 @@ def plot_artis_lightcurve(
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
-        if lcfilename is None:
-            lcfilename = (
-                "light_curve_res.out"
-                if directionbins != [-1]
-                else "gamma_light_curve.out"
-                if escape_type == "TYPE_GAMMA"
-                else "light_curve.out"
-            )
-
         try:
-            lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+            lcpath = (
+                at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+                if lcfilename is not None
+                else at.lightcurve.find_lightcurve_file(
+                    modelpath, directionresolved=directionbins != [-1], gamma=escape_type == "TYPE_GAMMA"
+                )
+            )
         except FileNotFoundError:
-            print(f"WARNING: Skipping because {lcfilename} does not exist")
+            print_warning(f"Skipping because the light curve file of {modelpath} does not exist")
             return None
 
         lcdataframes = at.lightcurve.readfile(
@@ -405,7 +411,6 @@ def plot_artis_lightcurve(
     dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
     lcdataframes = dict(
@@ -425,7 +430,7 @@ def plot_artis_lightcurve(
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
-    print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    at.print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
@@ -439,7 +444,7 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
+        at.print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -448,7 +453,7 @@ def plot_artis_lightcurve(
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
-        print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}", end="")
+        print(f"  direction {dirbin:4d}  {angle_definition[dirbin]}", end="")
 
         if "packetcount" in lcdata.collect_schema().names():
             npkts_selected = lcdata.select(pl.col("packetcount").sum()).item()
@@ -471,9 +476,7 @@ def plot_artis_lightcurve(
                 if not linelabel_is_custom:
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
-                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                    dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
-                )
+                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
                 if args.average_over_phi_angle:
                     plotkwargs["color"] = "lightgrey"
             else:
@@ -509,7 +512,9 @@ def plot_artis_lightcurve(
             ),
             x=lcdata["time_s"],
         )
-        print(f" Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
+        at.print_detail(
+            f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]"
+        )
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -532,7 +537,7 @@ def plot_artis_lightcurve(
             axis.plot(lcdata_before_valid["time_days"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
             axis.plot(lcdata_after_valid["time_days"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
         elif lcdata_valid.is_empty():
-            print(" WARNING: No data points in valid range")
+            print_warning("No data points in valid range")
 
         energy_released = abs(
             np.trapezoid(
@@ -543,13 +548,14 @@ def plot_artis_lightcurve(
         lcdata_valid_tmin = lcdata_valid.select(pl.col("time_days").min()).item()
         lcdata_valid_tmax = lcdata_valid.select(pl.col("time_days").max()).item()
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
-            print(
-                f" Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days): {energy_released:.3e} [erg]"
+            at.print_detail(
+                f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
+                f" {energy_released:.3e} [erg]"
             )
 
         axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
         if args.print_data:
-            print(lcdata)
+            print_product(args, lcdata)
 
         if args.plotcmf:
             assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
@@ -558,7 +564,6 @@ def plot_artis_lightcurve(
                 assert label_with_tags is not None
                 label_with_tags += " (cmf)"
             plotkwargs["linestyle"] = "dashed"
-            # plotkwargs['color'] = 'tab:orange'
             axis.plot(
                 lcdata["time_days"],
                 lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
@@ -569,7 +574,7 @@ def plot_artis_lightcurve(
     return lcdataframes
 
 
-def invert_magnitude_yaxis(ax: mplax.Axes | npt.NDArray[t.Any]) -> None:
+def invert_magnitude_yaxis(ax: AxesTree) -> None:
     """Point the magnitude axis downwards, so that a brighter series is drawn higher.
 
     invert_yaxis() toggles rather than sets, so calling it once per plotted series flips the axis back and
@@ -589,36 +594,23 @@ def make_lightcurve_plot(
     showuvoir: bool = True,
     showgamma: bool = False,
     maxpacketfiles: int | None = None,
-    args: argparse.Namespace | None = None,
+    *,
+    args: argparse.Namespace,
 ) -> None:
     """Plot light curves from light_curve.out, gamma_light_curve.out or light_curve_res.out or packets files."""
-    if args is None:
-        args = argparse.Namespace()
-
     if "figwidthscale" not in args:
         args.figwidthscale = 1.0
 
     lumunit = get_plot_lum_unit(args)
 
-    figwidth = args.figscale * 5.0 * args.figwidthscale
-    figheight = args.figscale * 5.0 * (0.25 + 0.4)
-    fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        figsize=(figwidth, figheight),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
+    fig, axesgrid = make_frame_figure(args)
+    axis = axesgrid[0][0]
     axis.margins(x=0.0)
 
     if args.plotthermalisation:
-        figtherm, axistherm = plt.subplots(
-            nrows=1,
-            ncols=1,
-            sharex=True,
-            figsize=(figwidth, figheight),
-            tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-        )
+        figtherm, axesthermgrid = make_frame_figure(args)
+        axistherm = axesthermgrid[0][0]
 
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")
@@ -636,7 +628,7 @@ def make_lightcurve_plot(
             lightcurvelabel = plot_bol_reflightcurve(
                 axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
             )
-            print(f"====> {lightcurvelabel}")
+            at.print_heading(lightcurvelabel)
             plottedsomething = True
 
         else:
@@ -670,10 +662,10 @@ def make_lightcurve_plot(
                             .select(["e_rf_sum", "nucname", "pellet_nucindex"])
                             .collect()
                         )
-                        print(top_nuclides)
+                        print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
-                        print("WARNING: no nuclides.out file found, skipping top nuclides")
+                        print_warning("no nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
                     lcdataframes = plot_artis_lightcurve(
@@ -686,7 +678,6 @@ def make_lightcurve_plot(
                         directionbins=dirbin,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
-                        usedegrees=args.usedegrees,
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
@@ -722,13 +713,15 @@ def make_lightcurve_plot(
 
     assert plottedsomething, "No light curve was plotted"
 
-    if not args.nolegend:
-        axis.legend(loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9})
-        if args.plotthermalisation:
-            assert axistherm is not None
-            axistherm.legend(
-                loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1, prop={"size": 9}
-            )
+    set_legend(axis, args, loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1)
+    if args.plotthermalisation:
+        assert axistherm is not None
+        set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
+
+    # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
+    # take a log scale. This follows the plot, because the drawn values give the answer
+    if lumunit != "mag":
+        at.plottools.set_auto_yscale(axis, args)
 
     axis.set_xlabel(r"Time [days]")
 
@@ -754,16 +747,12 @@ def make_lightcurve_plot(
 
         axis.set_ylabel(yvarname + str_units)
 
-        if "{" in axis.get_ylabel() and not args.logscaley:
-            axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel()))
-            axis.yaxis.set_major_locator(
-                mplticker.MaxNLocator(nbins="auto", steps=[1, 2, 4, 5, 8, 10], integer=True, prune=None)
-            )
+        if not args.logscaley:
+            at.plottools.set_exponent_label(axis)
 
     if args.colorbarcostheta or args.colorbarphi:
-        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
-        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
+        make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
@@ -781,24 +770,17 @@ def make_lightcurve_plot(
         # near-zero denominator at one timestep rescale every curve into the bottom of the panel
         axistherm.set_ylim(0.0, 1.0)
 
-    if args.show:
-        plt.show()
-
-    save_figure(fig, filenameout, format="pdf")
+    save_figure(fig, filenameout, format="pdf", args=args)
 
     if args.plotthermalisation:
         assert figtherm is not None
 
         filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
-        save_figure(figtherm, filenameout2, format="pdf")
+        save_figure(figtherm, filenameout2, format="pdf", args=args)
 
 
-def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.Any] | mplax.Axes]:
+def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
     """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
-    if "labelfontsize" in args:
-        font = {"size": args.labelfontsize}
-        mpl.rc("font", **font)
-
     args.subplots = False  # TODO: set as command line arg
 
     if (args.filter and len(args.filter) > 1) or args.subplots:
@@ -814,25 +796,8 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[t.
         rows = 1
         cols = 1
 
-    if "figwidthscale" not in args:
-        args.figwidthscale = 1.0
-    if "figwidth" not in args:
-        args.figwidth = 5.0 * 1.6 * cols * args.figwidthscale
-    if "figheight" not in args:
-        args.figheight = 5.0 * 1.1 * rows * 1.5
-
-    fig, ax = plt.subplots(
-        nrows=rows,
-        ncols=cols,
-        sharex=True,
-        sharey=True,
-        figsize=(args.figwidth, args.figheight),
-        tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6},
-    )  # (6.2 * 3, 9.4 * 3)
-
-    if args.subplots:
-        assert isinstance(ax, np.ndarray)
-        ax = ax.flatten()
+    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, sharey=True)
+    ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     return fig, ax
 
@@ -852,32 +817,26 @@ def get_linelabel(
     return serieslabel
 
 
-def set_lightcurveplot_legend(ax: mplax.Axes | npt.NDArray[t.Any], args: argparse.Namespace) -> None:
+def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
     """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
     if args.nolegend:
         return
 
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        axis.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize="x-small", ncol=args.ncolslegend)
+        axis.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
-        ax.legend(
-            loc=args.legendposition,
-            frameon=args.legendframeon,
-            fontsize="small",
-            ncol=args.ncolslegend,
-            handlelength=0.7,
-        )
+        ax.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(
     fig: mplfig.Figure,
-    ax: mplax.Axes | npt.NDArray[t.Any],
+    ax: AxesTree,
     args: argparse.Namespace,
     band_name: str | None = None,
     colour_evolution: bool = False,
-) -> tuple[mplfig.Figure, mplax.Axes | npt.NDArray[t.Any]]:
+) -> tuple[mplfig.Figure, AxesTree]:
     """Set the axis labels and limits for a band magnitude or colour evolution plot.
 
     The caller states which kind of plot this is rather than it being read back off args, which cannot tell a
@@ -910,12 +869,7 @@ def make_colorbar_viewingangles_colormap() -> t.Any:
 
 
 def get_viewinganglecolor_for_colorbar(
-    angle: int,
-    costheta_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
-    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
-    scaledmap: t.Any,
-    plotkwargs: dict[str, t.Any],
-    args: argparse.Namespace,
+    angle: int, scaledmap: t.Any, plotkwargs: dict[str, t.Any], args: argparse.Namespace
 ) -> tuple[dict[str, t.Any], int]:
     """Set the series colour from the direction bin's cos(theta) or phi, and return the kwargs and the colour index."""
     nphibins = at.get_viewingdirection_phibincount()
@@ -935,20 +889,15 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    phi_viewing_angle_bins: list[str],  # ruff:ignore[unused-function-argument]
-    scaledmap: t.Any,
-    args: argparse.Namespace,
-    fig: mplfig.Figure | None = None,
-    ax: mplax.Axes | Iterable[mplax.Axes] | None = None,
+    scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarcostheta:
-        # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "cos θ"
     if args.colorbarphi:
-        print("reordered phi bins")
+        print("Reordered phi bins")
         phi_viewing_angle_bins_reordered = [
             "0",
             "π/5",
@@ -963,33 +912,29 @@ def make_colorbar_viewingangles(
             "2π",
         ]
         ticklabels = phi_viewing_angle_bins_reordered
-        # ticklabels = phi_viewing_angle_bins
         ticklocs = list(np.linspace(0, 9, num=11, dtype=float))
         label = "ϕ bin"
 
-    hidecolorbar = False
-    if not hidecolorbar:
-        if fig:
-            cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=ax, shrink=0.95)
-        else:
-            assert ax is not None
-            firstaxis = iter_axes(ax)[0]
-            axisfigure = firstaxis.get_figure()
-            assert axisfigure is not None
-            cbar = axisfigure.colorbar(scaledmap, ax=ax)
-        if label:
-            cbar.set_label(label, rotation=0)
-        cbar.locator = mplticker.FixedLocator(ticklocs)
-        cbar.formatter = mplticker.FixedFormatter(ticklabels)
-        cbar.update_ticks()
+    # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
+    axeslist = iter_axes(ax) if ax is not None else None
+    if fig:
+        cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=axeslist, shrink=0.95)
+    else:
+        assert axeslist is not None
+        axisfigure = axeslist[0].get_figure()
+        assert axisfigure is not None
+        cbar = axisfigure.colorbar(scaledmap, ax=axeslist)
+    if label:
+        cbar.set_label(label, rotation=0)
+    cbar.locator = mplticker.FixedLocator(ticklocs)
+    cbar.formatter = mplticker.FixedFormatter(ticklabels)
+    cbar.update_ticks()
 
 
 def make_band_lightcurves_plot(
     modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
 ) -> None:
     """Plot band magnitude light curves for every model and save the figure."""
-    if args.labelfontsize is None:
-        args.labelfontsize = 22
     fig, ax = create_axes(args)
     axes = iter_axes(ax)
 
@@ -1000,9 +945,6 @@ def make_band_lightcurves_plot(
     plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
-            usedegrees=args.usedegrees
-        )
         scaledmap = make_colorbar_viewingangles_colormap()
 
     # every model is asked for the same bands, so one list serves the loader, the reference curves, the
@@ -1014,7 +956,8 @@ def make_band_lightcurves_plot(
 
         for dirbin in dirbins:
             modelname = at.get_model_name(modelpath)
-            print(f"Reading spectra: {modelname} (angle {dirbin})")
+            if args.verbose:
+                print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
                 modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
             )
@@ -1039,7 +982,7 @@ def make_band_lightcurves_plot(
                         f.write(txtout)
                     at.print_saved(bandoutfile)
                 if args.print_data:
-                    print(txtout)
+                    print_product(args, txtout)
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
@@ -1075,9 +1018,7 @@ def make_band_lightcurves_plot(
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
-                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        dirbin, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
-                    )
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
@@ -1098,16 +1039,13 @@ def make_band_lightcurves_plot(
     set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
+        make_colorbar_viewingangles(scaledmap, args, fig=fig, ax=ax)
 
     if args.filter and len(bandnames) == 1:
         args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
 
-    if args.show:
-        plt.show()
-
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", args=args)
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1124,8 +1062,6 @@ def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorTy
 
 def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
     """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
-    if args.labelfontsize is None:
-        args.labelfontsize = 24
     angle_counter = 0
     color_list = get_dirbin_palette([*args.color, *args.refspeccolors])
 
@@ -1137,7 +1073,8 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"Reading spectra: {modelname}")
+        if args.verbose:
+            print(f"Reading spectra: {modelname}")
 
         dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
@@ -1206,23 +1143,32 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
-    if args.show:
-        plt.show()
-    save_figure(fig, args.outputfile, format="pdf")
+    save_figure(fig, args.outputfile, format="pdf", args=args)
 
 
 # Just in case it's needed...
 
-# if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-#     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
-#     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
-#     linestyle = '--'
-#     color='darkmagenta'
-#     linelabel = args.label[1]
-# else:
-#     linestyle = '-'
-#     color='k'
-#     color='k'
+
+def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
+    """Return the reference wavelength of the band in Angstroms, from the filter transmission file."""
+    with (filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
+        return float(f.readlines()[2])
+
+
+def deredden_band_magnitudes(dfband: pl.DataFrame, lambda0: float, a_v: float, r_v: float) -> pl.DataFrame:
+    """Return the band data with the magnitudes corrected for reddening by the CCM89 extinction law.
+
+    ccm89 gives the extinction in magnitudes at the reference wavelength of the band, and an extinction in
+    magnitudes is additive, thus the correction is a subtraction. The earlier code turned the magnitudes
+    into fluxes, applied the law, and turned them back. That round trip cancels: the flux zero point and
+    the speed of light both divide out, which is why no such constant appears here.
+    """
+    from extinction import ccm89
+
+    wavelengths = np.full(dfband.height, lambda0, dtype=float)
+    extinction_mag = ccm89(wavelengths, a_v=a_v, r_v=r_v)
+
+    return dfband.with_columns(pl.Series("magnitude", dfband["magnitude"].to_numpy() - extinction_mag))
 
 
 def plot_lightcurve_from_refdata(
@@ -1230,12 +1176,9 @@ def plot_lightcurve_from_refdata(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    ax: npt.NDArray[t.Any] | mplax.Axes,
+    ax: npt.NDArray[np.object_] | mplax.Axes,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
-    from extinction import apply
-    from extinction import ccm89
-
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
@@ -1247,37 +1190,19 @@ def plot_lightcurve_from_refdata(
         axis = axes[axnumber]
         if filter_name_raw == "bol":
             continue
-        with Path(filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
-            lines = f.readlines()
-        lambda0 = float(lines[2])
+        lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
 
-        if filter_name_raw == "bol":
-            continue
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
-        # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
-        # else:
 
         if "a_v" in metadata or "e_bminusv" in metadata:
             print("Correcting for reddening")
 
-            clightinangstroms = 3e18
-            # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[filter_name].height, lambda0, dtype=float)
-
-            flux = (
-                clightinangstroms
-                / (lambda0**2)
-                * 10 ** -((filter_data[filter_name]["magnitude"].to_numpy() + 48.6) / 2.5)
-            )  # gs
-
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
-
-            filter_data[filter_name] = filter_data[filter_name].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
+            filter_data[filter_name] = deredden_band_magnitudes(
+                filter_data[filter_name], lambda0, metadata["a_v"], metadata["r_v"]
             )
         else:
-            print("WARNING: did not correct for reddening")
+            print_warning("did not correct for reddening")
 
         axis.plot(
             filter_data[filter_name]["time"],
@@ -1295,22 +1220,17 @@ def plot_color_evolution_from_data(
     lightcurvefilename: Path | str,
     color: t.Any,
     marker: t.Any,
-    ax: npt.NDArray[t.Any] | mplax.Axes,
+    ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
     args: argparse.Namespace,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89."""
-    from extinction import apply
-    from extinction import ccm89
-
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
     filter_data = []
     for i, filter_name_raw in enumerate(filter_names):
-        with (filterdir / Path(f"{filter_name_raw}.txt")).open(encoding="utf-8") as f:
-            lines = f.readlines()
-        lambda0 = float(lines[2])
+        lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
 
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data.append(lightcurve_from_data.filter(pl.col("band") == filter_name))
@@ -1322,23 +1242,7 @@ def plot_color_evolution_from_data(
             elif "a_v" not in metadata:
                 metadata["a_v"] = metadata["e_bminusv"] * metadata["r_v"]
 
-            clightinangstroms = 3e18
-            # Convert to flux, deredden, then convert back to magnitudes
-            filters = np.full(filter_data[i].height, lambda0, dtype=float)
-
-            flux = clightinangstroms / (lambda0**2) * 10 ** -((filter_data[i]["magnitude"].to_numpy() + 48.6) / 2.5)
-
-            dered = apply(ccm89(filters, a_v=-metadata["a_v"], r_v=metadata["r_v"]), flux)
-
-            filter_data[i] = filter_data[i].with_columns(
-                pl.Series("magnitude", 2.5 * np.log10(clightinangstroms / (dered * lambda0**2)) - 48.6)
-            )
-
-    # for i in range(2):
-    #     # if metadata['label'] == 'SN 2018byg':
-    #     #     filter_data[i] = filter_data[i][filter_data[i].e_magnitude != -99.00]
-    #     if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
-    #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
+            filter_data[i] = deredden_band_magnitudes(filter_data[i], lambda0, metadata["a_v"], metadata["r_v"])
 
     merge_dataframes = filter_data[0].join(
         filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
@@ -1356,7 +1260,7 @@ def plot_color_evolution_from_data(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -1364,25 +1268,26 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    add_series_style_args(parser)
+    addarg_seriesstyle(parser)
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
 
     parser.add_argument(
         "-title",
-        "--title",
         dest="title",
         nargs="?",
         const=True,
         default=None,
         help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
+    # deprecated spelling kept as a hidden alias
+    parser.add_argument("--title", dest="title", nargs="?", const=True, help=argparse.SUPPRESS)
 
-    add_figscale_args(parser, figscaledefault=1.8, include_figwidthscale=True)
+    addarg_figscale(parser, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 
@@ -1396,15 +1301,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
-    add_outputfile_arg(parser, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
+    parser.add_argument("--plotcmf", action="store_true", help="Plot comoving frame light curve")
+    # deprecated spellings kept as hidden aliases
     parser.add_argument(
-        "--plotcmf",
-        "--plot_cmf",
-        "--showcmf",
-        "--show_cmf",
-        action="store_true",
-        help="Plot comoving frame light curve",
+        "--plot_cmf", "--showcmf", "--show_cmf", dest="plotcmf", action="store_true", help=argparse.SUPPRESS
     )
 
     parser.add_argument(
@@ -1428,7 +1330,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions."
+        "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions"
     )
 
     parser.add_argument(
@@ -1446,12 +1348,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=str,
         nargs="+",
         help=(
-            "Choose filter eg. bol U B V R I. Default B. "
-            "WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs"
+            "Choose filter e.g. bol U B V R I. Default B. "
+            "filter names are not case sensitive e.g. sloan-r is not r, it is rs"
         ),
     )
 
-    parser.add_argument("-colour_evolution", nargs="*", help="Plot of colour evolution. Give two filters eg. B-V")
+    parser.add_argument("-colour_evolution", nargs="*", help="Plot of colour evolution. Give two filters e.g. B-V")
 
     parser.add_argument("--print_data", action="store_true", help="Print plotted data")
 
@@ -1465,20 +1367,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot hesma model on top of lightcurve plot. Enter model name saved in data/hesma directory",
     )
 
-    at.add_viewingangle_args(parser, allow_select_all=True)
+    at.addarg_viewingangle(parser, allow_select_all=True)
 
-    add_axis_limit_args(parser, include_x=False)
+    addarg_axislimits(parser, include_x=False)
 
-    parser.add_argument(
-        "-timemin", "-timedaysmin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum"
-    )
+    parser.add_argument("-timemin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum")
 
-    parser.add_argument(
-        "-timemax", "-timedaysmax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum"
-    )
+    parser.add_argument("-timemax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum")
+    # deprecated spellings kept as hidden aliases
+    parser.add_argument("-timedaysmin", dest="timemin", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-timedaysmax", dest="timemax", type=float, help=argparse.SUPPRESS)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
 
+    addarg_yscale(parser)
+
+    # the older spelling of "-yscale log"
     parser.add_argument("--logscaley", action="store_true", help="Use log scale for vertical axis")
 
     parser.add_argument(
@@ -1501,16 +1405,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-refspecmarkers", default=[], nargs="*", help="Set a list of markers for the reference light curves"
     )
 
-    add_filter_args(parser)
+    addarg_filter(parser)
 
     parser.add_argument(
         "-redshifttoz",
         type=float,
         nargs="+",
-        help="Redshift to z = x. Expects array length of number modelpaths.If not to be redshifted then = 0.",
+        help="Redshift to z = x. Expects array length of number modelpaths. If not to be redshifted then = 0",
     )
 
-    parser.add_argument("--show", action="store_true", default=False, help="Show plot before saving")
+    addarg_show(parser)
+    addarg_verbose(parser)
 
     # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
     #                     help='Calculate band risetime, peak mag and delta m15 values for '
@@ -1572,7 +1477,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include_delta_m40",
         action="store_true",
-        help="When calculating delta_m15, calculate delta_m40 as well.Only affects the saved viewing angle data.",
+        help="When calculating delta_m15, calculate delta_m40 as well. Only affects the saved viewing angle data",
     )
 
     parser.add_argument(
@@ -1599,7 +1504,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make scatter plot of light curve brightness at a given time (requires timedays)",
     )
 
-    parser.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to plot")
+    addarg_notitle(parser)
+
+    addarg_timestep(parser, helptext="Timestep, or a range e.g. 20-30, to plot")
+
+    addarg_timedays(parser, helptext="Time in days, or a range e.g. 2.2-2.8, to plot")
 
     parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
 
@@ -1614,11 +1523,52 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
     parser.add_argument(
-        "-labelfontsize",
-        type=float,
-        default=None,
-        help="Base font size for plot text (axis labels, tick labels, legend). Defaults to 22 for band light curves and 24 for colour evolution plots",
+        "-labelfontsize", type=float, default=None, help="Font size of the tick labels and the axis labels"
     )
+
+
+def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:
+    """Narrow the plotted time range from -timestep or from a -timedays range.
+
+    -timemin and -timemax give the range directly. A single -timedays value names one time for
+    --brightnessattime, thus only a value that holds a range takes part here.
+    """
+    dayrange = at.misc.parse_timedays_range(args.timedays) if args.timedays is not None else None
+    if args.timestep is dayrange is None:
+        return
+
+    # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
+    # command that plots reference data alone still takes a range in days
+    # a path can name a light curve file of a run, and get_time_range reads the folder of the run
+    artispaths = [get_model_folder(path) for path in modelpaths if path_is_artis_model(path)]
+    if not artispaths:
+        if dayrange is None:
+            msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
+            raise ValueError(msg)
+        rangemin, rangemax = dayrange
+    else:
+        _, _, rangemin, rangemax = at.get_time_range(
+            artispaths[0], timestep_range_str=args.timestep, timedays_range_str=args.timedays
+        )
+
+        # the plot holds one time axis, thus one range in days must serve every model. A timestep
+        # names different days on a different timestep grid, and applying the days of the first
+        # model would show another timestep of the second without a word
+        if args.timestep is not None:
+            for otherpath in artispaths[1:]:
+                _, _, othermin, othermax = at.get_time_range(otherpath, timestep_range_str=args.timestep)
+                if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
+                    exit_with_error(
+                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
+                        f"{at.get_model_name(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
+                        f"{at.get_model_name(otherpath)}, because their timestep grids differ. Give the "
+                        "range in days with -timedays, which means the same for every model"
+                    )
+
+    if args.timemin is None:
+        args.timemin = rangemin
+    if args.timemax is None:
+        args.timemax = rangemax
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1626,7 +1576,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if getattr(args, "average_every_tenth_viewing_angle", False):
-        print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
 
     at.set_mpl_style()
@@ -1634,6 +1584,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.modelpath = at.normalize_path_list(args.modelpath)
 
     modelpaths = args.modelpath
+
+    apply_time_range_args(args, modelpaths)
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(
         len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
@@ -1664,12 +1616,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("Enabling --frompackets because topnucs > 0")
         args.frompackets = True
 
-    if args.filter:
-        defaultoutputfile = "plotlightcurves.pdf"
-    elif args.colour_evolution:
-        defaultoutputfile = "plot_colour_evolution.pdf"
-    else:
-        defaultoutputfile = "plotlightcurve.pdf"
+    defaultoutputfile = "plotlightcurves_colour.pdf" if args.colour_evolution else "plotlightcurves.pdf"
 
     args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     outputfolder = args.outputfile.parent
@@ -1690,8 +1637,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.brightnessattime:
         if args.timedays is None:
-            print("Specify timedays")
-            sys.exit(1)
+            at.exit_with_error("specify a single time with -timedays")
+        # this plot takes one time rather than a range
+        args.timedays = float(args.timedays)
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
@@ -1717,4 +1665,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotlightcurves")

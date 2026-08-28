@@ -10,6 +10,8 @@ import numpy.typing as npt
 import polars as pl
 
 import artistools as at
+from artistools.misc import addarg_action
+from artistools.misc import require_action
 
 
 def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
@@ -49,7 +51,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
 
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
         fYe.write(f"{griddata.height}\n")
-        # write both missing and NaN electron fractions as zero, like the pandas na_rep this replaces
+        # ARTIS needs a number in every field, thus write a missing and a NaN electron fraction as zero
         griddata.select("inputcellid", pl.col("cellYe").cast(pl.Float64).fill_null(0.0).fill_nan(0.0)).write_csv(
             fYe, separator="\t", include_header=False, float_precision=10
         )
@@ -76,18 +78,16 @@ def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument(
-        "action",
-        nargs="?",
-        default=None,
+    addarg_action(
+        parser,
         choices=["uniform", "describe"],
-        help=(
+        helptext=(
             "uniform: write an opacity.txt with the same opacity in every cell."
-            " describe: report the opacities in an existing opacity.txt."
+            " describe: report the opacities in an existing opacity.txt"
         ),
     )
-    at.add_modelpath_arg(parser, default=Path())
-    at.add_outputpath_arg(parser, astype=Path, helptext="Folder to write opacity.txt into (uniform)")
+    at.addarg_modelpath(parser, default=Path())
+    at.addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write opacity.txt into (uniform)")
     parser.add_argument("-kappa", type=float, default=0.1, help="Grey opacity for every cell [cm2/g] (uniform)")
 
 
@@ -95,15 +95,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Write or inspect an ARTIS grey opacity.txt."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.action is None:
-        print("ERROR: no action given. Run with --help to see the available actions.")
-        raise SystemExit(1)
+    require_action(args)
 
     modelpath = Path(args.modelpath)
 
     if args.action == "uniform":
         _, modelmeta = at.inputmodel.get_modeldata(modelpath)
-        all_cells_same_opacity(Path(args.outputpath), modelmeta["npts_model"], kappa=args.kappa)
+        all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")
@@ -111,4 +109,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

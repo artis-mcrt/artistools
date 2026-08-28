@@ -5,10 +5,12 @@ import inspect
 import itertools
 import math
 import os
+import re
 import subprocess
 import sys
 import tomllib
 import typing as t
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -16,14 +18,21 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mplticker
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from collections.abc import Iterable
+
 modelpath = at.get_path("testdata") / "testmodel"
+RETIRED_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
+DISPATCHERTARGET = "artistools.__main__:main"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
@@ -68,30 +77,127 @@ def test_polars_series_expr_dispatch() -> None:
     assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
 
 
-def _console_script_targets() -> list[tuple[str, str, str]]:
-    """Return (command, submodulename, funcname) for every console script declared in pyproject.toml."""
-    with (REPOPATH / "pyproject.toml").open("rb") as f:
-        scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="polars rebinds its own Series stubs below 3.15")
+def test_polarscompat_is_still_necessary() -> None:
+    """Fail once polars rebinds its Series methods without help, so that the repair can go.
 
-    targets = []
-    for command, target in scripts.items():
-        submodulename, _, targetfuncname = target.partition(":")
-        targets.append((command, submodulename, targetfuncname))
-    return targets
+    polars leaves most Series methods as docstring-only stubs, and it rebinds each one to the Expr
+    version when it imports. It picks them by inspecting co_consts, which CPython 3.15 no longer fills
+    for such a function, thus every stub returns None. artistools/_polarscompat.py repairs that.
 
+    This test reads the state of polars alone. test_polars_series_expr_dispatch reads the state after
+    the repair, thus the two together say both that the repair works and that it is still needed.
+    """
+    # a fresh interpreter, because importing artistools applies the repair
+    code = "import polars as pl; print(pl.Series('x', [1]).unique() is None)"
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
 
-@pytest.mark.parametrize(("command", "submodulename", "targetfuncname"), _console_script_targets())
-def test_console_script_target(command: str, submodulename: str, targetfuncname: str) -> None:
-    """Every console script must point to an importable module with a callable target function."""
-    submodule = importlib.import_module(submodulename)
-    assert callable(getattr(submodule, targetfuncname, None)), (
-        f"{submodulename}.{targetfuncname} not found for command {command}"
+    assert result.stdout.strip() == "True", (
+        f"polars {pl.__version__} rebinds its own Series methods on Python "
+        f"{'.'.join(str(part) for part in sys.version_info[:3])}. Delete artistools/_polarscompat.py, "
+        "the call to repair_series_expr_dispatch in artistools/__init__.py, and this test"
     )
 
 
-def test_commands_list_matches_scripts() -> None:
-    """The completion setup command list must stay in sync with the console scripts in pyproject.toml."""
-    assert set(at.commands.COMMANDS) == {command for command, _, _ in _console_script_targets()}
+def get_console_scripts() -> dict[str, str]:
+    """Return the declared target of each console script in pyproject.toml."""
+    with (REPOPATH / "pyproject.toml").open("rb") as f:
+        scripts: dict[str, str] = tomllib.load(f)["project"]["scripts"]
+
+    return scripts
+
+
+def test_console_scripts() -> None:
+    """Every console script must run the dispatcher, and must be a dispatcher or name a subcommand."""
+    scripts = get_console_scripts()
+    subcommands = at.commands.get_script_subcommands()
+    assert set(scripts) == {*at.commands.DISPATCHERSCRIPTS, *subcommands}
+
+    for command, target in scripts.items():
+        assert target == DISPATCHERTARGET, f"console script {command} must run {DISPATCHERTARGET}"
+
+    submodulename, _, funcname = DISPATCHERTARGET.partition(":")
+    assert callable(getattr(importlib.import_module(submodulename), funcname, None))
+
+    for scriptname, words in subcommands.items():
+        spec: at.commands.CommandSpec | at.commands.CommandTree = at.commands.subcommandtree
+        for word in words:
+            assert isinstance(spec, dict)
+            spec = spec[word]
+
+        assert not isinstance(spec, dict), f"{scriptname} names the command group {' '.join(words)}"
+        assert spec.script == scriptname
+
+
+def test_console_script_runs_its_own_subcommand(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A per-command console script must run its own subcommand and name itself in the usage text."""
+    import artistools.__main__
+
+    monkeypatch.setattr(sys, "argv", ["plotartisestimators", "--help"])
+    with pytest.raises(SystemExit):
+        artistools.__main__.main()
+
+    helptext = capsys.readouterr().out
+    # a command of many flags names them "[options]", thus the usage takes one line
+    assert helptext.startswith("usage: plotartisestimators [options]")
+    # the parser holds this one command, thus it neither lists nor imports the other commands
+    assert "-modelpath" in helptext
+    assert "plotspectra" not in helptext
+
+    parser = at.commands.build_script_parser("plotartisestimators")
+    assert parser is not None
+    assert parser.parse_args([]).func.__module__ == "artistools.estimators.plotestimators"
+
+    for dispatcher in at.commands.DISPATCHERSCRIPTS:
+        assert at.commands.build_script_parser(dispatcher) is None
+
+
+def test_module_entry_points_name_a_real_subcommand() -> None:
+    """Each module entry point must run through the dispatcher and name a subcommand of the tree.
+
+    A module that calls its own main function reads no --quiet, and it reports a bad argument with a
+    traceback. run_subcommand gives it the path of a console script.
+    """
+    names: dict[Path, str] = {}
+    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
+        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text()):
+            names[path] = match.group(1)
+
+    assert names, "no module entry point routes through the dispatcher"
+
+    for path, subcommand in names.items():
+        spec = at.commands.subcommandtree.get(subcommand)
+        assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
+        assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
+
+    # every command takes --quiet, thus no module may call its main function and skip run_command
+    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
+        text = path.read_text()
+        if 'if __name__ == "__main__":' not in text or path.name.startswith("test_"):
+            continue
+        block = text.split('if __name__ == "__main__":')[1]
+        if "run_subcommand" in block or "run_module_as_subcommand" in block:
+            continue
+
+        modulename = ".".join(path.relative_to(REPOPATH).with_suffix("").parts)
+        assert at.commands.get_words_of_module(modulename) is None, (
+            f"{modulename} is a subcommand, thus its entry point must run through the dispatcher"
+        )
+
+    # the tree names the module of each subcommand, thus the reverse lookup finds every one of them
+    def walkspecs(tree: dict[str, t.Any]) -> "Iterable[at.commands.CommandSpec]":
+        for node in tree.values():
+            if isinstance(node, at.commands.CommandSpec):
+                yield node
+            else:
+                yield from walkspecs(node)
+
+    for spec in walkspecs(at.commands.subcommandtree):
+        assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
 def test_subcommandtree() -> None:
@@ -116,6 +222,9 @@ def test_shared_cli_args_consistent() -> None:
 
     parser = artistools.__main__.build_parser()
     actionsbycommand: dict[str, dict[str, argparse.Action]] = {}
+    # a dest can have more than one action, e.g. a deprecated hidden alias, so the flags of every action
+    # for that dest are collected together
+    flagsbycommand: dict[str, dict[str, set[str]]] = {}
 
     def collect(parser: argparse.ArgumentParser, prefix: str) -> None:
         for action in parser._actions:  # ruff:ignore[private-member-access]
@@ -124,28 +233,46 @@ def test_shared_cli_args_consistent() -> None:
                 for name, subparser in nameparsermap.items():
                     collect(subparser, f"{prefix}{name} ")
             elif action.dest != "help":
-                actionsbycommand.setdefault(prefix.strip(), {})[action.dest] = action
+                command = prefix.strip()
+                flagsbycommand.setdefault(command, {}).setdefault(action.dest, set()).update(action.option_strings)
+                if isinstance(action, at.misc.UnsupportedArgument):
+                    # the name of a flag that this command does not take is no argument of its own, thus
+                    # the rules below pass it by. The flags above still hold it, because a command that
+                    # takes -t must name -timestep in one way or the other
+                    continue
+                if action.option_strings and not all(flag.startswith("--") for flag in action.option_strings):
+                    actionsbycommand.setdefault(command, {})[action.dest] = action
+                else:
+                    actionsbycommand.setdefault(command, {}).setdefault(action.dest, action)
 
     collect(parser, "")
     assert len(actionsbycommand) > 30
 
     for command, actions in actionsbycommand.items():
         for dest, action in actions.items():
-            flags = set(action.option_strings)
+            flags = flagsbycommand[command][dest]
             label = f"{command}: {dest} {sorted(flags)}"
             if dest == "modelpath" and "-modelpath" in flags:
                 assert action.type is Path, label
             elif dest == "timestep" and "-timestep" in flags:
                 assert "-ts" in flags, label
             elif dest == "timedays" and "-timedays" in flags:
-                assert {"-time", "-t"} <= flags, label
+                assert "-time" in flags, label
+                # -t means -timedays on every command, thus a user needs no knowledge of which other
+                # arguments that command takes
+                assert "-t" in flags, label
+                # argparse reads "-timestep 30" as "-t imestep", thus a command that declares -t must
+                # also declare -timestep, as its own argument or through addarg_unsupported
+                assert any("-timestep" in f for f in flagsbycommand[command].values()), label
             elif dest == "maxpacketfiles":
                 assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
                 assert action.type is int, label
             elif dest == "figscale":
                 assert action.type is float, label
-            elif dest == "outputfile" and "-outputfile" in flags:
-                assert "-o" in flags, label
+            elif dest == "outputfile":
+                # both directions: a command that hand-rolls -o alone makes argparse read
+                # "-outputfile name" as "-o utputfile" plus a stray token
+                assert {"-outputfile", "-o"} <= flags, label
             elif dest == "filtersavgol":
                 assert action.nargs == 2, label
                 assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
@@ -177,7 +304,8 @@ def test_deprecated_flag_spellings_still_work() -> None:
         ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
     ):
         args = parser.parse_args(rawargs)
-        assert args.outputfile == "vis.html"
+        # -o gives a Path on every command, thus the older spelling gives one as well
+        assert args.outputfile == Path("vis.html")
         assert args.opacity == 0.5
         assert args.surface_count == 10
 
@@ -191,17 +319,23 @@ def test_lightcurve_title_arg() -> None:
     assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
 
 
-def test_hidden_duplicate_commands() -> None:
-    """Cross-level duplicate command names still work but are not advertised in at --help."""
+def test_retired_duplicate_commands_stay_gone() -> None:
+    """The retired top-level duplicates neither parse nor appear, and their tree names work.
+
+    describeinputmodel, makeartismodelfromparticlegridmap, and maptogrid were hidden duplicates of the
+    inputmodel commands. The repository keeps no compatibility shim, thus they are deleted.
+    """
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
     helptext = parser.format_help()
-    assert "plotspectra" in helptext
-    for hiddenname in ("describeinputmodel", "maptogrid", "makeartismodelfromparticlegridmap"):
-        assert hiddenname not in helptext
+    for retiredname in RETIRED_COMMANDS:
+        assert retiredname not in helptext
 
-    args = parser.parse_args(["describeinputmodel", "somemodelpath"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["describeinputmodel", "somemodelpath"])
+
+    args = parser.parse_args(["inputmodel", "describe", "somemodelpath"])
     assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
 
 
@@ -232,6 +366,33 @@ def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 
     artistools.__main__.main(argsraw=[])
     assert "plotspectra" in capsys.readouterr().out
+
+
+def test_command_groups_name_every_visible_command() -> None:
+    """Every command that at --help lists must belong to exactly one group of COMMANDGROUPS."""
+    import artistools.__main__
+
+    grouped = list(itertools.chain.from_iterable(at.commands.COMMANDGROUPS.values()))
+    assert len(grouped) == len(set(grouped)), "a command appears in more than one group"
+
+    # every listed command must reach a heading, thus a new command cannot fall out of the listing
+    helptext = artistools.__main__.build_parser().format_help()
+    for heading in at.commands.COMMANDGROUPS:
+        assert f"\n{heading}:\n" in helptext
+    for name in grouped:
+        assert name in helptext
+
+
+def test_cli_bad_argument_gives_short_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """A bad argument value must exit with a one-line error on stderr instead of a traceback."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit) as excinfo:
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timedays", "banana"])
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert "banana" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -296,7 +457,9 @@ def test_timestep_times() -> None:
 def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
-    assert dicthash == "1edcddd5d36cc2eaed94ad083dacfb95c6915b8fd4f62591e2b79ceca6885d1e", dicthash
+    # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
+    # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
+    assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
 
 
 def test_macroatom() -> None:
@@ -306,7 +469,7 @@ def test_macroatom() -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @pytest.mark.benchmark
-def test_radfield(mockstep: t.Any, mockplot: t.Any) -> None:
+def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
@@ -353,7 +516,7 @@ def test_plotspherical_gif() -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_logfiles(mockplot: t.Any) -> None:
+def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
     logfilepaths = at.logfiles.read_logfiles(modelpath_classic_3d)
     # compressed log files must be read too, not skipped
@@ -384,7 +547,7 @@ def test_logfiles(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_transitions(mockplot: t.Any) -> None:
+def test_transitions(mockplot: mock.MagicMock) -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
     assert len(mockplot.call_args_list) == 7
@@ -870,7 +1033,7 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
-def test_radfield_line_estimators_filter_cell_zero(mockscatter: t.Any) -> None:
+def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) -> None:
     """The line estimator plot must filter on cell and timestep zero, which are falsy."""
     radfielddata = pl.DataFrame({
         "bin_num": [-2, -3, -2, -3],
@@ -934,8 +1097,6 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
     """The input files must survive until the merged file exists."""
-    pytest.importorskip("pypdf", reason="pypdf is only installed with the extras group")
-
     pdfpaths = []
     for i in range(2):
         fig, ax = plt.subplots()
@@ -1094,6 +1255,72 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert len(datalines) == 4
 
 
+def get_kilonova_lightcurve() -> npt.NDArray[np.float64]:
+    """Return a light curve that rises to a peak and then decays, as a kilonova does."""
+    times = np.geomspace(0.11, 76.0, 56)
+    return 1e42 * np.where(times < 0.5, (times / 0.5) ** 2.0, (times / 0.5) ** -1.3)
+
+
+@pytest.mark.parametrize(
+    ("name", "values", "wantslog"),
+    [
+        ("a flat series", np.linspace(1.0, 2.0, 50), False),
+        # three orders of magnitude, but the values gather near the peak, thus the spread keeps a
+        # linear axis
+        ("the light curve of a kilonova", get_kilonova_lightcurve(), True),
+        ("a decay over four decades", np.geomspace(1e4, 1.0, 100), True),
+        ("a decay that falls away", np.exp(-np.linspace(0.0, 10.0, 100)), True),
+        # a ramp reaches each value on the way, thus the percentiles lie near the ends of one step
+        # and far apart in neither scale. The linear axis shows every value of it
+        ("a ramp over four decades", np.linspace(1.0, 1e4, 100), False),
+        ("one point of noise near zero", np.concatenate([np.full(100, 1.0), [1e-30]]), False),
+        ("a value of zero in every second place", np.concatenate([np.zeros(50), np.geomspace(1.0, 1e4, 50)]), False),
+        ("a few values of zero", np.concatenate([np.zeros(3), np.geomspace(1.0, 1e4, 97)]), True),
+        ("no value at all", np.empty(0), False),
+        ("fewer values than a percentile needs", np.array([1.0, 10.0, 100.0]), False),
+        ("every value zero", np.zeros(20), False),
+    ],
+)
+def test_wants_log_scale_reads_the_range_of_the_values(
+    name: str, values: npt.NDArray[np.float64], wantslog: bool
+) -> None:
+    """A log scale belongs to values that a linear axis draws on the line of zero."""
+    assert at.plottools.wants_log_scale(values.astype(np.float64)) is wantslog, name
+
+
+def test_quartile_ratio_leaves_out_the_ends_of_the_data() -> None:
+    """The quartiles give the range of the data, thus the values at each end do not give it."""
+    # the quartiles of a ramp from 1 to 101 are 26 and 76
+    assert at.plottools.get_quartile_ratio(np.linspace(1.0, 101.0, 101)) == pytest.approx(76.0 / 26.0)
+
+    # one value 30 orders of magnitude below the others changes nothing
+    assert at.plottools.get_quartile_ratio(np.concatenate([np.full(100, 1.0), [1e-30]])) == pytest.approx(1.0)
+
+    # a spectrum falls away at each end of its wavelength range, and the middle holds its data
+    spectrum = np.concatenate([np.full(10, 1e-16), np.full(80, 5e-14), np.full(10, 1e-16)])
+    assert at.plottools.get_quartile_ratio(spectrum) == pytest.approx(1.0)
+    assert not at.plottools.wants_log_scale(spectrum)
+
+
+def test_auto_yscale_reads_the_drawn_values() -> None:
+    """-yscale auto takes a log scale from the drawn values, and the other choices stand."""
+    for ydata, wantslog in ((np.geomspace(1.0, 1e4, 50), True), (np.linspace(1.0, 2.0, 50), False)):
+        fig, axis = plt.subplots()
+        axis.plot(np.arange(ydata.size), ydata)
+
+        args = argparse.Namespace(yscale="auto", logscaley=False)
+        at.plottools.set_auto_yscale(axis, args)
+        assert args.logscaley is wantslog
+
+        # -yscale linear and -yscale log each give the answer already, thus the values change nothing
+        for yscale, logscaley in (("linear", False), ("log", True)):
+            args = argparse.Namespace(yscale=yscale, logscaley=logscaley)
+            at.plottools.set_auto_yscale(axis, args)
+            assert args.logscaley is logscaley
+
+        plt.close(fig)
+
+
 def test_get_series_colors_greys_then_cycle() -> None:
     """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])
@@ -1138,6 +1365,49 @@ def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
 
     # a grey that the user asked for is also matched by value, so the next reference series steps over it
     assert at.plottools.get_series_colors([True, True], ["#000000"]) == ["#000000", "0.4"]
+
+
+def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
+    """A tick at the very top or bottom of a log axis goes, and a tick well inside it stays."""
+    _fig, ax = plt.subplots()
+    ax.set_yscale("log")
+    ax.set_ylim(1e-10, 1e3)
+
+    before = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
+    assert min(before) == pytest.approx(1e-10), "the test needs a tick at the lower end"
+
+    at.plottools.prune_log_ticks(ax.yaxis)
+
+    after = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
+    assert min(after) > 1e-10
+    assert set(after) == {loc for loc in before if loc > 1e-10}
+
+
+def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
+    """A log axis of few major ticks keeps them all, rather than end with too few to read."""
+    from artistools.plottools import PrunedLogLocator
+
+    locator = PrunedLogLocator(minticks=99)
+    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator().tick_values(1e-30, 1e2))
+
+
+def test_prune_log_ticks_follows_the_view() -> None:
+    """The locator prunes when matplotlib draws, thus a zoom gives the ticks of the new view.
+
+    A FixedLocator of one view would keep those ticks through a zoom, and save_figure shows the figure
+    before it writes the file.
+    """
+    _fig, ax = plt.subplots()
+    ax.set_yscale("log")
+    ax.set_ylim(1e-2, 1e5)
+    at.plottools.prune_log_ticks(ax.yaxis)
+    first = list(ax.yaxis.get_majorticklocs())
+
+    ax.set_ylim(1e2, 1e9)
+    second = list(ax.yaxis.get_majorticklocs())
+
+    assert second != first, "the ticks must follow the new view"
+    assert max(second) > max(first), f"the zoomed view needs its own high ticks: {second}"
 
 
 def test_set_axis_properties_log_scale_keeps_the_data_in_view() -> None:
@@ -1187,3 +1457,975 @@ def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
     """A compressed ARTIS output file is a model, and not a reference data file."""
     assert all(at.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
     assert not at.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
+
+
+@mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
+def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) -> None:
+    """Plotradfield adds -ymin, thus the axis must start there and not at the hard-coded zero."""
+    at.radfield.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14)
+
+    bottoms = [callargs.kwargs["bottom"] for callargs in mocksetylim.call_args_list if "bottom" in callargs.kwargs]
+    assert bottoms, "the command must set the bottom of the axis"
+    assert 1e-14 in bottoms, f"the requested -ymin is missing from {bottoms}"
+
+
+def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    """A mistyped subcommand must name the closest one on every Python version that CI runs.
+
+    SuggestingArgumentParser composes this message itself, thus Python 3.13 and 3.14 give the
+    same text.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspetcra"])
+
+    message = capsys.readouterr().err
+    assert "invalid choice 'plotspetcra'" in message
+    # the error names the fault, and the help line that follows names the closest subcommand
+    assert "help: Did you mean plotspectra" in message
+    assert message.index("error: ") < message.index("help: ")
+
+
+def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
+    """A list of file names alone does not tell a user what the file holds or which command reads it."""
+    with pytest.raises(FileNotFoundError, match=r"linestat\.out gives the wavelength"):
+        at.misc.firstexisting("linestat.out", folder=tmp_path, purpose="linestat.out gives the wavelength")
+
+    # a caller that gives no purpose keeps the plain message
+    with pytest.raises(FileNotFoundError) as noreason:
+        at.misc.firstexisting("linestat.out", folder=tmp_path)
+
+    assert "None of these files exist" in str(noreason.value)
+    assert "gives the wavelength" not in str(noreason.value)
+
+
+def test_plain_label_and_saved_path_read_well_in_a_terminal() -> None:
+    """A log line must carry no LaTeX, and it must give the shorter of the two forms of a path."""
+    assert at.plottools.plain_label(r"TEST MODEL +300.3d ($\pm$ 0.5d)") == "TEST MODEL +300.3d (+/- 0.5d)"
+    # the subscript mark goes and the underscore stays, thus the plain form reads as M_sun
+    assert at.plottools.plain_label(r"M$_{\odot}$") == "M_sun"
+    assert at.plottools.plain_label("no mathematics here") == "no mathematics here"
+
+
+def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A file outside the working folder gave a chain of "..", which is longer than the full path."""
+    faraway = tmp_path / "figure.pdf"
+    faraway.touch()
+
+    opencommand = at.misc.fileio.get_open_command()
+    at.misc.print_saved(faraway)
+    reported = capsys.readouterr().out.removeprefix(f"{opencommand} ").strip().strip("'")
+
+    assert ".." not in reported
+    assert Path(reported).resolve() == faraway.resolve()
+
+    # a file below the working folder keeps its short relative name
+    here = Path("localfigure.pdf")
+    at.misc.print_saved(Path.cwd() / here)
+    assert capsys.readouterr().out.strip() == f"{opencommand} {here}"
+
+
+def test_short_time_flag_always_means_timedays() -> None:
+    """-t must mean -timedays on every command, and never something else.
+
+    A command that takes no -timestep left -t ambiguous with -timedays and -time, thus -t failed there.
+    argparse also reads "-timestep 30" as "-t imestep", thus such a command declares the name it
+    refuses.
+    """
+    import artistools.hesma_scripts
+
+    # every parser that a command gets is this class, thus the test builds the same one
+    parser = at.commands.SuggestingArgumentParser(prog="hesma")
+    artistools.hesma_scripts.addargs(parser)
+
+    assert parser.parse_args(["-t", "300"]).timedays == 300.0
+    assert parser.parse_args(["-timedays", "300"]).timedays == 300.0
+
+    # the command takes no timestep, thus it names the argument that it does take
+    for flag in ("-timestep", "-ts"):
+        with pytest.raises(SystemExit):
+            parser.parse_args([flag, "40"])
+
+
+def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixture[str]) -> None:
+    """A declared but unsupported argument must name the argument to give in its place."""
+    parser = at.commands.SuggestingArgumentParser(prog="demo")
+    at.misc.addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-timestep", "40"])
+
+    captured = capsys.readouterr().err
+    assert "error: -timestep is not an argument of this command" in captured
+    assert "help: Give -timedays instead" in captured
+
+    # a hidden name stays out of the help text
+    assert "-timestep" not in parser.format_help()
+
+
+@pytest.mark.parametrize("example", [command for command, _ in at.commands.get_examples()])
+def test_help_examples_run(example: str, tmp_path: Path) -> None:
+    """Every example of the help text must run, thus no example can name an argument that went away.
+
+    The examples give a path of ".", which this test replaces with the test model.
+    """
+    import artistools.__main__
+
+    argv = [str(modelpath) if word == "." else word for word in example.split()]
+    artistools.__main__.main(argsraw=[*argv, "-o", str(tmp_path), "--quiet"])
+
+
+def test_help_shows_the_examples() -> None:
+    """The help text must carry the examples and the way to read the help of one command."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    helptext = parser.format_help()
+
+    for command, description in at.commands.get_examples():
+        assert command in helptext, command
+        assert description in helptext, description
+
+    assert 'Run "artistools <command> --help"' in helptext
+
+    # the help of a command with examples shows them in its own epilog as well
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    spectrahelp = subactions[0].choices["plotspectra"].format_help()
+    assert "artistools plotspectra . -t 300" in spectrahelp
+
+
+def test_help_wraps_a_description_and_keeps_the_epilog_lines() -> None:
+    """A description wraps to the terminal, and the examples of the epilog keep their own lines.
+
+    RawDescriptionHelpFormatter would keep both, thus a long description ran past the width.
+    """
+    import artistools.__main__
+
+    parser = argparse.ArgumentParser(
+        prog="demo",
+        formatter_class=at.commands.CustomArgHelpFormatter,
+        description=" ".join(["averylongword"] * 12),
+        epilog="first line\n  second line kept as it is",
+    )
+    helptext = parser.format_help()
+
+    assert "first line\n  second line kept as it is" in helptext
+    # the description holds no line break of its own, thus the formatter breaks it
+    assert max(len(line) for line in helptext.splitlines()) < 200
+    assert helptext.count("averylongword") == 12
+
+    # ArgumentDefaultsHelpFormatter still applies: a real command gives the default of each argument.
+    # The top-level parser holds only -h and --version, thus the check reads one subcommand
+    subactions = [a for a in artistools.__main__.build_parser()._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert "(default:" in subactions[0].choices["plotestimators"].format_help()
+
+
+def test_command_group_help_points_at_one_command() -> None:
+    """A group lists its commands, thus it must also say how to read the help of one of them."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    groupparser = subactions[0].choices["inputmodel"]
+    helptext = groupparser.format_help()
+
+    assert "The inputmodel commands of artistools." in helptext
+    assert 'Run "artistools inputmodel <command> --help"' in helptext
+
+
+def test_command_note_reaches_the_help_and_not_the_listing() -> None:
+    """A note gives the help of one command what the listing of one line has no room for."""
+    import artistools.__main__
+
+    spec = at.commands.subcommandtree["plotnltepops"]
+    assert not isinstance(spec, dict)
+    assert spec.note
+
+    toplevel = artistools.__main__.build_parser().format_help()
+    assert spec.helptext in toplevel
+    # the listing shows one line for each of 36 commands, thus the note stays out of it
+    assert spec.note not in toplevel
+
+
+def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
+    """A renamed flag keeps its old spelling as a hidden alias, thus an old command line still runs.
+
+    The help shows one spelling for each concept, thus a reader meets no synonyms.
+    """
+    import artistools.gsinetwork.decayproducts
+    import artistools.lightcurve.plotlightcurve
+    import artistools.spectra.plotspectra
+
+    cases = {
+        artistools.spectra.plotspectra.addargs: (
+            ["-yvar", "packetcount", "-xunits", "nm", "-dist", "1"],
+            ("yvariable", "xunit", "distmpc"),
+            ("-yvar", "-xunits", "-x", "-dist_mpc", "-dist", "-fluxdistmpc"),
+        ),
+        artistools.lightcurve.plotlightcurve.addargs: (
+            ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
+            ("plotcmf", "timemin", "title"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title"),
+        ),
+        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("tmin",), ()),
+    }
+    for addargs, (argsraw, dests, hidden) in cases.items():
+        parser = argparse.ArgumentParser()
+        addargs(parser)
+        namespace = parser.parse_args(argsraw)
+        for dest in dests:
+            assert getattr(namespace, dest) not in {None, False}, (addargs.__module__, dest)
+
+        helptext = parser.format_help()
+        for spelling in hidden:
+            assert f"{spelling} " not in helptext, spelling
+            assert f"{spelling},\n" not in helptext, spelling
+
+
+def test_plotspectra_x_still_gives_the_unit() -> None:
+    """-x named the unit on plotspectra before -xunit, thus a script that holds it still runs.
+
+    -x names the axis variable on plotestimators, but each parser reads its own arguments.
+    """
+    import artistools.spectra.plotspectra
+
+    parser = argparse.ArgumentParser(prog="plotspectra")
+    artistools.spectra.plotspectra.addargs(parser)
+
+    # each spelling gives the canonical name of the unit, thus the plot code reads one name
+    assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
+    assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
+    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"
+
+
+def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.CaptureFixture[str]) -> None:
+    """The timesteps command gives the table that a user needs to select a -timestep value.
+
+    Before this command, the mapping from a timestep to its days appeared only inside the error message
+    for a wrong value.
+    """
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath)])
+    table = capsys.readouterr().out
+
+    lines = table.splitlines()
+    assert lines[0] == "TEST MODEL: 100 timesteps from 250.000 to 350.000 days"
+    assert lines[1].split() == ["timestep", "start_days", "mid_days", "end_days", "width_days"]
+    assert len(lines) == 103, "a header, a column line, 100 rows, and a closing hint"
+
+    firstrow = lines[2].split()
+    assert firstrow[0] == "0"
+    assert np.isclose(float(firstrow[1]), 250.0)
+
+    # the hint names the ways to select a time, and the keyword that names the final timestep
+    assert "-timestep" in lines[-1]
+    assert "-timedays" in lines[-1]
+    assert '"last" names timestep 99' in lines[-1]
+
+
+def test_help_strings_follow_one_style() -> None:
+    """Every help string starts with a capital letter, ends without a period, and writes e.g. in full.
+
+    31 of 336 strings ended with a period, 3 started with a lowercase letter, and "eg." stood beside
+    "e.g.". This holds every future string to the one style.
+    """
+    import artistools.__main__
+
+    def walk(parser: argparse.ArgumentParser) -> "t.Generator[tuple[str, argparse.Action]]":
+        for action in parser._actions:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                seen = set()
+                for name, subparser in action._name_parser_map.items():  # ruff:ignore[private-member-access]
+                    if id(subparser) in seen:
+                        continue  # an alias maps to the same parser
+                    seen.add(id(subparser))
+                    yield from ((f"{name} {label}", act) for label, act in walk(subparser))
+            elif action.help and action.help != argparse.SUPPRESS:
+                yield str(action.option_strings or [action.dest]), action
+
+    failures = []
+    for label, action in walk(artistools.__main__.build_parser()):
+        # argparse writes the -h and --version texts itself, thus they keep their own style
+        if action.dest == "help" or isinstance(action, argparse._VersionAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            continue
+        helptext = action.help
+        assert helptext is not None
+        # a menu of the choices starts with the name of its first choice, e.g. "uniform: write..."
+        startswithchoice = action.choices is not None and any(
+            helptext.startswith(f"{choice}:") for choice in action.choices
+        )
+        if helptext[0].islower() and not startswithchoice:
+            failures.append(f"{label}: starts lowercase: {helptext[:60]!r}")
+        if helptext.endswith(".") and not helptext.endswith(("e.g.", "etc.")):
+            failures.append(f"{label}: ends with a period: {helptext[-60:]!r}")
+        if "eg. " in helptext:
+            failures.append(f"{label}: write e.g. in full: {helptext[:60]!r}")
+
+    assert not failures, "\n".join(failures)
+
+
+def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each command names its file <command>[_series][_cell.....][_ts...][_days] with one field width.
+
+    The widths were 02d and 03d, the days carried zero to two decimals, and the prefix of a command
+    changed between its modes. A cell of 05d sorts up to the 3D grids, ts of 03d sorts past 100
+    timesteps, and days of .2f keep two sub-day timesteps apart.
+    """
+    monkeypatch.chdir(tmp_path)
+    import artistools.__main__
+
+    runs = [
+        (["plotspectra", str(modelpath), "-t", "300"], "plotspectra_299.81d-300.82d.pdf"),
+        (
+            ["plotestimators", "-modelpath", str(modelpath), "-p", "rho", "-ts", "40"],
+            "plotestimators_ts040_286.02d-286.98d.pdf",
+        ),
+        (["plotlightcurves", str(modelpath)], "plotlightcurves.pdf"),
+        (
+            ["plotnltepops", "-modelpath", str(modelpath), "-t", "300", "-mgi", "0"],
+            "plotnltepops_Fe_cell00000_ts054_300.32d.pdf",
+        ),
+        (["plotradfield", "-modelpath", str(modelpath), "-ts", "40", "-mgi", "0"], "plotradfield_cell00000_ts040.pdf"),
+        (["plottransitions", "-modelpath", str(modelpath), "-t", "300"], "plottransitions_cell00000_ts054_300.32d.pdf"),
+        (["plotmacroatom", "-modelpath", str(modelpath), "-ts", "40"], "plotmacroatom_cell00000_ts040-040.pdf"),
+    ]
+    for argsraw, expectedname in runs:
+        artistools.__main__.main(argsraw=argsraw)
+        assert (tmp_path / expectedname).is_file(), (argsraw[0], sorted(p.name for p in tmp_path.glob("*.pdf")))
+        assert expectedname.startswith(argsraw[0]), "the file must carry the name of its command"
+
+
+def test_help_groups_the_shared_arguments() -> None:
+    """The shared arguments sit in titled groups, thus the help of a command of 77 options has a shape."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    for command in ("plotspectra", "plotlightcurves", "plotestimators"):
+        helptext = subactions[0].choices[command].format_help()
+        for title in ("time selection:", "appearance:", "output:"):
+            assert f"\n{title}\n" in helptext, (command, title)
+
+
+def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
+    """--open opens the saved file with the default application, thus no copied command is needed."""
+    with mock.patch.object(subprocess, "run") as mockrun:
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["rho"]], timestep="40", open=True
+        )
+
+    opencalls = [call.args[0] for call in mockrun.call_args_list]
+    assert len(opencalls) == 1
+    assert opencalls[0][0] in {"open", "xdg-open"}
+    assert opencalls[0][1].endswith(".pdf")
+    assert Path(opencalls[0][1]).is_file(), "the opener must receive the file that was saved"
+
+
+def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixture[str]) -> None:
+    """-timedays names the timestep that covers a time, and -timestep gives the days of one timestep."""
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
+    assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
+
+    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
+    assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"
+
+
+def test_quiet_short_flag_and_slow_command_timing(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """-q means --quiet, and a command that runs past the threshold reports its wall time."""
+    import artistools.__main__
+
+    argsraw = ["plotestimators", "-modelpath", str(modelpath), "--listvariables", "-q"]
+
+    # a quick run says nothing about its time
+    artistools.__main__.main(argsraw=argsraw)
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out, "-q must mean --quiet, and the product must stay"
+    assert "seconds" not in captured.err
+
+    # past the threshold, the time goes to the standard error beside the progress bars
+    monkeypatch.setattr(artistools.__main__, "SLOW_COMMAND_SECONDS", 0.0)
+    artistools.__main__.main(argsraw=[arg for arg in argsraw if arg != "-q"])
+    captured = capsys.readouterr()
+    assert re.search(r"The command took \d+\.\d seconds", captured.err)
+
+    # the time reports the progress and not a fault, thus --quiet takes it away as well
+    artistools.__main__.main(argsraw=argsraw)
+    captured = capsys.readouterr()
+    assert "estimator variables" in captured.out, "--quiet keeps the product"
+    assert "seconds" not in captured.err
+
+
+def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) -> None:
+    """A flag that no command takes must name the closest flags of the command that was run.
+
+    The message was "unrecognized arguments: --listvaraibles" with no suggestion, and an ambiguous
+    short flag listed -t because argparse reads -timeday as -t with a joined value.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
+    message = capsys.readouterr().err
+    assert "unrecognized arguments: --listvaraibles" in message
+    assert "Did you mean --listvariables" in message
+
+    # the suggestion comes from the arguments of the subcommand, not from the top-level parser
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", ".", "-timeday", "300"])
+    message = capsys.readouterr().err
+    assert "Did you mean -timedays" in message
+
+    # a per-command console script gives the same help
+    scriptparser = at.commands.build_script_parser("plotartisspectrum")
+    assert scriptparser is not None
+    with pytest.raises(SystemExit):
+        scriptparser.parse_args([".", "--emissionabsorbtion"])
+    assert "Did you mean --emissionabsorption" in capsys.readouterr().err
+
+    # a suggestion never names a hidden alias
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", ".", "--plotcmfx"])
+    assert "-dist_mpc" not in capsys.readouterr().err
+
+
+def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[str]) -> None:
+    """An error states the fault, and a help line that follows says what to do next.
+
+    The two parts were one sentence, thus a long remedy hid the fault that it followed.
+    """
+    import artistools.__main__
+
+    at.misc.print_error("no time was given", "Give a time or a timestep, e.g. -timedays 250")
+    message = capsys.readouterr().err
+    assert message.splitlines() == ["error: no time was given", "help: Give a time or a timestep, e.g. -timedays 250"]
+
+    # an error of argparse takes the same shape, and it keeps the exit status that argparse gives
+    with pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
+    assert exitinfo.value.code == 2
+    lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith(("error: ", "help: "))]
+    assert lines == [
+        "error: unrecognized arguments: --listvaraibles",
+        "help: Did you mean --listvariables, --listvars, --listnuclides?",
+    ]
+
+
+def test_every_command_takes_quiet() -> None:
+    """run_command alone implements --quiet, thus every command must take it.
+
+    Six commands of 34 declared the flag, and the other 28 refused -q. No module reads args.quiet,
+    thus addcommandargs adds the flag and no module declares it.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    for subcommand, subparser in subactions[0].choices.items():
+        flagsofdest = {
+            action.dest: action.option_strings
+            for action in subparser._actions  # ruff:ignore[private-member-access]
+        }
+        if subparser.get_default("argparser") is None:
+            continue  # a group of subcommands holds no arguments of its own
+
+        assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
+
+
+def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str, argparse.ArgumentParser]]:
+    """Give the name and the parser of each subcommand, at every depth of the tree."""
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            for name, subparser in action.choices.items():
+                yield name, subparser
+                yield from get_every_subcommand(subparser)
+
+
+def test_an_output_template_takes_the_older_name_of_a_field() -> None:
+    """A template of an output name keeps the field names that the commands gave before.
+
+    -o "plot_{modelgridindex}.pdf" and -o "plot_{time_days}d.pdf" each stopped with an error, because
+    the commands renamed those fields to {cell} and {timedays}. A script holds the older names.
+    """
+    assert at.format_frame_path("p_{modelgridindex:03d}_ts{timestep:03d}.pdf", cell=7, timestep=22) == "p_007_ts022.pdf"
+    assert at.format_frame_path("p_{time_days:.0f}d.pdf", timedays=300.4) == "p_300d.pdf"
+
+    # the new name of each field works as well, and both names give one value
+    assert at.format_frame_path("p_{cell}_{timedays}.pdf", cell=7, timedays=300.4) == "p_7_300.4.pdf"
+
+    # the message names the fields of the command, and it leaves out the older names
+    with pytest.raises(ValueError, match=r"gives \{cell\}, \{timedays\}"):
+        at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
+
+
+def test_a_wavelength_range_takes_both_spellings() -> None:
+    """-xmin and -lambdamin name one argument on every command that reads a range of wavelengths.
+
+    ejectaopacity took -lambdamin alone, thus "-xmin 100" there gave "unrecognized arguments" and a
+    suggestion of -mgi, which names a cell. Four other commands take both spellings.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        flagsofdest: dict[str, list[str]] = {}
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if type(action).__name__ != "UnsupportedArgument":
+                flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
+
+        for flags in flagsofdest.values():
+            # a command that takes one of the two spellings takes the other one for the same value
+            if "-lambdamin" in flags:
+                assert "-xmin" in flags, f"{subcommand} takes -lambdamin without -xmin"
+                checked += 1
+            if "-lambdamax" in flags:
+                assert "-xmax" in flags, f"{subcommand} takes -lambdamax without -xmax"
+
+    assert checked >= 5, f"only {checked} commands take -lambdamin"
+
+
+def test_every_command_reads_the_same_cell_grammar() -> None:
+    """-modelgridindex takes the same text on every command, and it names the cell that it says.
+
+    plotnltepops read args.modelgridindex[0], and that text is a string, thus "-cell 12" gave the
+    first character and plotted the cell 1. Six commands gave the argument a type or an action of
+    their own, thus a range reached some and not others.
+    """
+    import artistools.__main__
+
+    # the text names one cell, a range of cells, or a list of them, whatever command reads it
+    assert at.get_single_modelgridindex("12") == 12
+    assert at.get_single_modelgridindex(None) is None
+    assert at.parse_range_list("3-7") == [3, 4, 5, 6, 7]
+    assert at.parse_range_list("4,5,6") == [4, 5, 6]
+
+    # a command that reads one cell says so, in place of taking a cell that the text does not name
+    with pytest.raises(ValueError, match=r"names 5 cells, and this command reads one"):
+        at.get_single_modelgridindex("3-7")
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if "-modelgridindex" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+                continue
+
+            assert action.type is None, f"{subcommand} gives -modelgridindex a type of its own"
+            assert action.nargs is None, f"{subcommand} gives -modelgridindex an nargs of its own"
+            assert action.dest == "modelgridindex", f"{subcommand} gives -modelgridindex another dest"
+            checked += 1
+
+    assert checked >= 8, f"only {checked} commands take -modelgridindex"
+
+
+def test_every_command_reads_the_same_timestep_grammar() -> None:
+    """-timestep takes the same text on every command, thus a user carries one grammar between them.
+
+    Six commands gave -timestep the type int, thus "-ts 40-45" and "-ts last" each stopped with
+    "invalid int value" there, and worked on the commands that read a range.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if "-timestep" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+                continue
+
+            # no command reads the text as an int, thus each one takes "last" and a range
+            assert action.type is None, f"{subcommand} gives -timestep a type of its own"
+            checked += 1
+
+    assert checked >= 10, f"only {checked} commands take -timestep"
+
+
+def test_a_joined_value_takes_the_longest_flag() -> None:
+    """-ts70 gives 70 to -ts, because the user names the longest flag that the token starts with.
+
+    argparse reads the first two characters of a single-dash token, thus -ts70 gave -t the value
+    "s70", and -ts kept no value. The command then plotted a time in days that the user never gave.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    for token, timestep, timedays in (
+        ("-ts70", "70", None),
+        ("-ts=70", "70", None),
+        ("-ts40-45", "40-45", None),
+        ("-timestep40", "40", None),
+        ("-t70", None, "70"),  # a flag of one letter, which argparse reads without help
+    ):
+        namespace = parser.parse_args(["plotspectra", token])
+        assert namespace.timestep == timestep, token
+        assert namespace.timedays == timedays, token
+
+    # an abbreviation of a longer flag stays whole, thus argparse still refuses -xun
+    with pytest.raises(SystemExit):
+        parser.parse_args(["plotspectra", "-xun", "nm"])
+
+    # a token after -- is a positional argument, thus no split applies to it
+    assert parser.parse_args(["plotspectra", "--", "-ts70"]).specpath == [Path("-ts70")]
+
+
+def test_a_flag_with_letters_after_it_names_the_flag_that_the_user_means(capsys: pytest.CaptureFixture[str]) -> None:
+    """-timesteps names -timestep, because a split would give "s" to -timestep and hide the number.
+
+    The command took "-timesteps 40" as the timestep "s" and the spectrum path "40".
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    for token, flag in (("-timesteps", "-timestep"), ("-modelpaths", "-modelpath"), ("-tslast", "-ts")):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["plotestimators", token, "40"])
+
+        assert f"Did you mean {flag}?" in capsys.readouterr().err, token
+
+
+def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
+    """-v shows the detail of each step, but it keeps an older meaning where it had one.
+
+    Four commands gave -v to -velocity or to -rhoscale, and a script holds such a command.
+    Thus -v keeps that meaning there, and --verbose is the only form of the new argument.
+    """
+    import artistools.__main__
+
+    olddestof = {
+        "plotradfield": "velocity",
+        "plotnltepops": "velocity",
+        "spencerfano": "velocity",
+        "makeartismodel1dslicefromcone": "rhoscale",
+    }
+    seen = set()
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        flagsofdest = {
+            action.dest: action.option_strings
+            for action in subparser._actions  # ruff:ignore[private-member-access]
+        }
+        olddest = olddestof.get(subcommand)
+        if olddest is not None and olddest in flagsofdest:
+            seen.add(subcommand)
+            assert "-v" in flagsofdest[olddest], f"{subcommand} must keep -v for -{olddest}"
+            assert flagsofdest.get("verbose", ["--verbose"]) == ["--verbose"], subcommand
+            continue
+
+        for dest, flags in flagsofdest.items():
+            assert "-v" not in flags or dest == "verbose", f"{subcommand} gives -v to {dest}"
+
+        if "verbose" in flagsofdest:
+            assert flagsofdest["verbose"] == ["--verbose", "-v"], subcommand
+
+    assert seen == set(olddestof), f"a command changed its name: {set(olddestof) - seen}"
+
+
+def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The command wrote a file that had the name of the folder and no extension, and a run with
+    --makegif stopped, because it built the path of each frame below a folder that did not exist.
+    """
+    outfolder = tmp_path / "frames"
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
+
+
+def test_timesteps_command_refuses_a_timestep_outside_the_model() -> None:
+    """A timestep that the model does not hold must name the range that it holds.
+
+    The command indexed the list of times with the given value, thus 999 gave an IndexError and -1
+    read the last row of the list and gave it the wrong label.
+    """
+    for timestep in ("999", "-1"):
+        with pytest.raises(ValueError, match=r"is not in this model\. It has 100 timesteps, 0 to 99"):
+            at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+
+    # the timesteps at each end of the model are in it
+    for timestep in ("0", "99", "last"):
+        at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+
+
+def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A -o path that has a file extension names the gif, and its folder then holds the frames.
+
+    A path such as movie.gif became a folder, thus the file that the user asked for was never written.
+    """
+    gifpath = tmp_path / "movie.gif"
+    at.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
+    )
+
+    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
+    assert list(gifpath.parent.glob("plotspherical_*.png")), "the frames go in the folder of the gif"
+
+    # a path with no file extension still names a folder that holds the gif and the frames
+    outfolder = tmp_path / "movie"
+    at.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
+    )
+    assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
+
+
+def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
+    """--open must open the merged pdf and not each plot that the merge takes in.
+
+    merge_pdf_files deletes those plots, thus an application that opened one would hold nothing.
+    """
+    template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
+    with mock.patch("subprocess.run") as mockrun:
+        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
+
+    opened = [call.args[0][1] for call in mockrun.call_args_list]
+    assert len(opened) == 1, f"one file must open, not {len(opened)}"
+    assert Path(opened[0]).is_file(), "the file that opens must be the merged pdf, which still exists"
+
+
+def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
+    """A range that holds data for one timestep alone makes one plot, and that plot is the product.
+
+    The run took each plot for a part of a merge, thus no plot opened. No merge came, because one
+    plot cannot merge, thus --open did nothing at all.
+    """
+    # the test model holds no radiation field data before timestep 10
+    template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
+    with mock.patch("subprocess.run") as mockrun:
+        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
+
+    opened = [call.args[0][1] for call in mockrun.call_args_list]
+    assert len(opened) == 1, f"the one plot must open, not {len(opened)} files"
+    assert Path(opened[0]).is_file()
+
+
+def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
+    """The table of the long flag names must hold what the commands declare.
+
+    addarg_collidingflags reads that table, thus a name that no line of it holds gives no message when
+    another command reads it as a joined value. Building the tree to collect the names would import
+    every command module, which the per-command console scripts do not do.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    def islongsingledash(flag: str) -> bool:
+        return flag.startswith("-") and not flag.startswith("--") and len(flag) > 2
+
+    names = {
+        flag
+        for subparser in subactions[0].choices.values()
+        for action in subparser._actions  # ruff:ignore[private-member-access]
+        for flag in action.option_strings
+        if islongsingledash(flag) and not isinstance(action, at.misc.UnsupportedArgument)
+    }
+    names |= {
+        flag
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        for flag in action.option_strings
+        if islongsingledash(flag)
+    }
+
+    missing = names - at.commands.SINGLEDASHLONGFLAGS
+    assert not missing, f"add these names to SINGLEDASHLONGFLAGS: {sorted(missing)}"
+
+
+def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixture[str]) -> None:
+    """Argparse joins a value to a flag of one letter, thus a long name of another command misparses.
+
+    "plotdensity -obsspec 100" read as "-o bsspec" and wrote the plot to a file named bsspec, and
+    "plotspectra -tmin 100" read as "-t min" and left 100 for a positional argument.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotdensity", "-obsspec", "100"])
+    assert "-obsspec is not an argument of this command" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-tmin", "100"])
+    message = capsys.readouterr().err
+    assert "-tmin is not an argument of this command" in message
+    assert "-timemin" in message, "the help line must name the argument that this command takes"
+
+    # a joined value of a flag of one letter still works, thus -t300 means -timedays 300
+    artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
+    assert "300 days falls in timestep 54" in capsys.readouterr().out
+
+
+def test_every_output_argument_records_what_the_command_writes() -> None:
+    """addarg_output records a kind, thus the dispatcher keeps the promise of -o for every command.
+
+    Two helpers held two contracts: one promised that a path with no file extension names a folder,
+    which the command creates, and the other promised nothing. 17 modules never applied either rule,
+    and "inputmodel to_tardis -o newfolder" stopped with FileNotFoundError.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    modulebycommand: dict[str, str] = {}
+
+    def walktree(tree: dict[str, t.Any]) -> None:
+        for name, node in tree.items():
+            if isinstance(node, at.commands.CommandSpec):
+                modulebycommand[name] = node.module
+            else:
+                walktree(node)
+
+    walktree(at.commands.subcommandtree)
+
+    withoutput = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if "outputfile" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
+            continue
+
+        withoutput += 1
+        kind = subparser.get_default("outputkind")
+        assert kind in {"file", "folder"}, f"{subcommand} must record what it writes"
+
+        # a command that writes one file names that file, either from the tree or in its own main
+        # an alias of a command names the same module, thus the name of the command covers it
+        if kind == "file" and subparser.get_default("outputdefaultname") is None and subcommand in modulebycommand:
+            modulename = modulebycommand[subcommand]
+            module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
+            text = module.read_text(encoding="utf-8")
+            assert "resolve_outputfile" in text or "resolve_frameset_paths" in text, (
+                f"{subcommand} writes one file, thus it must name that file"
+            )
+
+    assert withoutput > 20, "the tree must hold many commands that write output"
+
+
+def test_the_command_listing_gives_one_line_to_each_command() -> None:
+    """The listing of the commands must take one line for each of them.
+
+    The name of a command with every alias took 36 columns and left 38 for the text, thus almost every
+    description wrapped over two or three lines and the listing ran to 88 lines.
+    """
+    import artistools.__main__
+
+    helptext = artistools.__main__.build_parser().format_help()
+    listing = helptext.partition("positional arguments:")[2].partition("\noptions:")[0]
+
+    # a line of the listing holds a command, or it is the heading of a group, or it is empty
+    for line in listing.splitlines():
+        if not line.strip() or not line.startswith("    "):
+            continue
+        assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
+
+
+def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:
+    """A usage line that names 77 flags over 61 lines tells a reader nothing.
+
+    A command of more flags than MAXUSAGEFLAGS names them "[options]", and the help text below the
+    usage names each one. A command of few flags keeps them in the usage line.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    longcommand = subactions[0].choices["plotspectra"].format_usage()
+    assert "[options]" in longcommand
+    assert longcommand.count("\n") == 1, f"the usage of a long command takes one line: {longcommand!r}"
+
+    shortcommand = subactions[0].choices["timesteps"].format_usage()
+    assert "[options]" not in shortcommand, "a command of few flags names them"
+    assert "-modelpath" in shortcommand
+
+    # a default that says nothing stays out of the help text
+    estimatorshelp = subactions[0].choices["plotestimators"].format_help()
+    assert "(default: None)" not in estimatorshelp
+    assert "(default:" in estimatorshelp, "a default that carries a value still shows"
+
+
+def test_a_command_that_writes_one_file_names_it_without_o(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A command that names its output file must write that file when -o names nothing.
+
+    resolve_output_argument passed by a run that gave no -o, thus plotdensity gave None to savefig and
+    stopped, and the uniform opacity file met Path(None).
+    """
+    import artistools.__main__
+
+    monkeypatch.chdir(tmp_path)
+    artistools.__main__.main(argsraw=["plotdensity", str(modelpath)])
+    assert (tmp_path / "densityprofile.pdf").is_file(), f"no plot in {list(tmp_path.iterdir())}"
+
+    artistools.__main__.main(argsraw=["inputmodel", "opacityfile", "uniform", "-modelpath", str(modelpath)])
+    assert (tmp_path / "opacity.txt").is_file(), f"no opacity file in {list(tmp_path.iterdir())}"
+
+
+def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A run that merges its plots must take the name that -o gives the merged pdf.
+
+    Only a gif could take such a name. A merge took the -o path for the name of one frame, thus
+    "plotradfield -timestep 40-41 -o merged.pdf" stopped before it drew anything.
+    """
+    merged = tmp_path / "merged.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
+
+    assert merged.is_file(), f"the merged pdf must keep its name, but {list(tmp_path.iterdir())}"
+    assert not list(tmp_path.glob("plotradfield_*.pdf")), "the merge takes the frames away"
+
+    # a -o path that names a folder still gives the merged pdf the name of its frames
+    outfolder = tmp_path / "rf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
+    assert list(outfolder.glob("plotradfield_*-plotradfield_*.pdf")), f"no merged pdf in {list(outfolder.iterdir())}"
+
+
+def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) -> None:
+    """A run that holds data for one frame must still write the product that -o named.
+
+    combine_frames took that frame for the product and left the named path empty, thus --open opened
+    the frame. A product that carries the name of a frame also went, because the merge removes its
+    inputs.
+    """
+    # the test model holds no radiation field data before timestep 10, thus one frame comes of the two
+    merged = tmp_path / "merged.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
+    assert merged.is_file(), f"the product must keep its name, but {list(tmp_path.iterdir())}"
+
+    # the name of the product can be the name that a frame would take
+    likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
+    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
+    assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
+
+
+def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFixture[str]) -> None:
+    """import_optional names the command that installs a package, thus a traceback adds nothing.
+
+    The handler of the dispatcher took an AssertionError, a FileNotFoundError, and a ValueError, thus
+    a command that needs pypdf or imageio printed a traceback above that message.
+    """
+    import artistools.__main__
+
+    def raise_missing(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
+        at.import_optional("nosuchpackage")
+
+    with mock.patch.object(at.showtimesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath)])
+
+    assert exitinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "This command needs nosuchpackage" in message
+    assert "Traceback" not in message

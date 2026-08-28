@@ -1,5 +1,4 @@
 import math
-import typing as t
 from pathlib import Path
 from unittest import mock
 
@@ -15,7 +14,7 @@ outputpath = at.get_path("testoutput")
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_decayproducts(mockplot: t.Any) -> None:
+def test_decayproducts(mockplot: mock.MagicMock) -> None:
     trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
     at.gsinetwork.decayproducts.main(
         argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=outputpath

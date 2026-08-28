@@ -13,6 +13,11 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.misc import addarg_action
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_unsupported
+from artistools.misc import require_action
+from artistools.plottools import save_or_show
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
@@ -139,16 +144,6 @@ def make_hesma_peakmag_dm15_dm40(
     outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
 
 
-def save_or_show(fig: mplfig.Figure, outputfile: Path | str | None) -> None:
-    """Save the figure when an output file was given, otherwise show it."""
-    if outputfile:
-        fig.savefig(outputfile)
-        at.print_saved(outputfile)
-    else:
-        plt.show()
-    plt.close(fig)
-
-
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str | None = None) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
     fig, axis = plt.subplots()
@@ -167,12 +162,8 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument(
-        "action",
-        # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores
-        # argsraw as soon as any keyword argument is given
-        nargs="?",
-        default=None,
+    addarg_action(
+        parser,
         choices=[
             "vspecfiles",
             "bollightcurve",
@@ -181,23 +172,26 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "plotspectrum",
             "plotresspec",
         ],
-        help=(
+        helptext=(
             "vspecfiles: write virtual packet spectra in HESMA format."
             " bollightcurve: write the angle-averaged bolometric light curve."
             " widthluminosity: build a peak magnitude/dm15 file from viewing angle data."
             " plotwidthluminosity: plot peak magnitude against dm15 for a folder of those files."
-            " plotspectrum/plotresspec: plot a HESMA reference spectrum file."
+            " plotspectrum/plotresspec: plot a HESMA reference spectrum file"
         ),
     )
-    at.add_modelpath_arg(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
-    at.add_outputpath_arg(parser, astype=Path, helptext="Folder for the written HESMA files")
-    # not -outputfile/-o, because add_outputpath_arg above already claims -o for the folder
+    at.addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
+    at.addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
+    # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
-    at.add_timeminmax_args(parser)
+    at.addarg_timeminmax(parser)
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )
-    parser.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to plot (plotspectrum)")
+    # this command declares no -timestep, thus the -t alias would read that word as a value
+    addarg_timedays(parser, kind="float", helptext="Time in days to plot (plotspectrum)")
+    # this command selects a time in days alone, thus -timestep must give a message and not "-t imestep"
+    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
     parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
     parser.add_argument("-modelname", help="Model name in the viewing angle filenames (widthluminosity)")
     parser.add_argument(
@@ -219,11 +213,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Convert ARTIS output to the file formats used by the HESMA model archive."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.action is None:
-        print("ERROR: no action given. Run with --help to see the available actions.")
-        raise SystemExit(1)
+    require_action(args)
 
-    outputpath = Path(args.outputpath)
+    outputpath = Path(args.outputfile)
 
     if args.action == "vspecfiles":
         make_hesma_vspecfiles(require(args.modelpath, "-modelpath", args.action), outputpath)
@@ -264,4 +256,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

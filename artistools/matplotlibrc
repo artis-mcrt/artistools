@@ -1,4 +1,5 @@
 pdf.fonttype: 42
+font.size:          11
 font.family: serif
 font.sans-serif: Tahoma, DejaVu Sans, Bitstream Vera Sans, Computer Modern Sans Serif, Lucida Grande, Verdana, Geneva, Lucid, Arial, Helvetica, Avant Garde, sans-serif
 font.serif: Times New Roman, Times, Palatino, DejaVu Serif, Bitstream Vera Serif, Computer Modern Roman, New Century Schoolbook, Century Schoolbook L, Utopia, ITC Bookman, Bookman, Nimbus Roman No9 L, Times New Roman, Charter, serif
@@ -14,13 +15,20 @@ xtick.direction: in
 xtick.top:         True
 xtick.major.size:  6.0     # major tick size in points
 xtick.minor.size:  3.0     # minor tick size in points
+xtick.minor.visible: True
+xtick.labelsize:   11
 
 ytick.direction: in
 ytick.right:         True
 ytick.major.size:  6.0     # major tick size in points
 ytick.minor.size:  3.0     # minor tick size in points
+ytick.minor.visible: True
+ytick.labelsize:   11
 
 axes.linewidth:     1.0     # edge linewidth
+axes.titlesize:     12      # font size of the axes title
+figure.titlesize:   12      # font size of the figure title (Figure.suptitle)
+axes.labelsize:     12      # font size of the x and y labels
 
 
 
@@ -557,6 +565,7 @@ axes.prop_cycle: cycler('color', ['1f77b4', 'ff7f0e', '2ca02c', 'd62728', '9467b
 ## ***************************************************************************
 #legend.loc:           best
 legend.frameon:       False     # if True, draw the legend on a background patch
+legend.fontsize:      10
 #legend.framealpha:    0.8      # legend patch transparency
 #legend.facecolor:     inherit  # inherit from axes.facecolor; or color spec
 #legend.edgecolor:     0.8      # background patch boundary color

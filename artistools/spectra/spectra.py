@@ -5,10 +5,12 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.typing as mplt
 import numpy as np
@@ -39,7 +41,9 @@ from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import polars_source
+from artistools.misc import print_detail
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 
@@ -68,6 +72,7 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
     """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
+    from artistools.constants import c_ang_per_s
     from artistools.constants import h_erg_s
     from artistools.constants import h_ev_s
     from artistools.constants import megaparsec_to_cm
@@ -147,7 +152,8 @@ def get_dfspectrum_x_y_with_units(
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
             # [xunit/s/cm^2]
-            erg_to_angstrom = 1.986454e-8
+            # the wavelength of a one erg photon, i.e. Planck's constant times the speed of light
+            erg_to_angstrom = h_erg_s * c_ang_per_s
             xunit_per_erg = convert_angstroms_to_unit(erg_to_angstrom, xunit.lower())
             dfspectrum = dfspectrum.with_columns(
                 y=(pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * xunit_per_erg) * pl.col("x")
@@ -299,28 +305,50 @@ def get_lambda_bin_edges(
     return lambda_bin_edges
 
 
+# the spellings that a user can give for each unit of the horizontal axis of a spectrum. One table
+# gives the conversion, the message that names the units, and the suggestion for a name that is close.
+XUNITALIASES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
+    "angstroms": ("angstrom", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m"),
+    "nm": ("nanometer", "nanometers"),
+    "micron": ("microns", "mu", "\u03bc", "\u03bcm"),
+    "hz": (),
+    "erg": ("ergs",),
+    "ev": ("electronvolt",),
+    "kev": ("kiloelectronvolt",),
+    "mev": ("megaelectronvolt",),
+})
+
+
+def get_xunit_names() -> list[str]:
+    """Return every spelling of a unit of the horizontal axis that a user can give."""
+    return [name for canonical, aliases in XUNITALIASES.items() for name in (canonical, *aliases)]
+
+
+def parse_xunit_argument(value: str) -> str:
+    """Return the canonical unit of the horizontal axis, or refuse a name that no unit takes.
+
+    argparse calls this while it reads the command line, thus a name with a mistake stops the
+    command before it reads a file. convert_xunit_aliases_to_canonical guards the keyword of the API.
+    """
+    from artistools.misc import suggest_names
+
+    try:
+        return convert_xunit_aliases_to_canonical(value)
+    except ValueError:
+        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITALIASES)}"
+        msg = f"'{value}' is not a unit of the horizontal axis. {suggestion}"
+        raise argparse.ArgumentTypeError(msg) from None
+
+
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     """Return the canonical spelling of a spectrum x-axis unit name."""
-    match xunit.lower():
-        case "erg" | "ergs":
-            return "erg"
-        case "ev" | "electronvolt":
-            return "ev"
-        case "kev" | "kiloelectronvolt":
-            return "kev"
-        case "mev" | "megaelectronvolt":
-            return "mev"
-        case "angstroms" | "angstrom" | "a" | "ang" | "å" | "ångström":
-            return "angstroms"
-        case "nm" | "nanometer" | "nanometers":
-            return "nm"
-        case "micron" | "microns" | "mu" | "μ" | "μm":
-            return "micron"
-        case "hz":
-            return "hz"
-        case _:
-            msg = f"Unknown xunit {xunit}"
-            raise ValueError(msg)
+    lowered = xunit.lower()
+    for canonical, aliases in XUNITALIASES.items():
+        if lowered == canonical or lowered in aliases:
+            return canonical
+
+    msg = f"Unknown xunit {xunit}"
+    raise ValueError(msg)
 
 
 @t.overload
@@ -689,17 +717,23 @@ def get_from_packets(
     return dirbin_spectra
 
 
-@lru_cache(maxsize=16)
+# maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
+# scan would hold only the query plan, thus each collect by a caller would parse the file again.
+@lru_cache(maxsize=2)
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set."""
+    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+
+    Callers must not mutate the returned frame, which is shared between calls.
+    """
     specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
 
     return (
         pl
-        .scan_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        .read_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
+        .lazy()
     )
 
 
@@ -1066,7 +1100,7 @@ def get_flux_contributions(
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
     if not Path(modelpath, "compositiondata.txt").is_file():
-        print("WARNING: compositiondata.txt not found. Using output*.txt instead")
+        print_warning("compositiondata.txt not found. Using output*.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
@@ -1176,8 +1210,6 @@ def get_flux_contributions(
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
             for selectedcolumn, emissiontypeclass in ionserieslist:
-                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
-                #     continue
                 if getemission:
                     array_fnu_emission = weighted_average_spectra([
                         (
@@ -1494,7 +1526,7 @@ def get_flux_contributions_from_packets(
     allgroupnames = list(group_energy_sum)
 
     if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
-        print(f"WARNING: (packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
+        print_warning(f"(packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     def sortkey(groupname: str) -> tuple[int, float | int]:
         grouptotal = group_energy_sum[groupname]
@@ -1535,55 +1567,37 @@ def get_flux_contributions_from_packets(
     contribution_list = []
     # These are the bin centres of each group spectrum. An empty selection thus also gives the correct axis.
     array_lambda = get_binned_lambda_frame(lambda_bin_edges).select("lambda_angstroms").collect().to_series().to_numpy()
-    group_em_specs = dict(
-        zip(
-            emissiongroups.keys(),
-            pl.collect_all([
-                get_from_packets(
-                    modelpath=modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    fluxfilterfunc=filterfunc,
-                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    directionbins=[directionbin],
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    gamma=gamma,
-                    packets_are_time_filtered=True,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
-                for dfpkts in emissiongroups.values()
-            ]),
-            strict=True,
+
+    def group_spectra(groups: dict[str, pl.DataFrame], dirbin: int, **extraargs: t.Any) -> dict[str, pl.DataFrame]:
+        """Return the binned spectrum of each group, collecting every group in one pass."""
+        return dict(
+            zip(
+                groups.keys(),
+                pl.collect_all([
+                    get_from_packets(
+                        modelpath=modelpath,
+                        timelowdays=timelowdays,
+                        timehighdays=timehighdays,
+                        lambda_bin_edges=lambda_bin_edges,
+                        use_time=use_time,
+                        fluxfilterfunc=filterfunc,
+                        nprocs_read_dfpackets=(nprocs_read, dfpkts),
+                        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+                        directionbins=[dirbin],
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
+                        gamma=gamma,
+                        packets_are_time_filtered=True,
+                        **extraargs,
+                    )[dirbin].select("lambda_angstroms", "f_lambda")
+                    for dfpkts in groups.values()
+                ]),
+                strict=True,
+            )
         )
-    )
-    group_abs_specs = dict(
-        zip(
-            absorptiongroups.keys(),
-            pl.collect_all([
-                get_from_packets(
-                    modelpath=modelpath,
-                    timelowdays=timelowdays,
-                    timehighdays=timehighdays,
-                    lambda_bin_edges=lambda_bin_edges,
-                    use_time=use_time,
-                    nu_column="absorption_freq",
-                    fluxfilterfunc=filterfunc,
-                    nprocs_read_dfpackets=(nprocs_read, dfpkts),
-                    directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
-                    directionbins=[directionbin],
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                    gamma=gamma,
-                    packets_are_time_filtered=True,
-                )[directionbin].select("lambda_angstroms", "f_lambda")
-                for dfpkts in absorptiongroups.values()
-            ]),
-            strict=True,
-        )
-    )
+
+    group_em_specs = group_spectra(emissiongroups, directionbin)
+    group_abs_specs = group_spectra(absorptiongroups, directionbin, nu_column="absorption_freq")
     for groupname in allgroupnames:
         array_flambda_emission = (
             group_em_specs[groupname]["f_lambda"].to_numpy()
@@ -1633,7 +1647,7 @@ def sort_and_reduce_flux_contribution_list(
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
     if fixedionlist:
         if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
-            print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
+            print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
 
         # sort in manual order
         def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
@@ -1653,16 +1667,15 @@ def sort_and_reduce_flux_contribution_list(
     import matplotlib.pyplot as plt
 
     from artistools.plottools import glasbey_category20_nogreys
+    from artistools.plottools import remove_greys
 
     tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    rgb_candidates: list[tuple[float, float, float]] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    rgb_candidates: list[mplt.ColorType] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    # the first ten glasbey colours repeat the tab10 colours that tab20 already supplies, and skipping
+    # them keeps the order of every series that a published figure already used
     rgb_candidates.extend(glasbey_category20_nogreys[10:])
 
-    color_list: list[mplt.ColorType] = [
-        rgb
-        for rgb in rgb_candidates
-        if rgb[0] != rgb[1] or rgb[1] != rgb[2] or rgb[0] != rgb[2]  # remove greys
-    ]
+    color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
@@ -1740,7 +1753,8 @@ def print_integrated_flux(
     assert isinstance(x_min, int | float)
     assert isinstance(x_max, int | float)
 
-    print(f" integrated flux (x={x_min:.1f} to x={x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
+    # x is the name of the axis in the code, and the line below it names the unit of that axis
+    print_detail(f"integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
     assert isinstance(integrated_flux, float)
     return integrated_flux
 

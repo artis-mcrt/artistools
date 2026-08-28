@@ -7,9 +7,7 @@ from artistools.estimators import exportmassfractions as exportmassfractions
 from artistools.estimators import plotestimators as plotestimators
 from artistools.estimators.estimators import add_derived_estimator_columns as add_derived_estimator_columns
 from artistools.estimators.estimators import get_averageexcitation as get_averageexcitation
-from artistools.estimators.estimators import (
-    get_estimators_rankbatch_parquetfile as get_estimators_rankbatch_parquetfile,
-)
+from artistools.estimators.estimators import get_units as get_units
 from artistools.estimators.estimators import get_units_string as get_units_string
 from artistools.estimators.estimators import get_variablelongunits as get_variablelongunits
 from artistools.estimators.estimators import get_varname_formatted as get_varname_formatted

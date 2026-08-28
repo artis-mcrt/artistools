@@ -100,21 +100,6 @@ else
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodel1dslicefromcone
-else
-    # When called by the Zsh completion system, this will end with
-    # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
-    # the script was "eval"-ed so use "compdef" to register it with the
-    # completion system
-    autoload is-at-least
-    if [[ $zsh_eval_context == *func ]]; then
-        _python_argcomplete "$@"
-    else
-        compdef _python_argcomplete makeartismodel1dslicefromcone
-    fi
-fi
-
-if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodel
 else
     # When called by the Zsh completion system, this will end with
@@ -126,6 +111,21 @@ else
         _python_argcomplete "$@"
     else
         compdef _python_argcomplete makeartismodel
+    fi
+fi
+
+if [[ -z "${ZSH_VERSION-}" ]]; then
+    complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodel1dslicefromcone
+else
+    # When called by the Zsh completion system, this will end with
+    # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
+    # the script was "eval"-ed so use "compdef" to register it with the
+    # completion system
+    autoload is-at-least
+    if [[ $zsh_eval_context == *func ]]; then
+        _python_argcomplete "$@"
+    else
+        compdef _python_argcomplete makeartismodel1dslicefromcone
     fi
 fi
 
@@ -156,6 +156,21 @@ else
         _python_argcomplete "$@"
     else
         compdef _python_argcomplete plotartisestimators
+    fi
+fi
+
+if [[ -z "${ZSH_VERSION-}" ]]; then
+    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisinitialcomposition
+else
+    # When called by the Zsh completion system, this will end with
+    # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
+    # the script was "eval"-ed so use "compdef" to register it with the
+    # completion system
+    autoload is-at-least
+    if [[ $zsh_eval_context == *func ]]; then
+        _python_argcomplete "$@"
+    else
+        compdef _python_argcomplete plotartisinitialcomposition
     fi
 fi
 
@@ -276,21 +291,6 @@ else
         _python_argcomplete "$@"
     else
         compdef _python_argcomplete plotartistransitions
-    fi
-fi
-
-if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisinitialcomposition
-else
-    # When called by the Zsh completion system, this will end with
-    # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
-    # the script was "eval"-ed so use "compdef" to register it with the
-    # completion system
-    autoload is-at-least
-    if [[ $zsh_eval_context == *func ]]; then
-        _python_argcomplete "$@"
-    else
-        compdef _python_argcomplete plotartisinitialcomposition
     fi
 fi
 

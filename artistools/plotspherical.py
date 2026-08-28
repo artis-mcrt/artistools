@@ -11,14 +11,20 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.misc import add_figscale_args
-from artistools.misc import add_maxpacketfiles_arg
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_dpi
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_notitle
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 
@@ -46,7 +52,7 @@ def plot_spherical(
 
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
-        print("WARNING! The observer never gets light from the entire ejecta. Plotting all packets anyway")
+        print_warning("The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
             dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().to_numpy()[0]
         )
@@ -55,34 +61,26 @@ def plot_spherical(
             print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
             timemindays = tmin_d_valid
         elif timemindays < tmin_d_valid:
-            print(
-                f"WARNING! timemindays {timemindays} is too early for light to travel from the entire ejecta "
-                f" ({tmin_d_valid:.2f} d)"
+            print_warning(
+                f"timemindays {timemindays} is too early for light to travel from the entire ejecta "
+                f"({tmin_d_valid:.2f} d)"
             )
 
         if timemaxdays is None:
             print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
             timemaxdays = tmax_d_valid
         elif timemaxdays > tmax_d_valid:
-            print(
-                f"WARNING! timemaxdays {timemaxdays} is too late to receive light from the entire ejecta "
-                f" ({tmax_d_valid:.2f} d)"
+            print_warning(
+                f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
             )
         dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timemindays, timemaxdays))
 
     assert timemindays is not None
     assert timemaxdays is not None
 
-    # phi definition (with syn_dir=[0 0 1])
-    # x=math.cos(-phi)
-    # y=math.sin(-phi)
-
     dfpackets = at.packets.bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
-
-    # for figuring out where the axes are on the plot, make a cut
-    # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
     if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
@@ -187,7 +185,7 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
-    xwidth = figscale * 5.0
+    xwidth = figscale * at.plottools.FIGWIDTH_INCHES
     fig, axes = plt.subplots(
         len(plotvars),
         1,
@@ -202,7 +200,6 @@ def plot_spherical(
 
     assert isinstance(axes, np.ndarray)
 
-    # for ax, axcbar, plotvar in zip(axes[::2], axes[1::2], plotvars):
     for ax, plotvar in zip(axes, plotvars, strict=False):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
@@ -236,22 +233,12 @@ def plot_spherical(
         cbar.outline.set_linewidth(0)
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
-        # cbar.ax.set_title(colorbartitle)
         cbar.ax.set_xlabel(colorbartitle)
         cbar.ax.xaxis.set_label_position("top")
         if r"{}" in colorbartitle:
             cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle))
 
-        # ax.set_xlabel("Azimuthal angle")
-        # ax.set_ylabel("Polar angle")
-        # ax.set_xlabel(r"$\phi$")
-        # ax.set_ylabel(r"$\theta$")
-        # ax.set_xticklabels([])
-        # ax.set_yticklabels([])
-        # ax.grid(visible=True, color="black")
         ax.axis("off")
-        # xticks_deg = np.arange(0, 360, 90)[1:]
-        # ax.set_xticks(ticks=xticks_deg / 180 * np.pi - np.pi, labels=[rf"${deg:.0f}\degree$" for deg in xticks_deg])
 
         # yticks_deg = np.linspace(0, 180, 7)
         # ax.set_yticks(
@@ -263,13 +250,13 @@ def plot_spherical(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path())
-    parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
+    addarg_modelpath(parser, default=Path())
+    parser.add_argument("-timestep", "-ts", default=None, help="Timestep number to plot, e.g. 40, last, or 40-45")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
-    add_maxpacketfiles_arg(parser)
+    addarg_maxpacketfiles(parser)
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
@@ -287,15 +274,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
-    add_figscale_args(parser)
+    addarg_figscale(parser)
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
+    addarg_show(parser)
+    addarg_verbose(parser)
+    addarg_dpi(parser, default=300)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
-    add_outputfile_arg(parser, astype=str, default="", helptext="Filename for plot output file")
+    addarg_output(parser, kind="file", helptext="Filename for plot output file")
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 
@@ -311,7 +301,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     at.plottools.set_mpl_style()
 
     dfestimators = (
-        at.estimators.scan_estimators(modelpath=args.modelpath)
+        at.estimators.scan_estimators(modelpath=args.modelpath, verbose=args.verbose)
         if any(var in {"temperature", "temperature_sigma"} or var.startswith("nnelement_") for var in args.plotvars)
         else None
     )
@@ -332,7 +322,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outformat = "png"
     elif args.timestep is not None:
         time_ranges = [
-            (tstarts[int(ts)], tends[int(ts)], f"timestep {ts}") for ts in at.parse_range_list(args.timestep)
+            (tstarts[ts], tends[ts], f"timestep {ts}")
+            for ts in at.parse_range_list(args.timestep, dictvars={"last": len(tstarts) - 1})
         ]
         outformat = args.format or "pdf"
     else:
@@ -340,6 +331,17 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outformat = args.format or "pdf"
 
     print_theta_phi_definitions()
+
+    # one product comes out of the frames of a gif, thus the frames land beside it
+    frameset = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(time_ranges),
+        framename="plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}",
+        productname="sphericalplot.gif" if args.makegif else None,
+        combines=args.makegif,
+        gifduration=1000 / 1.5,
+    )
+
     outputfilenames = []
     for tstart, tend, label in time_ranges:
         if tend is not None:
@@ -368,25 +370,18 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
             )
 
-        defaultfilename = "plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"  # ruff:ignore[missing-f-string-syntax]
-        outfilename = str(
-            args.outputfile
-            if (args.outputfile and not Path(args.outputfile).is_dir() and not args.makegif)
-            else Path(args.outputfile) / defaultfilename
-        ).format(timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat)
+        outfilename = at.format_frame_path(
+            frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
+        )
 
-        save_figure(fig, outfilename, format=outformat, dpi=300, pad_inches=0.0)
+        save_figure(
+            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines
+        )
 
         outputfilenames.append(outfilename)
 
-    if args.makegif:
-        gifname = (
-            Path(args.outputfile) / "sphericalplot.gif"
-            if Path(args.outputfile).is_dir()
-            else args.outputfile.format(outformat=outformat)
-        )
-        at.write_gif(gifname, outputfilenames, duration=(1000 * 1 / 1.5))
+    frameset.finish(outputfilenames, args)
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotspherical")

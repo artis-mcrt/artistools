@@ -18,10 +18,12 @@ from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputpath_arg
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 from artistools.plottools import save_figure
 
 
@@ -115,7 +117,6 @@ def get_artis_abund_sequences(
 ) -> dict[int, pl.DataFrame]:
     """Return the ARTIS abundance of each species against time, for each model cell in mgiplotlist."""
     arr_abund_artis: dict[int, pl.DataFrame] = {}
-    MH = 1.67352e-24  # g
 
     with contextlib.suppress(FileNotFoundError):
         estimators_lazy = at.estimators.scan_estimators(
@@ -149,7 +150,7 @@ def get_artis_abund_sequences(
             for striso in allisotopes_in_df
         ).with_columns([
             (
-                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH / pl.col("rho"))
+                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho"))
                 + pl.col(f"offset_{striso}")
             ).alias(f"X_{striso}")
             for striso in allisotopes_in_df
@@ -308,7 +309,6 @@ def plot_qdot(
 
     axis.legend(loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
 
-    # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
@@ -375,7 +375,6 @@ def plot_cell_abund_evolution(
     print(f"{'':7s}  gsi_abund artis_abund")
 
     for axis, strspecies in zip(axes, arr_species, strict=False):
-        # axis.set_yscale('log')
         axis.set_ylabel("Mass fraction")
 
         strnuc_latex = strnuc_to_latex(strspecies)
@@ -416,7 +415,7 @@ def plot_cell_abund_evolution(
         axis.set_ymargin(0.05)
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
-    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999, fontsize=10)
+    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999)
     save_figure(fig, pdfoutpath, format="pdf")
 
 
@@ -441,20 +440,14 @@ def get_particledata(
         )
         heatcols = ["hbeta", "halpha", "hspof"]
         dfheating = at.read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
-        # triple digit exponents like 1.735904-244 need to be converted to 1.735904e-244
-        # because of Fortran output
-        dfheating = dfheating.with_columns(
-            pl
-            .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-            .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-            .otherwise(cs.by_dtype(pl.String))
-            .cast(pl.Float32)
-        )
+        dfheating = dfheating.with_columns(fix_fortran_exponents(pl.Float64))
 
         nstep_timesec: dict[int, float] = dict(dfheating.select("#count", "time/s").iter_rows())
 
         particledata = particledata.with_columns(
             pl.Series(
+                # np.interp holds the end value outside the range. These curves are summed over the
+                # trajectories, thus a NaN here would make the whole population sum NaN.
                 [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
                 dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
             ).alias(col)
@@ -477,7 +470,11 @@ def get_particledata(
                         traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
                     )
                 )
-                assert math.isclose(traj_time_s, nstep_timesec[nts])
+                # nts is the exact network step, thus these two times come from the same step and
+                # agree to the precision of the file
+                at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
+                    particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0
+                )
                 for strnuc, Z, N in arr_strnuc_z_n:
                     if N is None:
                         # sum over all isotopes of this element
@@ -675,7 +672,7 @@ def plot_qdot_abund_modelcells(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(parser, default=Path(), helptext="Path for ARTIS files")
+    addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(
         "-mergerroot",
@@ -684,20 +681,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    add_outputpath_arg(parser)
+    addarg_output(parser, kind="folder", default=Path())
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 
-    parser.add_argument(
-        "-modelgridindex",
-        "-cell",
-        "-mgi",
-        type=int,
-        dest="mgilist",
-        default=[],
-        nargs="*",
-        help="Modelgridindex (zero-indexed) to plot or list such as 4,5,6",
-    )
+    # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
+    # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6
+    at.addarg_modelgridindex(parser, default=[], helptext="Model grid cell to plot, or a list such as 4,5,6")
 
     parser.add_argument(
         "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
@@ -736,7 +726,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=args.mgilist,
+        mgiplotlist=at.parse_range_list(args.modelgridindex) if args.modelgridindex else [],
         arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
@@ -744,4 +734,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

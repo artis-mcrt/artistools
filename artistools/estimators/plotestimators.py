@@ -16,23 +16,44 @@ from pathlib import Path
 from types import MappingProxyType
 
 import matplotlib.axes as mplax
-import matplotlib.pyplot as plt
+import matplotlib.colors as mc
 import numpy as np
 import polars as pl
-from matplotlib import ticker
 from polars import selectors as cs
 
 import artistools as at
+from artistools.commands import run_subcommand
+
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
 from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
-from artistools.misc import add_axis_limit_args
-from artistools.misc import add_figscale_args
-from artistools.misc import add_filter_args
-from artistools.misc import add_modelpath_arg
-from artistools.misc import add_outputfile_arg
-from artistools.misc import add_timedays_arg
-from artistools.misc import add_timeminmax_args
-from artistools.misc import add_timestep_arg
+from artistools.estimators.estimators import summarise_columns
+from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_dpi
+from artistools.misc import addarg_figscale
+from artistools.misc import addarg_filter
+from artistools.misc import addarg_modelgridindex
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_nolegend
+from artistools.misc import addarg_notitle
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_timestep
+from artistools.misc import addarg_verbose
+from artistools.misc import exit_with_error
+from artistools.misc import print_product
+from artistools.misc import print_warning
+from artistools.misc import suggest_names
+from artistools.plottools import make_frame_figure
+from artistools.plottools import prune_log_ticks
+from artistools.plottools import save_figure
+from artistools.plottools import set_axis_properties
+from artistools.plottools import set_legend
+from artistools.plottools import set_plot_title
 
 colors_tab10 = [
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
@@ -47,7 +68,7 @@ colors_tab10 = [
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
 ]
 
-# reserve colours for these elements. Immutable, because _get_unreserved_elemcolors() derives the rest of the
+# reserve colours for these elements. Immutable, because get_unreserved_elemcolors() derives the rest of the
 # palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
 elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = MappingProxyType({
     "Fe": colors_tab10[0],
@@ -88,23 +109,25 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     if elsymbol in elementcolors:
         return elementcolors[elsymbol]
 
-    palette = _get_unreserved_elemcolors()
+    palette = get_unreserved_elemcolors()
 
     return palette[atomic_number % len(palette)]
 
 
 @lru_cache(maxsize=1)
-def _get_unreserved_elemcolors() -> tuple[tuple[float, float, float, float], ...]:
-    """Return the colours available to elements with no reserved colour, in a stable order."""
+def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
+    """Return the colours available to elements with no reserved colour, in a stable order.
+
+    get_unused_colors compares by value, thus a rounded copy of a reserved colour is also removed. A
+    comparison of the tuples let the rounded glasbey copies of the tab10 colours through, which gave
+    nitrogen the blue of iron and oxygen the orange of nickel in one figure.
+    """
+    from artistools.plottools import get_unused_colors
     from artistools.plottools import glasbey_category20_nogreys
 
-    reserved = set(elementcolors.values())
+    palette = [*colors_tab10, *glasbey_category20_nogreys]
 
-    return tuple(
-        rgba
-        for rgba in (*colors_tab10, *((r, g, b, 1.0) for r, g, b in glasbey_category20_nogreys))
-        if rgba not in reserved
-    )
+    return tuple(get_unused_colors(palette, [mc.to_hex(rgba) for rgba in elementcolors.values()]))
 
 
 def get_ylabel(variable: str) -> str:
@@ -116,14 +139,23 @@ def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, f
     """Return the colour with its lightness scaled by amount, so related series can share a hue."""
     import colorsys
 
-    import matplotlib.colors as mc
-
     try:
         c = mc.cnames[color]
     except (SyntaxWarning, KeyError, TypeError):
         c = color
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
     return colorsys.hls_to_rgb(c[0], max(0.0, min(1.0, amount * c[1])), c[2])
+
+
+def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool) -> pl.DataFrame:
+    """Return the line with its first or its last point repeated at the given x value.
+
+    The point keeps the dtype of the column, thus the two frames stack.
+    """
+    end = dflinepoints.head(1) if atstart else dflinepoints.tail(1)
+    row = end.with_columns(xvalue_binned=pl.lit(xvalue, dtype=dflinepoints.schema["xvalue_binned"]))
+
+    return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
 
 
 def plot_data(
@@ -162,12 +194,18 @@ def plot_data(
     # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
     dflinepointsdf = dflinepoints.collect()
 
+    # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
+    # the bin, thus reach the outer edges and leave no gap
+    xbinned = dflinepointsdf.get_column("xvalue_binned")
+    if args.xbins and xbinned.len() > 1:
+        halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
+        dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[-1] + halfwidth, atstart=False)
+        # startfromzero takes the line further to the left, thus that end comes below
+        if not startfromzero:
+            dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[0] - halfwidth, atstart=True)
+
     if startfromzero:
-        # repeat the first point at x=0, keeping the column's own dtype so the frames stack
-        firstrow = dflinepointsdf.head(1).with_columns(
-            xvalue_binned=pl.lit(0.0, dtype=dflinepointsdf.schema["xvalue_binned"])
-        )
-        dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+        dflinepointsdf = repeat_endpoint(dflinepointsdf, 0.0, atstart=True)
 
     xvalues_binned = dflinepointsdf.get_column("xvalue_binned")
     yvalues_binned = dflinepointsdf.get_column("yvalue_binned")
@@ -265,14 +303,14 @@ def plot_average_ionisation(
     params: Sequence[str],
     estimators: pl.LazyFrame,
     startfromzero: bool,
-    args: argparse.Namespace | None = None,
+    args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the mean ion charge of each element in params."""
-    if args is None:
-        args = argparse.Namespace()
-
     ax.set_ylabel("Average ion charge")
+
+    # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
+    colnames = estimators.collect_schema().names()
 
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
@@ -280,11 +318,11 @@ def plot_average_ionisation(
 
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = at.get_elsymbol(atomic_number)
-        if f"nnelement_{elsymb}" not in estimators.collect_schema().names():
+        if f"nnelement_{elsymb}" not in colnames:
             msg = f"ERROR: No element data found for {paramvalue}"
             raise ValueError(msg)
 
-        ioncols = [col for col in estimators.collect_schema().names() if col.startswith(f"nnion_{elsymb}_")]
+        ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
         ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
         ax.set_ylim(0.0, max(ioncharges) + 0.1)
         expr_charge_per_nuc = pl.sum_horizontal([
@@ -312,13 +350,10 @@ def plot_average_excitation(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     startfromzero: bool,
-    args: argparse.Namespace | None = None,
+    args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot the population-weighted mean level excitation energy of each requested ion."""
-    if args is None:
-        args = argparse.Namespace()
-
     ax.set_ylabel("Average excitation energy [eV]")
 
     estimatorcolumns = estimators.collect_schema().names()
@@ -373,12 +408,12 @@ def plot_levelpop(
     """Plot the population of each level in params, either directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     elif seriestype == "levelpopulation":
         ax.set_ylabel("X$_{{i}}$ [{}/cm³]")
-        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel()))
     else:
         raise ValueError
+
+    at.plottools.set_exponent_label(ax)
 
     modeldata = at.inputmodel.get_modeldata(
         modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"]
@@ -423,7 +458,6 @@ def plot_levelpop(
             assert isinstance(modelgridindex, int)
             valuesum = 0.0
             tdeltasum = 0.0
-            # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timestepslist:
                 levelpop = levelpop_of_mgi_ts[modelgridindex, timestep]
@@ -451,6 +485,15 @@ def plot_levelpop(
         )
 
 
+# The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name
+# is optional.
+DIRECTIVES = ("ymin", "ymax", "yscale")
+
+# The subplots share one horizontal axis, thus no directive can set it for one subplot alone. The
+# arguments -xmin and -xmax set it for the figure, and they also drop the data outside that range.
+FIGURE_ARGUMENTS = ("xmin", "xmax")
+
+
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]."""
     # interpret bare integers as atomic numbers
@@ -458,7 +501,7 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         atomic_number = int(ionstr)
         return (atomic_number, "ALL")
 
-    if ionstr in at.get_elsymbolslist():
+    if ionstr in at.get_elsymbolset():
         return (at.get_atomic_number(ionstr), "ALL")
 
     # a space separates the element symbol from the ionstage, e.g. Fe II
@@ -466,23 +509,40 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         return (at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
 
     # for element symbol with a mass number after it, e.g. Fe56
-    if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
+    if ionstr.rstrip("-0123456789") in at.get_elsymbolset():
         atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
         return (atomic_number, ionstr)
 
     # for element and ionstage without a space, e.g. FeII
-    for elsymb in at.get_elsymbolslist():
-        if ionstr.startswith(elsymb):
-            possible_roman = at.decode_roman_numeral(ionstr.removeprefix(elsymb))
-            if possible_roman > 0:
-                return (at.get_atomic_number(elsymb), possible_roman)
+    if (compaction := at.atomic.split_compact_ion_name(ionstr)) is not None:
+        return compaction
 
     atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
     return (atomic_number, ionstr)
 
 
+def is_valid_ion(ionstr: str) -> bool:
+    """Return True when the string names an element, an ion, or an isotope that get_iontuple can read.
+
+    could_be_ion is deliberately permissive, thus it accepts a name such as "te" that get_atomic_number
+    reads as tellurium. This test rejects that name, so that the caller can suggest the variable "Te".
+    """
+    atomic_number, param = get_iontuple(ionstr)
+    if atomic_number < 1:
+        return False
+
+    if isinstance(param, int):
+        return param >= 1
+
+    elsymbols = at.get_elsymbolset()
+
+    # get_column_name reads a suffix that joins the symbol, e.g. Fe_otherstable gives
+    # nniso_Fe_otherstable, thus the first part of the name decides
+    return param == "ALL" or param.rstrip("-0123456789") in elsymbols or param.split("_", maxsplit=1)[0] in elsymbols
+
+
 def could_be_ion(plotvar: t.Any) -> bool:
-    """Return True if plotvar could be part of an ion population plot, i.e. an ion/element/atomic number or a plot directive."""
+    """Return True when plotvar can name part of an ion population plot: an ion, an element, or an atomic number."""
     # lists are plot directives and bare integers are atomic numbers
     if isinstance(plotvar, (list, int)):
         return True
@@ -490,8 +550,9 @@ def could_be_ion(plotvar: t.Any) -> bool:
     if not isinstance(plotvar, str):
         return False
 
-    # a string that is an integer is an atomic number
-    return plotvar.isdigit() or "=" in plotvar or get_iontuple(plotvar)[0] >= 1
+    # get_iontuple reads a digit string as an atomic number, and normalise_plotitems has already taken
+    # every "key=value" directive out of the list that reaches here
+    return get_iontuple(plotvar)[0] >= 1
 
 
 def default_plotitem_has_data(
@@ -539,8 +600,13 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         plotitems = [plotitems]
     assert isinstance(plotitems, list)
 
+    # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
+    # One shape here lets plot_subplot find an unknown directive whichever spelling the user gave
     plot_directives = [
-        plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and ("=" in plotvar)
+        ["_" + key.removeprefix("_"), value]
+        for key, value in (
+            plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and "=" in plotvar
+        )
     ]
     plotvars = [
         VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
@@ -553,6 +619,13 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         raise ValueError(msg)
 
     if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
+        # an ion population plot is the reading of last resort, thus reject a name that is no ion at all
+        if notions := [var for var in plotvars if isinstance(var, str) and not is_valid_ion(var)]:
+            exit_with_error(
+                f"'{notions[0]}' is neither an estimator variable nor an ion",
+                suggest_names(notions[0], estimatorcolumns) or "Run with --listvariables to see the variables",
+            )
+
         # plotting this as a variable would cause an error, so interpret it as ion populations instead
         new_plotvars = [["populations", plotvars]]
         print(f"Rewriting plotlist {plotvars} to {new_plotvars}")
@@ -583,14 +656,9 @@ def plot_multi_ion_series(
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
-    ymin: float | None = None,
-    ymax: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Plot an ion-specific property, e.g., populations."""
-    # if seriestype == 'populations':
-    #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
-
     plotted_something = False
 
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
@@ -614,14 +682,14 @@ def plot_multi_ion_series(
                     missingions.add((atomic_number, ion_stage))
 
     except FileNotFoundError:
-        print("WARNING: Could not read an ARTIS compositiondata.txt file to check ion availability")
+        print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
         for atomic_number, ion_stage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             if f"nnion_{ionstr}" not in estimators.collect_schema().names():
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:
-        print(f" Warning: Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
+        print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
     lazyframes = []
@@ -673,7 +741,6 @@ def plot_multi_ion_series(
 
         color = get_elemcolor(atomic_number=atomic_number)
 
-        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
         dashes: tuple[float, ...] = ()
         styleindex = 0
         if isinstance(ion_stage, str):
@@ -744,7 +811,12 @@ def plot_series(
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        assert variable in estimators.collect_schema().names(), f"Variable {variable} not found in estimators"
+        columns = estimators.collect_schema().names()
+        if variable not in columns:
+            exit_with_error(
+                f"'{variable}' is not an estimator variable",
+                suggest_names(variable, columns) or "Run with --listvariables to see the variables of this model",
+            )
         colexpr = pl.col(variable)
 
     variablename = colexpr.meta.output_name()
@@ -771,7 +843,7 @@ def plot_series(
 
 
 def get_xlist(
-    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: t.Any
+    xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: argparse.Namespace
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
     """Return the x values, model grid indices, and timesteps to plot, along with the filtered estimators."""
     if timestepslist is not None:
@@ -785,10 +857,20 @@ def get_xlist(
         estimators = estimators.with_columns(xvalue=pl.col("tmid_days"))
     elif xvariable in {"velocity", "beta"}:
         velcolumn = "vel_r_mid"
-        scalefactor = 1e5 if xvariable == "velocity" else C_cm_per_s
+        scalefactor = km_to_cm if xvariable == "velocity" else C_cm_per_s
         estimators = estimators.with_columns(xvalue=(pl.col(velcolumn) / scalefactor))
     else:
-        assert xvariable in estimators.collect_schema().names()
+        # -x takes any variable of the model as well as the four names above, thus no choices list can
+        # hold them. A name that no model gives must still say what the choices are
+        columns = estimators.collect_schema().names()
+        if xvariable not in columns:
+            suggestion = suggest_names(xvariable, columns)
+            exit_with_error(
+                f"'{xvariable}' is not a variable of this model, thus the horizontal axis cannot show it",
+                f"{suggestion + ' ' if suggestion else ''}The other choices are time, timestep, velocity, and "
+                "beta. Run with --listvariables to see every variable of this model",
+            )
+
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
     # one collect for these streaming aggregations, rather than re-running the whole scan once per column. Only
@@ -825,7 +907,9 @@ def get_xlist(
     if args.xbins is not None and args.xbins == 0:
         estimators = estimators.with_columns(xvalue_binned=pl.lit(None).cast(pl.Float64))
     elif args.xbins is not None:
-        xbinedges = np.linspace(xmin, xmax, args.xbins)
+        # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
+        # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
+        xbinedges = np.linspace(xmin, xmax, args.xbins + 1)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2
@@ -868,6 +952,18 @@ def get_xlist(
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
 
 
+def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
+    """Return the lowest and the highest value that the axes draw, or None when they draw nothing.
+
+    The vertical range of the axes carries a margin above and below the data, thus a test against that
+    range accepts a limit that leaves every point out of view.
+    """
+    drawn = at.plottools.get_drawn_yvalues(ax)
+    finite = drawn[np.isfinite(drawn)]
+
+    return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
+
+
 def plot_subplot(
     ax: mplax.Axes,
     timestepslist: list[int],
@@ -884,7 +980,6 @@ def plot_subplot(
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
     legend_ncols = 1
-    seriescount = 0
     ylabel = None
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
@@ -900,22 +995,43 @@ def plot_subplot(
 
     remaining_plotitems: list[t.Any] = []
     ymin, ymax = None, None
+    yscalegiven = False
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
             remaining_plotitems.append(plotitem)
             continue
         seriestype, params = plotitem
+        # normalise_plotitems adds the underscore, thus report the name as the user wrote it
+        given = seriestype.removeprefix("_")
+        # a figure argument stops the command whichever way the caller spells it, because a plot item
+        # of that name reaches the ion branch and gives an error that names no argument
+        if given.lower() in FIGURE_ARGUMENTS:
+            exit_with_error(
+                f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
+                f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
+            )
+
+        if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
+            suggestion = suggest_names(given, DIRECTIVES)
+            exit_with_error(
+                f"'{given}' is not a plot directive",
+                f"{suggestion + ' ' if suggestion else ''}The directives are "
+                f"{', '.join(f'{name}=' for name in DIRECTIVES)}",
+            )
         seriestype = seriestype.removeprefix("_").lower()
         if seriestype == "ymin":
-            ymin = float(params) if isinstance(params, str) else params
-            ax.set_ylim(bottom=ymin)
+            # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here
+            # would leave the other side at the value it held before the data arrived
+            ymin = float(params)
 
         elif seriestype == "ymax":
-            ymax = float(params) if isinstance(params, str) else params
-            ax.set_ylim(top=ymax)
+            ymax = float(params)
 
         elif seriestype == "yscale":
-            ax.set_yscale(params)
+            # the scale must be set before the data, so that the axis autoscales in the right space.
+            # "lin" is the alias that the -yscale argument of the light curve commands also accepts
+            ax.set_yscale("linear" if params == "lin" else params)
+            yscalegiven = True
         else:
             remaining_plotitems.append(plotitem)
 
@@ -975,7 +1091,10 @@ def plot_subplot(
 
             else:
                 seriestype, ionlist = plotitem
-                ax.set_yscale("log")
+                # an ion population plot reads best on a log scale, thus that is the default here. A
+                # yscale directive of the plot item wins over it
+                if not yscalegiven:
+                    ax.set_yscale("log")
                 if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
                     legend_ncols = 2
 
@@ -987,14 +1106,32 @@ def plot_subplot(
                     estimators=estimators,
                     modelpath=modelpath,
                     args=args,
-                    ymin=ymin,
-                    ymax=ymax,
                     **plotkwargs,
                 )
 
-    ax.tick_params(right=True)
-    if showlegend and not args.nolegend:
-        ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
+    # Apply the requested limits now that the data has set the range of the axis. A fixed limit of the
+    # plot list, e.g. the rho floor of the default list, suits one range of models. A limit outside the
+    # data of this model would give an empty panel, thus test each one against the data range first.
+    # set_ylim also accepts a bottom above the top, which turns the axis upside down and stays that way
+    # through a later autoscale, thus the test has to come before the call and not after it.
+    if ymin is not None or ymax is not None:
+        # the axis label carries the LaTeX marks of a plot, thus a message on the terminal drops them
+        quantity = ax.get_ylabel().translate(str.maketrans("", "", "$\\{}")) or "data"
+        datarange = get_data_range(ax)
+        if ymin is not None:
+            if datarange is None or ymin < datarange[1]:
+                ax.set_ylim(bottom=ymin)
+            else:
+                print_warning(f"every {quantity} value is below the requested minimum of {ymin}. Using the data range")
+
+        if ymax is not None:
+            if datarange is None or ymax > datarange[0]:
+                ax.set_ylim(top=ymax)
+            else:
+                print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
+
+    if showlegend:
+        set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
 
 
 def make_figure(
@@ -1003,28 +1140,23 @@ def make_figure(
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist: list[list[t.Any]],
-    args: t.Any,
+    args: argparse.Namespace,
+    frameset: "at.FrameSet | None" = None,
     **plotkwargs: t.Any,
 ) -> str:
-    """Plot one subplot per entry in plotlist, save the figure, and return the output filename."""
+    """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
+
+    A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
+    and --open leave it alone. The caller opens the file that holds every frame.
+    """
     modelname = at.get_model_name(modelpath)
 
-    fig, axes = plt.subplots(
-        nrows=len(plotlist),
-        ncols=1,
-        sharex=True,
-        figsize=(args.figscale * 5.0 * args.figwidthscale, args.figscale * 5.0 * 0.5 * len(plotlist)),
-        layout="constrained",
-        # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-    if len(plotlist) == 1:
-        axes = np.array([axes])
+    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
+    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True)
+    axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
 
-    for ax in axes:
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
         axes[-1].set_xlabel(
             f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
@@ -1038,10 +1170,12 @@ def make_figure(
     xmin = args.xmin if args.xmin is not None else min(xlist)
     xmax = args.xmax if args.xmax is not None else max(xlist)
 
-    for ax, plotitems in zip(axes, plotlist, strict=False):
-        if xmin != xmax:
-            ax.set_xlim(left=xmin, right=xmax)
+    # the x range comes from the data when the user gives no -xmin/-xmax. A degenerate range goes to
+    # matplotlib as no limit at all, so that it keeps its own padding around the single value.
+    xlimits = (xmin, xmax, "-xmin") if xmin != xmax else (None, None, "-xmin")
+    set_axis_properties(axes, args, xlimits=xlimits)
 
+    for ax, plotitems in zip(axes, plotlist, strict=False):
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
@@ -1055,17 +1189,19 @@ def make_figure(
             **plotkwargs,
         )
 
+        # a stacked subplot puts its lowest label beside the highest label of the subplot below
+        prune_log_ticks(ax.yaxis)
+
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
-        defaultoutputfile = "plotestimators_cell{modelgridindex:03d}.{format}"
-        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
-        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0], format=args.format)
+        # a plot of one cell against time is no frame of a set, thus it names itself
+        outpath = at.resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
+        outfilename = at.format_frame_path(outpath, cell=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
-            strtimestep = f"ts{timestepslist[0]:02d}"
+            strtimestep = f"ts{timestepslist[0]:03d}"
             strtimedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
         else:
             timesteps_flat = at.flatten_list(timestepslist)
@@ -1073,7 +1209,7 @@ def make_figure(
             timestepmax = max(timesteps_flat)
 
             strtimestep = (
-                f"ts{timestepmin:02d}-ts{timestepmax:02d}" if timestepmax != timestepmin else f"ts{timestepmin:02d}"
+                f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
             )
             dftimesteps = at.get_timesteps(modelpath)
             timelow_days = (
@@ -1087,46 +1223,41 @@ def make_figure(
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         print("  plotting " + figure_title.replace("\n", " "))
 
-        defaultoutputfile = "plotestimators_{timestep}_{timedays}.{format}"
-        args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
-
         assert isinstance(timestepslist, list)
-        outfilename = str(args.outputfile).format(timestep=strtimestep, timedays=strtimedays, format=args.format)
+        # the caller of a set of frames gives the frameset, thus every frame lands beside its product
+        outpath = (
+            frameset.frametemplate
+            if frameset is not None
+            else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
+        )
+        outfilename = at.format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
 
-    if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=10)
+    set_plot_title(axes[0], figure_title, args)
 
-    fig.savefig(outfilename, dpi=600)
-    at.print_saved(outfilename)
-
-    if args.show:
-        plt.show()
-    plt.close(fig)
+    save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
     return outfilename
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    add_modelpath_arg(
-        parser, default=".", helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
+    addarg_modelpath(
+        parser, default=Path(), helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
 
-    parser.add_argument(
-        "-modelgridindex", "-cell", "-mgi", type=int, default=None, help="Modelgridindex for time evolution plot"
-    )
+    addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
 
-    add_timestep_arg(parser, helptext="Timestep number for internal structure plot")
+    addarg_timestep(parser, helptext="Timestep number for internal structure plot")
 
-    add_timedays_arg(parser, helptext="Time in days to plot for internal structure plot")
+    addarg_timedays(parser, helptext="Time in days to plot for internal structure plot")
 
-    add_timeminmax_args(parser)
+    addarg_timeminmax(parser)
 
     parser.add_argument("--multiplot", action="store_true", help="Make multiple plots for timesteps in range")
 
     parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
 
-    add_axis_limit_args(parser, include_y=False)
+    addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
         "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
@@ -1136,13 +1267,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
 
-    add_filter_args(parser)
+    addarg_filter(parser)
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
 
-    parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution (requires --multiplot)")
+    parser.add_argument(
+        "--makegif", action="store_true", help="Make a gif of the time evolution, one frame per timestep"
+    )
 
-    parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+    addarg_notitle(parser)
+
+    parser.add_argument(
+        "--listvariables",
+        "--listvars",
+        action="store_true",
+        help="List the estimator variables of this model, then stop",
+    )
+
+    parser.add_argument(
+        "--listnuclides",
+        action="store_true",
+        help="List the estimator variables as --listvariables does, and name every nuclide of a family",
+    )
 
     parser.add_argument(
         "-plotlist",
@@ -1151,7 +1297,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="*",
         type=str,
         action="append",
-        help="List of plots to generate. Specify estimator names or population types. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'",
+        help=(
+            "List of plots to generate, one -plot for each subplot. Give estimator names, ions, or a "
+            "directive of the form key=value. Examples: -plot Te TR -plot nne -plot SrI 'Sr II'. "
+            f"The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
+            "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17. The subplots share one horizontal "
+            "axis, thus -xmin and -xmax set that axis for the whole figure"
+        ),
     )
 
     parser.add_argument(
@@ -1163,22 +1315,37 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
     )
 
-    parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
+    addarg_nolegend(parser)
 
-    add_figscale_args(parser, include_figwidthscale=True)
+    parser.add_argument(
+        "-labelfontsize",
+        type=float,
+        default=None,
+        help="Font size of the tick labels. The default comes from the artistools matplotlibrc",
+    )
+
+    addarg_figscale(parser, include_figwidthscale=True)
     # deprecated spelling of -figwidthscale kept as a hidden alias
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
-    parser.add_argument("--show", action="store_true", help="Show plot before quitting")
+    addarg_show(parser)
+    addarg_verbose(parser)
 
-    add_outputfile_arg(parser, extraflags=("-outputpath",), default=Path(), helptext="Filename for PDF file")
+    addarg_dpi(parser, default=600)
+
+    addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
         "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"
     )
 
     parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
+        "--classicartis",
+        action="store_true",
+        help=(
+            "Read the estimator format of the classic ARTIS code. A modern run writes the modern"
+            " format, even when it takes the classic options"
+        ),
     )
 
     parser.add_argument(
@@ -1196,97 +1363,79 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot ARTIS estimators."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int, int]:
+    """Apply the default x variable and the default time range, and return the first and last timestep.
 
-    modelpath = Path(args.modelpath)
-
-    modelname = at.get_model_name(modelpath)
-
-    should_use_all_timesteps = (
-        not args.timedays
-        and not args.timemin
-        and not args.timemax
-        and not args.timestep
-        and (args.modelgridindex is not None or args.x in {None, "time", "timestep"})
-    )
-
-    if should_use_all_timesteps:
+    A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
+    plot against a spatial variable takes one snapshot, thus it keeps the default time range.
+    """
+    # a timestep of 0 and a time of 0 are real selections, and both are falsy. Thus this tests for
+    # absence and not for truth
+    timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
+    notimegiven = all(value is None for value in timeargs)
+    if notimegiven and (args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
         args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
         if args.x is None:
-            args.x = "time"
+            # a gif holds one snapshot for each timestep, thus it plots against a spatial variable
+            args.x = "velocity" if getattr(args, "makegif", False) else "time"
             print(f"Setting x variable to {args.x}")
     elif args.x is None:
         args.x = "velocity"
         print(f"Setting x variable to {args.x}")
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+    timestepmin, timestepmax, args.timemin, args.timemax = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    if args.readonlymgi:
-        args.sliceaxis = args.axis[1]
-        assert args.axis[0] in {"+", "-"}
-        args.positive_axis = args.axis[0] == "+"
+    return timestepmin, timestepmax
 
-        axes = ["x", "y", "z"]
-        axes.remove(args.sliceaxis)
-        args.other_axis1 = axes[0]
-        args.other_axis2 = axes[1]
 
+def select_cells_along_axis(args: argparse.Namespace) -> None:
+    """Select the cells of a slice or a cone of a 3D model, and record the two axes that stay.
+
+    The selection functions of slice1dfromconein3dmodel read these axis names from the arguments.
+    """
+    args.sliceaxis = args.axis[1]
+    assert args.axis[0] in {"+", "-"}
+    args.positive_axis = args.axis[0] == "+"
+    otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
+    args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
+
+    if args.readonlymgi == "alongaxis":
+        print(f"Getting mgi along {args.axis} axis")
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
+    elif args.readonlymgi == "cone":
+        print(f"Getting mgi lying within a cone around {args.axis} axis")
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
+    else:
+        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
+        raise ValueError(msg)
+
+    args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["inputcellid"])
+
+
+def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
+    """Name the cells and the timesteps for which the model holds estimator data."""
+    print("No data was found for the requested timesteps/cells.")
+    estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=classicartis)
     print(
-        f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
-        f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+        f"Cells with data: {estimators.select(pl.col('modelgridindex').unique().sort()).collect().to_series().to_list()}"
+    )
+    print(
+        f"Timesteps with data: {estimators.select(pl.col('timestep').unique().sort()).collect().to_series().to_list()}"
     )
 
-    if args.readonlymgi:
-        if args.readonlymgi == "alongaxis":
-            print(f"Getting mgi along {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
 
-        elif args.readonlymgi == "cone":
-            print(f"Getting mgi lying within a cone around {args.axis} axis")
-            dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
-        else:
-            msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
-            raise ValueError(msg)
-        dfselectedcells = dfselectedcells.filter(pl.col("rho") > 0)
-        args.modelgridindex = list(dfselectedcells["inputcellid"])
+SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"
+CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
 
-    timesteps_included = list(range(timestepmin, timestepmax + 1))
-    if args.classicartis:
-        import artistools.estimators.estimators_classic
 
-        estimatorsdict = artistools.estimators.estimators_classic.read_classic_estimators(modelpath)
-        assert estimatorsdict is not None
-        estimators = pl.LazyFrame(
-            [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimatorsdict.items()],
-            orient="row",
-        )
-    else:
-        estimators = at.estimators.scan_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
-        )
+def get_default_plotlist() -> list[t.Any]:
+    """Return the plot items that a command with no -plot argument draws.
 
-    estimators, modelmeta = at.estimators.join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=False)
-    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
-    if estimators.select(pl.len()).collect().item() == 0:
-        print("No data was found for the requested timesteps/cells.")
-        estimators = at.estimators.scan_estimators(modelpath=modelpath)
-        print("Cells with data: ")
-        print(estimators.select(pl.col("modelgridindex").unique().sort()).collect().to_series().to_list())
-        print("Timesteps with data: ")
-        print(estimators.select(pl.col("timestep").unique().sort()).collect().to_series().to_list())
-        return
-
-    if args.modelgridindex is None:
-        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-
-    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
-
-    usingdefaultplotlist = not args.plotlist
-    plotlist: list[t.Any] = args.plotlist or [
+    The commented lines are examples that a user can copy. Each one gives a shape that -plot accepts.
+    """
+    return [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
         #  ['_yscale', 'linear']],
@@ -1321,30 +1470,141 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
-    estimatorcolumns = estimators.collect_schema().names()
 
-    if usingdefaultplotlist:
-        keptplotlist: list[t.Any] = []
+def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str], modelpath: Path) -> list[list[t.Any]]:
+    """Return the plot items of each subplot, with the aliases resolved and the directives at the end.
+
+    The default list names particular elements, thus a model that holds no such element loses those
+    items. A user who names an item always keeps it, thus an error in that name still stops the command.
+    """
+    plotlist: list[t.Any] = args.plotlist
+    if not plotlist:
+        plotlist = []
         skippedplotlist: list[t.Any] = []
-        for plotitems in plotlist:
-            target = (
-                keptplotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
-            )
+        for plotitems in get_default_plotlist():
+            target = plotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
             target.append(plotitems)
 
         if skippedplotlist:
             print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
-        if not keptplotlist:
+
+        if not plotlist:
             msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
             raise ValueError(msg)
-        plotlist = keptplotlist
 
-    plotlist = [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
+    return [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
 
-    outdir = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path()
+
+def write_snapshot_figures(
+    args: argparse.Namespace,
+    modelpath: Path,
+    estimators: pl.LazyFrame,
+    vmax_cmps: float,
+    timesteps_included: list[int],
+    plotlist: list[list[t.Any]],
+) -> None:
+    """Plot a range of cells at one time, which shows the internal structure. Write one file per frame.
+
+    With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
+    one PDF file.
+    """
+    if args.x == "velocity" and vmax_cmps > 0.3 * C_cm_per_s:
+        args.x = "beta"
+
+    if args.readonlymgi:
+        if not isinstance(args.modelgridindex, list):
+            args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
+    # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
+    if args.makegif:
+        args.multiplot = True
+        args.format = "png"
+
+    frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+
+    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+    firstts, lastts = timesteps_included[0], timesteps_included[-1]
+    frameset = at.resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(frames),
+        framename=SNAPSHOTFRAMENAME,
+        productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+        combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
+        gifduration=1000.0 if args.makegif else None,
+    )
+
+    outputfiles = [
+        make_figure(
+            frameset=frameset,
+            modelpath=modelpath,
+            timestepslist=frame,
+            estimators=estimators,
+            xvariable=args.x,
+            plotlist=plotlist,
+            args=args,
+        )
+        for frame in frames
+    ]
+
+    frameset.finish(outputfiles, args)
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot ARTIS estimators."""
+    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    modelpath = Path(args.modelpath)
+    # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
+    if args.modelgridindex is not None:
+        args.modelgridindex = at.parse_range_list(args.modelgridindex)
+    timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
+    wantslisting = args.listvariables or args.listnuclides
+
+    if not wantslisting:
+        print(
+            f"Plotting estimators for '{at.get_model_name(modelpath)}' timesteps {timestepmin} to {timestepmax} "
+            f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+        )
+
+    if args.readonlymgi:
+        select_cells_along_axis(args)
+
+    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    estimators = at.estimators.scan_estimators(
+        modelpath=modelpath,
+        modelgridindex=args.modelgridindex,
+        timestep=tuple(timesteps_included),
+        classicartis=args.classicartis,
+        verbose=args.verbose,
+    )
+    estimators, modelmeta = at.estimators.join_cell_modeldata(
+        estimators=estimators, modelpath=modelpath, verbose=args.verbose
+    )
+
+    # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
+    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
+    if not wantslisting and estimators.select(pl.len()).collect().item() == 0:
+        report_data_available(modelpath, classicartis=args.classicartis)
+        return
+
+    if args.modelgridindex is None:
+        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+
+    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
+    estimatorcolumns = estimators.collect_schema().names()
+
+    if wantslisting:
+        print_product(args, summarise_columns(estimatorcolumns, fullnuclides=args.listnuclides))
+        print_product(args, 'Plot a variable with e.g. "artistools plotestimators -p Te rho -t 300"')
+        return
+
+    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
+
+    at.set_mpl_style()
+
     assert args.x is not None
     if args.x in {"time", "timestep"}:
-        # plot time evolution
         make_figure(
             modelpath=modelpath,
             timestepslist=timesteps_included,
@@ -1354,46 +1614,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args=args,
         )
     else:
-        # plot a range of cells in a time snapshot showing internal structure
-
-        if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
-            args.x = "beta"
-
-        if args.readonlymgi:
-            if not isinstance(args.modelgridindex, list):
-                args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
-            estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-
-        frames_timesteps_included = (
-            [[ts] for ts in range(timestepmin, timestepmax + 1)] if args.multiplot else [timesteps_included]
-        )
-
-        if args.makegif:
-            args.multiplot = True
-            args.format = "png"
-
-        outputfiles: list[str] = []
-        for timesteps_included in frames_timesteps_included:
-            outfilename = make_figure(
-                modelpath=modelpath,
-                timestepslist=timesteps_included,
-                estimators=estimators,
-                xvariable=args.x,
-                plotlist=plotlist,
-                args=args,
-            )
-
-            outputfiles.append(outfilename)
-
-        if len(outputfiles) > 1:
-            if args.makegif:
-                assert args.multiplot
-                assert args.format == "png"
-                gifname = outdir / f"plotestim_evolution_ts{timestepmin:03d}_ts{timestepmax:03d}.gif"
-                at.write_gif(gifname, outputfiles, duration=1000)
-            elif args.format == "pdf":
-                at.merge_pdf_files(outputfiles)
+        write_snapshot_figures(args, modelpath, estimators, modelmeta["vmax_cmps"], timesteps_included, plotlist)
 
 
 if __name__ == "__main__":
-    main()
+    run_subcommand("plotestimators")

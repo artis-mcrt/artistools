@@ -17,6 +17,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
+from artistools.misc import print_warning
 
 t_model_init_s = 0.1 * day_to_s  # snapshot time is fixed by the npz files
 
@@ -178,7 +179,6 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
         xtraj[i, :] = xiso0[i2, :]
-        # ttraj[i] = dattem.f.T9[i2] * 1e9
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
         atraj[i] = dat.f.pos[i2, 1]
@@ -187,12 +187,8 @@ def get_grid(
     for i1 in dynid:  # index of my original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
-        # if len(i2)<nsplit:
-        #     print('missing dyn ejecta at i=',i,len(i2))
         weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i4]) * msol)
         xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
-        # ttraj[i] = sum(weights * dattem.f.T9[i2] * 1e9)
-        # yetraj[i] = np.sum(weights * ye_summ_file[int(i1)])
         yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
         vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
         atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
@@ -246,7 +242,6 @@ def get_grid(
         else:
             pos_z_min = np.array([vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)])
         pos_z_mid = pos_z_min + 0.5 * wid_init_z
-        # pos_z_max = pos_z_min + wid_init_z
 
         rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for _n_z in range(nvz)]).reshape(nvr, nvz)
         # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
@@ -258,8 +253,6 @@ def get_grid(
             for _n_z in range(nvz)
         ]).reshape(nvr, nvz)
     elif model_dim == 3:
-        # nvx = numb_cells_ARTIS_x
-        # nvy = numb_cells_ARTIS_y
         nvz = (
             numb_cells_ARTIS_z // eqsymfac
         )  # number of mapping grid cells in z direction depends on equatorial symmetry
@@ -292,7 +285,6 @@ def get_grid(
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
     for i in [int(j) for j in np.arange(ntraj)]:
-        # print(i)
         cont = True
         hl, hr = 0.00001 * CLIGHT * t_model_init_s, 1.0 * CLIGHT * t_model_init_s
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
@@ -352,7 +344,6 @@ def get_grid(
             2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
         )  # limiting to 0.5*h seems to prevent artefacts near the axis
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
-        # xin2 = np.tensordot(xtraj.T, weinor, axes=(1, 2))  # for testing
     elif model_dim == 3:
         rhoint = rho2d / (2.0 * np.pi * R3d)
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * R3d)
@@ -415,10 +406,6 @@ def get_grid(
     test = np.sum(xint, axis=0) - 1.0
     test = np.where(test > -1, test, 0.0)
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
-
-    # test = np.sum(xin2, axis=0) - 1.0
-    # test = np.where(test > -1, test, 0.0)
-    # print("(X-1)_max over 2D grid 2  :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell
     dfcontributions_particleids = []
@@ -1072,7 +1059,7 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_outputpath_arg(parser, default=None, helptext="Path of output ARTIS model file")
+    at.addarg_output(parser, kind="folder", default=None, helptext="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1098,7 +1085,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
     )
 
-    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy.")
+    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy")
 
     parser.add_argument(
         "-ngridx",
@@ -1132,7 +1119,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-interpolrescale",
         type=float,
         default=None,
-        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass.",
+        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass",
     )
 
     parser.add_argument(
@@ -1153,7 +1140,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         nargs=2,
         default=None,
-        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified.",
+        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified",
     )
 
     parser.add_argument(
@@ -1168,7 +1155,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing."
+        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing"
     )
 
     parser.add_argument(
@@ -1188,7 +1175,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"
 
-    if args.outputpath is None:
+    if args.outputfile is None:
         modelname = Path(args.npz).name.replace(".npz", "")
         if args.dimensions is not None and args.dimensions < 2:
             modelname += f"_{args.dimensions}d"
@@ -1196,16 +1183,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_3d"
         else:
             modelname += "_2d"
-        args.outputpath = Path(args.npz).parent / "artis_inputmodels" / modelname
-        args.outputpath.mkdir(parents=True, exist_ok=True)
-        print(args.outputpath)
+        args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
+        args.outputfile.mkdir(parents=True, exist_ok=True)
+        print(args.outputfile)
 
         # model_dim = 1 not covered in this script
     model_dim = 3 if args.mapto3D else 2
 
     if model_dim == 2:
         if args.perturb3Dmodel:
-            print("Warning! Density perturbations only work on 3D models. Skip.")
+            print_warning("Density perturbations only work on 3D models. Skip.")
         ngrid_rcyl = int(args.ngridrcyl)
         ngrid_z = int(args.ngridz)
         (
@@ -1301,8 +1288,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.perturb3Dmodel:
             if args.replacedyn:
-                print(
-                    "Warning! Perturbations should only be applied to axisymmetric 3D models to conserve global isotopic mass fractions."
+                print_warning(
+                    "Apply a perturbation only to an axisymmetric 3D model, or the global isotopic mass fractions change."
                 )
             dfmodel = apply_density_perturbations(dfmodel, float(args.vmax_on_c), tuple(args.perturb3Dmodel))
 
@@ -1316,10 +1303,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions=dfgridcontributions,
         )
 
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputpath)
-    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
+    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

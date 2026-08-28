@@ -106,7 +106,7 @@ def get_viewingdirection_costhetabincount() -> int:
 def check_averaging_angles(average_over_phi: bool, average_over_theta: bool) -> None:
     """Reject averaging over both angles at once, which leaves too few direction bins to average again.
 
-    The command-line flags are already mutually exclusive (see add_viewingangle_args), so this covers the callers
+    The command-line flags are already mutually exclusive (see addarg_viewingangle), so this covers the callers
     that pass the values directly or build an argparse.Namespace from keyword arguments.
     """
     if average_over_phi and average_over_theta:
@@ -180,12 +180,10 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArra
     return phi_lower, phi_upper, binlabels
 
 
-def get_costheta_bins(
-    usedegrees: bool, usepiminustheta: bool = False
-) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
+def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float, ...], list[str]]:
     """Return the lower and upper cos(theta) boundaries of each direction bin, and a label for each.
 
-    The boundaries are always cos(theta); usedegrees and usepiminustheta only change how the labels are written.
+    The boundaries are always cos(theta); usedegrees only changes how the labels are written.
     """
     ncosthetabins = get_viewingdirection_costhetabincount()
     # the costheta bins are ordered by ascending cos θ from -1. to 1.,
@@ -194,21 +192,12 @@ def get_costheta_bins(
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
-        if usepiminustheta:
-            piminusthetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
-            piminusthetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
-            binlabels = [
-                rf"{lower:.0f}° < π-θ < {upper:.0f}°"
-                for lower, upper in zip(piminusthetabins_lower, piminusthetabins_upper, strict=False)
-            ]
-        else:
-            thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
-            thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
+        thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
+        thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
 
-            binlabels = [
-                f"{lower:.0f}° < θ < {upper:.0f}°"
-                for lower, upper in zip(thetabins_lower, thetabins_upper, strict=False)
-            ]
+        binlabels = [
+            f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper, strict=False)
+        ]
     else:
         binlabels = [
             f"{lower:.1f} ≤ cos θ < {upper:.1f}"
@@ -259,7 +248,6 @@ def get_dirbin_labels(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
-    usepiminustheta: bool = False,
 ) -> dict[int, str]:
     """Return a dict of text labels for viewing direction bins."""
     if modelpath:
@@ -272,7 +260,7 @@ def get_dirbin_labels(
             # check one beyond does not exist
             assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 
-    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=usepiminustheta)
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = get_viewingdirection_phibincount()

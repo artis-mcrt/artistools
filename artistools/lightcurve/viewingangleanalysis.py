@@ -17,7 +17,9 @@ from matplotlib.legend_handler import HandlerTuple
 import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import get_series_label
+from artistools.misc import print_warning
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
@@ -77,7 +79,7 @@ def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-        outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
+        outputfolder = at.resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
         if args.include_delta_m40:
             np.savetxt(
                 outputfolder / f"{band_name}band_{modelname}_viewing_angle_data.txt",
@@ -152,8 +154,8 @@ def calculate_peak_time_mag_deltam15(
             "This will give a stupid result. Specify args.timemin and args.timemax"
         )
         sys.exit(1)
-    print(
-        "WARNING: Both methods that can be used to fit model light curves to get  "
+    print_warning(
+        "Both methods that can be used to fit model light curves to get "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
         "of the light curve is being fitted. It is safest to experiment with the  "
         "timemin and timemax args which set the region of the light curve fitted. "
@@ -175,8 +177,8 @@ def calculate_peak_time_mag_deltam15(
         """
         index = int(np.abs(arr_xfit - (tmax_polyfit + days)).argmin())
         if arr_xfit[-1] < tmax_polyfit + days:
-            print(
-                f"WARNING: the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
+            print_warning(
+                f"the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
                 f" peak at {tmax_polyfit:.1f} d. deltam{days:.0f} is really the decline to"
                 f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen -timemax to cover the full range."
             )
@@ -237,7 +239,7 @@ def lightcurve_polyfit(
         import scipy.optimize as op
 
     except ModuleNotFoundError:
-        print(
+        print_warning(
             "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
             "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
         )
@@ -340,7 +342,6 @@ def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
     """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = list(range(at.get_viewingdirectionbincount()))
@@ -348,7 +349,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     for angle in angles:
         colorindex: t.Any
         _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargsviewingangles, args
+            angle, scaledmap, plotkwargsviewingangles, args
         )
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles["color"] = colors
@@ -370,9 +371,8 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
     fig.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        _, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
-        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
+        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
@@ -421,24 +421,19 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
     linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
-    # a0, datalabel = at.lightcurve.get_sn_sample_bol()
-    # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
-    # args.plotvalues.append((a0, a0))
-    # linelabels.append(datalabel)
-
-    if not args.nolegend:
-        ax.legend(
-            args.plotvalues,
-            linelabels,
-            numpoints=1,
-            handler_map={tuple: HandlerTuple(ndivide=None)},
-            loc="upper right",
-            fontsize="x-small",
-            ncol=args.ncolslegend,
-            columnspacing=1,
-            frameon=False,
-        )
-    # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
+    set_legend(
+        ax,
+        args,
+        handles=args.plotvalues,
+        labels=linelabels,
+        numpoints=1,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+        loc="upper right",
+        fontsize="x-small",
+        ncol=args.ncolslegend,
+        columnspacing=1,
+        frameon=False,
+    )
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         xlabel = rf"$\Delta$m$_{{15}}$({key})"
@@ -446,7 +441,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         xlabel = "Rise Time [days]"
 
     ax.set_xlabel(xlabel, fontsize=14)
-    # ax.set_ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max", fontsize=14)
     set_scatterplot_plot_params(fig, ax, args)
 
@@ -584,8 +578,7 @@ def peakmag_risetime_declinerate_init(
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
         if not args.filter:
-            lcname = "light_curve_res.out" if args.plotviewingangle else "light_curve.out"
-            lcpath = at.firstexisting(lcname, folder=modelpath, tryzipped=True)
+            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=args.plotviewingangle)
             lcdataframes = at.lightcurve.readfile(lcpath)
 
         # check if doing viewing angle stuff, and if so define which data to use
@@ -594,7 +587,8 @@ def peakmag_risetime_declinerate_init(
             dirbins = [-1]
 
         for dirbin in dirbins:
-            print(f"Reading spectra: {modelname}")
+            if args.verbose:
+                print(f"Reading spectra: {modelname}")
             if args.filter:
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
                     modelpath, args, dirbin, modelnumber=modelnumber
@@ -635,10 +629,6 @@ def peakmag_risetime_declinerate_init(
     # as it takes relatively long to run this for all viewing angles
     write_viewing_angle_data(plottinglist[0], modelnames, args)
 
-    # if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-    #     make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, plottinglist[0], args)
-    #     return
-
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)
         return
@@ -655,7 +645,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
+    lcdataframes = at.lightcurve.readfile(at.lightcurve.find_lightcurve_file(modelpath, directionresolved=True))
 
     timetoplot = at.match_closest_time(
         reftime=args.timedays, searchtimes=lcdataframes[0].collect()["time_days"].to_list()
@@ -665,7 +655,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     for angleindex, lcdata in lcdataframes.items():
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+            angle, scaledmap, plotkwargs, args
         )
 
         # readfile derives the erg/s column, so it does not have to be converted here again
@@ -680,15 +670,12 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         axis.scatter(xvalues, brightness, **plotkwargs)
         axis.set_xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
 
-    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig, axis)
+    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, fig, axis)
 
     axis.set_xlabel("Angle bin")
     axis.set_ylabel("erg/s")
     axis.set_yscale("log")
 
-    axis.set_title(f"time = {args.timedays} days")
-    if args.show:
-        plt.show()
-
+    at.plottools.set_plot_title(axis, f"time = {args.timedays} days", args)
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
-    save_figure(fig, plotname, format="pdf")
+    save_figure(fig, plotname, format="pdf", args=args)

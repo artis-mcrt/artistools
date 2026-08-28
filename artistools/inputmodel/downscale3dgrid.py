@@ -4,8 +4,12 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 import artistools as at
+from artistools.constants import day_to_s
+from artistools.inputmodel.inputmodel_misc import save_initelemabundances
+from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.plottools import save_figure
 
 
@@ -35,8 +39,8 @@ def make_downscaled_3d_grid(
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     nabundcols = len(abundcols)
-    max_atomic_number = len([col for col in dfelemabund.columns if col.startswith("X_")])
-    assert max_atomic_number == 30
+    elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
+    max_atomic_number = len(elemcolnames)
 
     print("reading abundance file")
 
@@ -72,43 +76,42 @@ def make_downscaled_3d_grid(
         if rho_small[x, y, z] > 0:
             radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
 
-            for i in range(1, max_atomic_number + 1):  # check this
+            for i in range(1, max_atomic_number + 1):
                 abund_small[x, y, z, i] /= rho_small[x, y, z]
             rho_small[x, y, z] /= merge**3
 
-    print("writing abundance file")
-    i = 0
-    with smallabundancefile.open("w", encoding="utf-8") as newabundancefile:
-        for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
-            line = abund_small[x, y, z, :][1:31]  # index 1:30 are abundances
-            newabundancefile.write(f"{i + 1} ")
-            newabundancefile.writelines(f"{item:g} " for item in line)
-            newabundancefile.write("\n")
-            i += 1
+    # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
+    xmax = vmax * t_model_days * day_to_s
+    axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
+    inputcellid = pl.Series("inputcellid", range(1, smallgrid**3 + 1), dtype=pl.Int32)
+
+    dfmodel_small = pl.DataFrame({
+        "inputcellid": inputcellid,
+        "pos_x_min": np.tile(axispos, smallgrid**2),
+        "pos_y_min": np.tile(np.repeat(axispos, smallgrid), smallgrid),
+        "pos_z_min": np.repeat(axispos, smallgrid**2),
+        "rho": rho_small.ravel(order="F"),
+    }).with_columns([
+        pl.Series(abundcol, radioabunds_small[:, :, :, i].ravel(order="F")) for i, abundcol in enumerate(abundcols)
+    ])
+
+    dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns([
+        pl.Series(elemcol, abund_small[:, :, :, i + 1].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)
+    ])
+
+    modelmeta_small = modelmeta | {
+        "npts_model": smallgrid**3,
+        "ncoordgridx": smallgrid,
+        "ncoordgridy": smallgrid,
+        "ncoordgridz": smallgrid,
+        "vmax_cmps": vmax,
+    }
 
     print("writing model file")
-    xmax = vmax * t_model_days * 3600 * 24
-    cellindex = 0
-    with smallmodelfile.open("w", encoding="utf-8") as newmodelfile:
-        gridsize = smallgrid**3
-        newmodelfile.write(f"{gridsize}\n")
-        newmodelfile.write(f"{t_model_days}\n")
-        newmodelfile.write(f"{vmax}\n")
+    save_modeldata(dfmodel_small, outpath=smallmodelfile, modelmeta=modelmeta_small)
 
-        for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
-            line1 = [
-                cellindex + 1,
-                -xmax + 2 * x * xmax / smallgrid,
-                -xmax + 2 * y * xmax / smallgrid,
-                -xmax + 2 * z * xmax / smallgrid,
-                rho_small[x, y, z],
-            ]
-            line2 = radioabunds_small[x, y, z, :]
-            newmodelfile.writelines(f"{item:g} " for item in line1)
-            newmodelfile.write("\n")
-            newmodelfile.writelines(f"{item:g} " for item in line2)
-            newmodelfile.write("\n")
-            cellindex += 1
+    print("writing abundance file")
+    save_initelemabundances(dfelemabund_small, outpath=smallabundancefile)
 
     if plot:
         print("making diagnostic plot")

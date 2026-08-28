@@ -149,34 +149,26 @@ def get_expansion_opacities(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    # mutex with time in days:
-    timegroup = parser.add_argument_group("time selection (specify either timestep or time in days)")
-    timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to select")
-    timegroup.add_argument("-timedays", "-time", "-t", type=float, help="Time in days to select.")
-
-    at.add_modelpath_arg(parser, default=Path(), helptext="Path of ARTIS model")
+    at.addarg_timestep(parser, helptext="Timestep number to select")
+    at.addarg_timedays(parser, kind="str", helptext="Time in days to select")
+    at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",
-        help="Show the binned opacities for each cell (can be very large).",
+        help="Show the binned opacities for each cell (can be very large)",
     )
-    parser.add_argument(
-        "-modelgridindex",
-        "-mgi",
-        "-cell",
-        type=int,
-        default=None,
-        help="Model grid index (cell) to select. If not specified, all cells are processed.",
-    )
+    at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed")
 
+    # every command that reads a range of wavelengths takes both spellings, thus -xmin reaches this
+    # command as well. This one bins the opacities over that range, and it draws no plot
     parser.add_argument(
-        "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities."
+        "-xmin", "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
-        "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities."
+        "-xmax", "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
-        "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities."
+        "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities"
     )
 
 
@@ -185,15 +177,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.timedays is not None:
-        assert args.timestep is None, "Cannot specify both timestep and timedays. Please specify only one of them."
+        if args.timestep is not None:
+            at.exit_with_error("specify only one of -timestep and -timedays")
         timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
     else:
-        timestep = args.timestep
-        assert timestep is not None, "Please specify either -timestep or -timedays."
+        timestep = at.get_single_timestep(args.timestep, args.modelpath)
+        if timestep is None:
+            at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 
     dfestimators = (
         at.estimators
-        .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=args.modelgridindex, join_modeldata=True)
+        .scan_estimators(
+            args.modelpath,
+            timestep=timestep,
+            modelgridindex=at.get_single_modelgridindex(args.modelgridindex),
+            join_modeldata=True,
+        )
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
     ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))
@@ -211,7 +210,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     pl.Config.set_tbl_cols(20)
     pl.Config.set_tbl_rows(5000)
-    # pl.Config.set_engine_affinity("streaming")
     cellcount = dfestimators.select(pl.len()).item()
     cells_processed = 0
     time_start = time.perf_counter()
@@ -222,8 +220,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata=adata,
             time_days=time_days,
             dfestimators=dfcellbatch,
-            lambdamin=args.lambdamin,
-            lambdamax=args.lambdamax,
+            lambdamin=args.xmin,
+            lambdamax=args.xmax,
             deltalambda=args.deltalambda,
         )
         if args.show_binned_opacities:
@@ -272,4 +270,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

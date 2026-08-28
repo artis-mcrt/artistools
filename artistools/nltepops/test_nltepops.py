@@ -21,7 +21,7 @@ def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_singletimestep(mockplot: t.Any) -> None:
+def test_nltepops_singletimestep(mockplot: mock.MagicMock) -> None:
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
     assert len(mockplot.call_args_list) == 15
@@ -73,16 +73,24 @@ def make_model_without_plotted_cell_estimators(tmp_path: Path) -> None:
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nltepops_no_estimator_data(
-    mockplot: t.Any, mocktitle: t.Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    mockplot: mock.MagicMock, mocktitle: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
     make_model_without_plotted_cell_estimators(tmp_path)
 
+    # the model has two cells, thus the command must name the plotted cell
     at.nltepops.plot(
-        argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, exc_temperature=5000.0, plotrefdata=True
+        argsraw=[],
+        modelpath=tmp_path,
+        outputfile=tmp_path,
+        cell=0,
+        timestep=40,
+        exc_temperature=5000.0,
+        plotrefdata=True,
     )
 
-    assert "WARNING: No estimator data" in capsys.readouterr().out
+    # a warning goes to the standard error, thus --quiet keeps it
+    assert "WARNING: No estimator data" in capsys.readouterr().err
     titles = [callargs[0][1] for callargs in mocktitle.call_args_list]
     assert any("Te=5000 K" in ti and "nne=nan" in ti and "T$_R$=5000 K" in ti and "W=nan" in ti for ti in titles)
 
@@ -91,12 +99,12 @@ def test_nltepops_no_estimator_data(
     _, yarr = get_plot_xy(mockplot.call_args_list[2])
     assert np.isclose(yarr[0], 5.31208, rtol=1e-4)
 
-    assert any(tmp_path.glob("plotnlte_Fe_cell000_ts40_*.pdf"))
+    assert any(tmp_path.glob("plotnltepops_Fe_cell00000_ts040_*.pdf"))
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
+def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     at.nltepops.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -114,12 +122,12 @@ def test_nltepops_versus_velocity(mockplot: t.Any, tmp_path: Path) -> None:
         assert np.allclose(xarr, [8000.0], rtol=1e-4)
         assert np.allclose(yarr, [expected_yval], rtol=1e-4)
 
-    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
+    assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # no outputfile, so this covers the default filename that -x time selects
     monkeypatch.chdir(tmp_path)
     at.nltepops.plot(
@@ -136,7 +144,19 @@ def test_nltepops_versus_time(mockplot: t.Any, tmp_path: Path, monkeypatch: pyte
         assert np.allclose(xarr, expected_xarr, rtol=1e-4)
         assert np.allclose(yarr, expected_yarr, rtol=1e-4)
 
-    assert (tmp_path / "plotnltelevelpops_Fe.pdf").is_file()
+    assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
+
+
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+def test_nltepops_draws_one_shared_legend(mocklegend: mock.MagicMock, tmp_path: Path) -> None:
+    """One legend covers every subplot, and it names each series one time."""
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, cell=0, timestep=40)
+
+    assert len(mocklegend.call_args_list) == 1
+    labels = mocklegend.call_args_list[0].kwargs["labels"]
+    assert len(labels) == len(set(labels)), f"a label appears more than one time: {labels}"
+    # the ion names the subplot, thus no legend entry repeats it
+    assert not any("Fe" in label for label in labels), labels
 
 
 def test_texifyterm_handles_multiplicity_parity_and_jvalue() -> None:
@@ -171,3 +191,26 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
     assert math.isclose(result.filter(pl.col("level") == 0)["lte_10000"].item(), 1.0, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 1)["lte_10000"].item(), expected_level1, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 4)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
+
+
+@pytest.mark.parametrize("timedays", [300, "300", 300.0])
+def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_path: Path) -> None:
+    """A command line gives a string, and a keyword argument of the API gives a number. Both name one time."""
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedays=timedays)
+
+    assert any(tmp_path.glob("plotnltepops_Fe_cell00000_ts*.pdf"))
+
+
+def test_nltepops_subplot_blocks_do_not_overlap() -> None:
+    """Each cell must own its own block of subplots, one for each ion stage.
+
+    A block that started at the index of the cell drew over the block of the cell in front of it, and
+    it left the last block empty.
+    """
+    for ncells in (1, 2, 5):
+        for nionstages in (1, 3, 8):
+            blocks = [at.nltepops.plotnltepops.get_subplot_block(index, nionstages) for index in range(ncells)]
+            covered = [axindex for first, last in blocks for axindex in range(first, last + 1)]
+
+            # make_singletimestep_plot builds this many subplots
+            assert covered == list(range(ncells * nionstages)), (ncells, nionstages)

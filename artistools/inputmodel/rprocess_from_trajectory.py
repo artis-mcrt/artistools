@@ -22,6 +22,8 @@ import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
+from artistools.inputmodel.inputmodel_misc import backup_existing_file
 from artistools.misc.fileio import scan_lines
 
 
@@ -91,6 +93,21 @@ def _extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extr
 
         # a concurrent process may have extracted the same member first, but the contents are identical
         Path(tempdir, memberfilename).replace(path_extracted_file)
+
+
+def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
+    """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
+
+    Fortran writes a value like 1.735904-244 without the "e", thus the column parses as strings. The cast is
+    strict, thus a value that is corrupt for a different reason still raises.
+    """
+    return (
+        pl
+        .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
+        .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
+        .otherwise(cs.by_dtype(pl.String))
+        .cast(dtype)
+    )
 
 
 def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
@@ -185,6 +202,21 @@ def get_closest_network_timesteps(
     raise AssertionError(msg)
 
 
+def check_traj_time_matches(
+    particleid: int, traj_time_s: float, target_time_s: float, rel_tol: float = 0.2, abs_tol: float = 1.0
+) -> None:
+    """Raise when a network step time is not the time that the caller asked for.
+
+    The default tolerance is wide, because a network step lands near a target time rather than on it. A
+    caller that already knows the exact step index passes a tight tolerance instead.
+    """
+    if not math.isclose(traj_time_s, target_time_s, rel_tol=rel_tol, abs_tol=abs_tol):
+        msg = (
+            f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {target_time_s} seconds"
+        )
+        raise AssertionError(msg)
+
+
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
@@ -272,12 +304,8 @@ def get_trajectory_abund_q(
     massfractotal = dftrajnucabund["massfrac"].sum()
     dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)
 
-    # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
-    # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert math.isclose(massfractotal, 1.0, rel_tol=0.02)
-    if not math.isclose(traj_time_s, t_model_s, rel_tol=0.2, abs_tol=1.0):
-        msg = f"ERROR: particle {particleid} step time of {traj_time_s} is not similar to target {t_model_s} seconds"
-        raise AssertionError(msg)
+    check_traj_time_matches(particleid, traj_time_s, t_model_s)
 
     dict_traj_nuc_abund: dict[tuple[int, int] | str, float] = {
         (Z, N): massfrac / massfractotal for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].iter_rows()
@@ -290,6 +318,17 @@ def get_trajectory_abund_q(
         )
 
     return dict_traj_nuc_abund
+
+
+def get_gridparticlecontributions_or_none(gridcontribpath: Path | str) -> pl.DataFrame | None:
+    """Return the particle contributions, or None when the grid folder holds no contributions file.
+
+    A caller that tested for the plain file itself could not see a compressed one, and so skipped the
+    loader that would have found it.
+    """
+    contribfile = at.firstexisting_or_none("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)
+
+    return None if contribfile is None else get_gridparticlecontributions(gridcontribpath)
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
@@ -356,9 +395,7 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    if gridcontribpath.is_file():
-        oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
-        print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
+    backup_existing_file(gridcontribpath)
 
     dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
 
@@ -440,7 +477,7 @@ def add_abundancecontributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_outputpath_arg(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -450,7 +487,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     traj_root = Path(
         Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
     )
-    # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f"trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
@@ -469,13 +505,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
     dfdensities = dfdensities.with_columns(inputcellid=pl.col("mgi") + 1)
-    # print(dfdensities)
 
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
     dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
 
     # write model.txt
 
@@ -505,9 +540,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ],
         orient="row",
     )
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
-    with Path(args.outputpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
+    with Path(args.outputfile, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
 
@@ -531,7 +566,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
             / 3.0
             * math.pi
             * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-            * (1e5 * t_model_init_seconds_in) ** 3
+            * (km_to_cm * t_model_init_seconds_in) ** 3
         )
         .with_columns(
             # now replace the density at the input time with the density at required time
@@ -541,11 +576,13 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
                 / 3.0
                 * math.pi
                 * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-                * (1e5 * t_model_init_seconds) ** 3
+                * (km_to_cm * t_model_init_seconds) ** 3
             )
         )
     )
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

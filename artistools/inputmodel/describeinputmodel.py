@@ -16,12 +16,13 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
+from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
     """Calculate the electron fraction of the model from the isotopic composition."""
-    MH = 1.67352e-24  # mass of hydrogen atom in grams
     exprs_protons = []
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
@@ -31,8 +32,8 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
         if atomic_number == 0:
             continue
         mass_number = float(species.removeprefix(elsymb))
-        exprs_protons.append(atomic_number / (mass_number * MH) * pl.col(column) * pl.col("mass_g"))
-        exprs_nucleons.append(1 / MH * pl.col(column) * pl.col("mass_g"))
+        exprs_protons.append(atomic_number / (mass_number * MH_g) * pl.col(column) * pl.col("mass_g"))
+        exprs_nucleons.append(1 / MH_g * pl.col(column) * pl.col("mass_g"))
 
     globalelectronfrac = (
         dfmodel
@@ -51,7 +52,7 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
 
 def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
-    print(f"====> {modelpath}")
+    at.print_heading(str(modelpath))
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
         modelpath,
         get_elemabundances=not args.noabund,
@@ -77,9 +78,9 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
-        vmax = vmax_kmps * 1e5
+        vmax = vmax_kmps * km_to_cm
         print(
-            f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / 1e5} km/s"
+            f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / km_to_cm} km/s"
             f" ({vmax / C_cm_per_s:.2f} * c)"
         )
     else:
@@ -321,7 +322,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(
+    at.addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -358,4 +359,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

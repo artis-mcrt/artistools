@@ -181,8 +181,6 @@ def maptogrid(
         f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
     )
     x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
-    # Default is 50% (but is hand waving - choose) #
-    # x0 = - rmean
 
     dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
 
@@ -276,9 +274,6 @@ def maptogrid(
             if dis2 <= maxdist2:
                 wtij = kernelvals2(dis2, float(h[n]), wij)
 
-                # USED PREVIOUSLY: less accurate?
-                # grho_contrib = pmass[n] * wtij
-
                 # this particle's contribution to mass density (rho) in the cell
                 grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
 
@@ -367,7 +362,6 @@ def maptogrid(
                     fgrid.write(
                         f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n"
                     )
-                    # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
                     gridindex += 1
 
@@ -391,7 +385,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-setgrid_fractionrmax",
         type=float,
         default=0.5,
-        help="Setup grid to have max equal to fraction of particle rmax.",
+        help="Setup grid to have max equal to fraction of particle rmax",
     )
     parser.add_argument(
         "-downsamplefactor",
@@ -411,11 +405,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "option6",
             "False",
         ],  # We should choose if the default should be false and how we want to name these
-        help="Option to modify smoothing length h. Choose from options."
-        "Default modifies h. Set to False for no modifications to h.",
+        help="Option to modify smoothing length h. Choose from options. "
+        "Default modifies h. Set to False for no modifications to h",
     )
 
-    at.add_outputpath_arg(parser)
+    at.addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -427,7 +421,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
         ncoordgrid=args.ncoordgrid,
-        outputfolderpath=args.outputpath,
+        outputfolderpath=args.outputfile,
         downsamplefactor=args.downsamplefactor,
         dtextra_seconds=args.dtextra_seconds,
         setgrid_fractionrmax=args.setgrid_fractionrmax,
@@ -436,4 +430,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

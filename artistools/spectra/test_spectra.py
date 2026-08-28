@@ -20,7 +20,7 @@ modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectraplot(mockplot: t.Any) -> None:
+def test_spectraplot(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -39,7 +39,7 @@ def test_spectraplot(mockplot: t.Any) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_spectra_frompackets(mockplot: t.Any) -> None:
+def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -567,7 +567,7 @@ def test_plotspectra_title_arg() -> None:
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
-def test_spectraplot_custom_title(mocksettitle: t.Any) -> None:
+def test_spectraplot_custom_title(mocksettitle: mock.MagicMock) -> None:
     """-title text must be passed through to the axis title (previously store_true produced a title of 'True')."""
     at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, title="Custom title"
@@ -579,6 +579,101 @@ def test_spectraplot_custom_title(mocksettitle: t.Any) -> None:
 
 def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
+
+
+def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
+    """--hidexticklabels must not change the width of the file, nor the size of the frame.
+
+    A paper puts several of these files in a grid that the author builds by hand. Each one goes in at
+    one width, thus a file of a different width draws a frame of a different size beside its
+    neighbour.
+    """
+    import pypdf
+
+    import artistools.plottools as pt
+    import artistools.spectra.plotspectra as ps
+
+    sizes = {}
+    for name, hide in (("shown", False), ("hidden", True)):
+        frames: list[tuple[float, float]] = []
+        realsave = pt.save_figure
+
+        def spy(
+            fig: t.Any,
+            outpath: t.Any,
+            frames: list[tuple[float, float]] = frames,
+            realsave: t.Any = realsave,
+            **kwargs: t.Any,
+        ) -> None:
+            fig.canvas.draw()
+            figwidth, figheight = fig.get_size_inches()
+            position = fig.axes[0].get_position()
+            frames.append((position.width * figwidth, position.height * figheight))
+            realsave(fig, outpath, **kwargs)
+
+        outpath = tmp_path / f"{name}.pdf"
+        with mock.patch.object(ps, "save_figure", spy):
+            at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outpath, hidexticklabels=hide)
+
+        page = pypdf.PdfReader(outpath).pages[0].mediabox
+        sizes[name] = (float(page.width) / 72.0, float(page.height) / 72.0, *frames[0])
+
+    # the width of the file and the frame hold. The height falls by the labels that went, because a
+    # crop takes the part of a margin that no label fills
+    assert sizes["shown"][0] == pytest.approx(sizes["hidden"][0]), "the width of the file must not change"
+    assert sizes["shown"][2:] == pytest.approx(sizes["hidden"][2:]), "the frame must not change"
+    assert sizes["shown"][2:] == pytest.approx((pt.FRAMEWIDTH_INCHES, pt.FRAMEHEIGHT_INCHES))
+    assert sizes["hidden"][1] < sizes["shown"][1], "the file loses the height of the labels"
+
+
+def test_obsspec_draws_the_reference_spectrum(capsys: pytest.CaptureFixture[str]) -> None:
+    """-obsspec names a reference spectrum, as a positional path does.
+
+    Nothing read the list that -obsspec filled, thus the command took the file, drew the model alone,
+    and said nothing about it.
+    """
+    refspec = "2003du_20031213_3219_8822_00.txt"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath], refspecfiles=[refspec], timedays=300, outputfile=outputpath / "obsspec.pdf"
+    )
+    assert "SN2003du" in capsys.readouterr().out, "the reference spectrum must be drawn"
+
+
+@mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
+def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
+    """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="log", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert [call.args[1] for call in mockyscale.call_args_list] == ["log"]
+
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="linear", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert not mockyscale.call_args_list
+
+    # more than half of the flux values of this model are zero, and a log axis hides each of them,
+    # thus auto keeps the linear axis whatever range the values that remain cover
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="auto", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert not mockyscale.call_args_list
+
+
+def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """-xunit reads the name while argparse parses, thus a mistake stops the command before it reads a file.
+
+    The command took every name and stopped later with "Unknown xunit", after it read the spectra.
+    """
+    import artistools.spectra.plotspectra
+
+    parser = at.commands.SuggestingArgumentParser(prog="plotspectra")
+    artistools.spectra.plotspectra.addargs(parser)
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([".", "-xunit", "micrometre"])
+
+    assert "Did you mean micron?" in capsys.readouterr().err
+
+    # a name of a unit is not case sensitive, and each spelling gives the canonical one
+    assert parser.parse_args([".", "-xunit", "Angstrom"]).xunit == "angstroms"
+    assert parser.parse_args([".", "-x", "MU"]).xunit == "micron"
 
 
 @pytest.mark.parametrize("xunit", ["angstroms", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
@@ -645,3 +740,51 @@ def test_get_spectra_rejects_averaging_over_both_angles() -> None:
             average_over_phi=True,
             average_over_theta=True,
         )
+
+
+def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> None:
+    """A user can name reference data with the .out suffix that ARTIS uses for its own output.
+
+    path_is_artis_model reads that suffix, thus the predicate sent such a file to the ARTIS reader and
+    the command drew nothing. The folder decides: an ARTIS run holds input.txt beside its output.
+    """
+    import shutil
+
+    from artistools.spectra.plotspectra import path_is_reference_spectrum
+
+    reference = at.get_path("artistools_dir") / "data" / "refspectra" / "2010lp_20110928_fors2.txt"
+    shutil.copy(reference, tmp_path / "myref.out")
+    shutil.copy(reference, tmp_path / "myref.txt")
+
+    assert path_is_reference_spectrum(tmp_path / "myref.out")
+    assert path_is_reference_spectrum(tmp_path / "myref.txt")
+
+    # the output of a real run keeps its own reading, whether the user names the folder or the file
+    assert not path_is_reference_spectrum(modelpath)
+    assert not path_is_reference_spectrum(modelpath / "spec.out")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectraemissionplot_draws_a_reference_named_out(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The emission plot must draw a reference spectrum whose name ends in the .out suffix of ARTIS.
+
+    The overlay loop read the suffix alone, thus it skipped such a file without a word.
+    """
+    import shutil
+
+    source = at.get_path("artistools_dir") / "data" / "refspectra" / "2003du_20031213_3219_8822_00.txt"
+    shutil.copy(source, tmp_path / "myref.out")
+    shutil.copy(f"{source}.meta.yml", tmp_path / "myref.out.meta.yml")
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, tmp_path / "myref.out"],
+        outputfile=tmp_path,
+        timemin=290,
+        timemax=320,
+        emissionabsorption=True,
+        use_thermalemissiontype=True,
+    )
+
+    labels = {callargs.kwargs.get("label") for callargs in mockplot.call_args_list}
+    assert any(label and "2003du" in str(label) for label in labels), labels

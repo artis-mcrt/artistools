@@ -8,7 +8,8 @@ from collections.abc import Callable
 from collections.abc import Sequence
 
 import artistools as at
-from artistools.misc import add_outputfile_arg
+from artistools.misc import addarg_output
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
 defaultoutputfile = "vpkt.txt"
@@ -444,9 +445,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--non-interactive",
         action="store_true",
-        help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal.",
+        help="Do not prompt for settings. Prompting is also skipped when stdin is not a terminal",
     )
-    add_outputfile_arg(parser, helptext=f"Path/filename for the output file (default {defaultoutputfile})")
+    addarg_output(parser, kind="file", helptext=f"Path/filename for the output file (default {defaultoutputfile})")
 
 
 def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktConfig:
@@ -499,11 +500,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print("stdin is not a terminal, so keeping the settings above without prompting")
 
     for warning in check_config(config):
-        print(f"WARNING: {warning}. ARTIS will abort unless it was built with matching constants.")
+        print_warning(f"{warning}. ARTIS will abort unless it was built with matching constants.")
 
     outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
     at.print_saved(outputfile)
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

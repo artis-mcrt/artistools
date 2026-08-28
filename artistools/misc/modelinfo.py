@@ -1,18 +1,25 @@
 """ARTIS model folder information: input parameters, run folders, and MPI rank mappings."""
 
+import re
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
+
+if t.TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import day_to_s
+from artistools.constants import h_ev_s
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
@@ -110,6 +117,23 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     return specdata["nu"].to_numpy()
 
 
+def shorten_middle(text: str, maxlen: int | None) -> str:
+    """Return text of no more than maxlen characters, with the middle replaced by an ellipsis.
+
+    The name of a run folder carries the model at the start and the date, the packet count, and the
+    machine at the end. Thus a cut of either end alone loses what the reader needs most.
+    """
+    if maxlen is None or len(text) <= maxlen:
+        return text
+
+    if maxlen <= 3:
+        return text[:maxlen]
+
+    keep = maxlen - 3
+    head = (keep + 1) // 2
+    return f"{text[:head]}...{text[len(text) - (keep - head) :]}"
+
+
 @lru_cache(maxsize=8)
 def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
@@ -117,7 +141,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
     path = Path(path)
-    if not path.exists() and path.parts[0] == "codecomparison":
+    if path_is_codecomparison(path):
         return str(path)
 
     abspath = path.resolve()
@@ -130,7 +154,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
             return f.readline().strip()
     except FileNotFoundError:
         foldername = Path(modelpath).name
-        return foldername if (maxlen is None or len(foldername) <= maxlen) else f"...{foldername[-maxlen:]}"
+        return shorten_middle(foldername, maxlen)
 
 
 @lru_cache(maxsize=8)
@@ -176,7 +200,7 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
-        MeV_in_Hz = 2.417989242084918e20
+        MeV_in_Hz = 1e6 / h_ev_s
         params["nusyn_min"], params["nusyn_max"] = (
             float(x) * MeV_in_Hz for x in readnoncommentline(inputfile).split("#")[0].split()
         )
@@ -292,12 +316,33 @@ def read_rank_outputfiles(
     When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
     and the rows are filtered to that selection (negative values mean no filter).
     """
-    filepaths = [
-        firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
-        for folderpath in get_runfolders(modelpath, timestep=timestep)
-        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-    ]
-    assert filepaths, f"No {filenameformat} files found in {modelpath}"
+    nonemptycounts = get_nonempty_cellcounts(modelpath)
+    filepaths = []
+    emptyranks = []
+    for folderpath in get_runfolders(modelpath, timestep=timestep):
+        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex):
+            filepath = firstexisting_or_none(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+            if filepath is not None:
+                filepaths.append(filepath)
+            elif nonemptycounts is not None and nonemptycounts.get(mpirank) == 0:
+                emptyranks.append(mpirank)
+            else:
+                # the rank handles a cell that holds matter, thus the file is missing. firstexisting
+                # names every compressed form that it looked for
+                firstexisting(filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True)
+
+    if not filepaths:
+        # the format holds a field for the rank, thus name the family rather than one file
+        filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
+        if emptyranks and isinstance(modelgridindex, int) and modelgridindex >= 0:
+            msg = (
+                f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
+                f"assigned no 3D cell to it, and rank {emptyranks[0]} wrote no file for it"
+            )
+            raise ValueError(msg)
+
+        msg = f"No {filefamily} files found in {modelpath}"
+        raise FileNotFoundError(msg)
 
     dfout = (
         pl
@@ -347,19 +392,62 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
     return None
 
 
+def get_rankassignments(modelpath: Path | str) -> pl.DataFrame | None:
+    """Return the cell-to-MPI-rank assignments, or None when the file is absent.
+
+    The clone is cheap, because polars shares the data of a frame, and it keeps a caller that changes
+    the columns in place from changing what the next caller reads.
+    """
+    dfrankassignments = get_rankassignments_cached(modelpath)
+
+    return dfrankassignments.clone() if dfrankassignments is not None else None
+
+
+@lru_cache(maxsize=16)
+def get_rankassignments_cached(modelpath: Path | str) -> pl.DataFrame | None:
+    """Return the assignments of the run, and keep the frame for the next caller.
+
+    get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
+    again for each cell. Do not change the frame that this function returns.
+    """
+    lzrankassignments = get_dfrankassignments(modelpath)
+
+    return lzrankassignments.collect() if lzrankassignments is not None else None
+
+
+@lru_cache(maxsize=16)
+def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
+    """Return the count of cells that hold matter for each rank, or None without the assignments file.
+
+    ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
+    cells alone, thus it writes no output file, and the absence of that file is not a fault.
+    """
+    dfranks = get_rankassignments(modelpath)
+    if dfranks is None:
+        return None
+
+    if "ndo_nonempty" not in dfranks.columns:
+        return None
+
+    return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))
+
+
 def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     modelpath = Path(modelpath)
     npts_model = get_npts_model(modelpath)
-    assert modelgridindex < npts_model
+    if not 0 <= modelgridindex < npts_model:
+        # a model of one cell makes "1 cells" and "0 to 0" read badly, thus name the range alone
+        msg = f"Cell {modelgridindex} is not in this model. Its cells are 0 to {npts_model - 1}"
+        raise ValueError(msg)
 
-    dfrankassignments = get_dfrankassignments(modelpath)
+    dfrankassignments = get_rankassignments(modelpath)
     if dfrankassignments is not None:
         dfselected = dfrankassignments.filter(
             (pl.col("ndo") > 0)
             & (pl.col("nstart") <= modelgridindex)
             & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
-        ).collect()
+        )
         assert dfselected.height == 1
         return int(dfselected["rank"].item())
 

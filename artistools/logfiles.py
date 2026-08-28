@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import artistools as at
+from artistools.misc import print_warning
 
 defaultoutputfile = "plotlogfiles_{0}.pdf"
 
@@ -90,10 +91,11 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
                 mpirank, timetaken = zip(*sorted(bytimestep[timestep].items()), strict=True)
                 axis.plot(mpirank, timetaken, label=stage)
             axis.set_xlabel("mpi rank")
-            axis.set_ylabel("time (s)")
+            axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
             axis.legend()
-            pdf.savefig(fig)
+            # save_figure holds this rule for a figure of its own, and this pdf writes its own pages
+            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
             plt.close(fig)
 
     at.print_saved(outputfile)
@@ -101,10 +103,10 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.add_modelpath_arg(
+    at.addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
-    at.add_outputfile_arg(parser, default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -112,9 +114,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpaths = at.normalize_path_list(args.modelpath)
-    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfile = args.outputfile
     if len(modelpaths) > 1 and "{" not in str(outputfile):
-        print(f"WARNING: output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
+        print_warning(f"output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
 
     for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)
@@ -123,4 +125,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 if __name__ == "__main__":
-    main()
+    from artistools.commands import run_module_as_subcommand
+
+    run_module_as_subcommand(__spec__)

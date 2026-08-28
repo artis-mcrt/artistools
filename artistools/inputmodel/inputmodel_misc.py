@@ -27,7 +27,9 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
 from artistools.misc import get_file_identity
+from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
@@ -186,7 +188,7 @@ def read_modelfile_text(
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
         assert isinstance(vmax_kmps, float)
-        modelmeta["vmax_cmps"] = vmax_kmps * 1.0e5
+        modelmeta["vmax_cmps"] = vmax_kmps * km_to_cm
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -244,8 +246,8 @@ def read_modelfile_text(
             )
             for col, pos in expected_positions:
                 if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
-                    print(
-                        f"  WARNING: {col} does not match expected value. Check that vmax is consistent with the cell positions."
+                    print_warning(
+                        f"{col} does not match expected value. Check that vmax is consistent with the cell positions."
                     )
 
         else:
@@ -414,7 +416,7 @@ def get_modeldata(
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
         textfilepath = inputpath
         modelpath = Path(inputpath).parent
-    elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
+    elif path_is_codecomparison(inputpath):
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
         textfilepath = Path(get_path("codecomparisonmodelartismodelpath"), inputmodel, "model.txt")
@@ -579,7 +581,9 @@ def add_derived_cols_to_modeldata(
             dfmodel = (
                 dfmodel
                 .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
-                .with_columns(vel_r_min=(pl.col("vel_r_min_kmps") * 1e5), vel_r_max=(pl.col("vel_r_max_kmps") * 1e5))
+                .with_columns(
+                    vel_r_min=(pl.col("vel_r_min_kmps") * km_to_cm), vel_r_max=(pl.col("vel_r_max_kmps") * km_to_cm)
+                )
                 .with_columns(vel_r_mid=((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2))
                 .with_columns(
                     volume=(
@@ -589,7 +593,7 @@ def add_derived_cols_to_modeldata(
                             pl.col("vel_r_max_kmps").cast(pl.Float64).pow(3)
                             - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)
                         )
-                        * (1e5 * t_model_init_seconds) ** 3
+                        * (km_to_cm * t_model_init_seconds) ** 3
                     )
                 )
                 .with_columns(  # 1/2 m v^2 integrated across each spherical shell's vmin to vmax
@@ -724,7 +728,7 @@ def add_derived_cols_to_modeldata(
         for col in derived_cols
         if col not in dfmodel.collect_schema().names() and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
     ]:
-        print(f"WARNING: Unknown derived columns: {unknown_cols}")
+        print_warning(f"Unknown derived columns: {unknown_cols}")
 
     if "pos_min" in derived_cols:
         derived_cols.extend(
@@ -747,11 +751,6 @@ def add_derived_cols_to_modeldata(
     if "angle_bin" in derived_cols:
         assert modelpath is not None
         dfmodel = get_cell_angle(dfmodel.collect()).lazy()
-
-    # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
-    #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
-    # if "Q" in derived_cols and os.path.isfile(modelpath / "Q_energy.txt"):
-    #     dfmodel["Q"] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
 
     return dfmodel
 
@@ -781,7 +780,6 @@ def get_cell_angle(dfmodel: pl.DataFrame) -> pl.DataFrame:
     # assert at.get_viewingdirection_phibincount() == 10
 
     phibins = [math.pi * frac / 5 for frac in (1, 2, 3, 4, 5, 6, 7, 8, 9)]
-    # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
     phi_labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
 
     return dfmodel.with_columns(
@@ -830,6 +828,31 @@ def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unkno
 def _customcolsortkey(col: str) -> tuple[float, int]:
     """Sort nuclide mass fraction columns by atomic number then mass number, and other columns last."""
     return get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
+
+
+def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[str]) -> None:
+    """Write the dataframe in the ARTIS text file format: space separated and no header.
+
+    Eight significant figures round-trip the Float32 that the reader produces, whose relative spacing
+    is 6e-8. Five figures lost more precision than the reader does, which showed up as a mass that
+    changed by 2e-5 when a model was written and read again.
+    """
+    df.write_csv(
+        fileobj,
+        include_header=False,
+        separator=" ",
+        line_terminator="\n",
+        float_scientific=True,
+        float_precision=7,
+        null_value="0.0",
+    )
+
+
+def backup_existing_file(filepath: Path) -> None:
+    """Rename an existing file to a .bak file, so that the new file does not overwrite it."""
+    if filepath.exists():
+        oldfile = filepath.rename(filepath.with_suffix(".bak"))
+        print(f"{filepath} already exists. Renaming existing file to {oldfile}")
 
 
 def save_modeldata(
@@ -925,9 +948,7 @@ def save_modeldata(
 
     modelfilepath = resolve_outputfile(outpath, "model.txt")
 
-    if modelfilepath.exists():
-        oldfile = modelfilepath.rename(modelfilepath.with_suffix(".bak"))
-        print(f"{modelfilepath} already exists. Renaming existing file to {oldfile}")
+    backup_existing_file(modelfilepath)
 
     with modelfilepath.open("w", encoding="utf-8") as fmodel:
         if headercommentlines:
@@ -942,7 +963,7 @@ def save_modeldata(
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
         if modelmeta["dimensions"] in {2, 3}:
-            fmodel.write(f"{vmax:.4e}\n")
+            fmodel.write(f"{vmax:.8e}\n")
 
         if customcols:
             fmodel.write(f"#{' '.join(standardcols)} {' '.join(customcols)}\n")
@@ -977,15 +998,7 @@ def save_modeldata(
                 if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
             fmodel.flush()
-            dfmodel.write_csv(
-                fmodel,
-                include_header=False,
-                separator=" ",
-                line_terminator="\n",
-                float_scientific=True,
-                float_precision=4,
-                null_value="0.0",
-            )
+            write_artis_csv(dfmodel, fmodel)
 
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
@@ -1087,23 +1100,13 @@ def save_initelemabundances(
 
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
-    if abundancefilename.exists():
-        oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))
-        print(f"{abundancefilename} already exists. Renaming existing file to {oldfile}")
+    backup_existing_file(abundancefilename)
 
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         fabund.flush()
-        dfelabundances.write_csv(
-            fabund,
-            include_header=False,
-            separator=" ",
-            line_terminator="\n",
-            float_scientific=True,
-            float_precision=4,
-            null_value="0.0",
-        )
+        write_artis_csv(dfelabundances, fabund)
 
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
