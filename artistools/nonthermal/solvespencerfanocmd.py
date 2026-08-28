@@ -255,7 +255,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata = None
             dfpops = None
         else:
-            adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
+            # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
+            adata = at.atomic.get_levels(
+                modelpath,
+                get_transitions=True,
+                ionlist=tuple(ions),
+                derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
+            )
 
         if step == 0 and args.ostat:
             strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"

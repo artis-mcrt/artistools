@@ -14,6 +14,11 @@ def test_spencerfano() -> None:
     )
 
 
+def test_spencerfano_excitation() -> None:
+    """Solve with the excitation path. The solver reads the derived transition columns, e.g. epsilon_trans_ev."""
+    at.nonthermal.solvespencerfanocmd.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200)
+
+
 @pytest.mark.parametrize("x_e", [0.0, 0.01, 0.5, 1.0, 1.5, 2.0, 3.7, 26.0])
 def test_ionpops_for_electronfraction(x_e: float) -> None:
     """The ion populations must average to x_e free electrons per nucleus, for x_e above one as well as below.
