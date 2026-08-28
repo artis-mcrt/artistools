@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 import artistools as at
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 
 defaultoutputfile = "plotlogfiles_{0}.pdf"
 
@@ -84,7 +85,8 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
 
     with PdfPages(outputfile) as pdf:
         for timestep in timesteps:
-            fig, axis = plt.subplots()
+            fig, axesgrid = make_frame_figure(aspect=0.770)
+            axis = axesgrid[0][0]
             for stage, bytimestep in logfiledict.items():
                 if timestep not in bytimestep:
                     continue

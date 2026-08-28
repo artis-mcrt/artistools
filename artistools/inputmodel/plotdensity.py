@@ -5,18 +5,18 @@ import argparse
 import typing as t
 from collections.abc import Sequence
 
-import matplotlib.pyplot as plt
-import numpy as np
 import polars as pl
 
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 
@@ -43,6 +43,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
     addarg_output(parser, kind="file", defaultname="densityprofile.pdf")
+
+    addarg_figscale(parser)
     addarg_show(parser)
 
 
@@ -52,15 +54,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.plottools.set_mpl_style()
 
-    fig, axes = plt.subplots(
-        nrows=3 if args.plotye else 2,
-        ncols=1,
-        sharex=True,
-        sharey=False,
-        figsize=(4, 4),
-        tight_layout={"pad": 0.5, "w_pad": 0.5, "h_pad": 0.0},
-    )
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(args, rows=3 if args.plotye else 2, aspect=0.45)
+    axes = axesgrid[:, 0]
 
     args.modelpath = at.normalize_path_list(args.modelpath)
 

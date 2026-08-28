@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -23,6 +22,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
@@ -71,6 +71,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     at.addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
+
+    at.addarg_figscale(parser)
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
@@ -458,9 +460,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             setparquetpath = parquet_dir / f"decay_powers_{labelfull}.parquet"
             at.write_parquet_atomic(traj_set_df, setparquetpath, replaces=at.get_file_identity(setparquetpath))
 
-        fig, axes = plt.subplots(
-            nrows=2, ncols=1, figsize=(6, 10), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0}
-        )
+        fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.913)
+        axes = axesgrid[:, 0]
         ax0 = axes[0]
         ax0.axhline(y=0.45, color=ARTIS_colors[2], linestyle="dotted", label=r"Barnes+16 $\gamma$")
         ax0.axhline(y=0.20, color=ARTIS_colors[0], linestyle="dotted", label=r"Barnes+16 $e^{-}$")

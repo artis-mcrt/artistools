@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -18,6 +17,7 @@ from artistools.constants import hc_in_ev_cm
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
@@ -25,6 +25,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_plot_title
 
@@ -179,19 +180,8 @@ def make_plot(
     args: argparse.Namespace,
 ) -> None:
     """Plot one panel for each ion, and save the figure."""
-    fig, axes = plt.subplots(
-        nrows=len(ionlist),
-        ncols=1,
-        sharex=True,
-        sharey=False,
-        figsize=(6, 2 * (len(ionlist) + 1)),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    if len(ionlist) == 1:
-        axes = np.array([axes])
-
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(args, rows=len(ionlist), aspect=0.383)
+    axes = axesgrid[:, 0]
 
     if figure_title:
         print(figure_title)
@@ -259,6 +249,8 @@ def add_upper_lte_pop(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=None)
+
+    addarg_figscale(parser)
 
     addarg_notitle(parser)
 

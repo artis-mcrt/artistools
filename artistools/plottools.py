@@ -441,7 +441,7 @@ TOPMARGIN_INCHES: t.Final[float] = 0.28
 
 
 def make_frame_figure(
-    args: argparse.Namespace,
+    args: argparse.Namespace | None = None,
     *,
     rows: int = 1,
     cols: int = 1,
@@ -462,12 +462,15 @@ def make_frame_figure(
     file that hides its x labels keeps its width and loses only the height of those labels.
 
     The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
+    A caller that has no parsed arguments gives no args, and the figure then takes a scale of 1.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
 
-    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0) * args.figscale
-    frameheight = FRAMEWIDTH_INCHES * aspect * args.figscale
+    # a helper that draws a figure without parsing arguments passes no args, thus it takes scale 1
+    figscale = getattr(args, "figscale", 1.0)
+    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0) * figscale
+    frameheight = FRAMEWIDTH_INCHES * aspect * figscale
 
     # a column that shows its own y label needs the width of one beside it, and likewise a row
     colgap = RIGHTMARGIN_INCHES if sharey else LABELWIDTH_INCHES

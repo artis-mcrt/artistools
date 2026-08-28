@@ -7,7 +7,6 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.selectors as cs
@@ -17,6 +16,7 @@ from artistools.misc import addarg_action
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
 from artistools.misc import require_action
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 
 
@@ -146,7 +146,8 @@ def make_hesma_peakmag_dm15_dm40(
 
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str | None = None) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
-    fig, axis = plt.subplots()
+    fig, axesgrid = make_frame_figure(aspect=0.770)
+    axis = axesgrid[0][0]
     for filepath in sorted(Path(pathtofiles).iterdir()):
         print(f"Reading {filepath}")
         dfwidthlum = at.read_wsv(filepath)
@@ -241,7 +242,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args.plotfile)
 
     elif args.action == "plotspectrum":
-        fig, axis = plt.subplots()
+        fig, axesgrid = make_frame_figure(aspect=0.770)
+        axis = axesgrid[0][0]
         plot_hesma_spectrum(
             require(args.timedays, "-timedays", args.action),
             [axis],
@@ -250,7 +252,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_or_show(fig, args.plotfile)
 
     else:
-        fig, axis = plt.subplots()
+        fig, axesgrid = make_frame_figure(aspect=0.770)
+        axis = axesgrid[0][0]
         plothesmaresspec(fig, axis, require(args.hesmafile, "-hesmafile", args.action))
         save_or_show(fig, args.plotfile)
 

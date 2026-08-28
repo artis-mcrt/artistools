@@ -5,17 +5,18 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
 import artistools as at
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timestep
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 defaultoutputfile = "plotmacroatom_cell{cell:05d}_ts{timestep:03d}-{timestep2:03d}.pdf"
@@ -24,6 +25,8 @@ defaultoutputfile = "plotmacroatom_cell{cell:05d}_ts{timestep:03d}-{timestep2:03
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
+
+    addarg_figscale(parser)
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
     addarg_timestep(parser, default=10, helptext="Timestep number to plot, e.g. 40 or last")
@@ -76,9 +79,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfmacroatom = read_files(input_files, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(6, 6), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
-    )
+    fig, axesgrid = make_frame_figure(args, aspect=1.059)
+    axis = axesgrid[0][0]
 
     axis.annotate(
         f"Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to {time_days_max})\nCell {modelgridindex:d}",

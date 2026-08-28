@@ -7,12 +7,11 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 
@@ -173,9 +172,8 @@ def append_cell_to_output(
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
     """Plot density and the Ni56 and Co mass fractions of the slice against velocity, and save it as a PDF."""
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
-    )
+    fig, axesgrid = make_frame_figure(aspect=0.676)
+    axis = axesgrid[0][0]
     axis.set_xlabel(r"Velocity [km/s]")
     axis.set_ylabel(r"Density [g/cm$^3$] or mass fraction")
     ylabels = [r"$\rho$", "fNi56", "fCo"]

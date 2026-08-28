@@ -10,7 +10,6 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -24,6 +23,7 @@ from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 
@@ -229,14 +229,8 @@ def plot_qdot(
     else:
         dfgsiglobalheating = None
 
-    fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        sharey=False,
-        figsize=(6, 1 + 3),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    fig, axesgrid = make_frame_figure(aspect=0.676)
+    axis = axesgrid[0][0]
 
     axis.set_xlabel("Time [days]")
     axis.set_yscale("log")
@@ -358,18 +352,8 @@ def plot_cell_abund_evolution(
     else:
         df_gsi_abunds = None
 
-    fig, axes = plt.subplots(
-        nrows=len(arr_species),
-        ncols=1,
-        sharex=False,
-        sharey=False,
-        figsize=(6, 1 + 2.0 * len(arr_species)),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
-    )
-    if len(arr_species) == 1:
-        axes = np.array([axes])
-    fig.subplots_adjust(top=0.8)
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(rows=len(arr_species), aspect=0.383, sharex=False)
+    axes = axesgrid[:, 0]
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")

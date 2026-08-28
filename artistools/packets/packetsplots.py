@@ -6,7 +6,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
@@ -15,6 +14,7 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
 
@@ -182,7 +182,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if colorlogscale:
         heatmap = np.ma.log(heatmap)
 
-    fig, ax = plt.subplots(figsize=(3.5, 4.5))
+    fig, axesgrid = make_frame_figure(aspect=1.482)
+    ax = axesgrid[0][0]
     z = heatmap.T
 
     im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
