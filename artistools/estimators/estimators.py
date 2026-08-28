@@ -28,6 +28,7 @@ from artistools.misc import print_warning
 
 if t.TYPE_CHECKING:
     import os
+    from collections.abc import Iterable
 
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
@@ -374,6 +375,33 @@ def _estimator_colsortkey(col: str) -> str:
     return f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else col
 
 
+def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int) -> Path:
+    """Return the path of the parquet cache for one batch of MPI ranks."""
+    filename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    return Path(folderpath) / filename
+
+
+def get_textsource_mtime(folderpath: Path | str) -> float | None:
+    """Return the time of the last change of an estimator text file, or None when the folder holds none."""
+    with contextlib.suppress(StopIteration):
+        return next(Path(folderpath).glob("estimators_????.out*")).stat().st_mtime
+
+    return None
+
+
+def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
+    """Return True when the parquet cache exists and no estimator text file is newer than it.
+
+    The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
+    conversion of the text files takes place.
+    """
+    parquetstat: os.stat_result | None = None
+    with contextlib.suppress(FileNotFoundError):
+        parquetstat = parquetfilepath.stat()
+
+    return parquetstat is not None and not (textsource_mtime and textsource_mtime > parquetstat.st_mtime)
+
+
 def get_estimators_rankbatch_parquetfile(
     folderpath: Path | str,
     batch_mpiranks: Sequence[int],
@@ -389,38 +417,27 @@ def get_estimators_rankbatch_parquetfile(
 
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
-    parquetfilename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
-    parquetfilepath = folderpath / parquetfilename
-
-    textsource_mtime: float | int | None = None
-    with contextlib.suppress(StopIteration):
-        textsource_mtime = next(folderpath.glob("estimators_????.out*")).stat().st_mtime
+    parquetfilepath = get_rankbatch_parquetpath(folderpath, batch_mpiranks, batchindex)
+    textsource_mtime = get_textsource_mtime(folderpath)
 
     assert len(batch_mpiranks) == max(batch_mpiranks) - min(batch_mpiranks) + 1, (
         "batch_mpiranks must be a contiguous range of ranks"
     )
     assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
 
-    parquetstat: os.stat_result | None = None
-    with contextlib.suppress(FileNotFoundError):
-        parquetstat = parquetfilepath.stat()
-
     outdatedparquet: tuple[int, int] | None = None
-    if parquetstat is None:
-        generate_parquet = True
-    elif textsource_mtime and textsource_mtime > parquetstat.st_mtime:
-        # leave the stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
+    generate_parquet = not rankbatch_parquet_is_current(parquetfilepath, textsource_mtime)
+    if generate_parquet:
+        # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
         # the path always resolves to a complete parquet. Deleting it first opens a window in which a
         # concurrent reader finds it missing or half-swapped. The identity comes from the stat that showed
         # the file is stale, so only that exact file can be replaced by this rewrite
-        outdatedparquet = at.get_file_identity(parquetstat)
-        print(
-            f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files."
-            " File will be regenerated..."
-        )
-        generate_parquet = True
-    else:
-        generate_parquet = False
+        with contextlib.suppress(FileNotFoundError):
+            outdatedparquet = at.get_file_identity(parquetfilepath.stat())
+            print(
+                f"  {parquetfilepath.relative_to(modelpath.parent)} is older than the estimator text files."
+                " File will be regenerated..."
+            )
 
     if generate_parquet:
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
@@ -622,15 +639,28 @@ def _scan_artis_estimators(
 
     runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
-        from artistools.misc.general import get_progress_class
-
-        tqdm = get_progress_class()
-
-        # each batch reads up to 100 rank text files in one call, thus a conversion of a large run takes
-        # minutes and deserves a bar with a count. A run whose parquet caches exist finishes at once
         pairs = [
             (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
         ]
+
+        # each batch reads up to 100 rank text files in one call, thus a conversion of a large run takes
+        # minutes and deserves a bar with a count. A run whose parquet caches are current reads no text
+        # file, and the scan of the parquet files is lazy, thus a bar would come and go with no work
+        # behind it. One time of the last change serves every batch of a run folder.
+        mtimeoffolder = {runfolder: get_textsource_mtime(runfolder) for runfolder in runfolders}
+        anyconversion = any(
+            not rankbatch_parquet_is_current(
+                get_rankbatch_parquetpath(runfolder, mpiranks, batchindex), mtimeoffolder[runfolder]
+            )
+            for runfolder, batchindex, mpiranks in pairs
+        )
+
+        batches: Iterable[tuple[Path, int, Sequence[int]]] = pairs
+        if anyconversion and len(pairs) > 1:
+            from artistools.misc.general import get_progress_class
+
+            batches = get_progress_class()(pairs, desc="Converting estimator files", unit="batch")
+
         parquetfiles = [
             get_estimators_rankbatch_parquetfile(
                 modelpath=modelpath,
@@ -639,9 +669,7 @@ def _scan_artis_estimators(
                 batchindex=batchindex,
                 verbose=verbose,
             )
-            for runfolder, batchindex, mpiranks in tqdm(
-                pairs, desc="Reading estimator batches", unit="batch", disable=len(pairs) <= 1
-            )
+            for runfolder, batchindex, mpiranks in batches
         ]
 
         assert bool(parquetfiles)

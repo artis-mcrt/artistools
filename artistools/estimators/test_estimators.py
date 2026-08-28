@@ -668,6 +668,39 @@ def test_estimparse_index_columns_are_integers() -> None:
     assert dfestim.schema["Te"] == pl.Float32
 
 
+def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
+    """The bar counts a conversion of the estimator text files, thus a current cache starts none.
+
+    The scan of the parquet files is lazy, thus a run whose caches were current showed a bar that
+    came and went with no work behind it.
+    """
+    parquetfilepath = at.estimators.estimators.get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
+    assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
+
+    # a cache that no run wrote yet needs the conversion
+    assert not at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, None)
+
+    parquetfilepath.write_bytes(b"")
+    mtime = parquetfilepath.stat().st_mtime
+    assert at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, None)
+    assert at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, mtime - 10.0)
+
+    # an estimator text file that is newer than the cache needs the conversion again
+    assert not at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, mtime + 10.0)
+
+
+def test_a_cached_scan_asks_for_no_progress_class() -> None:
+    """A scan that converts no text file must not build the progress class, which takes a lock."""
+    import artistools.misc.general
+
+    with mock.patch.object(
+        artistools.misc.general, "get_progress_class", side_effect=AssertionError("a cached scan made a bar")
+    ) as mockprogress:
+        at.estimators.scan_estimators(modelpath=modelpath).select(pl.len()).collect()
+
+    mockprogress.assert_not_called()
+
+
 def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The codecomparison branch must honour modelgridindex and timestep like the ARTIS branch does.
 
