@@ -73,14 +73,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 raise ValueError(msg)
 
             print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
-
-        return
-        if not 0 <= timestep <= lasttimestep:
-            # a negative index reads a row from the end of the list, thus it must not reach the lookup
-            msg = get_bad_timestep_message(args.modelpath, timestep)
-            raise ValueError(msg)
-
-        print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
     else:
         print_product(args, get_timesteps_table(args.modelpath))
 
