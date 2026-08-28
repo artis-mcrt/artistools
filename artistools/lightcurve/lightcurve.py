@@ -289,7 +289,10 @@ def generate_band_lightcurve_data(
             args.filter = ["B"]
         filternames = args.filter
 
-    for filter_name in filternames:
+    # the caller gives the names, or args.filter holds them. Either way they are names from here on
+    bandnames: list[str] = list(filternames or [])
+
+    for filter_name in bandnames:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
                 Path(modelpath),
@@ -309,7 +312,7 @@ def generate_band_lightcurve_data(
 
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
 
-    for filter_name in filternames:
+    for filter_name in bandnames:
         if filter_name == "bol":
             continue
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
