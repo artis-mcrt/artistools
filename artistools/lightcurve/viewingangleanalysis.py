@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.figure as mplfig
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -297,7 +296,7 @@ def make_plot_test_viewing_angle_fit(
     args: argparse.Namespace,
 ) -> None:
     """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
-    fig, axesgrid = make_frame_figure()
+    fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
@@ -315,7 +314,6 @@ def make_plot_test_viewing_angle_fit(
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
     axis.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
-    fig.tight_layout()
     plotname = f"{key}_band_{modelname}_viewing_angle{angle!s}.png"
     save_figure(fig, plotname)
 
@@ -357,7 +355,7 @@ def update_plotkwargs_for_viewingangle_colorbar(
     return plotkwargsviewingangles
 
 
-def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argparse.Namespace) -> None:
+def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> None:
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
@@ -369,7 +367,6 @@ def set_scatterplot_plot_params(fig: mplfig.Figure, axis: mplax.Axes, args: argp
     axis.minorticks_on()
     axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
     axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
-    fig.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
@@ -380,7 +377,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
     """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
-    fig, axesgrid = make_frame_figure()
+    fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
     for ii, modelname in enumerate(modelnames):
@@ -442,7 +439,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max")
-    set_scatterplot_plot_params(fig, ax, args)
+    set_scatterplot_plot_params(ax, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         filename = rf"{key}_band_{modelnames[0]}_dm15_peakmag.pdf"
@@ -501,10 +498,10 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         zorder=-1,
     )
 
-    set_legend(ax, args, loc="upper right", ncol=1, columnspacing=1, frameon=False)
+    set_legend(ax, args, loc="upper right")
     ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max")
     ax.set_ylabel(f"{bands[0]}max")
-    set_scatterplot_plot_params(fig, ax, args)
+    set_scatterplot_plot_params(ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
     save_figure(fig, plotname, format="pdf")
 

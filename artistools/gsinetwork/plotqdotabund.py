@@ -302,7 +302,7 @@ def plot_qdot(
             label=r"$\dot{Q}_{sponfis}$ ARTIS",
         )
 
-    set_legend(axis, loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
+    set_legend(axis, ncol=3)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
@@ -393,14 +393,14 @@ def plot_cell_abund_evolution(
         else:
             print(" [no ARTIS data]")
 
-        set_legend(axis, loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
+        set_legend(axis, handlelength=1)
 
         axis.autoscale(enable=True, axis="both")
         axis.set_xmargin(0.02)
         axis.set_ymargin(0.05)
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
-    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999)
+    axes[0].set_title(f"{at.get_model_name(modelpath)} {strcell}")
     save_figure(fig, pdfoutpath, format="pdf")
 
 

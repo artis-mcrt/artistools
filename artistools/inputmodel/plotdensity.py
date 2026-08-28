@@ -45,7 +45,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_output(parser, kind="file", defaultname="densityprofile.pdf")
 
-    addarg_figscale(parser)
+    addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
 
 
@@ -137,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$ $\left[\mathrm{M}_\odot/c\right]$")
     if args.plotye:
         axes[2].set_ylabel(r"Electron fraction Ye")
-    set_legend(axes[1], args, frameon=False)
+    set_legend(axes[1], args)
 
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)

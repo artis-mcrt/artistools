@@ -5,6 +5,7 @@ import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
+from functools import cache
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
@@ -385,8 +386,8 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     The other series, and the reference series after the greys, get the colours of the matplotlib cycle.
     The code steps over a colour that the user asked for, thus two series do not get one colour.
     """
+    set_mpl_style()  # a name such as "C7" and the free colours must both come from the artistools cycle
     askedfor = get_assigned_colors(usercolors)
-    set_mpl_style()  # the artistools cycle holds far more colours than the matplotlib default
     cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     # the colours of the cycle that no series has, by value rather than by spelling
@@ -418,13 +419,12 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
 
 
 # the size in inches of one subplot frame at a figure scale of 1, measured from a plot of one row
-# and one column. A file of this width fills the text block of a two-column page, which measures
-# 180 mm in MNRAS and in A&A
+# and one column
 FRAMEWIDTH_INCHES: t.Final[float] = 6.47
 FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
 
-# the frame of a plot that fills one column of such a page, which measures 84 mm and 88 mm. A plot
-# that draws few series needs no more, and a paper then sets it beside the text
+# the frame of a plot that fills one column: 84 mm in MNRAS and 88 mm in A&A. A plot that draws
+# few series needs no more, and a paper then sets it beside the text
 COLUMNFRAMEWIDTH_INCHES: t.Final[float] = 2.99
 
 # the y label and its tick numbers to the left of each frame, and the x label below the lowest one.
@@ -469,7 +469,7 @@ def make_frame_figure(
     file that hides its x labels keeps its width and loses only the height of those labels.
 
     The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
-    A caller that has no parsed arguments gives no args, and the figure then takes a scale of 1.
+    A helper that parses no arguments passes no args, and the figure then takes a scale of 1.
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     """
@@ -478,7 +478,6 @@ def make_frame_figure(
 
     set_mpl_style()
 
-    # a helper that draws a figure without parsing arguments passes no args, thus it takes scale 1
     figscale = getattr(args, "figscale", 1.0)
     basewidth = FRAMEWIDTH_INCHES if fullwidth else COLUMNFRAMEWIDTH_INCHES
     framewidth = basewidth * getattr(args, "figwidthscale", 1.0) * figscale
@@ -576,14 +575,46 @@ def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequen
             axis.set_prop_cycle(color=colors)
 
 
+@cache
+def read_mpl_style() -> dict[str, t.Any]:
+    """Read the bundled matplotlibrc one time and return its settings."""
+    import matplotlib as mpl
+
+    rcparams = mpl.rc_params_from_file(get_path("artistools_dir") / "matplotlibrc", use_default_template=False)
+    return dict(rcparams.items())
+
+
 def set_mpl_style() -> None:
     """Apply the bundled artistools matplotlibrc style.
 
     make_frame_figure and get_series_colors call this, thus every figure draws the same fonts and
-    ticks whether or not its command asks. The call reads the file each time, because a cache would
-    keep the style from coming back after other code changes rcParams. One call costs a millisecond.
+    ticks whether or not its command asks. The application runs on each call, thus the style comes
+    back after other code changes rcParams. Only the parse of the file is cached.
     """
-    plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
+    plt.style.use(read_mpl_style())
+
+
+def add_cax_for_fixed_frames(fig: mplfig.Figure, *, horizontal: bool) -> mplax.Axes:
+    """Grow the figure and return a new axes that holds a colorbar beside the fixed frames.
+
+    fig.colorbar(ax=...) takes space from an axes, and a Divider gives that space back at draw
+    time, thus the colorbar would lie on the frame. This grows the page for the colorbar instead.
+    save_figure crops the part of the new margin that the colorbar does not fill.
+    """
+    frames = [axis for axis in fig.axes if axis.get_axes_locator() is not None]
+    if horizontal:
+        fig.set_figheight(fig.get_figheight() + 1.0)
+    else:
+        fig.set_figwidth(fig.get_figwidth() + 1.0)
+    fig.canvas.draw()
+    figwidth, figheight = fig.get_size_inches()
+    x0 = min(axis.get_position().x0 for axis in frames)
+    x1 = max(axis.get_position().x1 for axis in frames)
+    y0 = min(axis.get_position().y0 for axis in frames)
+    y1 = max(axis.get_position().y1 for axis in frames)
+    if horizontal:
+        return fig.add_axes((x0, y1 + 0.15 / figheight, x1 - x0, 0.18 / figheight))
+    return fig.add_axes((x1 + 0.15 / figwidth, y0, 0.18 / figwidth, y1 - y0))
 
 
 def save_figure(

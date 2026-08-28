@@ -21,6 +21,7 @@ from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.misc import addarg_figscale
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -73,7 +74,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     at.addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
 
-    at.addarg_figscale(parser)
+    addarg_figscale(parser)
 
 
 def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -> pl.DataFrame:
@@ -504,15 +505,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         ax1.set_ylabel("Energy release rate [erg/s]")
         ax1.set_yscale("log")
-        set_legend(ax1, args)
-
         for ax in axes:
             set_legend(ax, args)
-            ax.set_xlabel("Time [days]")
             ax.set_xscale("log")
+        axes[-1].set_xlabel("Time [days]")
 
         outfilepath = args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        save_figure(fig, outfilepath, bbox_inches="tight")
+        save_figure(fig, outfilepath)
 
 
 if __name__ == "__main__":

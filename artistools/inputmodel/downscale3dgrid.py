@@ -149,6 +149,6 @@ def make_downscaled_3d_grid(
         fig.tight_layout()
 
         diagnosticpath = outputfolder / "downscaled_density_diagnostic.png"
-        save_figure(fig, diagnosticpath, dpi=300, bbox_inches="tight")
+        save_figure(fig, diagnosticpath, dpi=300)
 
     return outputfolder

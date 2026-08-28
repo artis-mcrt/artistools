@@ -52,6 +52,7 @@ from artistools.misc import print_product
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
+from artistools.plottools import add_cax_for_fixed_frames
 from artistools.plottools import AxesTree
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
@@ -818,7 +819,11 @@ def get_linelabel(
 
 
 def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
-    """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
+    """Add the legend, and place it on args.legendsubplotnumber when the figure has subplots."""
+    if args.nolegend:
+        # set_legend would draw nothing, and the subplot index below must not run for it
+        return
+
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
         set_legend(axis, args, loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
@@ -916,13 +921,24 @@ def make_colorbar_viewingangles(
 
     # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
     axeslist = iter_axes(ax) if ax is not None else None
-    if fig:
+    targetfig = fig
+    if targetfig is None:
+        assert axeslist is not None
+        targetfig = axeslist[0].get_figure()
+    assert isinstance(targetfig, mplfig.Figure)
+    if any(axis.get_axes_locator() is not None for axis in targetfig.axes):
+        # a frame that a Divider places takes back the space that colorbar steals, thus the
+        # colorbar gets its own axes on a grown page
+        cax = add_cax_for_fixed_frames(targetfig, horizontal=fig is not None)
+        cbar = targetfig.colorbar(scaledmap, cax=cax, orientation="horizontal" if fig is not None else "vertical")
+        if fig is not None:
+            cbar.ax.xaxis.set_ticks_position("top")
+            cbar.ax.xaxis.set_label_position("top")
+    elif fig:
         cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=axeslist, shrink=0.95)
     else:
         assert axeslist is not None
-        axisfigure = axeslist[0].get_figure()
-        assert axisfigure is not None
-        cbar = axisfigure.colorbar(scaledmap, ax=axeslist)
+        cbar = targetfig.colorbar(scaledmap, ax=axeslist)
     if label:
         cbar.set_label(label, rotation=0)
     cbar.locator = mplticker.FixedLocator(ticklocs)

@@ -193,7 +193,7 @@ def make_plot(
         for ion_index, axis in enumerate(axes):
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
-            set_legend(axis, args, loc="upper left", handlelength=1, frameon=False, numpoints=1)
+            set_legend(axis, args, loc="upper left", handlelength=1)
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[IonTuple(Z, ion_stage)]:.1e}/cm³)"

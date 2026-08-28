@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import artistools as at
 from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
+from artistools.misc import addarg_figscale
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -100,7 +101,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
     at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
-    at.addarg_figscale(parser)
+    addarg_figscale(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -163,7 +164,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         energy += delta_energy
 
         steps += 1
-        if energy <= 0:
+        # the energy falls by one step at a time, thus a value below half a step is a float
+        # residual of zero. One more pass would give beta = 0 and divide by zero
+        if energy <= -delta_energy / 2:
             break
 
     print(f"steps: {steps}")

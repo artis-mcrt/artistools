@@ -1319,11 +1319,11 @@ def run_set_scatterplot_plot_params(
     magnitudes: Sequence[float], ymin: float | None, ymax: float | None
 ) -> tuple[float, float, float]:
     """Plot the magnitudes, apply the shared scatter plot setup, and return xmax, ymin, ymax."""
-    fig, axis = plt.subplots()
+    _fig, axis = plt.subplots()
     axis.plot([1.0, 10.0], list(magnitudes))
     args = argparse.Namespace(colouratpeak=False, ymin=ymin, ymax=ymax, colorbarcostheta=False, colorbarphi=False)
 
-    viewingangleanalysis.set_scatterplot_plot_params(fig, axis, args)
+    viewingangleanalysis.set_scatterplot_plot_params(axis, args)
 
     ymin, ymax = axis.get_ylim()
     return axis.get_xlim()[1], ymin, ymax

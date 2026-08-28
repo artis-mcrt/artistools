@@ -50,7 +50,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")
-    set_legend(ax, loc="best", handlelength=2, frameon=False, numpoints=1)
+    set_legend(ax)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf")

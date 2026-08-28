@@ -202,7 +202,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
-    save_figure(fig, outfilename, dpi=300, bbox_inches="tight")
+    save_figure(fig, outfilename, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
