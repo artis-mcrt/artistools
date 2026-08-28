@@ -1209,10 +1209,23 @@ def test_estimator_keyword_time_selection_refuses_a_conflict() -> None:
     assert withbounds.value.code == 1
 
 
-@pytest.mark.parametrize("timestep", [11, "11"])
-def test_estimator_keyword_timestep_reads_an_int(timestep: int | str) -> None:
-    """A keyword argument gives an int, and a command line gives a string. Both name one timestep."""
-    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["rho"]], timestep=timestep)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_keyword_timestep_reads_an_int(mockplot: mock.MagicMock) -> None:
+    """A keyword argument gives an int, and a command line gives a string. Both name one timestep.
+
+    The test ran each of the two and read nothing back, thus it passed even where the two named a
+    different timestep.
+    """
+    drawn = {}
+    for timestep in (11, "11"):
+        mockplot.reset_mock()
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["rho"]], timestep=timestep
+        )
+        drawn[timestep] = [np.asarray(call.args[2], dtype=float).tolist() for call in mockplot.call_args_list]
+
+    assert drawn[11], "the plot must draw something"
+    assert drawn[11] == drawn["11"], "the int and the text must name the same timestep"
 
 
 def test_estimator_makegif_writes_one_frame_per_timestep(tmp_path: Path) -> None:
