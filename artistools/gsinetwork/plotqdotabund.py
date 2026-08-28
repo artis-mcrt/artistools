@@ -25,6 +25,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def get_abundance_correction_factors(
@@ -301,7 +302,7 @@ def plot_qdot(
             label=r"$\dot{Q}_{sponfis}$ ARTIS",
         )
 
-    axis.legend(loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
+    set_legend(axis, loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
@@ -392,7 +393,7 @@ def plot_cell_abund_evolution(
         else:
             print(" [no ARTIS data]")
 
-        axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
+        set_legend(axis, loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
         axis.autoscale(enable=True, axis="both")
         axis.set_xmargin(0.02)

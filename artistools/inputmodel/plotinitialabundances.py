@@ -15,6 +15,7 @@ from artistools.misc import addarg_figscale
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def make_plot(args: argparse.Namespace) -> None:
@@ -71,7 +72,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
     ax.set_ylim(*((1e-5, 1.0) if args.yaxis == "massfraction" else (1e-7, 0.1)))
 
-    ax.legend()
+    set_legend(ax, args)
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"

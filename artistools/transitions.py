@@ -27,6 +27,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 if t.TYPE_CHECKING:
@@ -192,7 +193,7 @@ def make_plot(
         for ion_index, axis in enumerate(axes):
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
-            axis.legend(loc="upper left", handlelength=1, frameon=False, numpoints=1, prop={"size": 8})
+            set_legend(axis, args, loc="upper left", handlelength=1, frameon=False, numpoints=1)
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[IonTuple(Z, ion_stage)]:.1e}/cm³)"
@@ -206,7 +207,7 @@ def make_plot(
             xycoords="axes fraction",
             horizontalalignment="right",
             verticalalignment="top",
-            fontsize=10,
+            fontsize="small",
         )
 
     # at.spectra.plot_reference_spectrum(

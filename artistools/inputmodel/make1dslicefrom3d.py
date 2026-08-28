@@ -13,6 +13,7 @@ from artistools.constants import km_to_cm
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -180,7 +181,7 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     for ylist, ylabel in zip(ylists, ylabels, strict=False):
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonpositive="clip")
-    axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
+    set_legend(axis, loc="best", handlelength=2, frameon=False, numpoints=1)
     save_figure(fig, pdfoutputfile, format="pdf")
 
 

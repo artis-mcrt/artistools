@@ -24,6 +24,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extrac
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 
@@ -503,10 +504,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         ax1.set_ylabel("Energy release rate [erg/s]")
         ax1.set_yscale("log")
-        ax1.legend()
+        set_legend(ax1, args)
 
         for ax in axes:
-            ax.legend()
+            set_legend(ax, args)
             ax.set_xlabel("Time [days]")
             ax.set_xscale("log")
 

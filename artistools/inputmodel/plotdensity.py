@@ -18,6 +18,7 @@ from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -136,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$ $\left[\mathrm{M}_\odot/c\right]$")
     if args.plotye:
         axes[2].set_ylabel(r"Electron fraction Ye")
-    axes[1].legend(frameon=False)
+    set_legend(axes[1], args, frameon=False)
 
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)

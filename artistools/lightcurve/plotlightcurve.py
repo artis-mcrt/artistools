@@ -819,15 +819,14 @@ def get_linelabel(
 
 def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
     """Add the legend, placing it on args.legendsubplotnumber when the figure has subplots."""
-    if args.nolegend:
-        return
-
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        axis.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
+        set_legend(axis, args, loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
-        ax.legend(loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend, handlelength=0.7)
+        set_legend(
+            ax, args, loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend, handlelength=0.7
+        )
 
 
 def set_lightcurve_plot_labels(

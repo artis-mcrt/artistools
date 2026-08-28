@@ -440,8 +440,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         xlabel = "Rise Time [days]"
 
-    ax.set_xlabel(xlabel, fontsize=14)
-    ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max", fontsize=14)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max")
     set_scatterplot_plot_params(fig, ax, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
@@ -501,9 +501,9 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         zorder=-1,
     )
 
-    ax.legend(loc="upper right", fontsize=8, ncol=1, columnspacing=1, frameon=False)
-    ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max", fontsize=14)
-    ax.set_ylabel(f"{bands[0]}max", fontsize=14)
+    set_legend(ax, args, loc="upper right", ncol=1, columnspacing=1, frameon=False)
+    ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max")
+    ax.set_ylabel(f"{bands[0]}max")
     set_scatterplot_plot_params(fig, ax, args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
     save_figure(fig, plotname, format="pdf")

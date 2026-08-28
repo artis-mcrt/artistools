@@ -733,7 +733,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     ncol=1,
                     borderpad=0,
                     numpoints=1,
-                    fontsize=11,
                     markerscale=2.5,
                 )
 

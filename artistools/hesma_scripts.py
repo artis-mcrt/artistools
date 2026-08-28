@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
 import polars.selectors as cs
@@ -18,6 +17,7 @@ from artistools.misc import addarg_unsupported
 from artistools.misc import require_action
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
+from artistools.plottools import set_legend
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
@@ -37,7 +37,7 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
 
 
-def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
+def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
     """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
     for specfilename in specfiles:
         specdata = at.read_wsv(specfilename, has_header=False).cast(pl.Float64)
@@ -59,7 +59,7 @@ def plothesmaresspec(fig: mplfig.Figure, ax: mplax.Axes, specfiles: Sequence[Pat
                 res_specdata[dirbin]["lambda"], res_specdata[dirbin]["11.7935"] * (1e-5) ** 2, label=f"hesma {dirbin}"
             )
 
-    fig.legend()
+    set_legend(ax)
 
 
 def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
@@ -156,7 +156,7 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
     axis.invert_yaxis()
     axis.set_xlabel(r"$\Delta m_{15}$")
     axis.set_ylabel("Peak magnitude")
-    axis.legend()
+    set_legend(axis)
 
     save_or_show(fig, outputfile)
 
@@ -254,7 +254,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plothesmaresspec(fig, axis, require(args.hesmafile, "-hesmafile", args.action))
+        plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action))
         save_or_show(fig, args.plotfile)
 
 

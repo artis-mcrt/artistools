@@ -18,6 +18,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -49,7 +50,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")
-    ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
+    set_legend(ax, loc="best", handlelength=2, frameon=False, numpoints=1)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf")

@@ -88,7 +88,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         xycoords="axes fraction",
         horizontalalignment="left",
         verticalalignment="top",
-        fontsize=8,
+        fontsize="x-small",
     )
 
     with np.errstate(divide="ignore"):

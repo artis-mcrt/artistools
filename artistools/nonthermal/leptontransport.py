@@ -9,6 +9,7 @@ import artistools as at
 from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 # CONST_KB above is shared with the rest of artistools. The constants below stay local because this module works in
 # SI units (J, m, kg, s), which artistools.constants does not provide
@@ -183,7 +184,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylabel(r"dE/dx [eV / m]")
     axes[1].set_xscale("log")
     axes[1].set_yscale("log")
-    axes[1].legend()
+    set_legend(axes[1], args)
     save_figure(fig, outputfile, format="pdf")
 
 

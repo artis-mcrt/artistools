@@ -532,8 +532,13 @@ def make_frame_figure(
     return fig, axes
 
 
-def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> "mpllegend.Legend | None":
-    """Draw the legend of the axes and return it. Return None when -nolegend was given."""
+def set_legend(
+    ax: mplax.Axes, args: argparse.Namespace | None = None, **legendkwargs: t.Any
+) -> "mpllegend.Legend | None":
+    """Draw the legend of the axes and return it. Return None when -nolegend was given.
+
+    A helper that parses no arguments passes no args, and the legend then always draws.
+    """
     if getattr(args, "nolegend", False):
         return None
 
