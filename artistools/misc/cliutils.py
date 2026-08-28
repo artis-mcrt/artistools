@@ -464,7 +464,7 @@ def addarg_figscale(parser: argparse.ArgumentParser, *, include_figwidthscale: b
     """Add the figure size scale factor arguments."""
     group = arggroup(parser, "appearance")
     group.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 gives the size of the command"
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 fills the text width of a page"
     )
     if include_figwidthscale:
         group.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")

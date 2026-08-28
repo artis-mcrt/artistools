@@ -427,6 +427,8 @@ LABELWIDTH_INCHES: t.Final[float] = 0.78
 LABELHEIGHT_INCHES: t.Final[float] = 0.47
 
 
+# a saved file crops to about 7.0 inches, which is the full text width of a two-column page:
+# 180 mm in MNRAS and in A&A. One column of such a page is less than half of that
 FIGWIDTH_INCHES: t.Final[float] = FRAMEWIDTH_INCHES + LABELWIDTH_INCHES
 
 
