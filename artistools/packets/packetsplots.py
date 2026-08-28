@@ -182,7 +182,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if colorlogscale:
         heatmap = np.ma.log(heatmap)
 
-    fig, axesgrid = make_frame_figure(aspect=1.482)
+    fig, axesgrid = make_frame_figure(aspect=1.482, fullwidth=False)
     ax = axesgrid[0][0]
     z = heatmap.T
 

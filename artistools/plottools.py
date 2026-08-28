@@ -417,9 +417,14 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
 
 
 # the size in inches of one subplot frame at a figure scale of 1, measured from a plot of one row
-# and one column
+# and one column. A file of this width fills the text block of a two-column page, which measures
+# 180 mm in MNRAS and in A&A
 FRAMEWIDTH_INCHES: t.Final[float] = 6.47
 FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
+
+# the frame of a plot that fills one column of such a page, which measures 84 mm and 88 mm. A plot
+# that draws few series needs no more, and a paper then sets it beside the text
+COLUMNFRAMEWIDTH_INCHES: t.Final[float] = 2.99
 
 # the y label and its tick numbers to the left of each frame, and the x label below the lowest one.
 # Each column pays the width, which a log tick number such as 10^-12 drives to 0.63 inches
@@ -448,6 +453,7 @@ def make_frame_figure(
     aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
     sharex: bool = True,
     sharey: bool = False,
+    fullwidth: bool = True,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -463,14 +469,17 @@ def make_frame_figure(
 
     The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
     A caller that has no parsed arguments gives no args, and the figure then takes a scale of 1.
+    A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
+    page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
 
     # a helper that draws a figure without parsing arguments passes no args, thus it takes scale 1
     figscale = getattr(args, "figscale", 1.0)
-    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0) * figscale
-    frameheight = FRAMEWIDTH_INCHES * aspect * figscale
+    basewidth = FRAMEWIDTH_INCHES if fullwidth else COLUMNFRAMEWIDTH_INCHES
+    framewidth = basewidth * getattr(args, "figwidthscale", 1.0) * figscale
+    frameheight = basewidth * aspect * figscale
 
     # a column that shows its own y label needs the width of one beside it, and likewise a row
     colgap = RIGHTMARGIN_INCHES if sharey else LABELWIDTH_INCHES

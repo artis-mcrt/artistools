@@ -26,7 +26,7 @@ defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
     """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
-    fig, axesgrid = make_frame_figure(aspect=0.786)
+    fig, axesgrid = make_frame_figure(aspect=0.786, fullwidth=False)
     ax = axesgrid[0][0]
 
     # the header line was written as a "#" comment

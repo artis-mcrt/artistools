@@ -54,7 +54,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.plottools.set_mpl_style()
 
-    fig, axesgrid = make_frame_figure(args, rows=3 if args.plotye else 2, aspect=0.45)
+    fig, axesgrid = make_frame_figure(args, rows=3 if args.plotye else 2, aspect=0.45, fullwidth=False)
     axes = axesgrid[:, 0]
 
     args.modelpath = at.normalize_path_list(args.modelpath)
