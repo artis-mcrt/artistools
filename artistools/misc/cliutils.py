@@ -644,7 +644,7 @@ def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
 
 
 def check_time_selection(
-    parser: argparse.ArgumentParser,
+    parser: SuggestingArgumentParser,
     args: argparse.Namespace,
     argsraw: "Sequence[str] | None" = None,
     kwargs: "Collection[str] | None" = None,
@@ -661,7 +661,11 @@ def check_time_selection(
     that differs from the default counts, and so does a name that kwargs holds. A name that carries
     None counts for nothing, because a caller can forward an argument that it does not use.
     """
-    argstrings = list(sys.argv[1:] if argsraw is None else argsraw)
+    # the parser splits a value that the user joined to a flag of more than one letter, thus -ts70
+    # reads as -ts 70 here as well. Without this the scan below took -ts70 for -t, and a value that
+    # repeats the default of the parser then counted for no flag at all. The parse has already run,
+    # thus no argument of this list can be the one that the split refuses
+    argstrings = parser.split_joined_flags(list(sys.argv[1:] if argsraw is None else argsraw))
     keywordnames = set(kwargs or ())
     flagsofdest = {
         action.dest: action.option_strings
@@ -672,9 +676,9 @@ def check_time_selection(
     def givesflag(argstring: str, flag: str) -> bool:
         """Report whether the string of the command line gives the flag its value, as argparse reads it.
 
-        argparse joins a value to a flag of one letter alone, thus -t300 gives -t the value 300, and
-        -ts70 also reads as -t with the value s70. A string that names another flag, exactly or as a
-        start of its name, belongs to that flag.
+        The split above separates a value from a flag of more than one letter, thus only a flag of
+        one letter still carries a joined value here, e.g. -t300. A string that names another flag,
+        exactly or as a start of its name, belongs to that flag.
         """
         if argstring == flag or argstring.startswith(f"{flag}="):
             return True

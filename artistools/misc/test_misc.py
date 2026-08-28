@@ -1210,7 +1210,7 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
     """
     import artistools.spectra.plotspectra
 
-    parser = argparse.ArgumentParser()
+    parser = at.commands.SuggestingArgumentParser()
     artistools.spectra.plotspectra.addargs(parser)
 
     for argsraw in (
@@ -1232,7 +1232,7 @@ def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
     """A value that the user typed counts, even when it is the same as the default of the parser."""
     import artistools.transitions
 
-    parser = argparse.ArgumentParser()
+    parser = at.commands.SuggestingArgumentParser()
     artistools.transitions.addargs(parser)
     default = parser.get_default("timestep")
     assert default is not None, "this test needs a command whose -timestep has a default"
@@ -1249,7 +1249,7 @@ def test_check_time_selection_counts_a_default_as_absent() -> None:
     """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
     import artistools.transitions
 
-    parser = argparse.ArgumentParser()
+    parser = at.commands.SuggestingArgumentParser()
     artistools.transitions.addargs(parser)
     assert parser.get_default("timestep") is not None, "this test needs a command whose -timestep has a default"
 
@@ -1339,30 +1339,32 @@ def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
 
 
 def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
-    """The test of the command line must give each string the reading that argparse gives it.
+    """The test of the command line must give each string the reading that the parser gives it.
 
-    argparse joins a value to a flag of one letter alone, thus -t300 gives -t the value 300, and -ts70
-    reads as -t with the value s70 rather than as a timestep.
+    A value joined to a flag of more than one letter counts for that flag, e.g. -ts70 names the
+    timestep 70. The command took such a value for -t, thus "-ts70 -t 300" named the time range two
+    times and ran without a word, on a command whose -timestep holds that value as its default.
     """
     import artistools.transitions
 
-    def parse(argsraw: list[str]) -> tuple[argparse.ArgumentParser, argparse.Namespace]:
-        parser = argparse.ArgumentParser()
+    def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
+        parser = at.commands.SuggestingArgumentParser()
         artistools.transitions.addargs(parser)
         return parser, parser.parse_args(argsraw)
 
-    # the joined value of a one-letter flag counts, and the timestep here is the default of the parser
-    for argsraw in (["-t300", "-ts", "70"], ["-ts=70", "-t", "300"], ["-ts", "70", "-t", "300"]):
+    # each spelling of the timestep names the range beside -t, and the value is the default here
+    for argsraw in (
+        ["-t300", "-ts", "70"],
+        ["-ts=70", "-t", "300"],
+        ["-ts", "70", "-t", "300"],
+        ["-ts70", "-t", "300"],
+        ["-timestep70", "-t", "300"],
+    ):
         parser, namespace = parse(argsraw)
+        assert namespace.timestep == parser.get_default("timestep"), argsraw
         with pytest.raises(SystemExit) as excinfo:
             at.misc.check_time_selection(parser, namespace, argsraw)
         assert excinfo.value.code == 1, argsraw
-
-    # argparse reads -ts70 as -t with the value s70, thus no timestep is given and no conflict exists
-    argsraw = ["-ts70", "-t", "300"]
-    parser, namespace = parse(argsraw)
-    assert namespace.timestep == parser.get_default("timestep")
-    at.misc.check_time_selection(parser, namespace, argsraw)
 
 
 def test_timedays_of_a_joined_ts_value_names_the_mistake() -> None:
