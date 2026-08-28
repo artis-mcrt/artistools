@@ -584,13 +584,15 @@ def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
 def addarg_yscale(parser: argparse.ArgumentParser) -> None:
     """Add the -yscale argument that selects the scale of the vertical axis.
 
-    "auto" leaves the choice to the command, which keeps --logscaley working. "lin" means "linear".
+    "auto" reads the drawn values and takes a log scale when they cover more than one order of
+    magnitude. It keeps --logscaley working, which asks for a log scale whatever the values are.
+    "lin" means "linear".
     """
     arggroup(parser, "appearance").add_argument(
         "-yscale",
         choices=["log", "linear", "lin", "auto"],
         default="auto",
-        help="Scale of the vertical axis. auto lets the command choose",
+        help="Scale of the vertical axis. auto takes a log scale for values that cover a wide range",
     )
 
 

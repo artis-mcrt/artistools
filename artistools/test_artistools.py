@@ -20,6 +20,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
@@ -1253,6 +1254,47 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert lines[0] == f"#NTIMES: {len(datalines)}"
     # timestep 9999 does not exist, so it must not be counted
     assert len(datalines) == 4
+
+
+@pytest.mark.parametrize(
+    ("name", "values", "wantslog"),
+    [
+        ("a flat series", np.linspace(1.0, 2.0, 50), False),
+        ("a ratio below the threshold", np.array([1.0, 49.0]), False),
+        ("a ratio above the threshold", np.array([1.0, 51.0]), True),
+        ("a decay of four decades", np.geomspace(1e4, 1.0, 100), True),
+        ("one point of noise near zero", np.concatenate([np.full(100, 1.0), [1e-30]]), False),
+        ("a value of zero in every second place", np.concatenate([np.zeros(50), np.geomspace(1.0, 1e4, 50)]), False),
+        ("a few values of zero", np.concatenate([np.zeros(3), np.geomspace(1.0, 1e4, 97)]), True),
+        ("no value at all", np.empty(0), False),
+        ("one value alone", np.array([5.0]), False),
+        ("every value zero", np.zeros(20), False),
+    ],
+)
+def test_wants_log_scale_reads_the_range_of_the_values(
+    name: str, values: npt.NDArray[np.float64], wantslog: bool
+) -> None:
+    """A log scale belongs to values that cover more than one order of magnitude."""
+    assert at.plottools.wants_log_scale(values.astype(np.float64)) is wantslog, name
+
+
+def test_auto_yscale_reads_the_drawn_values() -> None:
+    """-yscale auto takes a log scale from the drawn values, and the other choices stand."""
+    for ydata, wantslog in ((np.geomspace(1.0, 1e4, 50), True), (np.linspace(1.0, 2.0, 50), False)):
+        fig, axis = plt.subplots()
+        axis.plot(np.arange(ydata.size), ydata)
+
+        args = argparse.Namespace(yscale="auto", logscaley=False)
+        at.plottools.set_auto_yscale(axis, args)
+        assert args.logscaley is wantslog
+
+        # -yscale linear and -yscale log each give the answer already, thus the values change nothing
+        for yscale, logscaley in (("linear", False), ("log", True)):
+            args = argparse.Namespace(yscale=yscale, logscaley=logscaley)
+            at.plottools.set_auto_yscale(axis, args)
+            assert args.logscaley is logscaley
+
+        plt.close(fig)
 
 
 def test_get_series_colors_greys_then_cycle() -> None:

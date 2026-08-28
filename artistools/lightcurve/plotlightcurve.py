@@ -729,6 +729,11 @@ def make_lightcurve_plot(
         assert axistherm is not None
         set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
 
+    # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
+    # take a log scale. This follows the plot, because the drawn values give the answer
+    if lumunit != "mag":
+        at.plottools.set_auto_yscale(axis, args)
+
     axis.set_xlabel(r"Time [days]")
 
     if lumunit == "mag":
