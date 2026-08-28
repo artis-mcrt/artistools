@@ -425,6 +425,10 @@ FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
 LABELWIDTH_INCHES: t.Final[float] = 0.53
 LABELHEIGHT_INCHES: t.Final[float] = 0.47
 
+# the x label and its tick numbers alone, without the margin that stands above the highest frame.
+# A command that hides them takes this height off the figure, thus each frame keeps its size
+XLABELHEIGHT_INCHES: t.Final[float] = 0.41
+
 FIGWIDTH_INCHES: t.Final[float] = FRAMEWIDTH_INCHES + LABELWIDTH_INCHES
 
 

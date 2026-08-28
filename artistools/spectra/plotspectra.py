@@ -82,6 +82,7 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
+from artistools.plottools import XLABELHEIGHT_INCHES
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -1267,7 +1268,9 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     if args.showabsorption:
         figheight *= 1.56
     if args.hidexticklabels:
-        figheight *= 0.91
+        # the x label and its tick numbers take a fixed height, thus the figure loses that height and
+        # not a part of itself. The frame keeps its size, which a grid of panels in a paper needs
+        figheight -= XLABELHEIGHT_INCHES
 
     fig, axes = plt.subplots(
         nrows=nrows,
