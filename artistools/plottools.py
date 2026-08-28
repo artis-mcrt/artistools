@@ -5,7 +5,6 @@ import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
-from functools import cache
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
@@ -387,6 +386,7 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     The code steps over a colour that the user asked for, thus two series do not get one colour.
     """
     askedfor = get_assigned_colors(usercolors)
+    set_mpl_style()  # the artistools cycle holds far more colours than the matplotlib default
     cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     # the colours of the cycle that no series has, by value rather than by spelling
@@ -576,12 +576,12 @@ def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequen
             axis.set_prop_cycle(color=colors)
 
 
-@cache
 def set_mpl_style() -> None:
     """Apply the bundled artistools matplotlibrc style.
 
-    The style holds global state, thus one call serves the process. make_frame_figure calls this,
-    so that every figure draws the same fonts and ticks whether or not its command asks.
+    make_frame_figure and get_series_colors call this, thus every figure draws the same fonts and
+    ticks whether or not its command asks. The call reads the file each time, because a cache would
+    keep the style from coming back after other code changes rcParams. One call costs a millisecond.
     """
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
