@@ -25,6 +25,26 @@ if t.TYPE_CHECKING:
 type PathArg = Path | str | Sequence[PathArg] | None
 
 
+class CommaJoinAction(argparse.Action):
+    """Join a repeated flag: "-cell 3 -cell 5" gives "3,5", which parse_range_list expands.
+
+    Without this the last occurrence replaces the first, and the command drops a cell silently.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: str | Sequence[t.Any] | None,
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Put the joined text of every occurrence of this flag in the namespace."""
+        previous = getattr(namespace, self.dest, None)
+        text = ",".join(str(value) for value in values) if isinstance(values, list) else str(values)
+        isfirstoccurrence = previous is self.default or previous is None
+        setattr(namespace, self.dest, text if isfirstoccurrence else f"{previous},{text}")
+
+
 def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
     """Return the argument group of the parser with this title, and make it if the parser has none.
 
@@ -228,6 +248,7 @@ def addarg_modelgridindex(
         "-modelgridindex",
         "-cell",
         "-mgi",
+        action=CommaJoinAction,
         default=default,
         help=helptext or "Model grid cell to plot, e.g. 12 or a range 3-7",
     )
@@ -315,28 +336,20 @@ def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: st
     parser.add_argument(*flags, action=UnsupportedArgument, instead=instead, default=argparse.SUPPRESS)
 
 
-def addarg_timestep(
-    parser: argparse.ArgumentParser,
-    *,
-    kind: t.Literal["rangestr", "int", "strappend"] = "rangestr",
-    default: t.Any = None,
-    helptext: str | None = None,
-) -> None:
-    """Add the -timestep/-ts argument: a range string like 45-65, a single int, or an appendable list."""
-    group = arggroup(parser, "time selection")
-    flags = ("-timestep", "-ts")
-    if kind == "rangestr":
-        group.add_argument(
-            *flags, dest="timestep", nargs="?", default=default, help=helptext or "First timestep or a range e.g. 45-65"
-        )
-    elif kind == "int":
-        # the same grammar as a command that reads a range, thus "-ts last" and "-ts 40" work on every
-        # command. get_single_timestep resolves it, and it reports a range on a command that plots one
-        group.add_argument(
-            *flags, nargs="?", default=default, help=helptext or "Timestep number to plot, e.g. 40 or last"
-        )
-    else:
-        group.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
+def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None) -> None:
+    """Add the -timestep/-ts argument that selects the timestep or the timesteps.
+
+    Every command reads the same text: a number, a range such as 45-65, a list such as 4,9, or
+    "last". parse_range_list expands it, and get_single_timestep gives the one timestep that a
+    command which plots one timestep needs.
+    """
+    arggroup(parser, "time selection").add_argument(
+        "-timestep",
+        "-ts",
+        action=CommaJoinAction,
+        default=default,
+        help=helptext or "Timestep to plot, e.g. 40, a range 45-65, or last",
+    )
 
 
 def addarg_timedays(
@@ -679,10 +692,7 @@ def check_time_selection(
     that differs from the default counts, and so does a name that kwargs holds. A name that carries
     None counts for nothing, because a caller can forward an argument that it does not use.
     """
-    # the parser splits a value that the user joined to a flag of more than one letter, thus -ts70
-    # reads as -ts 70 here as well. Without this the scan below took -ts70 for -t, and a value that
-    # repeats the default of the parser then counted for no flag at all. The parse has already run,
-    # thus no argument of this list can be the one that the split refuses
+    # split a joined value such as -ts70 here as well, or the scan below reads it as -t
     argstrings = parser.split_joined_flags(list(sys.argv[1:] if argsraw is None else argsraw))
     keywordnames = set(kwargs or ())
     flagsofdest = {
@@ -788,9 +798,8 @@ def get_template_fields(template: Path | str) -> list[str]:
     return re.findall(r"\{(\w+)", str(template))
 
 
-# the older name of each field of a template of an output name. A user holds such a name in a script,
-# thus the field still gives the value. The message that names the fields leaves these out, because
-# the help gives one name for each field.
+# the older name of each output template field, which a script can still hold. The help names one
+# spelling for each field, thus the message that lists them leaves these out
 OLDTEMPLATEFIELDS: t.Final[Mapping[str, str]] = MappingProxyType({"modelgridindex": "cell", "time_days": "timedays"})
 
 

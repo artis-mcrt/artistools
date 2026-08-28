@@ -52,7 +52,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
     addarg_timedays(parser, kind="float", helptext="Name the timestep that covers this time in days")
-    addarg_timestep(parser, kind="rangestr", helptext="Give the days that this timestep covers, e.g. 40 or last")
+    addarg_timestep(parser, helptext="Give the days that this timestep covers, e.g. 40 or last")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

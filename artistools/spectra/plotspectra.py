@@ -1242,9 +1242,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     """Plot the spectra selected by args, and return the figure, the axes, and the plotted data."""
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
-    # each frame holds a size in inches, thus a paper can put these files in a grid that it builds by
-    # hand: the length of a tick number, the number of rows, and --hidexticklabels each leave the
-    # frame and the file as they are. An emission and absorption plot draws a taller frame
+    # an emission and absorption plot draws a taller frame
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=aspect, sharex=True, sharey=False)
 

@@ -26,7 +26,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser, default=Path())
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--modelpath", dest="modelpath", type=Path, help=argparse.SUPPRESS)
-    addarg_timestep(parser, kind="int", default=10, helptext="Timestep number to plot, or -1 for last")
+    addarg_timestep(parser, default=10, helptext="Timestep number to plot, e.g. 40 or last")
     parser.add_argument("-timestepmax", type=int, default=-1, help="Make plots for all timesteps up to this timestep")
     addarg_modelgridindex(parser, default=0)
     parser.add_argument("element", nargs="?", default="Fe", help="Plotted element")
@@ -70,11 +70,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax
-    modelgridindex = args.modelgridindex
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
-    dfmacroatom = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
+    dfmacroatom = read_files(input_files, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axis = plt.subplots(

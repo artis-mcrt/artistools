@@ -194,9 +194,8 @@ def plot_data(
     # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
     dflinepointsdf = dflinepoints.collect()
 
-    # a binned line runs through the middle of each bin, thus it stops half a bin short of the edge
-    # of the data. The value of a bin holds across that bin, thus the line reaches the outer edges.
-    # Without this the line left a gap on the right of every plot that bins its x values
+    # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
+    # the bin, thus reach the outer edges and leave no gap
     xbinned = dflinepointsdf.get_column("xvalue_binned")
     if args.xbins and xbinned.len() > 1:
         halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
@@ -1153,7 +1152,7 @@ def make_figure(
     modelname = at.get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True, titlelines=2)
+    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True)
     axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
@@ -1556,6 +1555,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpath = Path(args.modelpath)
+    # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
+    if args.modelgridindex is not None:
+        args.modelgridindex = at.parse_range_list(args.modelgridindex)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 

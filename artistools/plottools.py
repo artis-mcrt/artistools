@@ -17,11 +17,9 @@ from artistools.commands import get_path
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
-# the quartiles give the range that the middle half of the values covers, and a log scale wins above
-# this ratio. Measurements of real plots: the light curve of a kilonova gives 23, and its spectrum
-# gives 7. A spectrum reaches low values at each end of its wavelength range, thus a wider pair of
-# percentiles reads those ends and not the range that holds the data: the 5th and the 95th give 456
-# for that light curve and 182 for that spectrum, which no threshold parts.
+# the ratio across the middle half of the values, above which a log scale wins. A kilonova light
+# curve gives 23 and its spectrum 7. Wider percentiles read the tails, not the data: the 5th and
+# 95th give 456 and 182, which no threshold parts.
 LOGSCALE_MINRATIO: t.Final[float] = 15.0
 
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
@@ -60,12 +58,15 @@ def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
     """
     import numpy as np
 
-    finite = values[np.isfinite(values)]
-    positive = finite[finite > 0.0]
-    if positive.size < 4 or (finite.size - positive.size) > LOGSCALE_MAXHIDDEN * finite.size:
+    # a mask costs one byte per value, thus this counts them without a copy
+    isfinite = np.isfinite(values)
+    ispositive = isfinite & (values > 0.0)
+    countfinite = int(isfinite.sum())
+    countpositive = int(ispositive.sum())
+    if countpositive < 4 or (countfinite - countpositive) > LOGSCALE_MAXHIDDEN * countfinite:
         return False
 
-    return get_quartile_ratio(positive) > LOGSCALE_MINRATIO
+    return get_quartile_ratio(values[ispositive]) > LOGSCALE_MINRATIO
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
@@ -415,16 +416,13 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
-# the size in inches of the frame that holds the data of one subplot, and of the labels around it,
-# at a figure scale of 1. A measurement of a plot of one row and one column gives these numbers.
-# The width of a whole figure of one column is FRAMEWIDTH_INCHES + LABELWIDTH_INCHES = 7 inches,
-# which is the width that every command drew before the frame held a size of its own.
+# the size in inches of one subplot frame at a figure scale of 1, measured from a plot of one row
+# and one column
 FRAMEWIDTH_INCHES: t.Final[float] = 6.47
 FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
 
-# the y label and its tick numbers stand to the left of each frame, and the x label and its tick
-# numbers below the lowest one. A column carries its own y label, thus each column pays this width
-# a log axis writes a tick number such as 10^-12, which needs 0.63 inches with the y label beside it
+# the y label and its tick numbers to the left of each frame, and the x label below the lowest one.
+# Each column pays the width, which a log tick number such as 10^-12 drives to 0.63 inches
 LABELWIDTH_INCHES: t.Final[float] = 0.78
 LABELHEIGHT_INCHES: t.Final[float] = 0.47
 
@@ -439,10 +437,6 @@ RIGHTMARGIN_INCHES: t.Final[float] = 0.10
 # the exponent that a formatter puts above that axis, which reaches further
 TOPMARGIN_INCHES: t.Final[float] = 0.28
 
-# the height of one line of a title, which stands above the margin. A measurement gives 0.20 inches
-# for one line and 0.40 for two, thus a command that draws a title says how many lines it holds
-TITLELINE_INCHES: t.Final[float] = 0.20
-
 
 def make_frame_figure(
     args: argparse.Namespace,
@@ -451,8 +445,7 @@ def make_frame_figure(
     cols: int = 1,
     aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
     sharex: bool = True,
-    sharey: bool = True,
-    titlelines: int = 0,
+    sharey: bool = False,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -461,11 +454,10 @@ def make_frame_figure(
 
     Divider places each frame at a size in inches, thus the size of a frame does not follow the
     length of a tick number, the number of rows, or a label that a command hides. The figure holds
-    the margins that the labels need, and no layout engine takes that space back. save_figure keeps
-    the whole figure of such a plot, because a crop of the empty margin would undo this.
+    the margins that the labels need, and no layout engine takes that space back.
 
-    A title stands above the highest frame, thus a command that draws one says how many lines it
-    holds. Without that the title reaches past the figure, and save_figure reports it.
+    save_figure crops the part of a margin that no label fills. The crop moves no artist, thus a
+    file that hides its x labels keeps its width and loses only the height of those labels.
 
     The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
     """
@@ -490,7 +482,7 @@ def make_frame_figure(
     for row in range(rows):
         vertical += [Size.Fixed(rowgap)] if row else []
         vertical += [Size.Fixed(frameheight)]
-    vertical += [Size.Fixed(TOPMARGIN_INCHES + titlelines * TITLELINE_INCHES)]
+    vertical += [Size.Fixed(TOPMARGIN_INCHES)]
 
     figwidth = sum(size.fixed_size for size in horizontal)
     figheight = sum(size.fixed_size for size in vertical)
@@ -598,13 +590,8 @@ def save_figure(
     if show:
         plt.show()
 
-    # crop the file to the artists that the figure holds. The page then carries no border of white,
-    # and an artist that reaches past the figure, e.g. a long label or an annotation that a command
-    # places outside the axes, stays whole in place of being cut at the edge of the page. The small
-    # pad keeps a stroke that lies on the boundary from losing its outer half.
-    # a crop takes the part of a margin that no label fills, and it moves no artist, thus the frame
-    # keeps the size in inches that make_frame_figure gave it. The file then carries no border of
-    # white, and an artist that reaches past the figure stays whole in place of being cut
+    # a crop moves no artist, thus a fixed frame keeps its size and a file that hides its x labels
+    # keeps its width. The pad keeps a stroke on the boundary whole.
     savefig_kwargs.setdefault("bbox_inches", "tight")
     savefig_kwargs.setdefault("pad_inches", 0.02)
 

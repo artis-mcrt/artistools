@@ -463,7 +463,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         args.subplots = False
 
     cols = 1
-    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847)
+    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     for plotnumber, timedays in enumerate(timedayslist):
@@ -632,11 +632,6 @@ def make_singletimestep_plot(
     nrows = len(ion_stage_list) * len(mgilist)
     fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=subplotheight, sharex=False)
     axes = axesgrid[:, 0]
-
-    if nrows == 1:
-        axes = np.array([axes])
-
-    assert isinstance(axes, np.ndarray)
 
     assert mgilist
 

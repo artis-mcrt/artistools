@@ -15,7 +15,7 @@ DEFAULTOUTPUTNAME = "massfracs.txt"
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     at.addarg_modelpath(parser, default=Path())
-    at.addarg_timestep(parser, kind="int", default=14, helptext="Timestep number to export")
+    at.addarg_timestep(parser, default=14, helptext="Timestep number to export")
     at.addarg_modelgridindex(parser, default="0-9", helptext="Range of cell numbers to export")
     at.addarg_output(
         parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions"
@@ -27,7 +27,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     modelpath = Path(args.modelpath)
-    timestep = args.timestep
+    timestep = at.get_single_timestep(args.timestep, modelpath)
+    assert timestep is not None, "-timestep holds a default, thus it names a timestep"
     # the standard atomic weights, not the masses in compositiondata.txt, which only cover the elements that
     # ARTIS treated in detail. Weighting over a subset would renormalise the fractions to a partial total
     elmass = at.get_atomic_masses()

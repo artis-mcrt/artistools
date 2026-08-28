@@ -11,6 +11,7 @@ from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Sequence
+from functools import cache
 from functools import lru_cache
 from pathlib import Path
 
@@ -483,6 +484,7 @@ def firstexisting_or_none(
     return filepath
 
 
+@cache
 def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
     """Return the path of a file of reference data, or None when no such file exists.
 
@@ -646,9 +648,8 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
     import numpy as np
     from PIL import Image
 
-    # a gif holds one canvas, and the first frame gives its size, thus a frame that is wider or
-    # taller loses what lies outside. Each frame takes a border of white up to the largest size.
-    # Image.open reads the header alone, thus this costs no decode of the image
+    # a gif holds one canvas, thus pad every frame to the largest size or lose what lies outside.
+    # Image.open reads the header alone, thus this decodes no image
     sizes = [Image.open(imagefile).size for imagefile in imagefiles]
     width, height = max(size[0] for size in sizes), max(size[1] for size in sizes)
 

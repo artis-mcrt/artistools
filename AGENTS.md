@@ -75,7 +75,8 @@ Do not report that a check passed if you did not run it. Tell the user which che
   raise KeyError(msg)
   ```
 - The maximum line length is 120 characters. `ruff format` does not reflow a comment, thus you must keep a comment inside the limit.
-- A comment must give the reason for the code. Do not repeat what the code does.
+- Prefer readable code to a comment. Give each symbol a name that says what it holds, e.g. `isfirstoccurrence`, and delete the comment that the name replaces.
+- A comment must give the reason for the code. Do not repeat what the code does. Write one or two lines. A comment of three lines or more must earn each one, e.g. a measurement that justifies a number. Give the numbers alone and not the full account of the experiment.
 - Write a docstring of one line for a simple function. For a more complex function, write a summary of one line, then an empty line, then a longer description. Write the summary as an instruction: "Return the sum" and not "Returns the sum". Use the `"""` quotes and not `'''`.
 
 ## Suppress lint and type errors

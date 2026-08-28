@@ -1265,9 +1265,8 @@ def get_kilonova_lightcurve() -> npt.NDArray[np.float64]:
     ("name", "values", "wantslog"),
     [
         ("a flat series", np.linspace(1.0, 2.0, 50), False),
-        # a light curve of a kilonova covers three orders of magnitude, and a linear axis draws its
-        # late times on the line of zero. A rule that reads the spread of the values keeps that axis,
-        # because the values gather near the peak
+        # three orders of magnitude, but the values gather near the peak, thus the spread keeps a
+        # linear axis
         ("the light curve of a kilonova", get_kilonova_lightcurve(), True),
         ("a decay over four decades", np.geomspace(1e4, 1.0, 100), True),
         ("a decay that falls away", np.exp(-np.linspace(0.0, 10.0, 100)), True),

@@ -644,10 +644,8 @@ def _scan_artis_estimators(
             (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
         ]
 
-        # each batch reads up to 100 rank text files in one call, thus a conversion of a large run takes
-        # minutes and deserves a bar with a count. A run whose parquet caches are current reads no text
-        # file, and the scan of the parquet files is lazy, thus a bar would come and go with no work
-        # behind it. One time of the last change serves every batch of a run folder.
+        # a bar is worth its place only when a batch converts text files, which takes minutes. Current
+        # parquet caches read no text, and their scan is lazy, thus a bar would show no work
         mtimeoffolder = {runfolder: get_textsource_mtime(runfolder) for runfolder in runfolders}
         anyconversion = any(
             not rankbatch_parquet_is_current(

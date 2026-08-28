@@ -368,7 +368,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timedays(parser, kind="str")
 
-    addarg_timestep(parser, kind="strappend")
+    addarg_timestep(parser)
 
     addarg_modelgridindex(parser, helptext="Model grid cell to plot, or a range e.g. 3-7")
 

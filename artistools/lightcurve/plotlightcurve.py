@@ -796,7 +796,7 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np
         rows = 1
         cols = 1
 
-    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols)
+    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     return fig, ax

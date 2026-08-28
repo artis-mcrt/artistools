@@ -265,7 +265,7 @@ def test_add_cli_arg_helper_variants() -> None:
     """The non-default helper modes must reproduce the per-command argument shapes."""
     parser = argparse.ArgumentParser()
     at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
-    at.addarg_timestep(parser, kind="int", default=70)
+    at.addarg_timestep(parser, default=70)
     at.addarg_timedays(parser, kind="float")
     at.addarg_output(parser, kind="folder", default=Path())
     args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
@@ -277,9 +277,16 @@ def test_add_cli_arg_helper_variants() -> None:
     assert args.outputfile == Path()
     assert args.outputkind == "folder"
 
-    parserappend = argparse.ArgumentParser()
-    at.addarg_timestep(parserappend, kind="strappend")
-    assert parserappend.parse_args(["-ts", "5", "-ts", "6"]).timestep == ["5", "6"]
+    # a repeated flag joins with a comma, thus no occurrence takes the place of an earlier one
+    parserrepeat = argparse.ArgumentParser()
+    at.addarg_timestep(parserrepeat, default=70)
+    at.addarg_modelgridindex(parserrepeat)
+    argsrepeat = parserrepeat.parse_args(["-ts", "5", "-ts", "6", "-mgi", "3", "-mgi", "5-7"])
+    assert argsrepeat.timestep == "5,6"
+    assert argsrepeat.modelgridindex == "3,5-7"
+    assert at.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
+    # one occurrence replaces the default and does not join to it
+    assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
 
     parserrequired = argparse.ArgumentParser()
     at.addarg_modelpath(parserrequired, required=True)
