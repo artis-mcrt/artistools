@@ -265,7 +265,8 @@ def test_add_cli_arg_helper_variants() -> None:
     at.addarg_output(parser, kind="folder", default=Path())
     args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
     assert args.modelpath == [Path("model1")]
-    assert args.timestep == 12
+    # -timestep holds the text that the user wrote, and get_single_timestep reads one timestep
+    assert args.timestep == "12"
     assert args.timedays == 45.5
     # one helper serves both kinds, thus the folder of a command is a Path as the file of one is
     assert args.outputfile == Path()
@@ -1495,7 +1496,7 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
         ["-timestep70", "-t", "300"],
     ):
         parser, namespace = parse(argsraw)
-        assert namespace.timestep == parser.get_default("timestep"), argsraw
+        assert str(namespace.timestep) == str(parser.get_default("timestep")), argsraw
         with pytest.raises(SystemExit) as excinfo:
             at.misc.check_time_selection(parser, namespace, argsraw)
         assert excinfo.value.code == 1, argsraw

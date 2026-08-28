@@ -1954,6 +1954,33 @@ def test_an_output_template_takes_the_older_name_of_a_field() -> None:
         at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
 
 
+def test_every_command_reads_the_same_timestep_grammar() -> None:
+    """-timestep takes the same text on every command, thus a user carries one grammar between them.
+
+    Six commands gave -timestep the type int, thus "-ts 40-45" and "-ts last" each stopped with
+    "invalid int value" there, and worked on the commands that read a range.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if "-timestep" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+                continue
+
+            # no command reads the text as an int, thus each one takes "last" and a range
+            assert action.type is None, f"{subcommand} gives -timestep a type of its own"
+            checked += 1
+
+    assert checked >= 10, f"only {checked} commands take -timestep"
+
+
 def test_a_joined_value_takes_the_longest_flag() -> None:
     """-ts70 gives 70 to -ts, because the user names the longest flag that the token starts with.
 

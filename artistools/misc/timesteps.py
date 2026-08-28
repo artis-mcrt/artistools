@@ -207,6 +207,32 @@ def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
     )
 
 
+def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> int | None:
+    """Return the one timestep that -timestep names, or None when it names none.
+
+    Every command reads the same grammar, thus "40" and "last" work on each one. A command that plots
+    one timestep cannot take a range, thus a range earns a message that says so.
+    """
+    if timestep is None:
+        return None
+
+    from artistools.misc.cliutils import parse_range_list
+
+    lasttimestep = len(get_timestep_times(modelpath, loc="mid")) - 1
+    timesteps = parse_range_list(str(timestep), dictvars={"last": lasttimestep})
+    if len(timesteps) > 1:
+        msg = (
+            f"-timestep '{timestep}' names {len(timesteps)} timesteps, and this command plots one. "
+            "Give one timestep, e.g. -ts 40 or -ts last"
+        )
+        raise ValueError(msg)
+
+    if not 0 <= timesteps[0] <= lasttimestep:
+        raise ValueError(get_bad_timestep_message(modelpath, timesteps[0]))
+
+    return timesteps[0]
+
+
 def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
     """Return the timestep that a token names, resolving a keyword such as "last"."""
     token = token.strip()

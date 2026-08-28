@@ -269,7 +269,7 @@ def plot_spherical(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
-    parser.add_argument("-timestep", "-ts", action="store", type=str, default=None, help="Timestep index")
+    parser.add_argument("-timestep", "-ts", default=None, help="Timestep number to plot, e.g. 40, last, or 40-45")
     parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
     parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")

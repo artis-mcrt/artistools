@@ -107,6 +107,7 @@ from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
+from artistools.misc.timesteps import get_single_timestep as get_single_timestep
 from artistools.misc.timesteps import get_time_range as get_time_range
 from artistools.misc.timesteps import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc.timesteps import get_timestep_time as get_timestep_time

@@ -183,8 +183,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.composition == "artis":
         if args.timedays:
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        elif args.timestep is None:
-            at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
+        else:
+            args.timestep = at.get_single_timestep(args.timestep, modelpath)
+            if args.timestep is None:
+                at.exit_with_error(
+                    "no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last"
+                )
 
         modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
         if args.velocity >= 0.0:

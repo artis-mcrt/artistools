@@ -51,7 +51,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if atomic_number < 1:
         at.exit_with_error(f"could not find element '{args.element}'")
 
-    timestepmin = args.timestep
+    timestepmin = at.get_single_timestep(args.timestep, args.modelpath)
+    assert timestepmin is not None, "-timestep holds a default, thus it names a timestep"
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 

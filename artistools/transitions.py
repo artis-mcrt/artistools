@@ -358,7 +358,12 @@ def get_ionlist() -> list[IonTuple]:
 
 def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellConditions:
     """Read the time, the velocity, and the estimators of the selected cell and timestep."""
-    timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
+    timestep = (
+        at.get_timestep_of_timedays(modelpath, args.timedays)
+        if args.timedays
+        else at.get_single_timestep(args.timestep, modelpath)
+    )
+    assert timestep is not None, "-timestep holds a default, thus it names a timestep"
 
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
     estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=args.modelgridindex)

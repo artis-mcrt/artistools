@@ -179,7 +179,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             at.exit_with_error("specify only one of -timestep and -timedays")
         timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
     else:
-        timestep = args.timestep
+        timestep = at.get_single_timestep(args.timestep, args.modelpath)
         if timestep is None:
             at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 

@@ -314,7 +314,11 @@ def addarg_timestep(
             *flags, dest="timestep", nargs="?", default=default, help=helptext or "First timestep or a range e.g. 45-65"
         )
     elif kind == "int":
-        group.add_argument(*flags, type=int, default=default, help=helptext or "Timestep number to plot")
+        # the same grammar as a command that reads a range, thus "-ts last" and "-ts 40" work on every
+        # command. get_single_timestep resolves it, and it reports a range on a command that plots one
+        group.add_argument(
+            *flags, nargs="?", default=default, help=helptext or "Timestep number to plot, e.g. 40 or last"
+        )
     else:
         group.add_argument(*flags, action="append", default=default, help=helptext or "Timestep number to plot")
 

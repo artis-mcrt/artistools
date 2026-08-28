@@ -802,7 +802,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 
-    timegroup.add_argument("-timestep", "-ts", type=int, help="Timestep number to plot")
+    # no type, thus this reads the same text as every other command: a number, "last", or a range
+    timegroup.add_argument("-timestep", "-ts", help="Timestep number to plot, e.g. 40, last, or 40-45")
 
     cellgroup = parser.add_mutually_exclusive_group()
     # a mutually exclusive group, thus the flags are spelled out rather than taken from addarg_modelgridindex
