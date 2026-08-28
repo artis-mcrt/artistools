@@ -521,38 +521,6 @@ def make_frame_figure(
     return fig, axes
 
 
-def get_figsize(
-    args: argparse.Namespace,
-    *,
-    rows: int = 1,
-    cols: int = 1,
-    aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
-    sharex: bool = True,
-) -> tuple[float, float]:
-    """Return the figure size in inches that holds rows x cols frames, each one of the same size.
-
-    aspect gives the height of one frame as a part of its width. Each row adds the height of one
-    frame, and each column adds the width of one frame and of its own labels. Thus a figure of many
-    rows draws a frame of the size that a figure of one row draws. The height of the figure grew
-    with the number of rows before, and the labels grew with it, thus each frame lost height as the
-    rows increased: 4.08 inches for one row, 3.24 for two, and 2.96 for three.
-
-    The rows of a stack share an x axis on nearly every command, thus one x label stands below the
-    lowest frame. Give sharex=False for a stack that gives each row an x label of its own, so that
-    the height holds one label for each row. Without it each frame loses a part of that label:
-    3.94 inches in place of 4.08 at four rows.
-
-    -figscale scales the whole figure. -figwidthscale scales the width of the frame alone, and only
-    the commands that declare it give it.
-    """
-    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0)
-    figwidth = cols * (framewidth + LABELWIDTH_INCHES)
-    xlabelcount = 1 if sharex else rows
-    figheight = xlabelcount * LABELHEIGHT_INCHES + rows * framewidth * aspect
-
-    return (args.figscale * figwidth, args.figscale * figheight)
-
-
 def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> "mpllegend.Legend | None":
     """Draw the legend of the axes and return it. Return None when -nolegend was given."""
     if getattr(args, "nolegend", False):

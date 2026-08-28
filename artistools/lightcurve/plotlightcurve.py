@@ -53,7 +53,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
 from artistools.plottools import AxesTree
-from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
@@ -798,23 +797,8 @@ def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np
         rows = 1
         cols = 1
 
-    if "figwidth" not in args:
-        args.figwidth = get_figsize(args, cols=cols)[0]
-    if "figheight" not in args:
-        args.figheight = get_figsize(args, rows=rows)[1]
-
-    fig, ax = plt.subplots(
-        nrows=rows,
-        ncols=cols,
-        sharex=True,
-        sharey=True,
-        figsize=(args.figwidth, args.figheight),
-        tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6},
-    )  # (6.2 * 3, 9.4 * 3)
-
-    if args.subplots:
-        assert isinstance(ax, np.ndarray)
-        ax = ax.flatten()
+    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols)
+    ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     return fig, ax
 

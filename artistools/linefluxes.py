@@ -11,7 +11,6 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
-import matplotlib.pyplot as plt
 import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
@@ -34,7 +33,7 @@ from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import print_warning
-from artistools.plottools import get_figsize
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -353,16 +352,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=1,
-        sharey=False,
-        figsize=get_figsize(args, rows=nrows),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    if nrows == 1:
-        axes = np.array([axes])
+    fig, axesgrid = make_frame_figure(args, rows=nrows, sharey=False)
+    axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
 
@@ -653,14 +644,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         for tmid in times_days:
             print(f"  Plot at {tmid} days")
 
-            fig, axis = plt.subplots(
-                nrows=nrows,
-                ncols=1,
-                sharey=False,
-                sharex=False,
-                figsize=get_figsize(args, rows=nrows, aspect=0.955, sharex=False),
-                tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
-            )
+            fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=0.955, sharex=False, sharey=False)
+            axis = axesgrid[0][0]
             assert isinstance(axis, mplax.Axes)
 
             for refdataindex in range(len(refdatafilenames)):

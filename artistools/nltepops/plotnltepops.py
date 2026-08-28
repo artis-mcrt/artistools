@@ -11,7 +11,6 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.axes as mplax
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -32,7 +31,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import get_npts_model
 from artistools.misc import print_warning
-from artistools.plottools import get_figsize
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -470,17 +469,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         args.subplots = False
 
     cols = 1
-    fig, ax = plt.subplots(
-        nrows=rows,
-        ncols=cols,
-        sharex=True,
-        sharey=True,
-        figsize=get_figsize(args, rows=rows, cols=cols, aspect=0.847),
-        tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
-    )
-
-    if args.subplots:
-        ax = ax.flatten()
+    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847)
+    ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
@@ -651,13 +641,8 @@ def make_singletimestep_plot(
     subplotheight = (7.0 * (2.4 / 6 if args.x == "config" else 1.8 / 6) - 0.47) / 6.47
 
     nrows = len(ion_stage_list) * len(mgilist)
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=1,
-        sharex=False,
-        figsize=get_figsize(args, rows=nrows, aspect=subplotheight, sharex=False),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=subplotheight, sharex=False)
+    axes = axesgrid[:, 0]
 
     if nrows == 1:
         axes = np.array([axes])
