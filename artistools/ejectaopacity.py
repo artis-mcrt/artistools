@@ -159,11 +159,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed")
 
+    # every command that reads a range of wavelengths takes both spellings, thus -xmin reaches this
+    # command as well. This one bins the opacities over that range, and it draws no plot
     parser.add_argument(
-        "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
+        "-xmin", "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
-        "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
+        "-xmax", "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
     )
     parser.add_argument(
         "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities"
@@ -219,8 +221,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata=adata,
             time_days=time_days,
             dfestimators=dfcellbatch,
-            lambdamin=args.lambdamin,
-            lambdamax=args.lambdamax,
+            lambdamin=args.xmin,
+            lambdamax=args.xmax,
             deltalambda=args.deltalambda,
         )
         if args.show_binned_opacities:

@@ -1955,6 +1955,38 @@ def test_an_output_template_takes_the_older_name_of_a_field() -> None:
         at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
 
 
+def test_a_wavelength_range_takes_both_spellings() -> None:
+    """-xmin and -lambdamin name one argument on every command that reads a range of wavelengths.
+
+    ejectaopacity took -lambdamin alone, thus "-xmin 100" there gave "unrecognized arguments" and a
+    suggestion of -mgi, which names a cell. Four other commands take both spellings.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        flagsofdest: dict[str, list[str]] = {}
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if type(action).__name__ != "UnsupportedArgument":
+                flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
+
+        for flags in flagsofdest.values():
+            # a command that takes one of the two spellings takes the other one for the same value
+            if "-lambdamin" in flags:
+                assert "-xmin" in flags, f"{subcommand} takes -lambdamin without -xmin"
+                checked += 1
+            if "-lambdamax" in flags:
+                assert "-xmax" in flags, f"{subcommand} takes -lambdamax without -xmax"
+
+    assert checked >= 5, f"only {checked} commands take -lambdamin"
+
+
 def test_every_command_reads_the_same_cell_grammar() -> None:
     """-modelgridindex takes the same text on every command, and it names the cell that it says.
 
