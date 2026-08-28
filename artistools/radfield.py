@@ -375,7 +375,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, kind="strappend")
 
-    addarg_modelgridindex(parser, kind="append", helptext="Model grid cell to plot, or a range e.g. 3-7")
+    addarg_modelgridindex(parser, helptext="Model grid cell to plot, or a range e.g. 3-7")
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 

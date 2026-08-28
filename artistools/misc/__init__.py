@@ -30,6 +30,7 @@ from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import format_frame_path as format_frame_path
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
+from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex
 from artistools.misc.cliutils import get_template_fields as get_template_fields
 from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import makelist as makelist

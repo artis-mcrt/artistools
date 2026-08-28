@@ -216,26 +216,42 @@ def resolve_output_argument(args: argparse.Namespace) -> None:
 
 
 def addarg_modelgridindex(
-    parser: argparse.ArgumentParser,
-    *,
-    kind: t.Literal["rangestr", "int", "append"] = "int",
-    default: t.Any = None,
-    helptext: str | None = None,
+    parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None
 ) -> None:
     """Add the -modelgridindex/-cell/-mgi argument that selects the model grid cell or cells.
 
-    A command that plots one cell takes kind="int". A command that reads several cells takes a range
-    string such as 3-7, which parse_range_list expands. Every command offers the same three flags.
+    Every command reads the same text: a number, or a range such as 3-7, or a list such as 1,4,9.
+    parse_range_list expands it, and get_single_modelgridindex gives the one cell that a command
+    which reads one cell needs.
     """
-    group = arggroup(parser, "cell selection")
-    flags = ("-modelgridindex", "-cell", "-mgi")
-    helptext = helptext or "Model grid cell to plot"
-    if kind == "int":
-        group.add_argument(*flags, type=int, default=default, help=helptext)
-    elif kind == "append":
-        group.add_argument(*flags, action="append", default=default, help=helptext)
-    else:
-        group.add_argument(*flags, default=default, help=helptext)
+    arggroup(parser, "cell selection").add_argument(
+        "-modelgridindex",
+        "-cell",
+        "-mgi",
+        default=default,
+        help=helptext or "Model grid cell to plot, e.g. 12 or a range 3-7",
+    )
+
+
+def get_single_modelgridindex(modelgridindex: str | int | None) -> int | None:
+    """Return the one cell that -modelgridindex names, or None when it names none.
+
+    Every command reads the same text, thus a range reaches a command that plots one cell. Such a
+    range earns a message that says so, in place of a cell that the text does not name.
+    """
+    # a default of None, of an empty list, or of an empty string each name no cell
+    if not modelgridindex and modelgridindex != 0:
+        return None
+
+    cells = parse_range_list(modelgridindex)
+    if len(cells) > 1:
+        msg = (
+            f"-modelgridindex '{modelgridindex}' names {len(cells)} cells, and this command reads one. "
+            "Give one cell, e.g. -cell 12"
+        )
+        raise ValueError(msg)
+
+    return cells[0]
 
 
 class UnsupportedArgument(argparse.Action):

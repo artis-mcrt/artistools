@@ -16,7 +16,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     at.addarg_modelpath(parser, default=Path())
     at.addarg_timestep(parser, kind="int", default=14, helptext="Timestep number to export")
-    at.addarg_modelgridindex(parser, kind="rangestr", default="0-9", helptext="Range of cell numbers to export")
+    at.addarg_modelgridindex(parser, default="0-9", helptext="Range of cell numbers to export")
     at.addarg_output(
         parser,
         kind="file",

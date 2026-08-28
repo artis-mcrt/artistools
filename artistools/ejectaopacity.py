@@ -185,7 +185,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     dfestimators = (
         at.estimators
-        .scan_estimators(args.modelpath, timestep=timestep, modelgridindex=args.modelgridindex, join_modeldata=True)
+        .scan_estimators(
+            args.modelpath,
+            timestep=timestep,
+            modelgridindex=at.get_single_modelgridindex(args.modelgridindex),
+            join_modeldata=True,
+        )
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
     ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))

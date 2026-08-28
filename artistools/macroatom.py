@@ -51,6 +51,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if atomic_number < 1:
         at.exit_with_error(f"could not find element '{args.element}'")
 
+    modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
     timestepmin = at.get_single_timestep(args.timestep, args.modelpath)
     assert timestepmin is not None, "-timestep holds a default, thus it names a timestep"
 
@@ -64,12 +65,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the template took {0}, {1}, and {2} before it took names, thus a script holds those fields
     outputfile = str(args.outputfile).format(
-        args.modelgridindex,
-        timestepmin,
-        timestepmax,
-        cell=args.modelgridindex,
-        timestep=timestepmin,
-        timestep2=timestepmax,
+        modelgridindex, timestepmin, timestepmax, cell=modelgridindex, timestep=timestepmin, timestep2=timestepmax
     )
     modelpath = args.modelpath
     xmin = args.xmin

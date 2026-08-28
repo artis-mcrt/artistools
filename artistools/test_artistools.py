@@ -1954,6 +1954,45 @@ def test_an_output_template_takes_the_older_name_of_a_field() -> None:
         at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
 
 
+def test_every_command_reads_the_same_cell_grammar() -> None:
+    """-modelgridindex takes the same text on every command, and it names the cell that it says.
+
+    plotnltepops read args.modelgridindex[0], and that text is a string, thus "-cell 12" gave the
+    first character and plotted the cell 1. Six commands gave the argument a type or an action of
+    their own, thus a range reached some and not others.
+    """
+    import artistools.__main__
+
+    # the text names one cell, a range of cells, or a list of them, whatever command reads it
+    assert at.get_single_modelgridindex("12") == 12
+    assert at.get_single_modelgridindex(None) is None
+    assert at.parse_range_list("3-7") == [3, 4, 5, 6, 7]
+    assert at.parse_range_list("4,5,6") == [4, 5, 6]
+
+    # a command that reads one cell says so, in place of taking a cell that the text does not name
+    with pytest.raises(ValueError, match=r"names 5 cells, and this command reads one"):
+        at.get_single_modelgridindex("3-7")
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    seen: set[int] = set()
+    checked = 0
+    for subcommand, subparser in subactions[0].choices.items():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if "-modelgridindex" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+                continue
+
+            assert action.type is None, f"{subcommand} gives -modelgridindex a type of its own"
+            assert action.nargs is None, f"{subcommand} gives -modelgridindex an nargs of its own"
+            assert action.dest == "modelgridindex", f"{subcommand} gives -modelgridindex another dest"
+            checked += 1
+
+    assert checked >= 8, f"only {checked} commands take -modelgridindex"
+
+
 def test_every_command_reads_the_same_timestep_grammar() -> None:
     """-timestep takes the same text on every command, thus a user carries one grammar between them.
 

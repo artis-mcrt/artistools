@@ -687,16 +687,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 
-    parser.add_argument(
-        "-modelgridindex",
-        "-cell",
-        "-mgi",
-        type=int,
-        dest="mgilist",
-        default=[],
-        nargs="*",
-        help="Modelgridindex (zero-indexed) to plot or list such as 4,5,6",
-    )
+    # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
+    # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6
+    at.addarg_modelgridindex(parser, default=[], helptext="Model grid cell to plot, or a list such as 4,5,6")
 
     parser.add_argument(
         "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
@@ -735,7 +728,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=args.mgilist,
+        mgiplotlist=at.parse_range_list(args.modelgridindex) if args.modelgridindex else [],
         arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,

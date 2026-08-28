@@ -366,16 +366,19 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     assert timestep is not None, "-timestep holds a default, thus it names a timestep"
 
     modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
-    estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=args.modelgridindex)
+    modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
+    estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:
         at.exit_with_error("no estimators")
 
+    assert modelgridindex is not None, "-modelgridindex holds a default, thus it names a cell"
+
     return CellConditions(
-        modelgridindex=args.modelgridindex,
+        modelgridindex=modelgridindex,
         timestep=timestep,
         time_days=at.get_timestep_time(modelpath, timestep),
-        velocity=modeldata["vel_r_max_kmps"][args.modelgridindex],
-        estimators=estimators_all[timestep, args.modelgridindex],
+        velocity=modeldata["vel_r_max_kmps"][modelgridindex],
+        estimators=estimators_all[timestep, modelgridindex],
     )
 
 

@@ -513,7 +513,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
 
     title = f"Z={Z}, ion_stage={ion_stage}"
     if args.x == "time":
-        title += f", mgi = {args.modelgridindex[0]}"
+        title += f", mgi = {at.get_single_modelgridindex(args.modelgridindex)}"
     elif args.x == "velocity":
         title += f", {timedayslist} days"
     at.plottools.set_plot_title(at.plottools.iter_axes(ax)[-1], title, args)
@@ -542,7 +542,9 @@ def plot_populations_with_time_or_velocity(
             print("Please specify modelgridindex")
             sys.exit(1)
 
-        modelgridindex_list = [int(args.modelgridindex[0])] * len(timesteps)
+        modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
+        assert modelgridindex is not None, "the branch above stops when no cell is given"
+        modelgridindex_list = [modelgridindex] * len(timesteps)
 
     if args.x == "velocity":
         modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].collect()
