@@ -658,7 +658,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 ncols=1,
                 sharey=False,
                 sharex=False,
-                figsize=get_figsize(args, rows=nrows, aspect=0.7),
+                figsize=get_figsize(args, rows=nrows, aspect=0.955, sharex=False),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
             assert isinstance(axis, mplax.Axes)

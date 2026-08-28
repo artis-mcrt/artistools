@@ -1162,7 +1162,7 @@ def make_figure(
         nrows=len(plotlist),
         ncols=1,
         sharex=True,
-        figsize=get_figsize(args, rows=len(plotlist), aspect=0.5, offset=0.0),
+        figsize=get_figsize(args, rows=len(plotlist), aspect=0.468),
         layout="constrained",
         # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )

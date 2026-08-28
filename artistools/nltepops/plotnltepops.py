@@ -475,7 +475,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=get_figsize(args, rows=rows, cols=cols, aspect=0.85, offset=0.0),
+        figsize=get_figsize(args, rows=rows, cols=cols, aspect=0.847),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
 
@@ -645,14 +645,15 @@ def make_singletimestep_plot(
         if i <= max_ion_stage and (ion_stages_displayed is None or i in ion_stages_displayed)
     ])
 
-    subplotheight = 2.4 / 6 if args.x == "config" else 1.8 / 6
+    # the height of one frame in inches, as a part of the width of a frame
+    subplotheight = (7.0 * (2.4 / 6 if args.x == "config" else 1.8 / 6) - 0.47) / 6.47
 
     nrows = len(ion_stage_list) * len(mgilist)
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
         sharex=False,
-        figsize=get_figsize(args, rows=nrows, aspect=subplotheight, offset=0.0),
+        figsize=get_figsize(args, rows=nrows, aspect=subplotheight, sharex=False),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
