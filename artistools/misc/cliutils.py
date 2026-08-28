@@ -537,10 +537,15 @@ def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     """Add the --verbose argument that shows the detail of each step.
 
     A command prints a summary of the work by default. --verbose adds the detail, e.g. the name of
-    each file that the command reads, thus -v means the same on every command.
+    each file that the command reads.
+
+    -v is the short form, but four commands gave -v to -velocity or to -rhoscale before this
+    argument existed. A script holds such a command, thus -v keeps that meaning there, and
+    --verbose is the only form. Declare the argument of the command first, then call this function.
     """
+    flags = ["--verbose"] if "-v" in parser._option_string_actions else ["--verbose", "-v"]  # ruff:ignore[private-member-access]
     arggroup(parser, "output").add_argument(
-        "--verbose", "-v", action="store_true", help="Show the detail of each step, e.g. each file that is read"
+        *flags, action="store_true", help="Show the detail of each step, e.g. each file that is read"
     )
 
 

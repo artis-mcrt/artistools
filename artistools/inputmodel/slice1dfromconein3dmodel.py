@@ -329,7 +329,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_output(parser, kind="folder", default=Path())
 
-    parser.add_argument("-rhoscale", default=None, type=float, help="Density scale factor")
+    parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

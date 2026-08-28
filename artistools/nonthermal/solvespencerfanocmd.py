@@ -96,7 +96,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_modelgridindex(parser, default=0)
 
-    parser.add_argument("-velocity", type=float, default=-1, help="Specify cell by velocity")
+    parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
     parser.add_argument("-npts", type=int, default=4096, help="Number of points in the energy grid")
 

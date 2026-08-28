@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tomllib
 import typing as t
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -1860,25 +1861,49 @@ def test_every_command_takes_quiet() -> None:
         assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
 
 
-def test_verbose_means_the_same_on_every_command() -> None:
-    """-v shows the detail of each step, thus it names no other argument on any command.
+def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str, argparse.ArgumentParser]]:
+    """Give the name and the parser of each subcommand, at every depth of the tree."""
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            for name, subparser in action.choices.items():
+                yield name, subparser
+                yield from get_every_subcommand(subparser)
 
-    -v selected a cell by velocity on three commands, which made one flag carry two meanings.
+
+def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
+    """-v shows the detail of each step, but it keeps an older meaning where it had one.
+
+    Four commands gave -v to -velocity or to -rhoscale, and a script holds such a command.
+    Thus -v keeps that meaning there, and --verbose is the only form of the new argument.
     """
     import artistools.__main__
 
-    parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    for subcommand, subparser in subactions[0].choices.items():
+    olddestof = {
+        "plotradfield": "velocity",
+        "plotnltepops": "velocity",
+        "spencerfano": "velocity",
+        "makeartismodel1dslicefromcone": "rhoscale",
+    }
+    seen = set()
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
         flagsofdest = {
             action.dest: action.option_strings
             for action in subparser._actions  # ruff:ignore[private-member-access]
         }
+        olddest = olddestof.get(subcommand)
+        if olddest is not None and olddest in flagsofdest:
+            seen.add(subcommand)
+            assert "-v" in flagsofdest[olddest], f"{subcommand} must keep -v for -{olddest}"
+            assert flagsofdest.get("verbose", ["--verbose"]) == ["--verbose"], subcommand
+            continue
+
         for dest, flags in flagsofdest.items():
             assert "-v" not in flags or dest == "verbose", f"{subcommand} gives -v to {dest}"
 
         if "verbose" in flagsofdest:
             assert flagsofdest["verbose"] == ["--verbose", "-v"], subcommand
+
+    assert seen == set(olddestof), f"a command changed its name: {set(olddestof) - seen}"
 
 
 def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:

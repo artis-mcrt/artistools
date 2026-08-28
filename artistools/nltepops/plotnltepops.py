@@ -808,7 +808,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-modelgridindex", "-cell", "-mgi", default=[], help="Plotted model grid cell, or a range e.g. 3-7"
     )
 
-    cellgroup.add_argument("-velocity", default=[], type=float, nargs="*", help="Specify cell by velocity")
+    cellgroup.add_argument("-velocity", "-v", default=[], type=float, nargs="*", help="Specify cell by velocity")
 
     parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
 
