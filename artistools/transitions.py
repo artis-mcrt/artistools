@@ -677,8 +677,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if cell is not None:
         print_ionisation_table(cell, depcoeffs)
-        outputfilename = str(args.outputfile).format(
-            cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days
+        outputfilename = at.format_frame_path(
+            args.outputfile, cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days
         )
     else:
         outputfilename = "plottransitions.pdf"

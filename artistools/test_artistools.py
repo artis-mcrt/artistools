@@ -1939,6 +1939,23 @@ def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str,
                 yield from get_every_subcommand(subparser)
 
 
+def test_an_output_template_takes_the_older_name_of_a_field() -> None:
+    """A template of an output name keeps the field names that the commands gave before.
+
+    -o "plot_{modelgridindex}.pdf" and -o "plot_{time_days}d.pdf" each stopped with an error, because
+    the commands renamed those fields to {cell} and {timedays}. A script holds the older names.
+    """
+    assert at.format_frame_path("p_{modelgridindex:03d}_ts{timestep:03d}.pdf", cell=7, timestep=22) == "p_007_ts022.pdf"
+    assert at.format_frame_path("p_{time_days:.0f}d.pdf", timedays=300.4) == "p_300d.pdf"
+
+    # the new name of each field works as well, and both names give one value
+    assert at.format_frame_path("p_{cell}_{timedays}.pdf", cell=7, timedays=300.4) == "p_7_300.4.pdf"
+
+    # the message names the fields of the command, and it leaves out the older names
+    with pytest.raises(ValueError, match=r"gives \{cell\}, \{timedays\}"):
+        at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
+
+
 def test_a_joined_value_takes_the_longest_flag() -> None:
     """-ts70 gives 70 to -ts, because the user names the longest flag that the token starts with.
 

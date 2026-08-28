@@ -910,7 +910,9 @@ def get_xlist(
     if args.xbins is not None and args.xbins == 0:
         estimators = estimators.with_columns(xvalue_binned=pl.lit(None).cast(pl.Float64))
     elif args.xbins is not None:
-        xbinedges = np.linspace(xmin, xmax, args.xbins)
+        # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
+        # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
+        xbinedges = np.linspace(xmin, xmax, args.xbins + 1)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2

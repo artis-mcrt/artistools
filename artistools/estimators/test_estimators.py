@@ -5,6 +5,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import pytest
 
@@ -312,6 +313,47 @@ def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
         assert np.isclose(expectedmean, yvals_mean[varname], rtol=0.01), (varname, expectedmean, yvals_mean[varname])
     for varname, expectedstd in expected_yvals_std.items():
         assert np.isclose(expectedstd, yvals_std[varname], rtol=0.01), (varname, expectedstd, yvals_std[varname])
+
+
+def test_xbins_gives_the_number_of_bins() -> None:
+    """-xbins N divides the x range into N bins. It gave N edges, thus N - 1 bins, before."""
+    for xbins in (5, 10):
+        xvalues, xlimits = get_binned_xvalues_and_limits(xbins)
+
+        # the middle points of two bins beside each other lie one width apart, and N bins divide the
+        # range of the axis. An empty bin gives a gap of two widths, and each end gives half of one
+        expectedwidth = (xlimits[1] - xlimits[0]) / xbins
+        widths = np.diff(xvalues)
+        assert np.isclose(widths, expectedwidth).any(), xbins
+        assert np.isclose(widths[-1], expectedwidth / 2.0), xbins
+
+
+def get_binned_xvalues_and_limits(xbins: int) -> tuple[npt.NDArray[np.float64], tuple[float, float]]:
+    """Return the x values that one plot of binned estimators draws, and the limits of its x axis."""
+    drawn: list[npt.NDArray[np.float64]] = []
+    limits: list[tuple[float, float]] = []
+    realplot, realxlim = mplax.Axes.plot, mplax.Axes.set_xlim
+
+    def spyplot(self: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if len(args) >= 2 and np.ndim(args[0]) > 0:
+            drawn.append(np.asarray(args[0], dtype=np.float64))
+        return realplot(self, *args, **kwargs)
+
+    def spyxlim(self: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        limits.append((float(args[0]), float(args[1])))
+        return realxlim(self, *args, **kwargs)
+
+    with mock.patch.object(mplax.Axes, "plot", spyplot), mock.patch.object(mplax.Axes, "set_xlim", spyxlim):
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath_classic_3d,
+            plotlist=[["Te"]],
+            timedays=4,
+            xbins=xbins,
+            outputfile=outputpath / f"test_xbins_{xbins}.pdf",
+        )
+
+    return drawn[0], limits[0]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

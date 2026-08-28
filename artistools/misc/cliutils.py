@@ -6,8 +6,10 @@ import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
@@ -761,14 +763,21 @@ def get_template_fields(template: Path | str) -> list[str]:
     return re.findall(r"\{(\w+)", str(template))
 
 
+# the older name of each field of a template of an output name. A user holds such a name in a script,
+# thus the field still gives the value. The message that names the fields leaves these out, because
+# the help gives one name for each field.
+OLDTEMPLATEFIELDS: t.Final[Mapping[str, str]] = MappingProxyType({"modelgridindex": "cell", "time_days": "timedays"})
+
+
 def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
     """Return the path of one frame, and name the fields of the command for a template that holds another.
 
     A user writes the template, thus a field that the command does not give is a mistake of the
     arguments and not a fault of artistools.
     """
+    withold = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
     try:
-        return str(frametemplate).format(**fields)
+        return str(frametemplate).format(**withold)
     except KeyError as exc:
         given = ", ".join(f"{{{name}}}" for name in fields)
         msg = f"the name of the output holds the field {exc}, and this command gives {given}"

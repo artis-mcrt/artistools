@@ -29,6 +29,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
+from artistools.misc import format_frame_path
 from artistools.misc import get_npts_model
 from artistools.misc import print_warning
 from artistools.plottools import get_figsize
@@ -779,8 +780,8 @@ def make_singletimestep_plot(
     for ax in axes:
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
-    outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
+    outputfilename = format_frame_path(
+        args.outputfile, elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
     )
     save_figure(fig, outputfilename, format="pdf", args=args)
 

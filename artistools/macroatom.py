@@ -63,7 +63,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("No macroatom files found")
         raise FileNotFoundError
 
-    outputfile = str(args.outputfile).format(cell=args.modelgridindex, timestep=timestepmin, timestep2=timestepmax)
+    # the template took {0}, {1}, and {2} before it took names, thus a script holds those fields
+    outputfile = str(args.outputfile).format(
+        args.modelgridindex,
+        timestepmin,
+        timestepmax,
+        cell=args.modelgridindex,
+        timestep=timestepmin,
+        timestep2=timestepmax,
+    )
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax
