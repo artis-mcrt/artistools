@@ -2,7 +2,12 @@
 
 Artistools is a toolkit that plots data, analyses data, and converts files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) and a small Rust extension (`rust/`, imported as `artistools.rustext`).
 
-The package has **no public API**. You can delete code that has no callers. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path. Correct the design instead.
+The package has **no public API**. You can delete code that has no callers. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
+
+A command-line argument is different. A user writes such an argument in a script and in a note, thus a
+new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument
+as an alias, and give it `help=argparse.SUPPRESS`. The help text then gives one spelling, and a script
+that holds the old one still runs.
 
 ## Writing style
 
