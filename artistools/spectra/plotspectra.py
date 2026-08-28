@@ -72,8 +72,11 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
+from artistools.plottools import FRAMEHEIGHT_INCHES
+from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
+from artistools.plottools import make_frame_figure
 from artistools.plottools import plain_label
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -82,7 +85,6 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
-from artistools.plottools import XLABELHEIGHT_INCHES
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -1264,25 +1266,13 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     """Plot the spectra selected by args, and return the figure, the axes, and the plotted data."""
     nrows = len(args.timedayslist) if args.multispecplot else 1
 
-    figwidth, figheight = get_figsize(args, rows=nrows)
-    if args.showabsorption:
-        figheight *= 1.56
-    if args.hidexticklabels:
-        # the x label and its tick numbers take a fixed height, thus the figure loses that height and
-        # not a part of itself. The frame keeps its size, which a grid of panels in a paper needs
-        figheight -= XLABELHEIGHT_INCHES
+    # each frame holds a size in inches, thus a paper can put these files in a grid that it builds by
+    # hand: the length of a tick number, the number of rows, and --hidexticklabels each leave the
+    # frame and the file as they are. An emission and absorption plot draws a taller frame
+    aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
+    fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=aspect, sharex=True, sharey=False)
 
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=1,
-        sharey=False,
-        sharex=True,
-        squeeze=True,
-        figsize=(figwidth, figheight),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-
-    axes = np.array([axes]) if nrows == 1 else np.array(axes)
+    axes = axesgrid[:, 0]
     assert isinstance(axes, np.ndarray)
 
     filterfunc = get_filterfunc(args)

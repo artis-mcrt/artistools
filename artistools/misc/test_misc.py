@@ -40,6 +40,76 @@ def _write_timesteps_out(modeldir: Path) -> None:
 # --- cliutils.py -------------------------------------------------------------------------------
 
 
+def get_frame_sizes(fig: t.Any, axes: t.Any) -> set[tuple[float, float]]:
+    """Return the size in inches of each frame of a figure, to four decimal places."""
+    fig.canvas.draw()
+    figwidth, figheight = fig.get_size_inches()
+    return {
+        (round(axis.get_position().width * figwidth, 4), round(axis.get_position().height * figheight, 4))
+        for axis in axes.flat
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "rows", "cols", "ylabel", "sharex"),
+    [
+        ("one frame", 1, 1, "T$_e$ [K]", True),
+        ("a y label that is long", 1, 1, "T$_e$ [K] " + "x" * 30, True),
+        ("three rows that share an x axis", 3, 1, "T$_e$ [K]", True),
+        ("three rows with an x label each", 3, 1, "T$_e$ [K]", False),
+        ("two rows and three columns", 2, 3, "T$_e$ [K]", True),
+    ],
+)
+def test_a_frame_figure_holds_the_size_of_every_frame(
+    name: str, rows: int, cols: int, ylabel: str, sharex: bool
+) -> None:
+    """Every frame takes the same size in inches, whatever the labels and the number of rows.
+
+    A paper puts these files in a grid that the author builds by hand, thus a frame that follows the
+    length of a tick number or the number of rows draws a panel of the wrong size beside its
+    neighbour.
+    """
+    import artistools.plottools as pt
+
+    args = argparse.Namespace(figscale=1.0, figwidthscale=1.0)
+    fig, axes = pt.make_frame_figure(args, rows=rows, cols=cols, sharex=sharex)
+    for axis in axes.flat:
+        axis.plot([0, 1e7], [0, 1e-12])
+        axis.set_ylabel(ylabel)
+        axis.set_xlabel("velocity [km/s]")
+
+    assert get_frame_sizes(fig, axes) == {(pt.FRAMEWIDTH_INCHES, pt.FRAMEHEIGHT_INCHES)}, name
+    plt.close(fig)
+
+
+def test_a_frame_figure_keeps_its_size_when_a_command_hides_the_labels(tmp_path: Path) -> None:
+    """A file of a fixed geometry holds its size and its frame when the x tick labels go.
+
+    The margin that the labels take stays empty, thus each panel of a grid takes the same room.
+    """
+    import pypdf
+
+    import artistools.plottools as pt
+
+    args = argparse.Namespace(figscale=1.0, figwidthscale=1.0)
+    sizes = {}
+    for name, hide in (("shown", False), ("hidden", True)):
+        fig, axes = pt.make_frame_figure(args)
+        axes[0][0].plot([0, 1e7], [0, 1e-12])
+        axes[0][0].set_ylabel("T$_e$ [K]")
+        axes[0][0].set_xlabel("velocity [km/s]")
+        if hide:
+            axes[0][0].tick_params(axis="x", which="both", labelbottom=False)
+
+        frames = get_frame_sizes(fig, axes)
+        outpath = tmp_path / f"{name}.pdf"
+        pt.save_figure(fig, outpath)
+        page = pypdf.PdfReader(outpath).pages[0].mediabox
+        sizes[name] = (round(float(page.width) / 72.0, 3), round(float(page.height) / 72.0, 3), frames)
+
+    assert sizes["shown"] == sizes["hidden"], sizes
+
+
 def test_a_saved_figure_keeps_an_artist_that_reaches_past_it(tmp_path: Path) -> None:
     """A file of a plot holds every artist, thus a long label or an annotation is not cut.
 

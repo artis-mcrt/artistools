@@ -422,7 +422,8 @@ FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
 
 # the y label and its tick numbers stand to the left of each frame, and the x label and its tick
 # numbers below the lowest one. A column carries its own y label, thus each column pays this width
-LABELWIDTH_INCHES: t.Final[float] = 0.53
+# a log axis writes a tick number such as 10^-12, which needs 0.63 inches with the y label beside it
+LABELWIDTH_INCHES: t.Final[float] = 0.70
 LABELHEIGHT_INCHES: t.Final[float] = 0.47
 
 # the x label and its tick numbers alone, without the margin that stands above the highest frame.
@@ -430,6 +431,89 @@ LABELHEIGHT_INCHES: t.Final[float] = 0.47
 XLABELHEIGHT_INCHES: t.Final[float] = 0.41
 
 FIGWIDTH_INCHES: t.Final[float] = FRAMEWIDTH_INCHES + LABELWIDTH_INCHES
+
+
+# the margin to the right of the widest frame, which holds the last tick number of the x axis
+RIGHTMARGIN_INCHES: t.Final[float] = 0.10
+
+# the margin above the highest frame. It holds the last tick number of the y axis and the text of
+# the exponent that a formatter puts above that axis, which reaches further
+TOPMARGIN_INCHES: t.Final[float] = 0.28
+
+
+def make_frame_figure(
+    args: argparse.Namespace,
+    *,
+    rows: int = 1,
+    cols: int = 1,
+    aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
+    sharex: bool = True,
+    sharey: bool = True,
+) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
+    """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
+
+    A paper puts several of these files in a grid that the author builds by hand. Each file goes in
+    at one width, thus every file must draw a frame of the same size, whatever its labels take.
+
+    Divider places each frame at a size in inches, thus the size of a frame does not follow the
+    length of a tick number, the number of rows, or a label that a command hides. The figure holds
+    the margins that the labels need, and no layout engine takes that space back. save_figure keeps
+    the whole figure of such a plot, because a crop of the empty margin would undo this.
+
+    The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
+    """
+    from mpl_toolkits.axes_grid1 import Divider
+    from mpl_toolkits.axes_grid1 import Size
+
+    framewidth = FRAMEWIDTH_INCHES * getattr(args, "figwidthscale", 1.0) * args.figscale
+    frameheight = FRAMEWIDTH_INCHES * aspect * args.figscale
+
+    # a column that shows its own y label needs the width of one beside it, and likewise a row
+    colgap = RIGHTMARGIN_INCHES if sharey else LABELWIDTH_INCHES
+    rowgap = TOPMARGIN_INCHES if sharex else LABELHEIGHT_INCHES
+
+    horizontal = [Size.Fixed(LABELWIDTH_INCHES)]
+    for column in range(cols):
+        horizontal += [Size.Fixed(colgap)] if column else []
+        horizontal += [Size.Fixed(framewidth)]
+    horizontal += [Size.Fixed(RIGHTMARGIN_INCHES)]
+
+    # Divider counts the vertical sizes from the bottom, thus the lowest row comes first
+    vertical = [Size.Fixed(LABELHEIGHT_INCHES)]
+    for row in range(rows):
+        vertical += [Size.Fixed(rowgap)] if row else []
+        vertical += [Size.Fixed(frameheight)]
+    vertical += [Size.Fixed(TOPMARGIN_INCHES)]
+
+    figwidth = sum(size.fixed_size for size in horizontal)
+    figheight = sum(size.fixed_size for size in vertical)
+    fig = plt.figure(figsize=(figwidth, figheight))
+    divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
+
+    import numpy as np
+
+    axes = np.empty((rows, cols), dtype=object)
+    for row in range(rows):
+        for col in range(cols):
+            # the index of this frame among the sizes, which hold a margin or a gap between them
+            nx = 1 + col * 2
+            ny = 1 + (rows - 1 - row) * 2
+            first = axes[0][0] if (row or col) else None
+            axis = fig.add_axes(
+                divider.get_position(),
+                axes_locator=divider.new_locator(nx=nx, ny=ny),
+                sharex=first if sharex else None,
+                sharey=first if sharey else None,
+            )
+            axes[row][col] = axis
+
+            # the labels of an axis that another one carries would draw twice
+            if sharex and row < rows - 1:
+                axis.tick_params(axis="x", which="both", labelbottom=False)
+            if sharey and col > 0:
+                axis.tick_params(axis="y", which="both", labelleft=False)
+
+    return fig, axes
 
 
 def get_figsize(
@@ -508,6 +592,22 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
+def warn_if_artists_overflow(fig: mplfig.Figure, outpath: "Path | str") -> None:
+    """Report an artist that reaches past a figure whose geometry is fixed, because the file cuts it.
+
+    make_frame_figure holds the size of each frame, thus the margins cannot grow for a label that
+    needs more room. A message names the room that it needs, so that the plot loses nothing quietly.
+    """
+    fig.canvas.draw()
+    figwidth, figheight = fig.get_size_inches()
+    inkbox = fig.get_tightbbox()
+    overflows = {"left": -inkbox.x0, "right": inkbox.x1 - figwidth, "bottom": -inkbox.y0, "top": inkbox.y1 - figheight}
+    if toobig := {side: over for side, over in overflows.items() if over > 0.005}:
+        sides = ", ".join(f"{side} by {over:.2f} inches" for side, over in sorted(toobig.items()))
+        name = str(outpath).rpartition("/")[2]
+        print_warning(f"{name}: the labels reach past the figure ({sides}) and the file cuts them")
+
+
 def save_figure(
     fig: mplfig.Figure,
     outpath: "Path | str",
@@ -542,9 +642,15 @@ def save_figure(
     # crop the file to the artists that the figure holds. The page then carries no border of white,
     # and an artist that reaches past the figure, e.g. a long label or an annotation that a command
     # places outside the axes, stays whole in place of being cut at the edge of the page. The small
-    # pad keeps a stroke that lies on the boundary from losing its outer half
-    savefig_kwargs.setdefault("bbox_inches", "tight")
-    savefig_kwargs.setdefault("pad_inches", 0.02)
+    # pad keeps a stroke that lies on the boundary from losing its outer half.
+    # make_frame_figure places each frame at a size in inches, and it holds a margin for the labels.
+    # A crop would take the empty part of that margin, thus the size of the file would follow the
+    # labels again. Such a figure keeps every inch that it declares
+    if any(axis.get_axes_locator() is not None for axis in fig.axes):
+        warn_if_artists_overflow(fig, outpath)
+    else:
+        savefig_kwargs.setdefault("bbox_inches", "tight")
+        savefig_kwargs.setdefault("pad_inches", 0.02)
 
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:

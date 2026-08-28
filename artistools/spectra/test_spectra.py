@@ -586,7 +586,7 @@ def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) 
 
     A paper puts several of these files in a grid that the author builds by hand. Each one goes in at
     one width, thus a file of a different width draws a frame of a different size beside its
-    neighbour. Only the height changes, by the height of the label and of its tick numbers.
+    neighbour.
     """
     import pypdf
 
@@ -618,12 +618,10 @@ def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) 
         page = pypdf.PdfReader(outpath).pages[0].mediabox
         sizes[name] = (float(page.width) / 72.0, float(page.height) / 72.0, *frames[0])
 
-    assert sizes["shown"][0] == pytest.approx(sizes["hidden"][0]), "the width of the file must not change"
-    assert sizes["shown"][2] == pytest.approx(sizes["hidden"][2]), "the width of the frame must not change"
-    assert sizes["shown"][3] == pytest.approx(sizes["hidden"][3], abs=0.02), "the height of the frame must hold"
-
-    # the file loses the height of the x label and of its tick numbers, and no more
-    assert sizes["shown"][1] - sizes["hidden"][1] == pytest.approx(pt.XLABELHEIGHT_INCHES, abs=0.02)
+    # the geometry of the figure holds every inch that it declares, thus the margin of the labels
+    # stays empty in place of the file becoming smaller. Each panel of a grid then takes one room
+    assert sizes["shown"] == pytest.approx(sizes["hidden"]), "the file and the frame must not change"
+    assert sizes["shown"][2:] == pytest.approx((pt.FRAMEWIDTH_INCHES, pt.FRAMEHEIGHT_INCHES))
 
 
 def test_obsspec_draws_the_reference_spectrum(capsys: pytest.CaptureFixture[str]) -> None:
