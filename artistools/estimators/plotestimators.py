@@ -1146,7 +1146,7 @@ def make_figure(
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
-    frameset: at.FrameSet | None = None,
+    frameset: "at.FrameSet | None" = None,
     **plotkwargs: t.Any,
 ) -> str:
     """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
