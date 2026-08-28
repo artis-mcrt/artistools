@@ -581,6 +581,23 @@ def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
 
 
+@mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
+def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
+    """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="log", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert [call.args[1] for call in mockyscale.call_args_list] == ["log"]
+
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="linear", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert not mockyscale.call_args_list
+
+    # more than half of the flux values of this model are zero, and a log axis hides each of them,
+    # thus auto keeps the linear axis whatever range the values that remain cover
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="auto", timedays=300, outputfile=outputpath / "sp.pdf")
+    assert not mockyscale.call_args_list
+
+
 def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
     """-xunit reads the name while argparse parses, thus a mistake stops the command before it reads a file.
 

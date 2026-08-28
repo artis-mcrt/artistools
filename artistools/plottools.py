@@ -17,8 +17,9 @@ from artistools.commands import get_path
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
-# a log scale helps when the values cover much more than one order of magnitude. 50 is between one
-# and two decades, thus a curve that decays by a factor of 100 gets a log axis and a flat one does not.
+# the 5th and the 95th percentile give the range that the values cover, and a log scale wins above
+# this ratio. 50 lies between one and two orders of magnitude: the lowest values of such a series
+# fill less than a fiftieth of a linear axis, thus that axis draws them on the line of zero.
 LOGSCALE_MINRATIO: t.Final[float] = 50.0
 
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
@@ -34,42 +35,53 @@ def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
     return np.concatenate(columns) if columns else np.empty(0, dtype=np.float64)
 
 
+def get_range_ratio(values: "npt.NDArray[np.float64]") -> float:
+    """Return the ratio of the high value to the low value, which the percentiles give.
+
+    The 5th and the 95th percentile take the place of the lowest and the highest value, thus one
+    point of noise near zero does not give a ratio of many orders of magnitude. They also hold the
+    ratio of a series that rises evenly near the number of its steps, and a series that decays over
+    decades far above it, which is the difference that the scale of the axis must answer.
+    """
+    import numpy as np
+
+    low, high = np.percentile(values, [5.0, 95.0])
+    return float(high / low) if low > 0.0 else 0.0
+
+
 def wants_log_scale(
     values: "npt.NDArray[np.float64]", *, minratio: float = LOGSCALE_MINRATIO, maxhidden: float = LOGSCALE_MAXHIDDEN
 ) -> bool:
     """Return True when a log scale shows the values better than a linear scale.
 
-    The ratio of the high value to the low value gives the answer. The extreme one percent of the
-    values takes no part, because one point of noise near zero must not select the scale of the
-    axis. A set of less than 100 values loses none, thus two values that differ by the ratio give a
-    log scale. A value of zero or below has no place on a log axis, thus many of them keep the
-    linear one.
+    A linear axis draws a value below a fiftieth of the highest one on the line of zero, thus a
+    series that covers such a range needs a log axis to show its low end. A value of zero or below
+    has no place on a log axis, thus many of them keep the linear one.
     """
     import numpy as np
 
     finite = values[np.isfinite(values)]
-    if finite.size < 2:
+    positive = finite[finite > 0.0]
+    if positive.size < 4 or (finite.size - positive.size) > maxhidden * finite.size:
         return False
 
-    positive = np.sort(finite[finite > 0.0])
-    if positive.size < 2 or (finite.size - positive.size) > maxhidden * finite.size:
-        return False
-
-    trim = int(0.01 * positive.size)
-    low, high = positive[trim], positive[positive.size - 1 - trim]
-    return bool(low > 0.0 and high / low > minratio)
+    return get_range_ratio(positive) > minratio
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
-    """Set args.logscaley from the drawn values, when -yscale asks the command to choose.
+    """Set the scale of the vertical axis from the drawn values, when -yscale asks the command to choose.
 
-    Call this after the command draws the data and before it reads args.logscaley. -yscale log and
-    -yscale linear each give an answer already, thus this changes nothing for them.
+    Call this after the command draws the data. It sets args.logscaley for the code that reads it,
+    and it puts the log scale on the axes, because a command can set the scale before it draws.
+    -yscale log and -yscale linear each give an answer already, thus this changes nothing for them.
     """
     if getattr(args, "yscale", "auto") != "auto" or getattr(args, "logscaley", False):
         return
 
     args.logscaley = wants_log_scale(get_drawn_yvalues(ax))
+    if args.logscaley:
+        for axis in iter_axes(ax):
+            axis.set_yscale("log")
 
 
 # subplots() gives a single axes, a 1D array, or a 2D array, thus the type nests to any depth

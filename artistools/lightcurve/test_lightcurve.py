@@ -981,6 +981,13 @@ def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
     with warnings.catch_warnings():
         # a zero deposition rate has no magnitude, but it must not warn
         warnings.simplefilter("error", RuntimeWarning)
+
+        # a free-threading build warns when it takes the GIL back to import a module that does not
+        # declare that it runs without one, e.g. fontTools, which matplotlib imports to write a pdf.
+        # That warning belongs to the import of a library, thus it must not fail this test. The first
+        # test that writes a pdf pays for the import, thus the failure moved with the order of the run
+        warnings.filterwarnings("ignore", message=".*global interpreter lock.*", category=RuntimeWarning)
+
         at.lightcurve.plot(
             argsraw=[],
             modelpath=[modelpath_classic_3d],

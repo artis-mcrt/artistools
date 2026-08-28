@@ -1256,26 +1256,50 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert len(datalines) == 4
 
 
+def get_kilonova_lightcurve() -> npt.NDArray[np.float64]:
+    """Return a light curve that rises to a peak and then decays, as a kilonova does."""
+    times = np.geomspace(0.11, 76.0, 56)
+    return 1e42 * np.where(times < 0.5, (times / 0.5) ** 2.0, (times / 0.5) ** -1.3)
+
+
 @pytest.mark.parametrize(
     ("name", "values", "wantslog"),
     [
         ("a flat series", np.linspace(1.0, 2.0, 50), False),
-        ("a ratio below the threshold", np.array([1.0, 49.0]), False),
-        ("a ratio above the threshold", np.array([1.0, 51.0]), True),
-        ("a decay of four decades", np.geomspace(1e4, 1.0, 100), True),
+        # a light curve of a kilonova covers three orders of magnitude, and a linear axis draws its
+        # late times on the line of zero. A rule that reads the spread of the values keeps that axis,
+        # because the values gather near the peak
+        ("the light curve of a kilonova", get_kilonova_lightcurve(), True),
+        ("a decay over four decades", np.geomspace(1e4, 1.0, 100), True),
+        ("a decay that falls away", np.exp(-np.linspace(0.0, 10.0, 100)), True),
+        # a ramp reaches each value on the way, thus the percentiles lie near the ends of one step
+        # and far apart in neither scale. The linear axis shows every value of it
+        ("a ramp over four decades", np.linspace(1.0, 1e4, 100), False),
         ("one point of noise near zero", np.concatenate([np.full(100, 1.0), [1e-30]]), False),
         ("a value of zero in every second place", np.concatenate([np.zeros(50), np.geomspace(1.0, 1e4, 50)]), False),
         ("a few values of zero", np.concatenate([np.zeros(3), np.geomspace(1.0, 1e4, 97)]), True),
         ("no value at all", np.empty(0), False),
-        ("one value alone", np.array([5.0]), False),
+        ("fewer values than a percentile needs", np.array([1.0, 10.0, 100.0]), False),
         ("every value zero", np.zeros(20), False),
     ],
 )
 def test_wants_log_scale_reads_the_range_of_the_values(
     name: str, values: npt.NDArray[np.float64], wantslog: bool
 ) -> None:
-    """A log scale belongs to values that cover more than one order of magnitude."""
+    """A log scale belongs to values that a linear axis draws on the line of zero."""
     assert at.plottools.wants_log_scale(values.astype(np.float64)) is wantslog, name
+
+
+def test_range_ratio_leaves_out_the_extreme_values() -> None:
+    """The percentiles give the range, thus one value far from the others does not give it."""
+    # the 5th and the 95th percentile of a ramp from 1 to 101 are 6 and 96
+    assert at.plottools.get_range_ratio(np.linspace(1.0, 101.0, 101)) == pytest.approx(96.0 / 6.0)
+
+    # one value 30 orders of magnitude below the others changes nothing
+    assert at.plottools.get_range_ratio(np.concatenate([np.full(100, 1.0), [1e-30]])) == pytest.approx(1.0)
+
+    # a value of zero at the 5th percentile gives no ratio at all
+    assert at.plottools.get_range_ratio(np.concatenate([np.zeros(20), np.full(20, 1.0)])) == 0.0
 
 
 def test_auto_yscale_reads_the_drawn_values() -> None:

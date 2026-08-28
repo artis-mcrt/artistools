@@ -43,6 +43,7 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
+from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -69,11 +70,13 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_yscale
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import plain_label
 from artistools.plottools import save_figure
+from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_mpl_style
@@ -1370,6 +1373,10 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
             dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
+    # the loop above sets the scale before the data exists, because make_emissionabsorption_plot reads
+    # the x range back from the axes. Thus -yscale auto reads the values here and sets the scale itself
+    set_auto_yscale(list(axes), args)
+
     if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
         plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
@@ -1594,6 +1601,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
+    addarg_yscale(parser)
+
+    # the older spelling of "-yscale log"
     parser.add_argument("--logscaley", action="store_true", help="Use log scale for y values")
 
     parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
@@ -1678,6 +1688,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
+
+    resolve_yscale(args)
 
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstroms"
