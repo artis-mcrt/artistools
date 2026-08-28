@@ -70,7 +70,6 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc import resolve_yscale
 from artistools.misc import trim_or_pad
 from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
@@ -1688,8 +1687,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
-
-    resolve_yscale(args)
 
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstroms"

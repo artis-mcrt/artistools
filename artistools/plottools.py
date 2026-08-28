@@ -36,7 +36,7 @@ def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
 
 
 def get_range_ratio(values: "npt.NDArray[np.float64]") -> float:
-    """Return the ratio of the high value to the low value, which the percentiles give.
+    """Return the ratio of the high value to the low value of a series of values above zero.
 
     The 5th and the 95th percentile take the place of the lowest and the highest value, thus one
     point of noise near zero does not give a ratio of many orders of magnitude. They also hold the
@@ -46,12 +46,10 @@ def get_range_ratio(values: "npt.NDArray[np.float64]") -> float:
     import numpy as np
 
     low, high = np.percentile(values, [5.0, 95.0])
-    return float(high / low) if low > 0.0 else 0.0
+    return float(high / low)
 
 
-def wants_log_scale(
-    values: "npt.NDArray[np.float64]", *, minratio: float = LOGSCALE_MINRATIO, maxhidden: float = LOGSCALE_MAXHIDDEN
-) -> bool:
+def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
     """Return True when a log scale shows the values better than a linear scale.
 
     A linear axis draws a value below a fiftieth of the highest one on the line of zero, thus a
@@ -62,10 +60,10 @@ def wants_log_scale(
 
     finite = values[np.isfinite(values)]
     positive = finite[finite > 0.0]
-    if positive.size < 4 or (finite.size - positive.size) > maxhidden * finite.size:
+    if positive.size < 4 or (finite.size - positive.size) > LOGSCALE_MAXHIDDEN * finite.size:
         return False
 
-    return get_range_ratio(positive) > minratio
+    return get_range_ratio(positive) > LOGSCALE_MINRATIO
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:

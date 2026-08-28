@@ -1298,9 +1298,6 @@ def test_range_ratio_leaves_out_the_extreme_values() -> None:
     # one value 30 orders of magnitude below the others changes nothing
     assert at.plottools.get_range_ratio(np.concatenate([np.full(100, 1.0), [1e-30]])) == pytest.approx(1.0)
 
-    # a value of zero at the 5th percentile gives no ratio at all
-    assert at.plottools.get_range_ratio(np.concatenate([np.zeros(20), np.full(20, 1.0)])) == 0.0
-
 
 def test_auto_yscale_reads_the_drawn_values() -> None:
     """-yscale auto takes a log scale from the drawn values, and the other choices stand."""
@@ -1535,7 +1532,8 @@ def test_short_time_flag_always_means_timedays() -> None:
     """
     import artistools.hesma_scripts
 
-    parser = argparse.ArgumentParser(prog="hesma")
+    # every parser that a command gets is this class, thus the test builds the same one
+    parser = at.commands.SuggestingArgumentParser(prog="hesma")
     artistools.hesma_scripts.addargs(parser)
 
     assert parser.parse_args(["-t", "300"]).timedays == 300.0
@@ -1549,13 +1547,15 @@ def test_short_time_flag_always_means_timedays() -> None:
 
 def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixture[str]) -> None:
     """A declared but unsupported argument must name the argument to give in its place."""
-    parser = argparse.ArgumentParser(prog="demo")
+    parser = at.commands.SuggestingArgumentParser(prog="demo")
     at.misc.addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
 
     with pytest.raises(SystemExit):
         parser.parse_args(["-timestep", "40"])
 
-    assert "-timestep is not an argument of this command. Give -timedays instead" in capsys.readouterr().err
+    captured = capsys.readouterr().err
+    assert "error: -timestep is not an argument of this command" in captured
+    assert "help: Give -timedays instead" in captured
 
     # a hidden name stays out of the help text
     assert "-timestep" not in parser.format_help()

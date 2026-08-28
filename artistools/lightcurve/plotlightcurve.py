@@ -1632,8 +1632,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpaths = args.modelpath
 
-    at.misc.resolve_yscale(args)
-
     apply_time_range_args(args, modelpaths)
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = trim_or_pad(

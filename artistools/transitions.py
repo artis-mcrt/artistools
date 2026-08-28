@@ -303,7 +303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
-    addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Path/filename for PDF file")
+    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Path/filename for PDF file")
     addarg_show(parser)
 
 
@@ -640,8 +640,6 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[IonTuple, fl
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     # with no model path the plot shows one fixed temperature, thus it reads the atomic data of the working folder
     from_model = bool(args.modelpath)

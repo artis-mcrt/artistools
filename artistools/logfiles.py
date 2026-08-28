@@ -105,7 +105,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     at.addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
-    at.addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -113,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpaths = at.normalize_path_list(args.modelpath)
-    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfile = args.outputfile
     if len(modelpaths) > 1 and "{" not in str(outputfile):
         print_warning(f"output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
 

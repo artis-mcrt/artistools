@@ -150,8 +150,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     at.addarg_output(
         parser,
         kind="file",
-        default=defaultoutputfile,
-        astype=None,
+        defaultname=defaultoutputfile,
         helptext="Path/filename for PDF file if --makeplot is enabled",
     )
 
@@ -179,7 +178,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.modelpath)
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
     dfpops: pl.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":

@@ -408,6 +408,7 @@ def get_estimators_rankbatch_parquetfile(
     batchindex: int,
     modelpath: Path | str | None = None,
     verbose: bool = False,
+    textsource_mtime: float | None = None,
 ) -> Path:
     """Return the parquet cache for one batch of MPI ranks' estimator files, creating it if it is missing or stale."""
 
@@ -418,7 +419,10 @@ def get_estimators_rankbatch_parquetfile(
     modelpath = Path(folderpath).parent if modelpath is None else Path(modelpath)
     folderpath = Path(folderpath)
     parquetfilepath = get_rankbatch_parquetpath(folderpath, batch_mpiranks, batchindex)
-    textsource_mtime = get_textsource_mtime(folderpath)
+    # the caller reads this one time for the folder, because a glob of a folder that holds one file
+    # for each MPI rank is not cheap
+    if textsource_mtime is None:
+        textsource_mtime = get_textsource_mtime(folderpath)
 
     assert len(batch_mpiranks) == max(batch_mpiranks) - min(batch_mpiranks) + 1, (
         "batch_mpiranks must be a contiguous range of ranks"
@@ -426,8 +430,7 @@ def get_estimators_rankbatch_parquetfile(
     assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
 
     outdatedparquet: tuple[int, int] | None = None
-    generate_parquet = not rankbatch_parquet_is_current(parquetfilepath, textsource_mtime)
-    if generate_parquet:
+    if not rankbatch_parquet_is_current(parquetfilepath, textsource_mtime):
         # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
         # the path always resolves to a complete parquet. Deleting it first opens a window in which a
         # concurrent reader finds it missing or half-swapped. The identity comes from the stat that showed
@@ -439,7 +442,6 @@ def get_estimators_rankbatch_parquetfile(
                 " File will be regenerated..."
             )
 
-    if generate_parquet:
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
 
         time_start = time.perf_counter()
@@ -668,6 +670,7 @@ def _scan_artis_estimators(
                 batch_mpiranks=mpiranks,
                 batchindex=batchindex,
                 verbose=verbose,
+                textsource_mtime=mtimeoffolder[runfolder],
             )
             for runfolder, batchindex, mpiranks in batches
         ]

@@ -148,6 +148,17 @@ def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, f
     return colorsys.hls_to_rgb(c[0], max(0.0, min(1.0, amount * c[1])), c[2])
 
 
+def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool) -> pl.DataFrame:
+    """Return the line with its first or its last point repeated at the given x value.
+
+    The point keeps the dtype of the column, thus the two frames stack.
+    """
+    end = dflinepoints.head(1) if atstart else dflinepoints.tail(1)
+    row = end.with_columns(xvalue_binned=pl.lit(xvalue, dtype=dflinepoints.schema["xvalue_binned"]))
+
+    return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
+
+
 def plot_data(
     dfplotdata: pl.DataFrame | pl.LazyFrame,
     ax: mplax.Axes,
@@ -188,23 +199,15 @@ def plot_data(
     # of the data. The value of a bin holds across that bin, thus the line reaches the outer edges.
     # Without this the line left a gap on the right of every plot that bins its x values
     xbinned = dflinepointsdf.get_column("xvalue_binned")
-    if getattr(args, "xbins", None) and xbinned.len() > 1:
-        xdtype = dflinepointsdf.schema["xvalue_binned"]
+    if args.xbins and xbinned.len() > 1:
         halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
-        lastrow = dflinepointsdf.tail(1).with_columns(xvalue_binned=pl.lit(xbinned[-1] + halfwidth, dtype=xdtype))
-        dflinepointsdf = pl.concat([dflinepointsdf, lastrow])
-
-        # startfromzero takes the line further to the left, thus only the other case needs this end
+        dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[-1] + halfwidth, atstart=False)
+        # startfromzero takes the line further to the left, thus that end comes below
         if not startfromzero:
-            firstrow = dflinepointsdf.head(1).with_columns(xvalue_binned=pl.lit(xbinned[0] - halfwidth, dtype=xdtype))
-            dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+            dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[0] - halfwidth, atstart=True)
 
     if startfromzero:
-        # repeat the first point at x=0, keeping the column's own dtype so the frames stack
-        firstrow = dflinepointsdf.head(1).with_columns(
-            xvalue_binned=pl.lit(0.0, dtype=dflinepointsdf.schema["xvalue_binned"])
-        )
-        dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+        dflinepointsdf = repeat_endpoint(dflinepointsdf, 0.0, atstart=True)
 
     xvalues_binned = dflinepointsdf.get_column("xvalue_binned")
     yvalues_binned = dflinepointsdf.get_column("yvalue_binned")
@@ -961,12 +964,8 @@ def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
     The vertical range of the axes carries a margin above and below the data, thus a test against that
     range accepts a limit that leaves every point out of view.
     """
-    values = [
-        ydata[np.isfinite(ydata)]
-        for line in ax.get_lines()
-        if (ydata := np.asarray(line.get_ydata(), dtype=float)).size > 0
-    ]
-    finite = np.concatenate([one for one in values if one.size > 0]) if values else np.array([])
+    drawn = at.plottools.get_drawn_yvalues(ax)
+    finite = drawn[np.isfinite(drawn)]
 
     return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
 

@@ -605,9 +605,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         if not argstring.startswith("-") or argstring.startswith("--") or "=" in argstring or len(argstring) <= 3:
             return [argstring]
 
-        # a name that the parser declares, or the start of a longer flag, is a flag and not a joined
-        # value. The second one is an abbreviation, which argparse resolves or reports as ambiguous.
-        if argstring in declared or any(flag.startswith(argstring) for flag in declared):
+        # a flag that the parser declares starts with itself, thus this one test also keeps an
+        # abbreviation of a longer flag, which argparse resolves or reports as ambiguous
+        if any(flag.startswith(argstring) for flag in declared):
             return [argstring]
 
         # the longest flag first, down to the two characters that argparse reads without help
@@ -838,6 +838,13 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-yscale",
     "-yvar",
     "-yvariable",
+})
+
+# the same names, under the flag of one letter that reads each one as a joined value. Each parser of
+# the tree asks for the names of its own one-letter flags, thus it walks those names alone
+SINGLEDASHLONGFLAGS_BYLETTER: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    letterflag: tuple(sorted(name for name in SINGLEDASHLONGFLAGS if name.startswith(letterflag)))
+    for letterflag in sorted({name[:2] for name in SINGLEDASHLONGFLAGS})
 })
 
 

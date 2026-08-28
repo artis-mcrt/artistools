@@ -147,6 +147,18 @@ def addarg_modelpath(
         parser.add_argument("-modelpath", **kwargs)
 
 
+def make_output_folder(folder: Path | str, verb: str) -> Path:
+    """Make the folder that holds the output of a command, and refuse a name that a file holds."""
+    folder = Path(folder)
+    if folder.exists() and not folder.is_dir():
+        msg = f"'{folder}' names a file that exists, and this command {verb} a folder of that name"
+        raise ValueError(msg)
+
+    folder.mkdir(parents=True, exist_ok=True)
+
+    return folder
+
+
 def addarg_output(
     parser: argparse.ArgumentParser,
     *,
@@ -197,11 +209,7 @@ def resolve_output_argument(args: argparse.Namespace) -> None:
     if kind == "folder":
         # a command that takes no -o names its own folder, thus there is nothing to make
         if outputfile:
-            if Path(outputfile).exists() and not Path(outputfile).is_dir():
-                msg = f"'{outputfile}' names a file that exists, and this command writes a folder of that name"
-                raise ValueError(msg)
-
-            Path(outputfile).mkdir(parents=True, exist_ok=True)
+            make_output_folder(outputfile, "writes")
     elif (defaultname := getattr(args, "outputdefaultname", None)) is not None:
         # resolve_outputfile gives the name of the command when -o names a folder or nothing
         args.outputfile = resolve_outputfile(outputfile, defaultname)
@@ -247,17 +255,14 @@ class UnsupportedArgument(argparse.Action):
         option_string: str | None = None,
     ) -> None:
         """Report that this command does not take the argument."""
-        helptext = f"Give {self.instead} instead" if self.instead else ""
-        if not helptext and isinstance(parser, SuggestingArgumentParser):
-            helptext = suggest_names(str(option_string), parser.get_visible_flags())
-
-        if isinstance(parser, SuggestingArgumentParser):
-            parser.exit_with_help(
-                f"{option_string} is not an argument of this command",
-                helptext or f"Run `{parser.prog} --help` to see every argument",
-            )
-
-        parser.error(f"{option_string} is not an argument of this command. {helptext}".rstrip())
+        assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
+        helptext = self.instead and f"Give {self.instead} instead"
+        parser.exit_with_help(
+            f"{option_string} is not an argument of this command",
+            helptext
+            or suggest_names(str(option_string), parser.get_visible_flags())
+            or f"Run `{parser.prog} --help` to see every argument",
+        )
 
 
 def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
@@ -271,16 +276,18 @@ def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
     command and every abbreviation of one. A measurement over the tree gives the same 2208 abbreviations
     with these names and without them.
     """
-    from artistools.commands import SINGLEDASHLONGFLAGS
+    from artistools.commands import SINGLEDASHLONGFLAGS_BYLETTER
 
     declared = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
-    oneletter = {flag for flag in declared if len(flag) == 2 and not flag.startswith("--")}
+    oneletter = [flag for flag in declared if len(flag) == 2 and not flag.startswith("--")]
 
-    for name in sorted(SINGLEDASHLONGFLAGS):
-        collides = any(name.startswith(letterflag) for letterflag in oneletter)
-        # a command that spells the same name with two dashes does take that argument
-        if collides and name not in declared and f"-{name}" not in declared:
-            parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
+    # only a name that starts with a flag of this command can collide, thus each letter reads the
+    # names that start with it rather than the whole set of 155 names
+    for letterflag in sorted(oneletter):
+        for name in SINGLEDASHLONGFLAGS_BYLETTER.get(letterflag, ()):
+            # a command that spells the same name with two dashes does take that argument
+            if name not in declared and f"-{name}" not in declared:
+                parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
 
 
 def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
@@ -721,7 +728,7 @@ def parse_cli_args(
 
     import argcomplete
 
-    parser = argparse.ArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
+    parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
     # the dispatcher adds these to the parser that it builds, thus a direct call needs them here
     addarg_quiet(parser)
@@ -732,6 +739,7 @@ def parse_cli_args(
     args = parser.parse_args([] if kwargs else argsraw)
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)
+    resolve_yscale(args)
 
     return args
 
@@ -746,12 +754,7 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
 
     outputfile = Path(outputfile)
     if outputfile.is_dir() or not outputfile.suffixes:
-        if outputfile.exists() and not outputfile.is_dir():
-            msg = f"'{outputfile}' names a file that exists, and this command needs a folder of that name"
-            raise ValueError(msg)
-
-        outputfile.mkdir(parents=True, exist_ok=True)
-        return outputfile / defaultoutputfile
+        return make_output_folder(outputfile, "needs") / defaultoutputfile
 
     return outputfile
 

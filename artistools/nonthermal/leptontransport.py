@@ -105,14 +105,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
     parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
-    at.addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Integrate a fast lepton's energy loss over distance and plot the result."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfile = args.outputfile
 
     E_0 = args.energy * CONST_EV_IN_J  # initial energy [J]
     n_e_bound_cgs = args.nnebound  # density of bound electrons in [cm-3]

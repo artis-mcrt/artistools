@@ -47,24 +47,24 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     with print_product, which reaches the standard output even with --quiet, thus a script reads that
     product with no progress message around it.
     """
+    import contextlib
     import time
 
+    quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()
-    if not getattr(args, "quiet", False):
-        func(args=args)
-    else:
-        import contextlib
-
-        with Path(os.devnull).open("w", encoding="utf-8") as devnull:
+    with contextlib.ExitStack() as stack:
+        if quiet:
+            devnull = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8"))
             args.productstream = sys.stdout
-            with contextlib.redirect_stdout(devnull):
-                func(args=args)
+            stack.enter_context(contextlib.redirect_stdout(devnull))
+
+        func(args=args)
 
     # a long run says how long it took, thus a wait was the data and not a fault. A quick run says
     # nothing, and the line goes to the standard error beside the progress bars. --quiet takes it away,
     # because it reports the progress and not a fault
     elapsed = time.monotonic() - starttime
-    if elapsed >= SLOW_COMMAND_SECONDS and not getattr(args, "quiet", False):
+    if elapsed >= SLOW_COMMAND_SECONDS and not quiet:
         print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)
 
 
@@ -75,6 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     from artistools.commands import build_script_parser
     from artistools.misc import check_time_selection
     from artistools.misc import resolve_output_argument
+    from artistools.misc import resolve_yscale
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
     # started it selects one subcommand, and that parser holds no other command. Every entry point then
@@ -97,6 +98,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             check_time_selection(argparser, args, argsraw)
             # the parser of the command recorded what it writes, thus -o takes its rule here
             resolve_output_argument(args)
+            resolve_yscale(args)
 
         run_command(func, args)
     except (AssertionError, FileNotFoundError, ModuleNotFoundError, ValueError) as exc:

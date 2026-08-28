@@ -39,15 +39,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         include_y=False,
         wavelength_aliases=True,
     )
-    addarg_output(parser, kind="file", default=defaultoutputfile, astype=None, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
     addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
-
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
 
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
