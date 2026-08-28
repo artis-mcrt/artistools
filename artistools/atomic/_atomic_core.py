@@ -571,6 +571,32 @@ def get_atomic_number(elsymbol: str) -> int:
     return _get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
 
 
+ROMANNUMERALCHARS = frozenset("IVXLCDM")
+
+
+def split_compact_ion_name(ionstr: str) -> tuple[int, int] | None:
+    """Return the atomic number and the ion stage of a name such as SiII, or None for another name.
+
+    The roman numeral of an ion stage is always in upper case, thus the lower case "i" of "SiII"
+    belongs to the symbol of the element and that name gives Si II. The symbol itself is not case
+    sensitive, thus "siII" gives Si II as well.
+
+    The longest run of roman numerals at the end comes first. Thus "SIII" gives S III, and not the
+    Si II that the symbol "SI" and a shorter run would give.
+    """
+    for splitpos in range(1, len(ionstr)):
+        elsymbol, ionstagestr = ionstr[:splitpos], ionstr[splitpos:]
+        if any(char not in ROMANNUMERALCHARS for char in ionstagestr):
+            continue
+
+        atomic_number = get_atomic_number(elsymbol)
+        ion_stage = decode_roman_numeral(ionstagestr)
+        if atomic_number > 0 and ion_stage > 0:
+            return atomic_number, ion_stage
+
+    return None
+
+
 def decode_roman_numeral(strin: str) -> int:
     """Return the integer corresponding to a Roman numeral."""
     if strin.upper() in roman_numerals:
@@ -624,16 +650,16 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
         elem, strion_stage = ionstr.split(" ", maxsplit=1)
     elif "_" in ionstr:
         elem, strion_stage = ionstr.split("_", maxsplit=1)
+    elif (compaction := split_compact_ion_name(ionstr)) is not None:
+        # no separator, e.g. 'FeII'
+        return compaction
     else:
-        # no separator, e.g. 'FeII'. Longest symbols first, so that 'Fe' is preferred over 'F', and only accept a
-        # match where the remainder is a valid ion stage (otherwise 'Co' would be split as C + 'o')
+        # a mass number in place of an ion stage, e.g. 'Fe56'
         for elsym in get_elsymbols_longestfirst():
-            if ionstr.startswith(elsym):
-                remainder = ionstr.removeprefix(elsym)
-                if remainder.isdigit() or decode_roman_numeral(remainder) > 0:
-                    elem = elsym
-                    strion_stage = remainder
-                    break
+            if ionstr.startswith(elsym) and ionstr.removeprefix(elsym).isdigit():
+                elem = elsym
+                strion_stage = ionstr.removeprefix(elsym)
+                break
 
     if elem in {"?", ""} or strion_stage in {"?", ""}:
         msg = f"Could not parse ionstr {ionstr}"

@@ -20,3 +20,4 @@ from artistools.atomic._atomic_core import get_linelist_pldf as get_linelist_pld
 from artistools.atomic._atomic_core import get_nuclides as get_nuclides
 from artistools.atomic._atomic_core import get_z_a_nucname as get_z_a_nucname
 from artistools.atomic._atomic_core import roman_numerals as roman_numerals
+from artistools.atomic._atomic_core import split_compact_ion_name as split_compact_ion_name

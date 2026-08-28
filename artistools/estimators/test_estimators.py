@@ -1318,25 +1318,42 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
 
 
-def test_compact_ion_name_takes_the_longest_element_symbol() -> None:
-    """A name such as SiII must give silicon, and not the sulphur that the shorter symbol S gives.
+def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
+    """The roman numeral of an ion stage is always in upper case, and the element symbol is not.
 
-    The symbols came from a set, which holds no order, thus "SiII" took S and read "iII" as the ion
-    stage 3. The order of a set of strings also changes with the hash seed, thus one run gave Si II
-    and another gave S III for the same name.
+    Thus the lower case "i" of "SiII" belongs to silicon, and "SIII" gives S III. The symbols came
+    from a set, which holds no order, thus "SiII" took S and read "iII" as the ion stage 3. The order
+    of a set of strings also changes with the hash seed, thus one run gave Ni II and another N III.
     """
     from artistools.estimators.plotestimators import get_iontuple
+    from artistools.estimators.plotestimators import is_valid_ion
 
     for ionstr, elsymbol, ion_stage in (
+        # the lower case letter of a symbol never reads as a roman numeral
         ("SiII", "Si", 2),
-        ("SII", "S", 2),
+        ("SiIII", "Si", 3),
         ("NiII", "Ni", 2),
-        ("NII", "N", 2),
         ("CoII", "Co", 2),
-        ("CII", "C", 2),
         ("ClII", "Cl", 2),
+        # the shorter symbol takes the longer run of roman numerals
+        ("SII", "S", 2),
+        ("SIII", "S", 3),
+        ("NII", "N", 2),
+        ("CII", "C", 2),
+        ("CIII", "C", 3),
+        # a symbol that is a roman numeral of its own still names the element
+        ("VII", "V", 2),
         ("FeIII", "Fe", 3),
+        # the symbol of the element is not case sensitive
+        ("siII", "Si", 2),
+        ("sIII", "S", 3),
+        ("feII", "Fe", 2),
+        ("FEII", "Fe", 2),
     ):
         atomic_number, stage = get_iontuple(ionstr)
         assert at.get_elsymbol(atomic_number) == elsymbol, f"{ionstr} gave {at.get_elsymbol(atomic_number)}"
         assert stage == ion_stage, f"{ionstr} gave the ion stage {stage}"
+
+    # a roman numeral in lower case names no ion stage, thus these names hold no ion
+    for ionstr in ("Feii", "FeIi", "feii", "Sii"):
+        assert not is_valid_ion(ionstr), f"{ionstr} must name no ion"
