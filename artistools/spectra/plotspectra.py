@@ -1500,13 +1500,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-xunit",
         dest="xunit",
         default=None,
-        type=str,
+        type=atspectra.parse_xunit_argument,
         help="X (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
     # deprecated spellings kept as hidden aliases. -x names the axis variable on plotestimators, but
     # each parser reads its own arguments, and a script holds the -x of this command.
-    parser.add_argument("-xunits", dest="xunit", type=str, help=argparse.SUPPRESS)
-    parser.add_argument("-x", dest="xunit", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("-xunits", dest="xunit", type=atspectra.parse_xunit_argument, help=argparse.SUPPRESS)
+    parser.add_argument("-x", dest="xunit", type=atspectra.parse_xunit_argument, help=argparse.SUPPRESS)
 
     addarg_axislimits(
         parser,

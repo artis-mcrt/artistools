@@ -581,6 +581,26 @@ def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
 
 
+def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """-xunit reads the name while argparse parses, thus a mistake stops the command before it reads a file.
+
+    The command took every name and stopped later with "Unknown xunit", after it read the spectra.
+    """
+    import artistools.spectra.plotspectra
+
+    parser = at.commands.SuggestingArgumentParser(prog="plotspectra")
+    artistools.spectra.plotspectra.addargs(parser)
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([".", "-xunit", "micrometre"])
+
+    assert "Did you mean micron?" in capsys.readouterr().err
+
+    # a name of a unit is not case sensitive, and each spelling gives the canonical one
+    assert parser.parse_args([".", "-xunit", "Angstrom"]).xunit == "angstroms"
+    assert parser.parse_args([".", "-x", "MU"]).xunit == "micron"
+
+
 @pytest.mark.parametrize("xunit", ["angstroms", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
 def test_xunit_conversion_roundtrip(xunit: str) -> None:
     """Every unit accepted by convert_angstroms_to_unit must also be invertible by convert_unit_to_angstroms."""

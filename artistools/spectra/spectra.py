@@ -5,10 +5,12 @@ import math
 import re
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.typing as mplt
 import numpy as np
@@ -303,28 +305,50 @@ def get_lambda_bin_edges(
     return lambda_bin_edges
 
 
+# the spellings that a user can give for each unit of the horizontal axis of a spectrum. One table
+# gives the conversion, the message that names the units, and the suggestion for a name that is close.
+XUNITALIASES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
+    "angstroms": ("angstrom", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m"),
+    "nm": ("nanometer", "nanometers"),
+    "micron": ("microns", "mu", "\u03bc", "\u03bcm"),
+    "hz": (),
+    "erg": ("ergs",),
+    "ev": ("electronvolt",),
+    "kev": ("kiloelectronvolt",),
+    "mev": ("megaelectronvolt",),
+})
+
+
+def get_xunit_names() -> list[str]:
+    """Return every spelling of a unit of the horizontal axis that a user can give."""
+    return [name for canonical, aliases in XUNITALIASES.items() for name in (canonical, *aliases)]
+
+
+def parse_xunit_argument(value: str) -> str:
+    """Return the canonical unit of the horizontal axis, or refuse a name that no unit takes.
+
+    argparse calls this while it reads the command line, thus a name with a mistake stops the
+    command before it reads a file. convert_xunit_aliases_to_canonical guards the keyword of the API.
+    """
+    from artistools.misc import suggest_names
+
+    try:
+        return convert_xunit_aliases_to_canonical(value)
+    except ValueError:
+        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITALIASES)}"
+        msg = f"'{value}' is not a unit of the horizontal axis. {suggestion}"
+        raise argparse.ArgumentTypeError(msg) from None
+
+
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     """Return the canonical spelling of a spectrum x-axis unit name."""
-    match xunit.lower():
-        case "erg" | "ergs":
-            return "erg"
-        case "ev" | "electronvolt":
-            return "ev"
-        case "kev" | "kiloelectronvolt":
-            return "kev"
-        case "mev" | "megaelectronvolt":
-            return "mev"
-        case "angstroms" | "angstrom" | "a" | "ang" | "å" | "ångström":
-            return "angstroms"
-        case "nm" | "nanometer" | "nanometers":
-            return "nm"
-        case "micron" | "microns" | "mu" | "μ" | "μm":
-            return "micron"
-        case "hz":
-            return "hz"
-        case _:
-            msg = f"Unknown xunit {xunit}"
-            raise ValueError(msg)
+    lowered = xunit.lower()
+    for canonical, aliases in XUNITALIASES.items():
+        if lowered == canonical or lowered in aliases:
+            return canonical
+
+    msg = f"Unknown xunit {xunit}"
+    raise ValueError(msg)
 
 
 @t.overload

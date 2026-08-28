@@ -579,6 +579,55 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         print_error(message, helptext)
         raise SystemExit(2)
 
+    def split_joined_flags(self, args: "Sequence[str]") -> list[str]:
+        """Give the flag and the value of each token that joins them, e.g. -ts70 becomes -ts 70.
+
+        argparse reads the first two characters of a single-dash token as the flag, thus "-ts70"
+        gives -t the value "s70", and -ts keeps no value. The user names the longest flag that the
+        token starts with, thus this splits the token there. A token that names the start of a
+        longer flag stays whole, because that token is an abbreviation that argparse resolves.
+        """
+        declared = self._option_string_actions
+        out: list[str] = []
+        for index, argstring in enumerate(args):
+            if argstring == "--":  # every argument after this one is a positional argument
+                out.extend(args[index:])
+                break
+
+            out.extend(self.split_one_joined_flag(argstring, declared))
+
+        return out
+
+    @staticmethod
+    def split_one_joined_flag(argstring: str, declared: "Mapping[str, argparse.Action]") -> list[str]:
+        """Give the flag and the value of one argument that joins them, or that argument alone."""
+        # argparse reads the first two characters as the flag, thus it splits a flag of one letter
+        # and its value without help. It also splits the "=" form itself.
+        if not argstring.startswith("-") or argstring.startswith("--") or "=" in argstring or len(argstring) <= 3:
+            return [argstring]
+
+        # a name that the parser declares, or the start of a longer flag, is a flag and not a joined
+        # value. The second one is an abbreviation, which argparse resolves or reports as ambiguous.
+        if argstring in declared or any(flag.startswith(argstring) for flag in declared):
+            return [argstring]
+
+        # the longest flag first, down to the two characters that argparse reads without help
+        for length in range(len(argstring) - 1, 2, -1):
+            action = declared.get(argstring[:length])
+            if action is not None and action.nargs != 0:
+                return [argstring[:length], argstring[length:]]
+
+        return [argstring]
+
+    @t.override
+    def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
+        self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
+    ) -> tuple[argparse.Namespace | None, list[str]]:
+        """Split a joined flag and value, then parse. A subparser reads its own arguments here."""
+        import sys
+
+        return super().parse_known_args(self.split_joined_flags(sys.argv[1:] if args is None else args), namespace)
+
     @t.override
     def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None

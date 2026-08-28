@@ -1624,9 +1624,10 @@ def test_plotspectra_x_still_gives_the_unit() -> None:
     parser = argparse.ArgumentParser(prog="plotspectra")
     artistools.spectra.plotspectra.addargs(parser)
 
+    # each spelling gives the canonical name of the unit, thus the plot code reads one name
     assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
     assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
-    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "Hz"
+    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"
 
 
 def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1870,6 +1871,34 @@ def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str,
             for name, subparser in action.choices.items():
                 yield name, subparser
                 yield from get_every_subcommand(subparser)
+
+
+def test_a_joined_value_takes_the_longest_flag() -> None:
+    """-ts70 gives 70 to -ts, because the user names the longest flag that the token starts with.
+
+    argparse reads the first two characters of a single-dash token, thus -ts70 gave -t the value
+    "s70", and -ts kept no value. The command then plotted a time in days that the user never gave.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    for token, timestep, timedays in (
+        ("-ts70", "70", None),
+        ("-ts=70", "70", None),
+        ("-ts40-45", "40-45", None),
+        ("-tslast", "last", None),
+        ("-t70", None, "70"),  # a flag of one letter, which argparse reads without help
+    ):
+        namespace = parser.parse_args(["plotspectra", token])
+        assert namespace.timestep == timestep, token
+        assert namespace.timedays == timedays, token
+
+    # an abbreviation of a longer flag stays whole, thus argparse still refuses -xun
+    with pytest.raises(SystemExit):
+        parser.parse_args(["plotspectra", "-xun", "nm"])
+
+    # a token after -- is a positional argument, thus no split applies to it
+    assert parser.parse_args(["plotspectra", "--", "-ts70"]).specpath == [Path("-ts70")]
 
 
 def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
