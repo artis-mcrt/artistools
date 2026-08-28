@@ -39,6 +39,30 @@ def _write_timesteps_out(modeldir: Path) -> None:
 # --- cliutils.py -------------------------------------------------------------------------------
 
 
+def test_one_rule_finds_the_reference_data_of_each_kind(tmp_path: Path) -> None:
+    """The light curves and the spectra hold reference data in folders of their own, under one rule.
+
+    Each command carried its own copy of "look here, then in the folder of the package, and accept a
+    compressed name", thus a change to that rule reached one command and not the other.
+    """
+    # the folder of the package holds the reference data of both kinds
+    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/refspectra") is not None
+    assert at.find_reference_data_file("AT2017gfo_smarttetal2017.txt", "data/lightcurves/bollightcurves") is not None
+
+    # a name that no folder holds gives None, and the kind of the data selects the folder
+    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/lightcurves/bollightcurves") is None
+    assert at.find_reference_data_file("nosuchfile.txt", "data/refspectra") is None
+
+    # a file of the working folder comes first, and a compressed name of it counts
+    reffile = tmp_path / "myref.txt.xz"
+    reffile.write_bytes(b"")
+    assert at.find_reference_data_file(tmp_path / "myref.txt", "data/refspectra") == reffile
+
+    # a folder is no file of reference data, and neither is a name that no folder holds
+    assert not at.path_is_reference_data(tmp_path, "data/refspectra")
+    assert not at.path_is_reference_data(tmp_path / "nosuchfile.txt", "data/refspectra")
+
+
 def test_add_cli_arg_helpers() -> None:
     """The shared argument helpers must define the standard flags, types, and defaults."""
     parser = argparse.ArgumentParser()

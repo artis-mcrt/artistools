@@ -483,6 +483,39 @@ def firstexisting_or_none(
     return filepath
 
 
+def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
+    """Return the path of a file of reference data, or None when no such file exists.
+
+    The file is either at the given path or in the named folder of the data that the package holds,
+    and a compressed file of the same name is also accepted. The light curves and the spectra each
+    hold reference data of their own, thus the caller names the folder that holds its kind.
+    """
+    from artistools.commands import get_path
+
+    for folder in (Path(), Path(get_path("artistools_dir"), bundledsubfolder)):
+        if found := firstexisting_or_none(filename, folder=folder, tryzipped=True, search_subfolders=False):
+            return found
+
+    return None
+
+
+def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
+    """Return whether the path names a file of reference data and not the output of an ARTIS run.
+
+    A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
+    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
+    """
+    path = Path(filepath)
+    if path.is_dir() or find_reference_data_file(path, bundledsubfolder) is None:
+        return False
+
+    if not path_is_artis_model(path):
+        return True
+
+    # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
+    return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
+
+
 def stripallsuffixes(f: Path) -> Path:
     """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets00_0000)."""
     f_nosuffixes = Path(f)

@@ -21,9 +21,7 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
-from artistools.misc import path_is_artis_model
 from artistools.misc import print_warning
-from artistools.misc.fileio import firstexisting_or_none
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -647,12 +645,7 @@ def find_bol_reflightcurve_file(lightcurvefilename: str | Path) -> Path | None:
     The file is either at the given path, or in the bundled data/lightcurves/bollightcurves folder.
     A compressed file with the same name is also accepted.
     """
-    bundledfolder = Path(at.get_path("artistools_dir"), "data/lightcurves/bollightcurves")
-    for folder in (Path(), bundledfolder):
-        if found := firstexisting_or_none(lightcurvefilename, folder=folder, tryzipped=True, search_subfolders=False):
-            return found
-
-    return None
+    return at.find_reference_data_file(lightcurvefilename, "data/lightcurves/bollightcurves")
 
 
 def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = False, gamma: bool = False) -> Path:
@@ -673,7 +666,7 @@ def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = Fal
 
 def path_is_reference_lightcurve(filepath: str | Path) -> bool:
     """Return whether the path is a bolometric reference light curve file and not an ARTIS model."""
-    return not path_is_artis_model(filepath) and find_bol_reflightcurve_file(filepath) is not None
+    return at.path_is_reference_data(filepath, "data/lightcurves/bollightcurves")
 
 
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.DataFrame, dict[str, t.Any]]:

@@ -103,6 +103,7 @@ from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import check_averaging_angles as check_averaging_angles
 from artistools.misc import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc import exit_with_error as exit_with_error
+from artistools.misc import find_reference_data_file as find_reference_data_file
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
@@ -150,6 +151,7 @@ from artistools.misc import parse_range as parse_range
 from artistools.misc import parse_range_list as parse_range_list
 from artistools.misc import path_is_artis_model as path_is_artis_model
 from artistools.misc import path_is_codecomparison as path_is_codecomparison
+from artistools.misc import path_is_reference_data as path_is_reference_data
 from artistools.misc import polars_source as polars_source
 from artistools.misc import print_detail as print_detail
 from artistools.misc import print_heading as print_heading

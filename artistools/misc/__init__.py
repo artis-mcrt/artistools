@@ -67,6 +67,7 @@ from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_p
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc.fileio import combine_frames as combine_frames
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
+from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_file_identity as get_file_identity
@@ -75,6 +76,7 @@ from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
+from artistools.misc.fileio import path_is_reference_data as path_is_reference_data
 from artistools.misc.fileio import polars_source as polars_source
 from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import read_wsv as read_wsv

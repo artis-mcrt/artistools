@@ -46,7 +46,7 @@ from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
+from artistools.misc import find_reference_data_file
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
@@ -63,6 +63,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
+from artistools.misc import path_is_reference_data
 from artistools.misc import print_detail
 from artistools.misc import print_heading
 from artistools.misc import print_saved
@@ -93,11 +94,7 @@ def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
     The file is either at the given path or in the bundled data/refspectra folder, and a compressed
     file with the same name is also accepted.
     """
-    for folder in (Path(), Path(get_path("artistools_dir"), "data", "refspectra")):
-        if found := firstexisting_or_none(filename, folder=folder, tryzipped=True, search_subfolders=False):
-            return found
-
-    return None
+    return find_reference_data_file(filename, "data/refspectra")
 
 
 def find_reference_spectrum_file(filename: Path | str) -> Path:
@@ -116,15 +113,7 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
     name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
     """
-    path = Path(filepath)
-    if path.is_dir() or find_reference_spectrum_file_or_none(path) is None:
-        return False
-
-    if not path_is_artis_model(path):
-        return True
-
-    # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
-    return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
+    return path_is_reference_data(filepath, "data/refspectra")
 
 
 def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
