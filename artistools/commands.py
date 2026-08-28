@@ -587,20 +587,19 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         token starts with, thus this splits the token there. A token that names the start of a
         longer flag stays whole, because that token is an abbreviation that argparse resolves.
         """
-        declared = self._option_string_actions
         out: list[str] = []
         for index, argstring in enumerate(args):
             if argstring == "--":  # every argument after this one is a positional argument
                 out.extend(args[index:])
                 break
 
-            out.extend(self.split_one_joined_flag(argstring, declared))
+            out.extend(self.split_one_joined_flag(argstring))
 
         return out
 
-    @staticmethod
-    def split_one_joined_flag(argstring: str, declared: "Mapping[str, argparse.Action]") -> list[str]:
+    def split_one_joined_flag(self, argstring: str) -> list[str]:
         """Give the flag and the value of one argument that joins them, or that argument alone."""
+        declared = self._option_string_actions
         # argparse reads the first two characters as the flag, thus it splits a flag of one letter
         # and its value without help. It also splits the "=" form itself.
         if not argstring.startswith("-") or argstring.startswith("--") or "=" in argstring or len(argstring) <= 3:
@@ -614,8 +613,17 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         # the longest flag first, down to the two characters that argparse reads without help
         for length in range(len(argstring) - 1, 2, -1):
             action = declared.get(argstring[:length])
-            if action is not None and action.nargs != 0:
-                return [argstring[:length], argstring[length:]]
+            if action is None or action.nargs == 0:
+                continue
+
+            flag, value = argstring[:length], argstring[length:]
+            if value[0].isdigit():
+                return [flag, value]
+
+            # a whole flag with letters after it is a mistake, e.g. -timesteps for -timestep. A split
+            # would give "s" to -timestep, and the number that follows would become a positional
+            # argument. Thus the message names the flag that the user means.
+            self.exit_with_help(f"{argstring} is not an argument of this command", f"Did you mean {flag}?")
 
         return [argstring]
 

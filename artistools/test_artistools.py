@@ -1886,7 +1886,7 @@ def test_a_joined_value_takes_the_longest_flag() -> None:
         ("-ts70", "70", None),
         ("-ts=70", "70", None),
         ("-ts40-45", "40-45", None),
-        ("-tslast", "last", None),
+        ("-timestep40", "40", None),
         ("-t70", None, "70"),  # a flag of one letter, which argparse reads without help
     ):
         namespace = parser.parse_args(["plotspectra", token])
@@ -1899,6 +1899,21 @@ def test_a_joined_value_takes_the_longest_flag() -> None:
 
     # a token after -- is a positional argument, thus no split applies to it
     assert parser.parse_args(["plotspectra", "--", "-ts70"]).specpath == [Path("-ts70")]
+
+
+def test_a_flag_with_letters_after_it_names_the_flag_that_the_user_means(capsys: pytest.CaptureFixture[str]) -> None:
+    """-timesteps names -timestep, because a split would give "s" to -timestep and hide the number.
+
+    The command took "-timesteps 40" as the timestep "s" and the spectrum path "40".
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    for token, flag in (("-timesteps", "-timestep"), ("-modelpaths", "-modelpath"), ("-tslast", "-ts")):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["plotestimators", token, "40"])
+
+        assert f"Did you mean {flag}?" in capsys.readouterr().err, token
 
 
 def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
