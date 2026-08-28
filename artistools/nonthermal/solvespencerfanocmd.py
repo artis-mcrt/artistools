@@ -88,7 +88,7 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=".")
+    addarg_modelpath(parser, default=Path())
 
     addarg_timedays(parser, kind="str")
 

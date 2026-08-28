@@ -367,7 +367,7 @@ def plot_celltimestep(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=".")
+    addarg_modelpath(parser, default=Path())
 
     addarg_timedays(parser, kind="str")
 

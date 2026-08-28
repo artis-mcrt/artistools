@@ -1247,7 +1247,7 @@ def make_figure(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
-        parser, default=".", helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
+        parser, default=Path(), helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
 
     addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
