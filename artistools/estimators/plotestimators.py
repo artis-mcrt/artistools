@@ -184,6 +184,21 @@ def plot_data(
     # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
     dflinepointsdf = dflinepoints.collect()
 
+    # a binned line runs through the middle of each bin, thus it stops half a bin short of the edge
+    # of the data. The value of a bin holds across that bin, thus the line reaches the outer edges.
+    # Without this the line left a gap on the right of every plot that bins its x values
+    xbinned = dflinepointsdf.get_column("xvalue_binned")
+    if getattr(args, "xbins", None) and xbinned.len() > 1:
+        xdtype = dflinepointsdf.schema["xvalue_binned"]
+        halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
+        lastrow = dflinepointsdf.tail(1).with_columns(xvalue_binned=pl.lit(xbinned[-1] + halfwidth, dtype=xdtype))
+        dflinepointsdf = pl.concat([dflinepointsdf, lastrow])
+
+        # startfromzero takes the line further to the left, thus only the other case needs this end
+        if not startfromzero:
+            firstrow = dflinepointsdf.head(1).with_columns(xvalue_binned=pl.lit(xbinned[0] - halfwidth, dtype=xdtype))
+            dflinepointsdf = pl.concat([firstrow, dflinepointsdf])
+
     if startfromzero:
         # repeat the first point at x=0, keeping the column's own dtype so the frames stack
         firstrow = dflinepointsdf.head(1).with_columns(

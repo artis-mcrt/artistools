@@ -56,6 +56,10 @@ cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for
 
 The type checkers pyrefly and ty must both give no errors. A change that satisfies one checker must not cause an error in a different checker. The file `.github/workflows/pytest.yml` defines what CI runs. CI also runs the `prek` hooks from `.pre-commit-config.yaml`. The vulture check gives information only. It reports code that possibly has no callers, but some of these reports are incorrect, thus CI does not fail on them.
 
+Run the tests on one interpreter, which is the `.venv` of the repository. Do not run them again on
+each version that CI tests. Two versions give a different result very rarely, and CI finds such a
+case. A local run of every version costs minutes and finds almost nothing.
+
 Do not report that a check passed if you did not run it. Tell the user which checks you did not run, and give the reason for each one.
 
 ## Python and type annotations

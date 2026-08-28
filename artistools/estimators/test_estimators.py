@@ -315,6 +315,33 @@ def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_a_binned_line_reaches_the_edge_of_the_data(mockplot: mock.MagicMock) -> None:
+    """A line of binned values reaches both edges of the data, and not the middle of the outer bins.
+
+    The line ran through the middle of each bin, thus it stopped half a bin short of the highest x
+    value that the plot shows. A model of many cells gave a gap of one part in fifty of the axis.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te"]],
+        timedays=4,
+        xbins=10,
+        outputfile=outputpath / "test_binned_line_reaches_the_edge.pdf",
+    )
+
+    xvalues = np.array(mockplot.call_args_list[0].args[1], dtype=float)
+    assert xvalues.size > 2
+
+    # the velocity of the x axis starts the line at zero, thus the low end reaches past the data
+    assert xvalues[0] == 0.0
+
+    # every bin has the same width, thus the last two points differ by half of it
+    halfwidth = (xvalues[-2] - xvalues[-3]) / 2.0
+    assert xvalues[-1] == pytest.approx(xvalues[-2] + halfwidth)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS
 
