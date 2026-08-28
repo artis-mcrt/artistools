@@ -423,7 +423,7 @@ FRAMEHEIGHT_INCHES: t.Final[float] = 4.08
 # the y label and its tick numbers stand to the left of each frame, and the x label and its tick
 # numbers below the lowest one. A column carries its own y label, thus each column pays this width
 # a log axis writes a tick number such as 10^-12, which needs 0.63 inches with the y label beside it
-LABELWIDTH_INCHES: t.Final[float] = 0.70
+LABELWIDTH_INCHES: t.Final[float] = 0.78
 LABELHEIGHT_INCHES: t.Final[float] = 0.47
 
 
@@ -437,6 +437,10 @@ RIGHTMARGIN_INCHES: t.Final[float] = 0.10
 # the exponent that a formatter puts above that axis, which reaches further
 TOPMARGIN_INCHES: t.Final[float] = 0.28
 
+# the height of one line of a title, which stands above the margin. A measurement gives 0.20 inches
+# for one line and 0.40 for two, thus a command that draws a title says how many lines it holds
+TITLELINE_INCHES: t.Final[float] = 0.20
+
 
 def make_frame_figure(
     args: argparse.Namespace,
@@ -446,6 +450,7 @@ def make_frame_figure(
     aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
     sharex: bool = True,
     sharey: bool = True,
+    titlelines: int = 0,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -456,6 +461,9 @@ def make_frame_figure(
     length of a tick number, the number of rows, or a label that a command hides. The figure holds
     the margins that the labels need, and no layout engine takes that space back. save_figure keeps
     the whole figure of such a plot, because a crop of the empty margin would undo this.
+
+    A title stands above the highest frame, thus a command that draws one says how many lines it
+    holds. Without that the title reaches past the figure, and save_figure reports it.
 
     The axes come back in a 2D array of [row][column], with row 0 at the top, as plt.subplots gives.
     """
@@ -480,7 +488,7 @@ def make_frame_figure(
     for row in range(rows):
         vertical += [Size.Fixed(rowgap)] if row else []
         vertical += [Size.Fixed(frameheight)]
-    vertical += [Size.Fixed(TOPMARGIN_INCHES)]
+    vertical += [Size.Fixed(TOPMARGIN_INCHES + titlelines * TITLELINE_INCHES)]
 
     figwidth = sum(size.fixed_size for size in horizontal)
     figheight = sum(size.fixed_size for size in vertical)

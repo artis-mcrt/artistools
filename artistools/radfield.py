@@ -8,7 +8,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -31,7 +30,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
-from artistools.plottools import get_figsize
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
@@ -269,9 +268,8 @@ def plot_celltimestep(
     T_R = radfielddata.filter(pl.col("bin_num") == -1).select("T_R").item()
     print(f"T_R = {T_R}")
 
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=get_figsize(args), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
-    )
+    fig, axesgrid = make_frame_figure(args)
+    axis = axesgrid[0][0]
 
     assert isinstance(axis, mplax.Axes)
 

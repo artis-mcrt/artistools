@@ -57,6 +57,7 @@ from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_labels
 from artistools.plottools import set_legend
@@ -604,24 +605,14 @@ def make_lightcurve_plot(
 
     lumunit = get_plot_lum_unit(args)
 
-    figwidth, figheight = get_figsize(args)
-    fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        figsize=(figwidth, figheight),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
+    fig, axesgrid = make_frame_figure(args)
+    axis = axesgrid[0][0]
     axis.margins(x=0.0)
 
     if args.plotthermalisation:
-        figtherm, axistherm = plt.subplots(
-            nrows=1,
-            ncols=1,
-            sharex=True,
-            figsize=(figwidth, figheight),
-            tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-        )
+        figtherm, axesthermgrid = make_frame_figure(args)
+        axistherm = axesthermgrid[0][0]
 
         axistherm.set_ylabel("Thermalisation ratio")
         axistherm.set_xlabel(r"Time [days]")

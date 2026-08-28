@@ -14,7 +14,6 @@ import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -74,7 +73,6 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
-from artistools.plottools import get_figsize
 from artistools.plottools import get_series_colors
 from artistools.plottools import make_frame_figure
 from artistools.plottools import plain_label
@@ -265,7 +263,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         else f"{timeavg} days"
     )
 
-    fig, axis = plt.subplots(figsize=get_figsize(args))
+    fig, axesgrid = make_frame_figure(args)
+    axis = axesgrid[0][0]
 
     if args.binflux:
         new_lambda_angstroms = []

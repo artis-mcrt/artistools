@@ -17,7 +17,6 @@ from types import MappingProxyType
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mc
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from polars import selectors as cs
@@ -49,7 +48,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import suggest_names
-from artistools.plottools import get_figsize
+from artistools.plottools import make_frame_figure
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -1157,16 +1156,9 @@ def make_figure(
     """
     modelname = at.get_model_name(modelpath)
 
-    fig, axes = plt.subplots(
-        nrows=len(plotlist),
-        ncols=1,
-        sharex=True,
-        figsize=get_figsize(args, rows=len(plotlist), aspect=0.468),
-        layout="constrained",
-        # tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
-    )
-    if len(plotlist) == 1:
-        axes = np.array([axes])
+    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
+    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True, titlelines=2)
+    axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
 
