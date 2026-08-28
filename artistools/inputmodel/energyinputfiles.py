@@ -8,7 +8,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -16,8 +15,10 @@ import polars as pl
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.misc import addarg_action
+from artistools.misc import addarg_figscale
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 
 
@@ -237,6 +238,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     at.addarg_modelpath(parser, default=Path())
     at.addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
+
+    addarg_figscale(parser)
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
 
 
@@ -249,7 +252,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     if args.action == "plotrate":
-        fig, axis = plt.subplots()
+        fig, axesgrid = make_frame_figure(args)
+        axis = axesgrid[0][0]
         plot_energy_rate(modelpath, axis)
         axis.set_xlabel("time [days]")
         axis.set_ylabel("Nuclear heating power [erg/s]")

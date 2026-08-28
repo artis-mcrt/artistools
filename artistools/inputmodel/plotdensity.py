@@ -5,19 +5,20 @@ import argparse
 import typing as t
 from collections.abc import Sequence
 
-import matplotlib.pyplot as plt
-import numpy as np
 import polars as pl
 
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -43,6 +44,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
 
     addarg_output(parser, kind="file", defaultname="densityprofile.pdf")
+
+    addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
 
 
@@ -50,17 +53,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the radial density profile of an ARTIS model."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    at.plottools.set_mpl_style()
-
-    fig, axes = plt.subplots(
-        nrows=3 if args.plotye else 2,
-        ncols=1,
-        sharex=True,
-        sharey=False,
-        figsize=(4, 4),
-        tight_layout={"pad": 0.5, "w_pad": 0.5, "h_pad": 0.0},
-    )
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(args, rows=3 if args.plotye else 2, aspect=0.45, fullwidth=False)
+    axes = axesgrid[:, 0]
 
     args.modelpath = at.normalize_path_list(args.modelpath)
 
@@ -143,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylabel(r"$\Delta$M/$\Delta v$ $\left[\mathrm{M}_\odot/c\right]$")
     if args.plotye:
         axes[2].set_ylabel(r"Electron fraction Ye")
-    axes[1].legend(frameon=False)
+    set_legend(axes[1], args)
 
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)

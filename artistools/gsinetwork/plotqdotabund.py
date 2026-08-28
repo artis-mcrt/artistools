@@ -10,7 +10,6 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -24,7 +23,9 @@ from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def get_abundance_correction_factors(
@@ -229,14 +230,8 @@ def plot_qdot(
     else:
         dfgsiglobalheating = None
 
-    fig, axis = plt.subplots(
-        nrows=1,
-        ncols=1,
-        sharex=True,
-        sharey=False,
-        figsize=(6, 1 + 3),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
-    )
+    fig, axesgrid = make_frame_figure()
+    axis = axesgrid[0][0]
 
     axis.set_xlabel("Time [days]")
     axis.set_yscale("log")
@@ -307,7 +302,7 @@ def plot_qdot(
             label=r"$\dot{Q}_{sponfis}$ ARTIS",
         )
 
-    axis.legend(loc="best", frameon=False, handlelength=2, ncol=3, numpoints=1)
+    set_legend(axis, ncol=3)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
@@ -358,18 +353,8 @@ def plot_cell_abund_evolution(
     else:
         df_gsi_abunds = None
 
-    fig, axes = plt.subplots(
-        nrows=len(arr_species),
-        ncols=1,
-        sharex=False,
-        sharey=False,
-        figsize=(6, 1 + 2.0 * len(arr_species)),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
-    )
-    if len(arr_species) == 1:
-        axes = np.array([axes])
-    fig.subplots_adjust(top=0.8)
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(rows=len(arr_species), aspect=0.383, sharex=False)
+    axes = axesgrid[:, 0]
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")
@@ -408,14 +393,14 @@ def plot_cell_abund_evolution(
         else:
             print(" [no ARTIS data]")
 
-        axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
+        set_legend(axis, handlelength=1)
 
         axis.autoscale(enable=True, axis="both")
         axis.set_xmargin(0.02)
         axis.set_ymargin(0.05)
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
-    fig.suptitle(f"{at.get_model_name(modelpath)} {strcell}", y=0.999)
+    axes[0].set_title(f"{at.get_model_name(modelpath)} {strcell}")
     save_figure(fig, pdfoutpath, format="pdf")
 
 

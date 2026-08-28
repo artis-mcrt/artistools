@@ -460,11 +460,16 @@ def addarg_seriesstyle(
         group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
 
-def addarg_figscale(parser: argparse.ArgumentParser, *, include_figwidthscale: bool = False) -> None:
+def addarg_figscale(
+    parser: argparse.ArgumentParser, *, include_figwidthscale: bool = False, helptext: str | None = None
+) -> None:
     """Add the figure size scale factor arguments."""
     group = arggroup(parser, "appearance")
     group.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 fills the text width of a page"
+        "-figscale",
+        type=float,
+        default=1.0,
+        help=helptext or "Scale factor for plot area. 1.0 fills the text width of a page",
     )
     if include_figwidthscale:
         group.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")

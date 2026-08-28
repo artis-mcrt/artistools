@@ -1601,8 +1601,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
-    at.set_mpl_style()
-
     assert args.x is not None
     if args.x in {"time", "timestep"}:
         make_figure(

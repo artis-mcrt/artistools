@@ -5,12 +5,12 @@ import math
 import typing as t
 from collections.abc import Sequence
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 import artistools as at
 from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
+from artistools.misc import addarg_figscale
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 # CONST_KB above is shared with the rest of artistools. The constants below stay local because this module works in
 # SI units (J, m, kg, s), which artistools.constants does not provide
@@ -101,6 +101,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
     at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
+    addarg_figscale(parser)
+
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Integrate a fast lepton's energy loss over distance and plot the result."""
@@ -162,7 +164,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         energy += delta_energy
 
         steps += 1
-        if energy <= 0:
+        # the energy falls by one step at a time, thus a value below half a step is a float
+        # residual of zero. One more pass would give beta = 0 and divide by zero
+        if energy <= -delta_energy / 2:
             break
 
     print(f"steps: {steps}")
@@ -170,10 +174,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"distance travelled: {x:.1} m")
     print(f"mean free path: {mean_free_path:.1} m")
 
-    fig, axes = plt.subplots(
-        nrows=2, ncols=1, sharex=False, figsize=(5, 8), tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 1.0}
-    )
-    assert isinstance(axes, np.ndarray)
+    fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.836, sharex=False)
+    axes = axesgrid[:, 0]
     axes[0].plot(arr_dist, arr_energy_ev)
     axes[0].set_xlabel(r"Distance [m]")
     axes[0].set_ylabel(r"Energy [eV]")
@@ -185,7 +187,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylabel(r"dE/dx [eV / m]")
     axes[1].set_xscale("log")
     axes[1].set_yscale("log")
-    axes[1].legend()
+    set_legend(axes[1], args)
     save_figure(fig, outputfile, format="pdf")
 
 

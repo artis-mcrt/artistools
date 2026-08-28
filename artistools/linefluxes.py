@@ -733,7 +733,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     ncol=1,
                     borderpad=0,
                     numpoints=1,
-                    fontsize=11,
                     markerscale=2.5,
                 )
 
@@ -886,8 +885,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         at.get_series_label(args.label, index, at.get_model_name(modelpath))
         for index, modelpath in enumerate(args.modelpath)
     ]
-
-    at.plottools.set_mpl_style()
 
     if args.plotemittingregions:
         make_emitting_regions_plot(args)

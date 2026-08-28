@@ -7,21 +7,23 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.misc import addarg_figscale
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def make_plot(args: argparse.Namespace) -> None:
     """Plot the mass-weighted abundances of every model in args.modelpath and save the figure."""
     args.xaxis = {"Z": "atomicnumber", "A": "massnumber"}.get(args.xaxis, args.xaxis)
 
-    at.plottools.set_mpl_style()
-    fig, ax = plt.subplots(tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axesgrid = make_frame_figure(args)
+    ax = axesgrid[0][0]
 
     for model_path in args.modelpath:
         df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g"])
@@ -70,7 +72,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
     ax.set_ylim(*((1e-5, 1.0) if args.yaxis == "massfraction" else (1e-7, 0.1)))
 
-    ax.legend()
+    set_legend(ax, args)
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
@@ -81,6 +83,8 @@ def make_plot(args: argparse.Namespace) -> None:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     at.addarg_output(parser, kind="file", default=Path())
+
+    addarg_figscale(parser)
     at.addarg_modelpath(
         parser,
         positional=True,

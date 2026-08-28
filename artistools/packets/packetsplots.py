@@ -16,6 +16,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
 from artistools.plottools import save_figure
+from artistools.plottools import set_mpl_style
 
 
 def get_required_packets(
@@ -94,7 +95,6 @@ def packets_2d_hist_bin_and_ejecta_vel(
     binwidth: float | None = None,
 ) -> None:
     """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure."""
-    at.plottools.set_mpl_style()
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
         start_of_filename = f"{wavelen:.0f}A_"
@@ -182,7 +182,10 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if colorlogscale:
         heatmap = np.ma.log(heatmap)
 
-    fig, ax = plt.subplots(figsize=(3.5, 4.5))
+    # an image with a colorbar keeps plt.subplots: fig.colorbar takes space that the
+    # Divider of make_frame_figure gives back at draw time, and the two then overlap
+    set_mpl_style()
+    fig, ax = plt.subplots(figsize=(3.5, 4.5), layout="constrained")
     z = heatmap.T
 
     im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
@@ -199,7 +202,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
-    save_figure(fig, outfilename, dpi=300, bbox_inches="tight")
+    save_figure(fig, outfilename, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

@@ -405,8 +405,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the radiation field estimators."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    at.set_mpl_style()
-
     modelpath = args.modelpath
 
     pdf_list: list[str] = []

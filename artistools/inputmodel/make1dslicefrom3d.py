@@ -7,13 +7,13 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -173,16 +173,15 @@ def append_cell_to_output(
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
     """Plot density and the Ni56 and Co mass fractions of the slice against velocity, and save it as a PDF."""
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
-    )
+    fig, axesgrid = make_frame_figure()
+    axis = axesgrid[0][0]
     axis.set_xlabel(r"Velocity [km/s]")
     axis.set_ylabel(r"Density [g/cm$^3$] or mass fraction")
     ylabels = [r"$\rho$", "fNi56", "fCo"]
     for ylist, ylabel in zip(ylists, ylabels, strict=False):
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonpositive="clip")
-    axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 10})
+    set_legend(axis)
     save_figure(fig, pdfoutputfile, format="pdf")
 
 

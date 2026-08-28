@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 
 import artistools as at
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
+from artistools.plottools import set_legend
 
 defaultoutputfile = "plotlogfiles_{0}.pdf"
 
@@ -84,7 +86,8 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
 
     with PdfPages(outputfile) as pdf:
         for timestep in timesteps:
-            fig, axis = plt.subplots()
+            fig, axesgrid = make_frame_figure()
+            axis = axesgrid[0][0]
             for stage, bytimestep in logfiledict.items():
                 if timestep not in bytimestep:
                     continue
@@ -93,7 +96,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
             axis.set_xlabel("mpi rank")
             axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
-            axis.legend()
+            set_legend(axis)
             # save_figure holds this rule for a figure of its own, and this pdf writes its own pages
             pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
             plt.close(fig)

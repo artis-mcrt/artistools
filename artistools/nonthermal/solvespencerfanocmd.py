@@ -6,7 +6,6 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
@@ -17,7 +16,9 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_legend
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
@@ -26,9 +27,8 @@ defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d
 
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
     """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
-    fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
-    )
+    fig, axesgrid = make_frame_figure(fullwidth=False)
+    ax = axesgrid[0][0]
 
     # the header line was written as a "#" comment
     dfstats = at.read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
@@ -50,7 +50,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")
-    ax.legend(loc="best", handlelength=2, frameon=False, numpoints=1)
+    set_legend(ax)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf")
