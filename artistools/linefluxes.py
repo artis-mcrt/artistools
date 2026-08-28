@@ -867,7 +867,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Time bin end values in days. Defaults to the model timestep ends",
     )
 
-    addarg_figscale(parser, figscaledefault=1.4)
+    addarg_figscale(parser)
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 

@@ -427,13 +427,11 @@ def addarg_seriesstyle(
         group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
 
-def addarg_figscale(
-    parser: argparse.ArgumentParser, *, figscaledefault: float = 1.0, include_figwidthscale: bool = False
-) -> None:
+def addarg_figscale(parser: argparse.ArgumentParser, *, include_figwidthscale: bool = False) -> None:
     """Add the figure size scale factor arguments."""
     group = arggroup(parser, "appearance")
     group.add_argument(
-        "-figscale", type=float, default=figscaledefault, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 gives the size of the command"
     )
     if include_figwidthscale:
         group.add_argument("-figwidthscale", type=float, default=1.0, help="Scale factor for plot width")

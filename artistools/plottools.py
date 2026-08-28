@@ -413,17 +413,23 @@ def get_series_colors(isreference: Sequence[bool], usercolors: Sequence[str | No
     return colors
 
 
+# the width in inches of one column of a figure at a scale of 1. Every command asked for a scale of
+# 1.4 of 5 inches, thus the default of -figscale is 1 of this width and each figure keeps its size
+FIGWIDTH_INCHES: t.Final[float] = 7.0
+
+
 def get_figsize(
     args: argparse.Namespace, *, rows: int = 1, aspect: float = 0.4, offset: float = 0.25, cols: int = 1
 ) -> tuple[float, float]:
     """Return the figure size in inches that -figscale and -figwidthscale ask for.
 
-    The width of one column is 5 inches at a figure scale of 1. The height is the offset plus the aspect
-    ratio of each row. Only the commands that declare -figwidthscale scale the width separately.
+    The width of one column is FIGWIDTH_INCHES at a figure scale of 1. The height is the offset plus
+    the aspect ratio of each row. Only the commands that declare -figwidthscale scale the width
+    separately.
     """
-    figwidth = args.figscale * 5.0 * cols * getattr(args, "figwidthscale", 1.0)
+    figwidth = args.figscale * FIGWIDTH_INCHES * cols * getattr(args, "figwidthscale", 1.0)
 
-    return (figwidth, args.figscale * 5.0 * (offset + rows * aspect))
+    return (figwidth, args.figscale * FIGWIDTH_INCHES * (offset + rows * aspect))
 
 
 def set_legend(ax: mplax.Axes, args: argparse.Namespace, **legendkwargs: t.Any) -> "mpllegend.Legend | None":

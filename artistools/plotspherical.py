@@ -192,7 +192,7 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
-    xwidth = figscale * 5.0
+    xwidth = figscale * at.plottools.FIGWIDTH_INCHES
     fig, axes = plt.subplots(
         len(plotvars),
         1,
@@ -292,7 +292,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
-    addarg_figscale(parser, figscaledefault=1.4)
+    addarg_figscale(parser)
 
     parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
 

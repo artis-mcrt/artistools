@@ -1330,7 +1330,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # deprecated spelling kept as a hidden alias
     parser.add_argument("--title", dest="title", nargs="?", const=True, help=argparse.SUPPRESS)
 
-    addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
+    addarg_figscale(parser, include_figwidthscale=True)
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
 

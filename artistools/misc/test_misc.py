@@ -137,7 +137,7 @@ def test_add_cli_arg_helpers() -> None:
     at.addarg_timeminmax(parser)
     at.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
     at.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
-    at.addarg_figscale(parser, figscaledefault=1.8, include_figwidthscale=True)
+    at.addarg_figscale(parser, include_figwidthscale=True)
     at.addarg_filter(parser)
     at.addarg_maxpacketfiles(parser)
 
@@ -146,7 +146,7 @@ def test_add_cli_arg_helpers() -> None:
     assert args.outputfile == Path("out.pdf")
     assert args.timestep is None
     assert args.timedays is None
-    assert args.figscale == 1.8
+    assert args.figscale == 1.0
     assert args.figwidthscale == 1.0
     assert args.xmin == 1000
     assert args.xmax == 2000

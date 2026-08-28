@@ -1585,7 +1585,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scaletoreftime", type=float, default=None, help="Scale reference spectra flux using Co56 decay timescale"
     )
 
-    addarg_figscale(parser, figscaledefault=1.4, include_figwidthscale=True)
+    addarg_figscale(parser, include_figwidthscale=True)
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 

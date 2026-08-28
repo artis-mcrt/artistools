@@ -825,7 +825,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 
-    addarg_figscale(parser, figscaledefault=1.4)
+    addarg_figscale(parser)
 
     parser.add_argument(
         "--departuremode", action="store_true", help="Show departure coefficients instead of populations"

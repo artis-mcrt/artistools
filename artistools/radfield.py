@@ -401,7 +401,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
 
-    addarg_figscale(parser, figscaledefault=1.4)
+    addarg_figscale(parser)
 
     addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
