@@ -581,6 +581,19 @@ def test_writespectra() -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
 
 
+def test_obsspec_draws_the_reference_spectrum(capsys: pytest.CaptureFixture[str]) -> None:
+    """-obsspec names a reference spectrum, as a positional path does.
+
+    Nothing read the list that -obsspec filled, thus the command took the file, drew the model alone,
+    and said nothing about it.
+    """
+    refspec = "2003du_20031213_3219_8822_00.txt"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath], refspecfiles=[refspec], timedays=300, outputfile=outputpath / "obsspec.pdf"
+    )
+    assert "SN2003du" in capsys.readouterr().out, "the reference spectrum must be drawn"
+
+
 @mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
 def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
     """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""

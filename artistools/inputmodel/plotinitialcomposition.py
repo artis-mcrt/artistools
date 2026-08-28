@@ -32,17 +32,12 @@ def get_2D_slice_through_3d_model(
     modelmeta: dict[str, t.Any] | None = None,
     plotaxis1: AxisType | None = None,
     plotaxis2: AxisType | None = None,
-    sliceindex: int | None = None,
 ) -> pl.DataFrame:
-    """Return the cells of a 3D model at one position along sliceaxis, defaulting to the slice nearest the origin."""
-    if sliceindex is None:
-        # Choose position to slice. This gets minimum absolute value as the closest to 0
-        argmin = dfmodel["pos_x_min"].abs().arg_min()
-        assert argmin is not None
-        sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
-    else:
-        cell_boundaries = dfmodel[f"pos_{sliceaxis}_min"].unique(maintain_order=True).to_list()
-        sliceposition = cell_boundaries[sliceindex]
+    """Return the cells of a 3D model at the position along sliceaxis that lies nearest the origin."""
+    # the minimum absolute value is the position closest to 0
+    argmin = dfmodel["pos_x_min"].abs().arg_min()
+    assert argmin is not None
+    sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
 
     slicedf = dfmodel.filter(pl.col(f"pos_{sliceaxis}_min") == sliceposition)
 

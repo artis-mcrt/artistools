@@ -1564,13 +1564,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets",
     )
 
-    parser.add_argument(
-        "-obsspec",
-        "-refspecfiles",
-        action="append",
-        dest="refspecfiles",
-        help="Also plot reference spectrum from this file",
-    )
+    # the older spelling of a reference spectrum that a positional path now names
+    parser.add_argument("-obsspec", "-refspecfiles", action="append", dest="refspecfiles", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-distmpc",
@@ -1694,7 +1689,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         not args.plotvspecpol or not args.plotviewingangle
     )  # choose either virtual packet directions or real packet direction bins
 
-    args.specpath = normalize_path_list(args.specpath)
+    # -obsspec named a reference spectrum before a positional path could name one. Nothing read that
+    # list, thus the command drew the model alone and said nothing. The paths join the positional ones
+    args.specpath = normalize_path_list([*makelist(args.specpath), *(args.refspecfiles or [])])
 
     if args.timedayslist:
         args.multispecplot = True
