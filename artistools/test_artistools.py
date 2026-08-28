@@ -1289,13 +1289,18 @@ def test_wants_log_scale_reads_the_range_of_the_values(
     assert at.plottools.wants_log_scale(values.astype(np.float64)) is wantslog, name
 
 
-def test_range_ratio_leaves_out_the_extreme_values() -> None:
-    """The percentiles give the range, thus one value far from the others does not give it."""
-    # the 5th and the 95th percentile of a ramp from 1 to 101 are 6 and 96
-    assert at.plottools.get_range_ratio(np.linspace(1.0, 101.0, 101)) == pytest.approx(96.0 / 6.0)
+def test_quartile_ratio_leaves_out_the_ends_of_the_data() -> None:
+    """The quartiles give the range of the data, thus the values at each end do not give it."""
+    # the quartiles of a ramp from 1 to 101 are 26 and 76
+    assert at.plottools.get_quartile_ratio(np.linspace(1.0, 101.0, 101)) == pytest.approx(76.0 / 26.0)
 
     # one value 30 orders of magnitude below the others changes nothing
-    assert at.plottools.get_range_ratio(np.concatenate([np.full(100, 1.0), [1e-30]])) == pytest.approx(1.0)
+    assert at.plottools.get_quartile_ratio(np.concatenate([np.full(100, 1.0), [1e-30]])) == pytest.approx(1.0)
+
+    # a spectrum falls away at each end of its wavelength range, and the middle holds its data
+    spectrum = np.concatenate([np.full(10, 1e-16), np.full(80, 5e-14), np.full(10, 1e-16)])
+    assert at.plottools.get_quartile_ratio(spectrum) == pytest.approx(1.0)
+    assert not at.plottools.wants_log_scale(spectrum)
 
 
 def test_auto_yscale_reads_the_drawn_values() -> None:

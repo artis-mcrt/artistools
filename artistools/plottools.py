@@ -17,10 +17,12 @@ from artistools.commands import get_path
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
-# the 5th and the 95th percentile give the range that the values cover, and a log scale wins above
-# this ratio. 50 lies between one and two orders of magnitude: the lowest values of such a series
-# fill less than a fiftieth of a linear axis, thus that axis draws them on the line of zero.
-LOGSCALE_MINRATIO: t.Final[float] = 50.0
+# the quartiles give the range that the middle half of the values covers, and a log scale wins above
+# this ratio. Measurements of real plots: the light curve of a kilonova gives 23, and its spectrum
+# gives 7. A spectrum reaches low values at each end of its wavelength range, thus a wider pair of
+# percentiles reads those ends and not the range that holds the data: the 5th and the 95th give 456
+# for that light curve and 182 for that spectrum, which no threshold parts.
+LOGSCALE_MINRATIO: t.Final[float] = 15.0
 
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
 # still shows the data. This fraction of the values is the most that a log axis may hide.
@@ -35,26 +37,26 @@ def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
     return np.concatenate(columns) if columns else np.empty(0, dtype=np.float64)
 
 
-def get_range_ratio(values: "npt.NDArray[np.float64]") -> float:
-    """Return the ratio of the high value to the low value of a series of values above zero.
+def get_quartile_ratio(values: "npt.NDArray[np.float64]") -> float:
+    """Return the ratio that the middle half of a series of values above zero covers.
 
-    The 5th and the 95th percentile take the place of the lowest and the highest value, thus one
-    point of noise near zero does not give a ratio of many orders of magnitude. They also hold the
-    ratio of a series that rises evenly near the number of its steps, and a series that decays over
-    decades far above it, which is the difference that the scale of the axis must answer.
+    The quartiles hold the range of the data itself. A point of noise near zero changes nothing, and
+    neither does the end of a spectrum, where the flux falls away over a few points. A series that
+    decays over decades puts its quartiles decades apart, which is the difference that the scale of
+    the axis must answer.
     """
     import numpy as np
 
-    low, high = np.percentile(values, [5.0, 95.0])
-    return float(high / low)
+    quartile1, quartile3 = np.percentile(values, [25.0, 75.0])
+    return float(quartile3 / quartile1)
 
 
 def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
     """Return True when a log scale shows the values better than a linear scale.
 
-    A linear axis draws a value below a fiftieth of the highest one on the line of zero, thus a
-    series that covers such a range needs a log axis to show its low end. A value of zero or below
-    has no place on a log axis, thus many of them keep the linear one.
+    A linear axis draws the middle half of the values in a small part of itself when that half
+    covers more than the ratio, thus such a series needs a log axis. A value of zero or below has no
+    place on a log axis, thus many of them keep the linear one.
     """
     import numpy as np
 
@@ -63,7 +65,7 @@ def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
     if positive.size < 4 or (finite.size - positive.size) > LOGSCALE_MAXHIDDEN * finite.size:
         return False
 
-    return get_range_ratio(positive) > LOGSCALE_MINRATIO
+    return get_quartile_ratio(positive) > LOGSCALE_MINRATIO
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
