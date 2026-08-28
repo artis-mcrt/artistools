@@ -41,7 +41,6 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
-from artistools.misc import addarg_unsupported
 from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import df_filter_minmax_bracketed
@@ -1497,8 +1496,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
     )
 
-    # -x is not a spelling of the unit: plotestimators takes -x for the axis variable, thus one letter
-    # must not mean the unit here and the variable there
     parser.add_argument(
         "-xunit",
         dest="xunit",
@@ -1506,11 +1503,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="X (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
-    # deprecated spelling kept as a hidden alias
+    # deprecated spellings kept as hidden aliases. -x names the axis variable on plotestimators, but
+    # each parser reads its own arguments, and a script holds the -x of this command.
     parser.add_argument("-xunits", dest="xunit", type=str, help=argparse.SUPPRESS)
-    # -x names the axis variable on plotestimators, thus one letter must not mean the unit here.
-    # A declared -x also gives a pointed message in place of the ambiguity list of argparse
-    addarg_unsupported(parser, "-x", instead="-xunit")
+    parser.add_argument("-x", dest="xunit", type=str, help=argparse.SUPPRESS)
 
     addarg_axislimits(
         parser,

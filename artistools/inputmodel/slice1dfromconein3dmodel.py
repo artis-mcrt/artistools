@@ -1,6 +1,7 @@
 """Extract a 1D ARTIS model from a cone around one axis of a 3D model."""
 
 import argparse
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -133,7 +134,8 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                     "different grid spacing (using -coneshellspacingexponent or -nshells) or increase -coneangle\n"
                     "to ensure at least one cell midpoint is contained within the cone limits of the shell\n"
                 )
-                # Cells exist but all have density=0
+                # Cells exist but all have density=0. The warning goes to the standard error, because
+                # --quiet hides the standard output alone, and this warning names shells that go away.
                 logprint(
                     f"WARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0)."
                     "This shell and all shells further out in the model will be removed from the model.\n"
@@ -144,7 +146,8 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
                     "the cells are too optically thin to impact the synthetic observables. However if you want cells\n"
                     "in these outer regions to be included in the 1D cone can experiment with -coneangle,-nshells and\n"
                     "-coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
-                    "grid cell and thus the shells can be included in the 1D model.\n"
+                    "grid cell and thus the shells can be included in the 1D model.\n",
+                    file=sys.stderr,
                 )
                 break
 

@@ -311,6 +311,43 @@ def test_make1dmodelfromcone() -> None:
     )
 
 
+def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--quiet hides the standard output alone, thus the warning for an empty shell takes the standard error.
+
+    The command removes the empty shell and every shell outside it. A run with --quiet gave the new
+    model and no warning, because the warning went to the standard output that --quiet hides.
+    """
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, derived_cols=["vel_r_mid"])
+    dfmodel = dfmodel.collect()
+    vmax = dfmodel["vel_r_mid"].max()
+    assert isinstance(vmax, float)
+
+    # empty the outer part of the model, thus every cell of an outer shell has a density of zero
+    dfmodel = dfmodel.with_columns(
+        pl.when(pl.col("vel_r_mid") > 0.4 * vmax).then(pl.lit(0.0)).otherwise(pl.col("rho")).alias("rho")
+    ).drop("vel_r_mid")
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    shutil.copy(modelpath_3d / "abundances.txt.xz", tmp_path / "abundances.txt.xz")
+
+    outputpath_cone = tmp_path / "out"
+    outputpath_cone.mkdir()
+    at.inputmodel.slice1dfromconein3dmodel.main(
+        argsraw=[],
+        modelpath=[tmp_path],
+        outputpath=outputpath_cone,
+        axis="-z",
+        coneshellspacingexponent=2.0,
+        nshells=4,
+        coneangle=60,
+    )
+
+    captured = capsys.readouterr()
+    assert "WARNING: Shell" in captured.err
+    assert "WARNING: Shell" not in captured.out
+    logtext = "".join(logfile.read_text(encoding="utf-8") for logfile in outputpath_cone.rglob("make1dmodellog.txt"))
+    assert "WARNING: Shell" in logtext, "the log file must keep the warning"
+
+
 def test_makefromcone_arg_can_be_disabled() -> None:
     """--makefromcone was previously action="store", so any value (even "False") was truthy."""
     parser = argparse.ArgumentParser()

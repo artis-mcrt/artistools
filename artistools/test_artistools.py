@@ -1592,7 +1592,7 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         artistools.spectra.plotspectra.addargs: (
             ["-yvar", "packetcount", "-xunits", "nm", "-dist", "1"],
             ("yvariable", "xunit", "distmpc"),
-            ("-yvar", "-xunits", "-dist_mpc", "-dist", "-fluxdistmpc"),
+            ("-yvar", "-xunits", "-x", "-dist_mpc", "-dist", "-fluxdistmpc"),
         ),
         artistools.lightcurve.plotlightcurve.addargs: (
             ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
@@ -1614,17 +1614,19 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
             assert f"{spelling},\n" not in helptext, spelling
 
 
-def test_plotspectra_x_names_the_unit_argument(capsys: pytest.CaptureFixture[str]) -> None:
-    """-x names the axis variable on plotestimators, thus plotspectra must refuse it and name -xunit."""
+def test_plotspectra_x_still_gives_the_unit() -> None:
+    """-x named the unit on plotspectra before -xunit, thus a script that holds it still runs.
+
+    -x names the axis variable on plotestimators, but each parser reads its own arguments.
+    """
     import artistools.spectra.plotspectra
 
     parser = argparse.ArgumentParser(prog="plotspectra")
     artistools.spectra.plotspectra.addargs(parser)
 
-    with pytest.raises(SystemExit):
-        parser.parse_args([".", "-x", "nm"])
-
-    assert "-x is not an argument of this command. Give -xunit instead" in capsys.readouterr().err
+    assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
+    assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
+    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "Hz"
 
 
 def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.CaptureFixture[str]) -> None:
