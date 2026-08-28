@@ -21,7 +21,6 @@ def make_plot(args: argparse.Namespace) -> None:
     """Plot the mass-weighted abundances of every model in args.modelpath and save the figure."""
     args.xaxis = {"Z": "atomicnumber", "A": "massnumber"}.get(args.xaxis, args.xaxis)
 
-    at.plottools.set_mpl_style()
     fig, axesgrid = make_frame_figure(args, aspect=0.770)
     ax = axesgrid[0][0]
 

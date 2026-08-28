@@ -52,8 +52,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the radial density profile of an ARTIS model."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    at.plottools.set_mpl_style()
-
     fig, axesgrid = make_frame_figure(args, rows=3 if args.plotye else 2, aspect=0.45, fullwidth=False)
     axes = axesgrid[:, 0]
 

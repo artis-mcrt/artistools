@@ -8,7 +8,6 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -18,6 +17,7 @@ import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
 from artistools.misc import get_series_label
 from artistools.misc import print_warning
+from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -297,7 +297,8 @@ def make_plot_test_viewing_angle_fit(
     args: argparse.Namespace,
 ) -> None:
     """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
-    fig, axis = plt.subplots()
+    fig, axesgrid = make_frame_figure(aspect=0.770)
+    axis = axesgrid[0][0]
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
 
@@ -379,9 +380,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
     """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
-    fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
-    )
+    fig, axesgrid = make_frame_figure(aspect=0.766)
+    ax = axesgrid[0][0]
 
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = at.read_wsv(f"{key}band_{modelname!s}_viewing_angle_data.txt")
@@ -453,9 +453,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
-    fig, ax = plt.subplots(
-        nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
-    )
+    fig, axesgrid = make_frame_figure(args, aspect=0.766)
+    ax = axesgrid[0][0]
 
     for modelnumber, modelpath in enumerate(args.modelpath):
         modelname = at.get_model_name(modelpath)
@@ -636,9 +635,8 @@ def peakmag_risetime_declinerate_init(
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the luminosity of each direction bin at one time, to show the angular brightness variation."""
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
-    )
+    fig, axesgrid = make_frame_figure(args, aspect=0.627)
+    axis = axesgrid[0][0]
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()

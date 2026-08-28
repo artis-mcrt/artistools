@@ -11,6 +11,7 @@ from artistools.constants import day_to_s
 from artistools.inputmodel.inputmodel_misc import save_initelemabundances
 from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.plottools import save_figure
+from artistools.plottools import set_mpl_style
 
 
 def make_downscaled_3d_grid(
@@ -120,6 +121,7 @@ def make_downscaled_3d_grid(
         import matplotlib.pyplot as plt
         from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+        set_mpl_style()
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
         assert isinstance(axes, np.ndarray)
         (ax1, ax2) = axes

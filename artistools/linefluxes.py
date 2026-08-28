@@ -887,8 +887,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for index, modelpath in enumerate(args.modelpath)
     ]
 
-    at.plottools.set_mpl_style()
-
     if args.plotemittingregions:
         make_emitting_regions_plot(args)
     else:

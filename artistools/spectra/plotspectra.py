@@ -80,7 +80,6 @@ from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
-from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.spectra.writespectra import write_flambda_spectra
@@ -1649,8 +1648,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.xmax = atspectra.convert_angstroms_to_unit(0.004 if args.gamma else 19000.0, args.xunit)
 
     args.xmin, args.xmax = sorted([args.xmin, args.xmax])
-
-    set_mpl_style()
 
     assert (
         not args.plotvspecpol or not args.plotviewingangle

@@ -1032,8 +1032,6 @@ def make_band_lightcurves_plot(
             bandnames, reflightcurve, args.refspeccolors[refindex], args.refspecmarkers[refindex], ax
         )
 
-    at.set_mpl_style()
-
     ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
@@ -1578,8 +1576,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
-
-    at.set_mpl_style()
 
     args.modelpath = at.normalize_path_list(args.modelpath)
 

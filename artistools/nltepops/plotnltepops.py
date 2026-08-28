@@ -832,7 +832,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot ARTIS non-LTE populations."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    at.set_mpl_style()
     modelpath = args.modelpath
     if args.x in {"time", "velocity"}:
         args.modelpath = at.normalize_path_list(args.modelpath)

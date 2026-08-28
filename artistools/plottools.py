@@ -5,6 +5,7 @@ import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
+from functools import cache
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
@@ -475,6 +476,8 @@ def make_frame_figure(
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
 
+    set_mpl_style()
+
     # a helper that draws a figure without parsing arguments passes no args, thus it takes scale 1
     figscale = getattr(args, "figscale", 1.0)
     basewidth = FRAMEWIDTH_INCHES if fullwidth else COLUMNFRAMEWIDTH_INCHES
@@ -568,8 +571,13 @@ def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequen
             axis.set_prop_cycle(color=colors)
 
 
+@cache
 def set_mpl_style() -> None:
-    """Apply the bundled artistools matplotlibrc style."""
+    """Apply the bundled artistools matplotlibrc style.
+
+    The style holds global state, thus one call serves the process. make_frame_figure calls this,
+    so that every figure draws the same fonts and ticks whether or not its command asks.
+    """
     plt.style.use("file://" + str(get_path("artistools_dir") / "matplotlibrc"))
 
 
