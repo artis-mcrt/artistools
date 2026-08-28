@@ -511,7 +511,7 @@ def join_cell_modeldata(
         for colname in dfmodel.collect_schema().names()
         if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
     })
-    return estimators.join(dfmodel, on="modelgridindex", suffix="_initmodel").with_columns(
+    return estimators.join(dfmodel, on="modelgridindex", how="inner", suffix="_initmodel").with_columns(
         rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
         volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
         volume_prevtimestep=pl.col("init_volume")
