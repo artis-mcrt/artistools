@@ -85,7 +85,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
 
     with PdfPages(outputfile) as pdf:
         for timestep in timesteps:
-            fig, axesgrid = make_frame_figure(aspect=0.770)
+            fig, axesgrid = make_frame_figure()
             axis = axesgrid[0][0]
             for stage, bytimestep in logfiledict.items():
                 if timestep not in bytimestep:

@@ -146,7 +146,7 @@ def make_hesma_peakmag_dm15_dm40(
 
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str | None = None) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
-    fig, axesgrid = make_frame_figure(aspect=0.770)
+    fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
     for filepath in sorted(Path(pathtofiles).iterdir()):
         print(f"Reading {filepath}")
@@ -242,7 +242,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args.plotfile)
 
     elif args.action == "plotspectrum":
-        fig, axesgrid = make_frame_figure(aspect=0.770)
+        fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
         plot_hesma_spectrum(
             require(args.timedays, "-timedays", args.action),
@@ -252,7 +252,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_or_show(fig, args.plotfile)
 
     else:
-        fig, axesgrid = make_frame_figure(aspect=0.770)
+        fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
         plothesmaresspec(fig, axis, require(args.hesmafile, "-hesmafile", args.action))
         save_or_show(fig, args.plotfile)

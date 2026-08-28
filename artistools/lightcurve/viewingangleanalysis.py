@@ -297,7 +297,7 @@ def make_plot_test_viewing_angle_fit(
     args: argparse.Namespace,
 ) -> None:
     """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
-    fig, axesgrid = make_frame_figure(aspect=0.770)
+    fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
     axis.plot(time, magnitude)
     axis.plot(xfit, fxfit)
@@ -380,7 +380,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
     """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
-    fig, axesgrid = make_frame_figure(aspect=0.766)
+    fig, axesgrid = make_frame_figure()
     ax = axesgrid[0][0]
 
     for ii, modelname in enumerate(modelnames):
@@ -453,7 +453,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
-    fig, axesgrid = make_frame_figure(args, aspect=0.766)
+    fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
     for modelnumber, modelpath in enumerate(args.modelpath):
@@ -635,7 +635,7 @@ def peakmag_risetime_declinerate_init(
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the luminosity of each direction bin at one time, to show the angular brightness variation."""
-    fig, axesgrid = make_frame_figure(args, aspect=0.627)
+    fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)

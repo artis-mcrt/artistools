@@ -252,7 +252,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     if args.action == "plotrate":
-        fig, axesgrid = make_frame_figure(args, aspect=0.770)
+        fig, axesgrid = make_frame_figure(args)
         axis = axesgrid[0][0]
         plot_energy_rate(modelpath, axis)
         axis.set_xlabel("time [days]")

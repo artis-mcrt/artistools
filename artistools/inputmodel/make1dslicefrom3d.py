@@ -172,7 +172,7 @@ def append_cell_to_output(
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
     """Plot density and the Ni56 and Co mass fractions of the slice against velocity, and save it as a PDF."""
-    fig, axesgrid = make_frame_figure(aspect=0.676)
+    fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
     axis.set_xlabel(r"Velocity [km/s]")
     axis.set_ylabel(r"Density [g/cm$^3$] or mass fraction")

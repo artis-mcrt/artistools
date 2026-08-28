@@ -229,7 +229,7 @@ def plot_qdot(
     else:
         dfgsiglobalheating = None
 
-    fig, axesgrid = make_frame_figure(aspect=0.676)
+    fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
 
     axis.set_xlabel("Time [days]")
