@@ -1958,6 +1958,10 @@ def test_an_output_template_takes_the_older_name_of_a_field() -> None:
     with pytest.raises(ValueError, match=r"gives \{cell\}, \{timedays\}"):
         at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
 
+    # a field with no name gets a message as well, not a raw IndexError
+    with pytest.raises(ValueError, match=r"field with no name.*\{cell\}, \{timedays\}"):
+        at.format_frame_path("p_{}.pdf", cell=1, timedays=2.0)
+
 
 def test_a_wavelength_range_takes_both_spellings() -> None:
     """-xmin and -lambdamin name one argument on every command that reads a range of wavelengths.

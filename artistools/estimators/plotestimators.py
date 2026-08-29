@@ -1366,6 +1366,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
     )
 
+    parser.add_argument(
+        "-coneangle",
+        type=float,
+        default=30.0,
+        help="The full angle of the cone in degrees for -readonlymgi cone. The half angle is coneangle/2",
+    )
+
 
 def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int, int]:
     """Apply the default x variable and the default time range, and return the first and last timestep.

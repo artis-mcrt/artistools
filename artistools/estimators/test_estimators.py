@@ -401,30 +401,32 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     # order of keys is important
     # the values changed when select_cells_along_axis started to give the estimators the zero-based
     # modelgridindex. The one-based inputcellid selected the neighbour of each intended cell before.
+    # They changed again when the axis profile started to keep the innermost cell, whose pos_min is
+    # zero on the positive axis. The old filter pos_min > 0 dropped that cell from every mean.
     expectedvals = {
-        "init_fe": 0.04393352801044238,
-        "init_nistable": 0.018982497938848007,
-        "init_ni56": 0.2077651788649079,
-        "nne": 53758218157.34207,
-        "TR": 27507.6203125,
-        "Te": 47433.08046875,
-        "averageionisation_Fe": 3.425372314453125,
-        "populations_FeI": 3.0725831040676213e-24,
-        "populations_FeII": 1.5928779125425183e-13,
-        "populations_FeIII": 8.581985725514274e-05,
-        "populations_FeIV": 0.5742737034335732,
-        "populations_FeV": 0.42559488230617715,
-        "populations_CoII": 0.20000008376639494,
-        "populations_CoIII": 0.018350993919011672,
-        "populations_CoIV": 0.7816059589385986,
-        "heating_dep": 2.7398957951083184e-14,
+        "init_fe": 0.030691306495330833,
+        "init_nistable": 0.03129141867854237,
+        "init_ni56": 0.3625203213639654,
+        "nne": 138785511355.11838,
+        "TR": 32679.133463541668,
+        "Te": 49283.68359375,
+        "averageionisation_Fe": 3.5216503938039145,
+        "populations_FeI": 2.5604762125407237e-24,
+        "populations_FeII": 1.3273970472709221e-13,
+        "populations_FeIII": 7.15164795263741e-05,
+        "populations_FeIV": 0.47807180327557336,
+        "populations_FeV": 0.5218229725433048,
+        "populations_CoII": 0.166666736471993,
+        "populations_CoIII": 0.015291374246013826,
+        "populations_CoIV": 0.8180049657821655,
+        "heating_dep": 2.2832464959235988e-14,
         "heating_coll": 0.0,
-        "heating_bf": 8.98808005561809e-16,
-        "heating_ff": 4.492620069717229e-18,
-        "cooling_adiabatic": 1.940665408033783e-14,
-        "cooling_coll": 2.1374800532917157e-14,
-        "cooling_fb": 3.3767601071335755e-17,
-        "cooling_ff": 1.3946639675067307e-17,
+        "heating_bf": 7.490066713015075e-16,
+        "heating_ff": 3.7438500580976916e-18,
+        "cooling_adiabatic": 1.617221173361486e-14,
+        "cooling_coll": 1.7812333777430962e-14,
+        "cooling_fb": 2.8139667559446467e-17,
+        "cooling_ff": 1.1622199729222756e-17,
     }
 
     assert len(expectedvals) == len(mockplot.call_args_list)
@@ -1475,3 +1477,25 @@ def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
     # a roman numeral in lower case names no ion stage, thus these names hold no ion
     for ionstr in ("Feii", "FeIi", "feii", "Sii"):
         assert not is_valid_ion(ionstr), f"{ionstr} must name no ion"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
+    """-readonlymgi cone selects the cells within -coneangle of the axis.
+
+    The parser did not define -coneangle, which make_cone reads, thus the cone path stopped with
+    AttributeError before this test existed.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te"]],
+        outputfile=outputpath / "test_estimator_snapshot_classic_3d_cone.pdf",
+        timedays=4,
+        readonlymgi="cone",
+        axis="+z",
+        coneangle=60.0,
+    )
+
+    xvalues = np.concatenate([np.array(callargs[0][1], dtype=float) for callargs in mockplot.call_args_list])
+    assert len(xvalues) > 0

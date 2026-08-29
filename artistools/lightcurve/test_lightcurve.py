@@ -1609,3 +1609,25 @@ def test_lightcurve_timestep_takes_a_path_that_names_a_file(tmp_path: Path) -> N
     at.lightcurve.plot(argsraw=[str(modelpath / "light_curve.out"), "-timestep", "20", "-o", str(outputfile)])
 
     assert outputfile.is_file(), "the command must draw the light curve of the file"
+
+
+def test_angle_averaged_peakmag_without_filter_reads_the_averaged_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--save_angle_averaged_peakmag_risetime_delta_m15_to_file without -filter fits dirbin -1.
+
+    The branch forced dirbins to [-1] after it read the direction-resolved file, whose keys are
+    0 to 99. Thus the command stopped with KeyError before this test existed.
+    """
+    monkeypatch.chdir(tmp_path)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotviewingangle=-2,
+        save_angle_averaged_peakmag_risetime_delta_m15_to_file=True,
+        timemin=3.2,
+        timemax=7.5,
+        outputfile=tmp_path,
+    )
+
+    assert list(tmp_path.glob("*angle_averaged_all_models_data.txt"))

@@ -916,12 +916,10 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         print_saved(outfile)
 
 
-def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
+def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
     """Average the vspecpol_total files of several models into one vspecpol_averaged file per observer direction."""
     filenames = [
-        vspecfile.name
-        for vspecfile in Path(args.modelpath[0]).iterdir()
-        if vspecfile.name.startswith("vspecpol_total-")
+        vspecfile.name for vspecfile in Path(modelpaths[0]).iterdir() if vspecfile.name.startswith("vspecpol_total-")
     ]
 
     def sorted_by_number(lst: list[str]) -> list[str]:
@@ -936,12 +934,12 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecarrays = [read_wsv(modelpath / filename, has_header=False).to_numpy() for modelpath in args.modelpath]
+        vspecarrays = [read_wsv(modelpath / filename, has_header=False).to_numpy() for modelpath in modelpaths]
         averaged = vspecarrays[0].copy()
         # the first row (times) and first column (frequencies) are labels shared by all models, so average the rest
         averaged[1:, 1:] = np.mean([arr[1:, 1:] for arr in vspecarrays], axis=0)
         pl.DataFrame(averaged).write_csv(
-            args.modelpath[0] / f"vspecpol_averaged-{spec_index}.out", separator=" ", include_header=False
+            Path(modelpaths[0]) / f"vspecpol_averaged-{spec_index}.out", separator=" ", include_header=False
         )
 
 

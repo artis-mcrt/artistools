@@ -1724,7 +1724,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.averagevspecpolfiles:
-        atspectra.make_averaged_vspecfiles(args)
+        atspectra.make_averaged_vspecfiles(args.specpath)
         return
 
     if "/" in args.stokesparam:

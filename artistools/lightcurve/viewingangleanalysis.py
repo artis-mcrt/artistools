@@ -550,14 +550,16 @@ def peakmag_risetime_declinerate_init(
         modelnames.append(modelname)
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
-        if not args.filter:
-            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=args.plotviewingangle)
-            lcdataframes = at.lightcurve.readfile(lcpath)
-
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, _ = parse_directionbin_args(modelpath, args)
         if not args.filter and args.plotviewingangle:
+            # without a filter, this branch fits the bolometric light curve of dirbin -1 alone
             dirbins = [-1]
+
+        if not args.filter:
+            # dirbin -1 is the angle-averaged light curve, which only light_curve.out holds
+            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=False)
+            lcdataframes = at.lightcurve.readfile(lcpath)
 
         for dirbin in dirbins:
             if args.verbose:

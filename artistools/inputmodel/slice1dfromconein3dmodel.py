@@ -31,7 +31,7 @@ def make_cone(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.Dat
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
     pldfmodel, modelmeta = at.get_modeldata(
-        modelpath=args.modelpath[0],
+        modelpath=at.normalize_path_list(args.modelpath)[0],
         get_elemabundances=True,
         derived_cols=[
             "volume",
@@ -68,16 +68,17 @@ def get_profile_along_axis(
     print("Getting profile along axis")
 
     if modeldata is None:
-        modeldata = at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)[
-            0
-        ].collect()
+        modeldata = at.inputmodel.get_modeldata(
+            at.normalize_path_list(args.modelpath)[0], get_elemabundances=True, derived_cols=derived_cols
+        )[0].collect()
 
     argmin = modeldata[f"pos_{args.other_axis2}_min"].abs().arg_min()
     assert argmin is not None
     position_closest_to_axis = modeldata[f"pos_{args.other_axis2}_min"].item(argmin)
 
+    # the innermost cell on the positive axis has pos_min == 0, thus the condition must keep it
     sliceaxis_cond = (
-        (pl.col(f"pos_{args.sliceaxis}_min") > 0) if args.positive_axis else (pl.col(f"pos_{args.sliceaxis}_min") < 0)
+        (pl.col(f"pos_{args.sliceaxis}_min") >= 0) if args.positive_axis else (pl.col(f"pos_{args.sliceaxis}_min") < 0)
     )
 
     return modeldata.filter(
@@ -89,8 +90,10 @@ def get_profile_along_axis(
 
 def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.DataFrame:
     """Make 1D model from 3D model."""
-    logprint("Making 1D model from 3D model:", at.get_model_name(args.modelpath[0]))
-    _, modelmeta = at.get_modeldata(modelpath=args.modelpath[0])
+    modelpath = at.normalize_path_list(args.modelpath)[0]
+    logprint("Making 1D model from 3D model:", at.get_model_name(modelpath))
+    _, modelmeta = at.get_modeldata(modelpath=modelpath)
+    args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("from a cone")
         cone = make_cone(args, logprint)
@@ -194,10 +197,18 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     else:  # make from along chosen axis
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
+        # pos_min is the inner edge of a cell. On the positive axis, the outer edge is pos_min plus the
+        # cell width. On the negative axis, pos_min is already the outer edge, and the reverse and
+        # negate step below makes the velocities positive.
+        pos_outer = (
+            pl.col(f"pos_{args.sliceaxis}_min") + modelmeta["wid_init"]
+            if args.positive_axis
+            else pl.col(f"pos_{args.sliceaxis}_min")
+        )
         slice1d = (
             # Convert positions to velocities
             slice1d
-            .with_columns(pl.col(f"pos_{args.sliceaxis}_min") / (args.t_model * day_to_s * km_to_cm))
+            .with_columns((pos_outer / (args.t_model * day_to_s * km_to_cm)).alias(f"pos_{args.sliceaxis}_min"))
             .rename({f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
             # Remove columns we don't need
             .drop("inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min")

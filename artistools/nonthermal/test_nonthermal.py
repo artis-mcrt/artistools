@@ -95,3 +95,16 @@ def test_leptontransport_rejects_nonpositive_energy(energy: float) -> None:
     """Both stopping-power helpers require a positive energy, and reach a division by zero without it."""
     with pytest.raises(ValueError, match="energy must be positive"):
         at.nonthermal.leptontransport.main(argsraw=[], energy=energy)
+
+
+def test_spencerfano_makeplot_with_element_composition(tmp_path: Path) -> None:
+    """--makeplot with a non-ARTIS -composition names the plot file after the element.
+
+    The default file name holds a timestep field and a time field, which stay None without an
+    ARTIS model. Thus the format stopped with TypeError before this test existed.
+    """
+    at.nonthermal.solvespencerfanocmd.main(
+        argsraw=[], composition="He", x_e=0.5, makeplot=True, npts=200, noexcitation=True, outputfile=tmp_path
+    )
+
+    assert (tmp_path / "spencerfano_He.pdf").is_file()
