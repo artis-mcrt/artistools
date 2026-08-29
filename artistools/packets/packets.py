@@ -394,7 +394,8 @@ def get_packets_rankbatch_parquetfile(
     # The time of the last change to the parquet schema. A schema change adds a column or changes a data type.
     # The code makes a new cache file if the cache is older than this time.
     # Increase this time only for a change that makes an older cache file incorrect.
-    time_parquetschemachange = (2024, 4, 23, 9, 0, 0)
+    # 2026-05-21: the stokes1/2/3 columns became stokes_q/stokes_u, and the new schema omits the redundant stokes I
+    time_parquetschemachange = (2026, 5, 21, 10, 0, 0)
     t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     text_filenames = [
@@ -582,13 +583,10 @@ def get_packets(
     packetsdatasize_gb = sum(f.stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
+    # a cache file from an old artistools names the Stokes columns stokes1/2/3, where stokes1 holds the
+    # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U.
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {
-            "originated_from_positron": "originated_from_particlenotgamma",
-            "stokes0": "stokes_i",
-            "stokes1": "stokes_q",
-            "stokes2": "stokes_u",
-        },
+        {"originated_from_positron": "originated_from_particlenotgamma", "stokes2": "stokes_q", "stokes3": "stokes_u"},
         strict=False,
     )
 

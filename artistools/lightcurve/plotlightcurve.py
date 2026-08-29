@@ -326,7 +326,6 @@ def plot_artis_lightcurve(
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
-    directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     *,
@@ -364,15 +363,16 @@ def plot_artis_lightcurve(
     if hasattr(args, "title") and args.title:
         at.plottools.set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
 
-    if directionbins is None:
-        directionbins = [-1]
+    # resolve the direction bins first, because "-plotviewingangle -2" expands to every bin. The
+    # packet-derived data must hold the same bin keys that the plot loop reads.
+    dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if frompackets:
         lcdataframes = at.lightcurve.get_from_packets(
             modelpath,
             escape_type=escape_type,
             maxpacketfiles=maxpacketfiles,
-            directionbins=directionbins,
+            directionbins=dirbins,
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
             directionbins_are_vpkt_observers=args.plotvspecpol is not None,
@@ -389,7 +389,7 @@ def plot_artis_lightcurve(
                 at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
                 if lcfilename is not None
                 else at.lightcurve.find_lightcurve_file(
-                    modelpath, directionresolved=directionbins != [-1], gamma=escape_type == "TYPE_GAMMA"
+                    modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
                 )
             )
         except FileNotFoundError:
@@ -407,9 +407,6 @@ def plot_artis_lightcurve(
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
         plotkwargs["linewidth"] = args.linewidth[lcindex]
-
-    # check if doing viewing angle stuff, and if so define which data to use
-    dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
@@ -634,7 +631,6 @@ def make_lightcurve_plot(
 
         else:
             plottedthismodel = False
-            dirbin = args.plotviewingangle or (args.plotvspecpol or [-1])
             escape_types: list[str] = ["TYPE_RPKT"] if showuvoir else []
             if showgamma:
                 escape_types.append("TYPE_GAMMA")
@@ -676,7 +672,6 @@ def make_lightcurve_plot(
                         escape_type=escape_type,
                         frompackets=frompackets,
                         maxpacketfiles=maxpacketfiles,
-                        directionbins=dirbin,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
                         args=args,
@@ -1208,7 +1203,9 @@ def plot_lightcurve_from_refdata(
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data[filter_name] = lightcurve_data.filter(pl.col("band") == filter_name)
 
-        if "a_v" in metadata or "e_bminusv" in metadata:
+        # get_file_metadata derives the third extinction value when the metadata gives two of
+        # a_v, r_v, and e_bminusv. One value alone is not enough for the correction.
+        if "a_v" in metadata and "r_v" in metadata:
             print("Correcting for reddening")
 
             filter_data[filter_name] = deredden_band_magnitudes(
@@ -1248,14 +1245,13 @@ def plot_color_evolution_from_data(
         filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
         filter_data.append(lightcurve_from_data.filter(pl.col("band") == filter_name))
 
-        if "a_v" in metadata or "e_bminusv" in metadata:
+        # get_file_metadata derives the third extinction value when the metadata gives two of
+        # a_v, r_v, and e_bminusv. One value alone is not enough for the correction.
+        if "a_v" in metadata and "r_v" in metadata:
             print("Correcting for reddening")
-            if "r_v" not in metadata:
-                metadata["r_v"] = metadata["a_v"] / metadata["e_bminusv"]
-            elif "a_v" not in metadata:
-                metadata["a_v"] = metadata["e_bminusv"] * metadata["r_v"]
-
             filter_data[i] = deredden_band_magnitudes(filter_data[i], lambda0, metadata["a_v"], metadata["r_v"])
+        else:
+            print_warning("did not correct for reddening")
 
     merge_dataframes = filter_data[0].join(
         filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"

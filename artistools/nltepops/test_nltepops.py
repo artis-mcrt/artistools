@@ -201,6 +201,17 @@ def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_pat
     assert any(tmp_path.glob("plotnltepops_Fe_cell00000_ts*.pdf"))
 
 
+def test_nltepops_timedayslist_plots_only_the_listed_timesteps(tmp_path: Path) -> None:
+    """A non-adjacent -timedayslist selects only the listed timesteps, not the range between them."""
+    with mock.patch("artistools.nltepops.plotnltepops.make_singletimestep_plot") as mockplot:
+        at.nltepops.plot(
+            argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedayslist=[255, 340]
+        )
+
+    plotted_timesteps = [callargs.args[4] for callargs in mockplot.call_args_list]
+    assert plotted_timesteps == [5, 91]
+
+
 def test_nltepops_subplot_blocks_do_not_overlap() -> None:
     """Each cell must own its own block of subplots, one for each ion stage.
 

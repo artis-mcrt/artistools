@@ -468,14 +468,18 @@ def get_band_lightcurve(
     """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range."""
     args = args_from_kwargs(args, kwargs)
 
-    times, brightness_in_mag = zip(
-        *[
-            (time, brightness)
-            for time, brightness in band_lightcurve_data[band_name]
-            if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
-        ],
-        strict=False,
-    )
+    selected = [
+        (time, brightness)
+        for time, brightness in band_lightcurve_data[band_name]
+        if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+    ]
+    if not selected:
+        msg = (
+            f"the {band_name} band has no light curve points between timemin {args.timemin} and timemax {args.timemax}"
+        )
+        raise ValueError(msg)
+
+    times, brightness_in_mag = zip(*selected, strict=True)
 
     return times, np.array(brightness_in_mag)
 
