@@ -1,3 +1,4 @@
+import os
 import re
 import typing as t
 from pathlib import Path
@@ -748,19 +749,84 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     The scan of the parquet files is lazy, thus a run whose caches were current showed a bar that
     came and went with no work behind it.
     """
-    parquetfilepath = at.estimators.estimators.get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
+    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.estimators.estimators import get_rankbatch_parquetpath
+    from artistools.estimators.estimators import rankbatch_parquet_is_current
+
+    parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
 
     # a cache that no run wrote yet needs the conversion
-    assert not at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, None)
+    assert not rankbatch_parquet_is_current(parquetfilepath, None)
 
-    parquetfilepath.write_bytes(b"")
-    mtime = parquetfilepath.stat().st_mtime
-    assert at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, None)
-    assert at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, mtime - 10.0)
+    mtime = 1000.0
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        parquetfilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(mtime)},
+    )
 
-    # an estimator text file that is newer than the cache needs the conversion again
-    assert not at.estimators.estimators.rankbatch_parquet_is_current(parquetfilepath, mtime + 10.0)
+    # a folder with no text files keeps the cache, and a matching stamp also keeps it
+    assert rankbatch_parquet_is_current(parquetfilepath, None)
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime)
+
+    # a text source time other than the stamped one needs the conversion again
+    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + 10.0)
+
+
+def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
+    """A cache must hold the current cache version and the time of its text source, or a scan rejects it.
+
+    The freshness rule compared only modification times. Thus a scan accepted a cache that an older
+    artistools wrote with different columns, and the diagonal concat filled the difference with
+    nulls.
+    """
+    from artistools.estimators.estimators import rankbatch_parquet_is_current
+
+    mtime = 1000.0
+
+    # no metadata stamp, e.g. a cache from before the stamp existed
+    unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
+    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
+    assert not rankbatch_parquet_is_current(unstamped, mtime)
+
+    # a matching text source time but a different cache version
+    oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
+    )
+    assert not rankbatch_parquet_is_current(oldversion, mtime)
+
+    # a file that is not parquet
+    unreadable = tmp_path / "estimbatch02_0006_0008.out.parquet.tmp"
+    unreadable.write_bytes(b"not parquet")
+    assert not rankbatch_parquet_is_current(unreadable, mtime)
+
+
+def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
+    """The newest text file of the batch decides its freshness, and no other file hides it.
+
+    One file, in the unspecified order of a glob, decided for the whole folder. Thus a restart that
+    rewrote the file of a later rank kept the stale caches current.
+    """
+    from artistools.estimators.estimators import get_batch_textsource_mtime
+    from artistools.estimators.estimators import get_textsource_mtimes
+
+    for rank in range(3):
+        (tmp_path / f"estimators_{rank:04d}.out").write_text("timestep 0\n")
+
+    mtimes = get_textsource_mtimes(tmp_path)
+    assert sorted(mtimes.keys()) == [0, 1, 2]
+
+    newest = max(mtimes.values())
+    os.utime(tmp_path / "estimators_0002.out", (newest + 100.0, newest + 100.0))
+    mtimes = get_textsource_mtimes(tmp_path)
+
+    assert get_batch_textsource_mtime(mtimes, 0, 2) == newest + 100.0
+    # a batch that does not hold the rewritten rank keeps its own time
+    assert get_batch_textsource_mtime(mtimes, 0, 1) == max(mtimes[0], mtimes[1])
+    # a batch with no text file gives None
+    assert get_batch_textsource_mtime(mtimes, 5, 9) is None
 
 
 def test_a_cached_scan_asks_for_no_progress_class() -> None:

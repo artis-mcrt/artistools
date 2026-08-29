@@ -81,6 +81,7 @@ from artistools.misc.fileio import path_is_codecomparison as path_is_codecompari
 from artistools.misc.fileio import path_is_reference_data as path_is_reference_data
 from artistools.misc.fileio import polars_source as polars_source
 from artistools.misc.fileio import print_saved as print_saved
+from artistools.misc.fileio import read_parquet_cache_metadata as read_parquet_cache_metadata
 from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes

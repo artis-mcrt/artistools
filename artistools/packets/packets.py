@@ -1,6 +1,6 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
-import calendar
+import datetime
 import math
 import time
 import typing as t
@@ -17,6 +17,7 @@ import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import read_parquet_cache_metadata
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -372,9 +373,10 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     return firstline.lstrip("#").split()
 
 
-def format_timestamp(timestamp: float) -> str:
-    """Return a UTC time as a string. Log messages use it to compare the modification times of files."""
-    return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(timestamp))
+# The version of the packets parquet cache format. Increase it for a change that makes an older
+# cache file incorrect, e.g. a new column, a removed column, or a different data type.
+# version 1: the stokes1/2/3 columns became stokes_q/stokes_u, and the schema omits the redundant stokes I
+CACHEVERSION = 1
 
 
 def get_packets_rankbatch_parquetfile(
@@ -391,13 +393,6 @@ def get_packets_rankbatch_parquetfile(
     )
     parquetfilepath = packetdir / parquetfilename
 
-    # The time of the last change to the parquet schema. A schema change adds a column or changes a data type.
-    # The code makes a new cache file if the cache is older than this time.
-    # Increase this time only for a change that makes an older cache file incorrect.
-    # 2026-05-21: the stokes1/2/3 columns became stokes_q/stokes_u, and the new schema omits the redundant stokes I
-    time_parquetschemachange = (2026, 5, 21, 10, 0, 0)
-    t_lastschemachange = calendar.timegm(time_parquetschemachange)
-
     text_filenames = [
         (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out") for rank in batch_mpiranks
     ]
@@ -406,7 +401,6 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        parquet_mtime = parquetstat.st_mtime
         # only the last rank's file is checked, on the assumption that a run writes all of its ranks together. An
         # individually-updated earlier file will not invalidate the cached parquet
         if text_filepath := at.firstexisting_or_none(
@@ -414,7 +408,7 @@ def get_packets_rankbatch_parquetfile(
         ):
             last_textfile_mtime = text_filepath.stat().st_mtime
 
-            if parquet_mtime > last_textfile_mtime and parquet_mtime > t_lastschemachange:
+            if read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, last_textfile_mtime) is not None:
                 conversion_needed = False
             else:
                 # the identity comes from the stat that showed the file is outdated, so only that exact
@@ -424,19 +418,9 @@ def get_packets_rankbatch_parquetfile(
                 # one step, so the path always resolves to a complete parquet. Deleting it first opens a
                 # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
                 # it missing or half-swapped
-                reasons = []
-                if parquet_mtime <= last_textfile_mtime:
-                    reasons.append(
-                        f"{text_filepath.relative_to(modelpath)} was modified later"
-                        f" ({format_timestamp(last_textfile_mtime)})"
-                    )
-                if parquet_mtime <= t_lastschemachange:
-                    reasons.append(f"the parquet schema changed later ({format_timestamp(t_lastschemachange)})")
-
                 print(
-                    f"  {parquetfilepath.relative_to(modelpath)} was written"
-                    f" {format_timestamp(parquet_mtime)} but {' and '.join(reasons)}."
-                    " File will be regenerated..."
+                    f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of"
+                    f" {text_filepath.relative_to(modelpath)}. File will be regenerated..."
                 )
         else:
             conversion_needed = False
@@ -449,6 +433,9 @@ def get_packets_rankbatch_parquetfile(
             at.firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
             for filename in text_filenames
         ]
+
+        # the stamp uses the same file that the freshness check reads: the text file of the last rank
+        textsource_mtime = text_file_paths[-1].stat().st_mtime
 
         column_names = (
             get_vpackets_text_columns(text_file_paths[0])
@@ -503,7 +490,17 @@ def get_packets_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        at.write_parquet_atomic(pldf_batch, parquetfilepath, compression_level=12, replaces=outdatedparquet)
+        at.write_parquet_atomic(
+            pldf_batch,
+            parquetfilepath,
+            metadata={
+                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "cacheversion": str(CACHEVERSION),
+                "textsource_mtime": str(textsource_mtime),
+            },
+            compression_level=12,
+            replaces=outdatedparquet,
+        )
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
 
     return parquetfilepath

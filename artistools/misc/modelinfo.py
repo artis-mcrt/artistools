@@ -224,14 +224,19 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):
-        # if there are estimators in parquet format, read the timesteps from there
-        dfestfile = pl.scan_parquet(estimparquetfiles[0])
-        timesteps_contained = (
-            dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
-        )
-        # the first timestep of a restarted run is duplicate and should be ignored
-        restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
-        return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+        # this import runs at call time, because artistools.estimators imports artistools.misc
+        from artistools.estimators.estimators import estimbatch_parquet_is_current
+
+        # a stale cache can hold fewer timesteps than the text files, e.g. while ARTIS still runs.
+        # Thus only a current cache answers. For a stale cache, the text files answer instead
+        if estimbatch_parquet_is_current(estimparquetfiles[0], folderpath):
+            dfestfile = pl.scan_parquet(estimparquetfiles[0])
+            timesteps_contained = (
+                dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
+            )
+            # the first timestep of a restarted run is duplicate and should be ignored
+            restart_timestep = None if 0 in timesteps_contained else timesteps_contained[0]
+            return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
     if estimfiles := sorted(Path(folderpath).glob("estimators_*.out*")):
         with zopen(estimfiles[0]) as estfile:
             timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
