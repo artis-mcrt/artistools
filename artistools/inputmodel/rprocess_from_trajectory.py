@@ -66,7 +66,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     return dfelabundances
 
 
-def _extracted_file_is_complete(path_extracted_file: Path) -> bool:
+def extracted_file_is_complete(path_extracted_file: Path) -> bool:
     """Report whether a previously extracted member is present and non-empty."""
     if not path_extracted_file.is_file() or path_extracted_file.stat().st_size == 0:
         return False
@@ -77,7 +77,7 @@ def _extracted_file_is_complete(path_extracted_file: Path) -> bool:
     return False
 
 
-def _extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extracted_file: Path) -> None:
+def extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extracted_file: Path) -> None:
     """Extract one tar member into place through a temporary file and an atomic replace.
 
     Several processes routinely want the same trajectory member at once. Extracting straight to the destination
@@ -127,7 +127,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
-    if _extracted_file_is_complete(path_extracted_file):
+    if extracted_file_is_complete(path_extracted_file):
         return path_extracted_file
 
     if tarfilepath is None:
@@ -138,7 +138,7 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
 
     # and memberfilename.endswith(".dat")
     try:
-        _extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
+        extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
     except OSError:
         print(f"Problem extracting file {memberfilename} from {tarfilepath}")
         raise

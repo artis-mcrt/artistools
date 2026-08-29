@@ -498,7 +498,7 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 
 @lru_cache(maxsize=1)
-def _get_elements_df() -> pl.DataFrame:
+def get_elements_df() -> pl.DataFrame:
     """Return the whole element table (Z, symbol, name, mass) from data/elements.csv.
 
     The single place that knows the file's schema, so adding a column does not have to be mirrored into
@@ -530,7 +530,7 @@ def get_elsymbolslist() -> tuple[str, ...]:
     get_elsymbolslist()[26] = 'Fe'.
 
     """
-    return ("n", *_get_elements_df()["symbol"].to_list())
+    return ("n", *get_elements_df()["symbol"].to_list())
 
 
 @lru_cache(maxsize=1)
@@ -543,12 +543,12 @@ def get_atomic_masses() -> Mapping[int, float]:
 
     A read-only mapping, because the single cached instance is shared by every caller.
     """
-    dfelements = _get_elements_df()
+    dfelements = get_elements_df()
     return MappingProxyType(dict(zip(dfelements["Z"].to_list(), dfelements["mass"].to_list(), strict=True)))
 
 
 @lru_cache(maxsize=1)
-def _get_atomic_number_of_elsymbol() -> dict[str, int]:
+def get_atomic_number_of_elsymbol() -> dict[str, int]:
     """Return a mapping of element symbol to atomic number, for lookups that would otherwise scan the whole list."""
     return {elsymbol: atomic_number for atomic_number, elsymbol in enumerate(get_elsymbolslist())}
 
@@ -567,7 +567,7 @@ def get_elsymbols_df() -> pl.LazyFrame:
 
     Only the two columns, so that a join against this frame never picks up the rest of the element table.
     """
-    return _get_elements_df().lazy().select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
+    return get_elements_df().lazy().select(pl.col("Z").alias("atomic_number"), pl.col("symbol").alias("elsymbol"))
 
 
 def get_atomic_number(elsymbol: str) -> int:
@@ -577,7 +577,7 @@ def get_atomic_number(elsymbol: str) -> int:
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
 
     # a dict lookup, because this is called once per column name in some loops
-    return _get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
+    return get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
 
 
 ROMANNUMERALCHARS = frozenset("IVXLCDM")

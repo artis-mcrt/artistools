@@ -175,8 +175,6 @@ def plot_line_estimators(
     **plotkwargs: t.Any,
 ) -> float:
     """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
-    ymax = -1
-
     # the detailed line estimators have bin_num < -1. Cell zero and timestep zero are falsy, so these filters must
     # test against None rather than truthiness
     radfielddataselected = select_radfield_subset(
@@ -194,14 +192,13 @@ def plot_line_estimators(
     ymax = radfielddataselected["Jb_lambda"].max()
     assert isinstance(ymax, float)
 
-    if not radfielddataselected.is_empty():
-        axis.scatter(
-            radfielddataselected["lambda_angstroms"],
-            radfielddataselected["Jb_lambda"],
-            label="Line estimators",
-            s=0.2,
-            **plotkwargs,
-        )
+    axis.scatter(
+        radfielddataselected["lambda_angstroms"],
+        radfielddataselected["Jb_lambda"],
+        label="Line estimators",
+        s=0.2,
+        **plotkwargs,
+    )
     return ymax
 
 

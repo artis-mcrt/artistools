@@ -476,7 +476,11 @@ def get_spectrum_at_time(
 
 
 @lru_cache(maxsize=4)
-def _get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.LazyFrame:
+def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.LazyFrame:
+    """Return the wavelength bin frame for the given packed bin edges.
+
+    The bytes key makes the arguments hashable for the lru_cache.
+    """
     lambda_bin_edges = np.frombuffer(lambda_bin_edges_bytes, dtype=np.float64, count=count)
     return (
         pl
@@ -498,7 +502,7 @@ def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.La
     separately. Without the cache, the code makes this frame again for each contribution.
     """
     edges = np.ascontiguousarray(lambda_bin_edges, dtype=np.float64)
-    return _get_binned_lambda_frame_cached(edges.tobytes(), edges.size)
+    return get_binned_lambda_frame_cached(edges.tobytes(), edges.size)
 
 
 def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> list[int]:
@@ -958,8 +962,14 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
     return split_dataframe_stokesparams(specdata)
 
 
+# maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
+# Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
+@lru_cache(maxsize=2)
 def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
-    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed."""
+    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
+
+    Callers must not mutate the returned dict, which is shared between calls.
+    """
     assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 

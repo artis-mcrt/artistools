@@ -777,9 +777,7 @@ def make_lightcurve_plot(
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
     """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
-    args.subplots = False  # TODO: set as command line arg
-
-    if (args.filter and len(args.filter) > 1) or args.subplots:
+    if args.filter and len(args.filter) > 1:
         args.subplots = True
         rows = 2
         cols = 3
@@ -1425,11 +1423,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_show(parser)
     addarg_verbose(parser)
-
-    # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
-    #                     help='Calculate band risetime, peak mag and delta m15 values for '
-    #                     'the models specified using a polynomial fitting method and '
-    #                     'print to screen')
 
     parser.add_argument(
         "--save_angle_averaged_peakmag_risetime_delta_m15_to_file",

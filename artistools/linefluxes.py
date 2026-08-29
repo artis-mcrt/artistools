@@ -1,7 +1,6 @@
 """Plotting of emission line fluxes and flux ratios."""
 
 import argparse
-import contextlib
 import json
 import math
 import typing as t
@@ -535,7 +534,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     args.outputfile = at.resolve_outputfile(args.outputfile, "emittingregions.pdf")
 
     args.modelpath.append(None)
-    args.label.append(f"All models: {args.label}")
+    args.label.append(f"All models: {', '.join(args.label)}")
     args.modeltag.append("all")
     for modelindex, (modelpath, modellabel, modeltag) in enumerate(
         zip(args.modelpath, args.label, args.modeltag, strict=False)
@@ -576,46 +575,32 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner")
 
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-                for feature in emfeatures:
-                    dfpackets_selected = (
-                        dfpackets
-                        .filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
-                        .filter(pl.col(args.emtypecolumn).is_in(feature.linelistindices))
-                        .select("em_log10nne", "em_Te")
-                        .collect()
-                    )
-                    if dfpackets_selected.is_empty():
-                        emdata_all[modelindex][tmid, feature.colname] = {
-                            "em_log10nne": np.array([]),
-                            "em_Te": np.array([]),
-                        }
-                    else:
-                        emdata_all[modelindex][tmid, feature.colname] = {
-                            "em_log10nne": dfpackets_selected["em_log10nne"].to_numpy(),
-                            "em_Te": dfpackets_selected["em_Te"].to_numpy(),
-                        }
+            # one collect gives all the time bins and features, then the loop filters the eager frame
+            dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()
 
-            estimators = at.estimators.read_estimators(modelpath)
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
+                dfpackets_timebin = dfpackets_collected.filter(
+                    pl.col("t_arrive_d").is_between(tstart, tend, closed="both")
+                )
+                for feature in emfeatures:
+                    dfpackets_selected = dfpackets_timebin.filter(
+                        pl.col(args.emtypecolumn).is_in(feature.linelistindices)
+                    )
+                    emdata_all[modelindex][tmid, feature.colname] = {
+                        "em_log10nne": dfpackets_selected["em_log10nne"].to_numpy(),
+                        "em_Te": dfpackets_selected["em_Te"].to_numpy(),
+                    }
+
+            dfestimators_collected = dfestimators.select("em_timestep", "em_Te", "em_log10nne").collect()
+            tstartlist = at.get_timestep_times(modelpath, loc="start")
+            tendlist = at.get_timestep_times(modelpath, loc="end")
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-                Tedata_all[modelindex][tmid] = []
-                log10nnedata_all[modelindex][tmid] = []
-                tstartlist = at.get_timestep_times(modelpath, loc="start")
-                tendlist = at.get_timestep_times(modelpath, loc="end")
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
-                for timestep in tslist:
-                    for modelgridindex in range(modeldata.height):
-                        Te, log10nne = None, None
-                        with contextlib.suppress(KeyError):
-                            Te = estimators[timestep, modelgridindex]["Te"]
-                            log10nne = math.log10(estimators[timestep, modelgridindex]["nne"])
-
-                        if Te is not None and log10nne is not None:
-                            Tedata_all[modelindex][tmid].append(Te)
-                            log10nnedata_all[modelindex][tmid].append(log10nne)
+                dfestimators_timebin = dfestimators_collected.filter(pl.col("em_timestep").is_in(tslist))
+                Tedata_all[modelindex][tmid] = dfestimators_timebin["em_Te"].to_list()
+                log10nnedata_all[modelindex][tmid] = dfestimators_timebin["em_log10nne"].to_list()
 
         if modeltag != "all":
             continue

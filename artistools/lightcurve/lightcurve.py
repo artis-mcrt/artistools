@@ -363,6 +363,35 @@ def generate_band_lightcurve_data(
     return filters_dict
 
 
+def get_bolometric_luminosities(
+    modelpath: Path,
+    timesteps: Sequence[int],
+    dirbin: int = -1,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> list[float]:
+    """Return the bolometric luminosity in erg/s of one direction bin at each given timestep.
+
+    The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc.
+    One collect_all call evaluates the queries of all the timesteps together.
+    """
+    lazyspectra = [
+        at.spectra.get_spectra(
+            modelpath=modelpath,
+            timestepmin=timestep,
+            timestepmax=timestep,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )[dirbin]
+        for timestep in timesteps
+    ]
+    Mpc_to_cm = at.constants.megaparsec_to_cm
+    return [
+        float(np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2))
+        for spectrum in pl.collect_all(lazyspectra)
+    ]
+
+
 def bolometric_magnitude(
     modelpath: Path,
     timearray: Collection[float | str],
@@ -372,31 +401,35 @@ def bolometric_magnitude(
     average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
     """Return the times and bolometric magnitudes obtained by integrating the spectra of one direction bin."""
-    magnitudes = []
-    times = []
+    selectedtimes = [
+        (timestep, time)
+        for timestep, time in enumerate(float(time) for time in timearray)
+        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time)
+    ]
 
-    Mpc_to_cm = at.constants.megaparsec_to_cm
-    for timestep, time in enumerate(float(time) for time in timearray):
-        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle == -1:
-                spectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[
-                    -1
-                ].collect()
-            elif args.plotvspecpol:
-                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect()
-            else:
-                spectrum = at.spectra.get_spectra(
-                    modelpath=modelpath,
-                    timestepmin=timestep,
-                    timestepmax=timestep,
-                    average_over_phi=average_over_phi,
-                    average_over_theta=average_over_theta,
-                )[angle].collect()
-            integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
-            integrated_luminosity = integrated_flux * 4 * np.pi * np.power(Mpc_to_cm, 2)
-            magnitude = float(lum_lsun_to_mag(np.asarray(integrated_luminosity / Lsun_to_erg_per_s)))
-            magnitudes.append(magnitude)
-            times.append(time)
+    if angle != -1 and args.plotvspecpol:
+        Mpc_to_cm = at.constants.megaparsec_to_cm
+        luminosities = [
+            float(np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2))
+            for spectrum in (
+                at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect() for _, time in selectedtimes
+            )
+        ]
+    else:
+        # spec.out supplies the angle-averaged spectrum, and the direction-bin average options do not apply to it
+        if angle == -1:
+            average_over_phi = False
+            average_over_theta = False
+        luminosities = get_bolometric_luminosities(
+            modelpath,
+            [timestep for timestep, _ in selectedtimes],
+            dirbin=angle,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )
+
+    times = [time for _, time in selectedtimes]
+    magnitudes = [float(lum_lsun_to_mag(np.asarray(lum / Lsun_to_erg_per_s))) for lum in luminosities]
 
     return times, magnitudes
 

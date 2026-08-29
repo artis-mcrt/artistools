@@ -7,6 +7,7 @@ from artistools.lightcurve.lightcurve import find_bol_reflightcurve_file as find
 from artistools.lightcurve.lightcurve import find_lightcurve_file as find_lightcurve_file
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data as generate_band_lightcurve_data
 from artistools.lightcurve.lightcurve import get_band_lightcurve as get_band_lightcurve
+from artistools.lightcurve.lightcurve import get_bolometric_luminosities as get_bolometric_luminosities
 from artistools.lightcurve.lightcurve import get_colour_delta_mag as get_colour_delta_mag
 from artistools.lightcurve.lightcurve import get_filter_data as get_filter_data
 from artistools.lightcurve.lightcurve import get_from_packets as get_from_packets
