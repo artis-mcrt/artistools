@@ -1126,7 +1126,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     # a file with more rows than the model has timesteps gets the same message, not a broadcast error
     longdir = tmp_path / "long"
     longdir.mkdir()
-    _write_timesteps_out(longdir)
+    write_timesteps_out(longdir)
     longlines = deplines + [f"{155 + ts * 10} 1.0 0.1 1.1" for ts in range(2)]
     (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
 
