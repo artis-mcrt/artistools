@@ -309,12 +309,15 @@ def get_mpiranklist(
 
 
 def read_rank_outputfiles(
-    modelpath: Path | str, filenameformat: str, timestep: int | None = None, modelgridindex: int | None = None
+    modelpath: Path | str,
+    filenameformat: str,
+    timestep: int | None = None,
+    modelgridindex: int | Sequence[int] | None = None,
 ) -> pl.DataFrame:
     """Read per-MPI-rank whitespace-separated output files (e.g. radfield_{mpirank:04d}.out) from the run folders into one DataFrame.
 
-    When a timestep or model grid cell is given, only the run folders and ranks that could contain it are read,
-    and the rows are filtered to that selection (negative values mean no filter).
+    When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
+    that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
     """
     nonemptycounts = get_nonempty_cellcounts(modelpath)
     filepaths = []
@@ -351,8 +354,9 @@ def read_rank_outputfiles(
         .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
     )
 
-    if modelgridindex is not None and modelgridindex >= 0:
-        dfout = dfout.filter(pl.col("modelgridindex") == modelgridindex)
+    matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
+    if matchcells and all(mgi >= 0 for mgi in matchcells):
+        dfout = dfout.filter(pl.col("modelgridindex").is_in(matchcells))
     if timestep is not None and timestep >= 0:
         dfout = dfout.filter(pl.col("timestep") == timestep)
 

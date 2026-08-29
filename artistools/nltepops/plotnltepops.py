@@ -612,8 +612,8 @@ def make_singletimestep_plot(
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    # one read of the rank files supplies the data for every cell in mgilist
-    dfpop_allcells = at.nltepops.read_files(modelpath, timestep=timestep)
+    # one read of the ranks that own the cells in mgilist supplies the data for every cell
+    dfpop_allcells = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
     dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == mgilist[0])
 
     if dfpop.is_empty():

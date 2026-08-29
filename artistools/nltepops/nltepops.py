@@ -141,8 +141,10 @@ def add_lte_pops(
     return dfpop
 
 
-def read_files(modelpath: str | Path, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
-    """Read in NLTE populations from a model for a particular timestep and grid cell."""
+def read_files(
+    modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
+) -> pl.DataFrame:
+    """Read in NLTE populations from a model for a particular timestep and one or more grid cells."""
     return at.read_rank_outputfiles(
         modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
     )

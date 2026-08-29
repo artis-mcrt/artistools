@@ -1434,6 +1434,21 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
 
 
+def test_read_rank_outputfiles_takes_a_cell_list() -> None:
+    """A sequence of cells must give the same rows as the single-cell call that it replaces."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    df_single = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=0)
+    df_list = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0])
+    pltest.assert_frame_equal(df_list, df_single)
+    assert not df_single.is_empty()
+
+    # a negative cell number means no filter, also inside a sequence
+    df_all = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0, -1])
+    pltest.assert_frame_equal(df_all, read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40))
+
+
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:
     """A command whose path is positional must also accept -modelpath.
 
