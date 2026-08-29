@@ -30,8 +30,14 @@ cd "$projectdir" || exit 0
 run() { uv run --no-sync -- "$@"; }
 
 lint="$(run ruff check --no-fix 2>&1)"; lintstatus=$?
-tycheck="$(run ty check 2>&1)"; tystatus=$?
-pyreflycheck="$(run pyrefly check 2>&1)"; pyreflystatus=$?
+
+# a personal ~/.config/ty/ty.toml can add extra search paths that shadow this checkout, e.g. the
+# main checkout shadows a worktree. CI reads no personal configuration, thus this check reads none
+tycheck="$(XDG_CONFIG_HOME="${TMPDIR:-/tmp}/artistools-hook-no-user-config" uv run --no-sync -- ty check 2>&1)"; tystatus=$?
+
+# the git ignore files hide every path below .claude/worktrees, thus a plain pyrefly check in a
+# worktree finds no files and checks nothing. The explicit file list makes pyrefly check the tree
+pyreflycheck="$(git ls-files -z -- '*.py' | xargs -0 uv run --no-sync -- pyrefly check 2>&1)"; pyreflystatus=$?
 pyreflycheck="$(printf '%s\n' "$pyreflycheck" | grep -v '^ *INFO ')"
 
 if [ "$lintstatus" -eq 0 ] && [ "$tystatus" -eq 0 ] && [ "$pyreflystatus" -eq 0 ]; then
