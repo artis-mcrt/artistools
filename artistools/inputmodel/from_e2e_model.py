@@ -219,7 +219,7 @@ def get_grid(
     # ... cylindrical coordinates of the particle positions
     vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
     rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
-    for i in [int(j) for j in np.arange(ntraj)]:
+    for i in range(ntraj):
         rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_s
         zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_s
     if model_dim == 2:
@@ -284,7 +284,7 @@ def get_grid(
     print("computing particle densities...")
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
-    for i in [int(j) for j in np.arange(ntraj)]:
+    for i in range(ntraj):
         cont = True
         hl, hr = 0.00001 * CLIGHT * t_model_init_s, 1.0 * CLIGHT * t_model_init_s
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
@@ -315,7 +315,7 @@ def get_grid(
 
     # cross check: count number of neighbors within smoothing length
     neinum = np.zeros(ntraj)
-    for i in [int(j) for j in np.arange(ntraj)]:
+    for i in range(ntraj):
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         neinum[i] = np.sum(np.where(dist / hsmooth < 2.0, 1.0, 0.0))
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
@@ -383,25 +383,22 @@ def get_grid(
     mtot = np.sum(dmgrid)
 
     # test outputs
+    testelements = [("He", 2), ("Zr", 40), ("Sn", 50), ("Te", 52), ("Xe", 54), ("W", 74), ("Pt", 78)]
     print("===> mapped data")
     print("total mass                :", mtot / msol * eqsymfac)
-    print("total element mass He Z=2 :", np.sum(np.sum(xint[iso[:, 1] == 2, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass Zr Z=40:", np.sum(np.sum(xint[iso[:, 1] == 40, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass Sn Z=50:", np.sum(np.sum(xint[iso[:, 1] == 50, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass Te Z=52:", np.sum(np.sum(xint[iso[:, 1] == 52, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass Xe Z=54:", np.sum(np.sum(xint[iso[:, 1] == 54, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass W  Z=74:", np.sum(np.sum(xint[iso[:, 1] == 74, :, :], axis=0) * dmgrid) * eqsymfac / msol)
-    print("total element mass Pt Z=78:", np.sum(np.sum(xint[iso[:, 1] == 78, :, :], axis=0) * dmgrid) * eqsymfac / msol)
+    for elsymbol, atomic_number in testelements:
+        print(
+            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * eqsymfac / msol,
+        )
 
     print("===> tracer data")
     print("total mass                :", np.sum(dat.f.mass) * eqsymfac)
-    print("total element mass He Z=2 :", np.sum(np.sum(xiso0[:, iso[:, 1] == 2], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass Zr Z=40:", np.sum(np.sum(xiso0[:, iso[:, 1] == 40], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass Sn Z=50:", np.sum(np.sum(xiso0[:, iso[:, 1] == 50], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass Te Z=52:", np.sum(np.sum(xiso0[:, iso[:, 1] == 52], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass Xe Z=54:", np.sum(np.sum(xiso0[:, iso[:, 1] == 54], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass W  Z=74:", np.sum(np.sum(xiso0[:, iso[:, 1] == 74], axis=1) * dat.f.mass) * eqsymfac)
-    print("total element mass Pt Z=78:", np.sum(np.sum(xiso0[:, iso[:, 1] == 78], axis=1) * dat.f.mass) * eqsymfac)
+    for elsymbol, atomic_number in testelements:
+        print(
+            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * dat.f.mass) * eqsymfac,
+        )
 
     test = np.sum(xint, axis=0) - 1.0
     test = np.where(test > -1, test, 0.0)
@@ -416,9 +413,6 @@ def get_grid(
             for nr in range(nvr):
                 cellid = nz * nvr + nr + 1
                 if dmgrid[nr, nz] > (1e-100 * mtot):
-                    # print(
-                    # f"{nr} {nz} {temint[nr, nz]} {q_ergperg[nr, nz]} {rhoint[nr, nz]} {dmgrid[nr, nz]} {xint[nr, nz]}"
-                    # )
                     wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
                     wloc /= np.sum(wloc)
                     pids = np.where(wloc > 1.0e-20)[0]

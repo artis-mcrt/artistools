@@ -10,6 +10,7 @@ import polars as pl
 import polars.selectors as cs
 
 import artistools as at
+from artistools.lightcurve.lightcurve import get_bolometric_luminosities
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
@@ -19,16 +20,9 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     # one pass gives both the time labels and the timesteps they came from, so the two cannot drift apart
     selected = [(ts, timestr) for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
     lightcurvedata: dict[str, t.Any] = {"time": [timestr for _, timestr in selected]}
-    Mpc_to_cm = at.constants.megaparsec_to_cm
-    bol_luminosity: dict[int, list[t.Any]] = {angle: [] for angle in range(len(res_specdata))}
-    for timestep, _ in selected:
-        spectra_alldirbins = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
-        for angle in range(len(res_specdata)):
-            spectrum = spectra_alldirbins[angle].collect()
-            integrated_flux = np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"])
-            bol_luminosity[angle].append(integrated_flux * 4 * np.pi * Mpc_to_cm**2)
-
-    for angle, luminosities in bol_luminosity.items():
+    timesteps = [ts for ts, _ in selected]
+    for angle in range(len(res_specdata)):
+        luminosities = get_bolometric_luminosities(modelpath, timesteps, dirbin=angle)
         lightcurvedata[f"angle={angle}"] = np.log10(luminosities)
 
     lightcurvedataframe = pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))

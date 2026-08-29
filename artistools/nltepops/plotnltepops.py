@@ -541,8 +541,14 @@ def plot_populations_with_time_or_velocity(
     for modelnumber, modelpath in enumerate(modelpaths):
         populations = {}
 
+        # the loop changes only the cell or only the timestep, thus one read with that filter supplies the whole loop
+        dfpop_all = (
+            at.nltepops.read_files(modelpath, modelgridindex=modelgridindex_list[0])
+            if args.x == "time"
+            else at.nltepops.read_files(modelpath, timestep=timesteps[0])
+        )
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
+            dfpop = dfpop_all.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == mgi))
             if dfpop.is_empty():
                 continue
             timesteppops = dfpop.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
@@ -606,7 +612,9 @@ def make_singletimestep_plot(
     time_days = at.get_timestep_time(modelpath, timestep)
     modelname = at.get_model_name(modelpath)
 
-    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
+    # one read of the ranks that own the cells in mgilist supplies the data for every cell
+    dfpop_allcells = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == mgilist[0])
 
     if dfpop.is_empty():
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
@@ -671,7 +679,7 @@ def make_singletimestep_plot(
             W = math.nan
             nne = math.nan
 
-        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+        dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == modelgridindex)
 
         if dfpop.is_empty():
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")

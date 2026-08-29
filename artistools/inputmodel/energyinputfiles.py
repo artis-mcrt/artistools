@@ -22,14 +22,14 @@ from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 
 
-def _cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
+def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Cumulatively integrate y over x with the trapezoidal rule, starting from zero."""
     yarr = np.asarray(y, dtype=np.float64)
     xarr = np.asarray(x, dtype=np.float64)
     return np.concatenate(([0.0], np.cumsum(np.diff(xarr) * (yarr[:-1] + yarr[1:]) / 2.0)))
 
 
-def _quad_adaptive(
+def quad_adaptive(
     func: Callable[[float], float], a: float, b: float, *, rtol: float = 1.5e-8, maxdepth: int = 20
 ) -> float:
     """Integrate a smooth function over [a, b] with adaptive Simpson quadrature.
@@ -74,7 +74,7 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
     qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
 
-    cumulative_energy = _cumulative_trapezoid(y=qdot, x=times)
+    cumulative_energy = cumulative_trapezoid(y=qdot, x=times)
     E_tot = float(cumulative_energy[-1])
 
     rate = cumulative_energy / E_tot
@@ -150,7 +150,7 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
     energy_per_gram_cumulative = [0.0]
     for tlow, thigh in itertools.pairwise(times):
-        energy_per_gram_cumulative.append(energy_per_gram_cumulative[-1] + _quad_adaptive(integrand, tlow, thigh))
+        energy_per_gram_cumulative.append(energy_per_gram_cumulative[-1] + quad_adaptive(integrand, tlow, thigh))
 
     E_tot = energy_per_gram_cumulative[-1]  # ergs/g
     print("Etot per gram", E_tot)
@@ -175,7 +175,7 @@ def energy_from_rprocess_calculation(
     times = energy_thermo_data["time/s"][skipfirstnrows:]
     qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
 
-    cumulative_energy = _cumulative_trapezoid(y=qdot, x=times)
+    cumulative_energy = cumulative_trapezoid(y=qdot, x=times)
     E_tot = float(cumulative_energy[-1])  # erg / g
 
     if get_rate:

@@ -28,7 +28,7 @@ testdatapath = at.get_path("testdata")
 modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 
-def _trajectory_member_size(traj_root: Path, memberfilename: str, _worker: int) -> int:
+def trajectory_member_size(traj_root: Path, memberfilename: str, _worker: int) -> int:
     """Return the byte count one process sees for a trajectory tar member, extracting it if needed."""
     filepath = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
         traj_root=traj_root, particleid=114511, memberfilename=memberfilename
@@ -50,7 +50,7 @@ def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
     with tarfile.open(traj_root / "114511.tar.xz", "r:*") as tarfilehandle:
         membersize = tarfilehandle.getmember(memberfilename).size
 
-    readsize = partial(_trajectory_member_size, traj_root, memberfilename)
+    readsize = partial(trajectory_member_size, traj_root, memberfilename)
     # at.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
     # the filesystem. Spawn for the same reason parallel_map does: forking with polars/rayon threads live is unsafe.
     with ProcessPoolExecutor(max_workers=nworkers, mp_context=multiprocessing.get_context("spawn")) as executor:
@@ -1935,7 +1935,7 @@ def test_energyfiles_from_trajectory() -> None:
     assert dftimes_and_rate["rate"].max() == pytest.approx(1.0)
 
 
-def _write_2d_model(
+def write_2d_model(
     modeldir: Path, ncoordgridrcyl: int, ncoordgridz: int, vmax_cmps: float, t_model_days: float, zshift: float = 0.0
 ) -> Path:
     """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition."""
@@ -1960,7 +1960,7 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
     """A 2D cylindrical model must be read with the right grid metadata and cell positions."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
-    modelfile = _write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days)
+    modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days)
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
 
@@ -1990,7 +1990,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     vmax_cmps, t_model_days = 1.0e9, 1.0
     wid_init_z = 2 * vmax_cmps * t_model_days * at.constants.day_to_s / ncoordgridz
     # shift every cell a whole cell width along z, which no cell centre can be
-    modelfile = _write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
+    modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
         at.inputmodel.get_modeldata(modelfile)

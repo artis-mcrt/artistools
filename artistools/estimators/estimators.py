@@ -370,7 +370,7 @@ def get_units_string(variable: str) -> str:
     return f" [{units}]" if (units := get_units(variable)) else ""
 
 
-def _estimator_colsortkey(col: str) -> str:
+def estimator_colsortkey(col: str) -> str:
     """Sort timestep, modelgridindex, and titeration first, then the remaining columns alphabetically."""
     return f"-{col!r}" if col in {"timestep", "modelgridindex", "titeration"} else col
 
@@ -458,7 +458,7 @@ def get_estimators_rankbatch_parquetfile(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
         )
 
-        sortedcols: list[str] = sorted(pldf_batch.columns, key=_estimator_colsortkey)
+        sortedcols: list[str] = sorted(pldf_batch.columns, key=estimator_colsortkey)
         pldf_batch = pldf_batch.select(sortedcols)
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
         time_start = time.perf_counter()
@@ -604,7 +604,7 @@ def scan_estimators(
         assert estimatorsdict is not None
         pldflazy = lazyframe_from_estimator_dict(estimatorsdict)
     else:
-        pldflazy = _scan_artis_estimators(
+        pldflazy = scan_artis_estimators(
             modelpath, match_modelgridindex=match_modelgridindex, match_timestep=match_timestep, verbose=verbose
         )
 
@@ -622,7 +622,7 @@ def scan_estimators(
     return pldflazy
 
 
-def _scan_artis_estimators(
+def scan_artis_estimators(
     modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
 ) -> pl.LazyFrame:
     """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none."""
@@ -768,7 +768,7 @@ def get_averageexcitation(
         .collect()
     )
 
-    dfsuperlevelenergy = _superlevel_energy(dfsuperlevel, dflevels.collect(), groupcols)
+    dfsuperlevelenergy = superlevel_energy(dfsuperlevel, dflevels.collect(), groupcols)
 
     # inner join on dftexc, so the result covers exactly the cells a temperature was given for and a
     # missing one cannot silently drop the superlevel term
@@ -784,7 +784,7 @@ def get_averageexcitation(
     )
 
 
-def _superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupcols: list[str]) -> pl.DataFrame:
+def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupcols: list[str]) -> pl.DataFrame:
     """Return the energy the superlevel population contributes, Boltzmann-distributed at T_exc."""
     schema: dict[str, pl.DataType] = {
         **{col: dfsuperlevel.schema[col] for col in groupcols},

@@ -45,7 +45,7 @@ def vec_len(vec: Sequence[float] | npt.NDArray[np.floating]) -> float:
 
 
 @functools.lru_cache
-def _savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
+def savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
     """Return the Savitzky-Golay smoothing coefficients for a centred window."""
     halflen = window_length // 2
     xwindow = np.arange(-halflen, halflen + 1, dtype=np.float64)
@@ -75,7 +75,7 @@ def savgol_filter(ylist: npt.ArrayLike, window_length: int, polyorder: int) -> n
         raise ValueError(msg)
 
     halflen = window_length // 2
-    filtered = np.correlate(y, _savgol_coeffs(window_length, polyorder), mode="same")
+    filtered = np.correlate(y, savgol_coeffs(window_length, polyorder), mode="same")
 
     # the outermost points have incomplete windows, so evaluate polynomial fits to the first and last full windows
     xedge = np.arange(window_length, dtype=np.float64)

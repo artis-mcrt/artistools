@@ -45,20 +45,23 @@ def write_flambda_spectra(modelpath: Path) -> None:
     assert tmax_d_valid is not None
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
-    for timestep in timesteps:
-        dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1].collect()
-
+    # one collect_all call evaluates the queries of all the timesteps together
+    dfspectra_alltimesteps = pl.collect_all([
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1] for timestep in timesteps
+    ])
+    for timestep, dfspectrum in zip(timesteps, dfspectra_alltimesteps, strict=True):
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
-    for timestep in timesteps:
-        dfspectra = get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
-        if 0 in dfspectra:
+    lzspectra_polar = [
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
+        for timestep in timesteps
+    ]
+    if lzspectra_polar and 0 in lzspectra_polar[0]:
+        dfspectra_polar = pl.collect_all([dirbin_spectra[0] for dirbin_spectra in lzspectra_polar])
+        for timestep, dfspectrum in zip(timesteps, dfspectra_polar, strict=True):
             write_spectrum(
-                dfspectra[0].collect(),
-                outfilepath=outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt",
+                dfspectrum, outfilepath=outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt"
             )
-        else:
-            break
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

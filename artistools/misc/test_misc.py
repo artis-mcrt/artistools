@@ -28,7 +28,7 @@ from artistools.misc import dirbins
 from artistools.misc import fileio
 
 
-def _write_timesteps_out(modeldir: Path) -> None:
+def write_timesteps_out(modeldir: Path) -> None:
     """Write a minimal timesteps.out with 5 evenly spaced timesteps (mids 105..145)."""
     lines = ["#timestep tmid_days tstart_days twidth_days"]
     for ts in range(5):
@@ -1075,7 +1075,7 @@ def test_gaussian_filter_wrap() -> None:
 
 
 def test_get_timestep_of_timedays(tmp_path: Path) -> None:
-    _write_timesteps_out(tmp_path)
+    write_timesteps_out(tmp_path)
 
     # timesteps span [100,110), [110,120), ... [140,150)
     assert at.get_timestep_of_timedays(tmp_path, 125) == 2
@@ -1089,7 +1089,7 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
 
 
 def test_get_deposition(tmp_path: Path) -> None:
-    _write_timesteps_out(tmp_path)
+    write_timesteps_out(tmp_path)
     deplines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
     for ts in range(5):
         tmid = 105 + ts * 10
@@ -1107,7 +1107,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     # deposition times that don't line up with the timesteps are rejected
     baddir = tmp_path / "bad"
     baddir.mkdir()
-    _write_timesteps_out(baddir)
+    write_timesteps_out(baddir)
     badlines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
     badlines.extend(f"{999 + ts} {ts + 1.0} {(ts + 1) * 0.1} {(ts + 1) * 1.1}" for ts in range(5))
     (baddir / "deposition.out").write_text("\n".join(badlines) + "\n")
@@ -1198,7 +1198,7 @@ def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyP
 
 def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
     """A timestep range gives no times in days, so the timestep bounds must be used even when not clamping."""
-    _write_timesteps_out(tmp_path)
+    write_timesteps_out(tmp_path)
 
     for clamp in (True, False):
         timestepmin, timestepmax, tlow, thigh = at.get_time_range(
@@ -1432,6 +1432,21 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Cell 0 holds no matter"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
+
+
+def test_read_rank_outputfiles_takes_a_cell_list() -> None:
+    """A sequence of cells must give the same rows as the single-cell call that it replaces."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    df_single = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=0)
+    df_list = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0])
+    pltest.assert_frame_equal(df_list, df_single)
+    assert not df_single.is_empty()
+
+    # a negative cell number means no filter, also inside a sequence
+    df_all = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0, -1])
+    pltest.assert_frame_equal(df_all, read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40))
 
 
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:
