@@ -550,14 +550,19 @@ def peakmag_risetime_declinerate_init(
         modelnames.append(modelname)
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
-        if not args.filter:
-            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=args.plotviewingangle)
-            lcdataframes = at.lightcurve.readfile(lcpath)
-
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, _ = parse_directionbin_args(modelpath, args)
-        if not args.filter and args.plotviewingangle:
+        if not args.filter and args.plotviewingangle and wants_angle_averaged_data(args):
+            # without a filter, the angle-averaged modes fit the bolometric light curve of dirbin -1
+            # alone. The per-direction-bin export keeps the parsed direction bins
             dirbins = [-1]
+
+        if not args.filter:
+            # dirbin -1 is the angle-averaged light curve, which only light_curve.out holds. The
+            # direction-resolved bins come from light_curve_res.out
+            directionresolved = list(dirbins) != [-1]
+            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=directionresolved)
+            lcdataframes = at.lightcurve.readfile(lcpath)
 
         for dirbin in dirbins:
             if args.verbose:
@@ -579,17 +584,14 @@ def peakmag_risetime_declinerate_init(
                         lcdataframes[dirbin]
                         .filter(pl.col("time_days").is_between(args.timemin, args.timemax))
                         .fill_nan(0.0)
+                        # a time with no luminosity has no magnitude, thus drop the zero and the
+                        # non-finite values before the fit
+                        .filter(pl.col("mag").is_finite() & (pl.col("mag") != 0.0))
                         .select("time_days", "mag")
                         .collect()
                     )
-                    brightness = np.array(
-                        [mag for mag in lightcurve_data["mag"] if mag != 0], dtype=np.float64
-                    )  # drop times with 0 brightness
-                    time = [
-                        t
-                        for t, mag in zip(lightcurve_data["time_days"], lightcurve_data["mag"], strict=False)
-                        if mag != 0
-                    ]
+                    brightness = lightcurve_data["mag"].to_numpy()
+                    time = lightcurve_data["time_days"].to_list()
 
                 # Calculating band peak time, peak magnitude and delta m15
                 calculate_peak_time_mag_deltam15(time, brightness, modelname, dirbin, band_name, args)

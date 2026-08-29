@@ -2086,3 +2086,122 @@ def test_energyfiles_plotrate_makes_the_output_folder(tmp_path: Path) -> None:
 
     assert outfolder.is_dir(), "the command must make the folder that -o names"
     assert (outfolder / "energyfiles_plotrate.pdf").is_file(), f"no plot in {list(outfolder.iterdir())}"
+
+
+def test_make1dmodelfromaxis(tmp_path: Path) -> None:
+    """--no-makefromcone samples the cells along the axis, and both axis directions agree.
+
+    The positive-axis branch renamed the inner cell edge to vel_r_max_kmps and dropped the cell
+    with pos_min == 0. Thus the velocity of each shell was low by one cell width. The branch also
+    read args.t_model, which only the cone branch set, and passed a list of paths to get_modeldata.
+    """
+    _, modelmeta3d = at.inputmodel.get_modeldata(modelpath_3d)
+    outdirs = {}
+    for axis in ("+z", "-z"):
+        outdir = tmp_path / f"axis_{axis[1]}_{'pos' if axis[0] == '+' else 'neg'}"
+        outdir.mkdir()
+        at.inputmodel.slice1dfromconein3dmodel.main(
+            argsraw=[], modelpath=[modelpath_3d], outputpath=outdir, axis=axis, makefromcone=False
+        )
+        outdirs[axis] = outdir
+
+    dfpos = at.inputmodel.get_modeldata(outdirs["+z"] / "model_1d.txt")[0].collect()
+    dfneg = at.inputmodel.get_modeldata(outdirs["-z"] / "model_1d.txt")[0].collect()
+
+    ncells_along_axis = int(modelmeta3d["ncoordgrid"]) // 2
+    assert dfpos.height == ncells_along_axis
+    assert dfneg.height == ncells_along_axis
+
+    # the outer velocity of the outermost shell is the maximum velocity of the model
+    vmax_kmps = modelmeta3d["vmax_cmps"] / 1.0e5
+    assert np.isclose(dfpos["vel_r_max_kmps"].item(-1), vmax_kmps, rtol=1e-4)
+
+    assert np.allclose(dfpos["vel_r_max_kmps"], dfneg["vel_r_max_kmps"], rtol=1e-6)
+
+
+def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
+    """The 3D mapping grid comes from -vmax_on_c and -ngridx/y/z.
+
+    The 3D branch held vminr, vmaxr, nvr = -0.5, 0.5, 50, thus the arguments had no effect, and a
+    grid size other than 50 stopped with a broadcast error.
+    """
+    from artistools.constants import C_cm_per_s
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=1)
+    ntraj = 4
+    ntimes = 8
+    datpath = tmp_path / "e2emodel.npz"
+    isopath = tmp_path / "iso_table.npy"
+    np.savez(
+        datpath,
+        pos=np.column_stack([np.array([0.10, 0.15, 0.20, 0.25]), np.array([0.5, 1.0, 2.0, 2.5])]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=np.array([-1.0, 0.0, 0.0, 1.0]),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+
+    vmax_on_c = 0.4
+    ncells = 6
+    x3d_min, _y3d_min, z3d_min, rhoint, xint, _iso, _q, _ye, _bs, eqsymfac, _dfcontribs = get_grid(
+        datpath,
+        isopath,
+        vmax_on_c,
+        model_dim=3,
+        grid_dims=np.array([ncells, ncells, ncells]),
+        nodynej=False,
+        nohmns=False,
+        notorus=False,
+        no_nu_trapping=False,
+    )
+
+    assert eqsymfac == 1
+    assert rhoint.shape == (ncells, ncells, ncells)
+    assert xint.shape == (2, ncells, ncells, ncells)
+
+    # the cell edges span -vmax to +vmax, thus the smallest left edge is -vmax and the largest is
+    # one cell width below +vmax
+    xmax_cm = vmax_on_c * C_cm_per_s * t_model_init_s
+    wid_cm = 2.0 * xmax_cm / ncells
+    assert np.isclose(x3d_min.min(), -xmax_cm, rtol=1e-10)
+    assert np.isclose(x3d_min.max(), xmax_cm - wid_cm, rtol=1e-10)
+    assert np.isclose(z3d_min.min(), -xmax_cm, rtol=1e-10)
+    assert np.amax(rhoint) > 0.0
+
+    # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides by
+    # the cylindrical radius. The command must reject such a grid with a message
+    with pytest.raises(ValueError, match="must be even"):
+        get_grid(
+            datpath,
+            isopath,
+            vmax_on_c,
+            model_dim=3,
+            grid_dims=np.array([5, 6, 6]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+
+
+def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> None:
+    """-maxatomicnumber reads an integer from the command line.
+
+    The argument had no type, thus the command compared a string with an integer and stopped with
+    TypeError before this test existed.
+    """
+    at.inputmodel.to_tardis.main(argsraw=["-inputpath", str(modelpath), "-o", str(tmp_path), "-maxatomicnumber", "26"])
+
+    csvypath = tmp_path / f"{at.get_model_name(modelpath)}.csvy"
+    assert csvypath.is_file()
+    csvytext = csvypath.read_text(encoding="utf-8")
+    assert "Fe" in csvytext
+    assert "Co" not in csvytext
+    assert "Ni" not in csvytext

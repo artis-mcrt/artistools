@@ -134,7 +134,9 @@ def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypa
         argsraw=[], modelpath=modelpath, cell=0, x="time", timedays="270-275", ion_stages=[1, 2], levels=[0, 1]
     )
 
-    assert len(mockplot.call_args_list) == 10
+    # one call draws the full time series of each level. The command called the plot function once
+    # per timestep on the same axes, thus it drew each series five times before this assertion
+    assert len(mockplot.call_args_list) == 2
     expected_series = [
         ([271.48221094182054, 273.31529638210384], [7.40594, 6.39568]),
         ([271.48221094182054, 273.31529638210384], [4.71888, 3.89199]),

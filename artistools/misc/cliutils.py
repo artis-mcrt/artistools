@@ -821,6 +821,10 @@ def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
         given = ", ".join(f"{{{name}}}" for name in fields)
         msg = f"the name of the output holds the field {exc}, and this command gives {given}"
         raise ValueError(msg) from exc
+    except IndexError as exc:
+        given = ", ".join(f"{{{name}}}" for name in fields)
+        msg = f"the name of the output holds a field with no name, and each field needs one of: {given}"
+        raise ValueError(msg) from exc
 
 
 @dc.dataclass(frozen=True, slots=True)
@@ -1024,10 +1028,13 @@ def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.N
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
 
-        assert filterfunc is None
         filterfunc = movavgfilterfunc
 
     if dictargs.get("filtersavgol", False):
+        if filterfunc is not None:
+            msg = "Give only one of -filtermovingavg and -filtersavgol"
+            raise ValueError(msg)
+
         from artistools.misc.general import savgol_filter
 
         window_length, polyorder = (int(x) for x in args.filtersavgol)
@@ -1035,7 +1042,6 @@ def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.N
         def savgolfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
             return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
 
-        assert filterfunc is None
         filterfunc = savgolfilterfunc
 
         print("Applying Savitzky-Golay filter")

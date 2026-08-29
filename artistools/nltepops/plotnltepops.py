@@ -462,6 +462,11 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         timedayslist = [at.get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax + 1)]
         args.subplots = False
 
+    if args.x == "time" and not args.subplots:
+        # the time branch of plot_populations_with_time_or_velocity draws the full time series in
+        # one call, thus one call fills the single axes
+        timedayslist = timedayslist[:1]
+
     cols = 1
     fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]

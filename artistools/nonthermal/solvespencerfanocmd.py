@@ -285,9 +285,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             sf.analyse_ntspectrum()
 
             if args.makeplot:
-                outputfilename = str(args.outputfile).format(
-                    cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
-                )
+                if args.timestep is not None and args.timedays is not None:
+                    outputfilename = str(args.outputfile).format(
+                        cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
+                    )
+                else:
+                    # a non-ARTIS composition has no cell and no timestep, thus the default template
+                    # does not apply, and the element names the file instead
+                    outputfilename = str(args.outputfile).replace(
+                        defaultoutputfile, f"spencerfano_{args.composition}.pdf"
+                    )
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:

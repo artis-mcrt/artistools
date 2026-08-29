@@ -994,6 +994,11 @@ def test_get_filterfunc() -> None:
 
     # the Savitzky-Golay filter matches scipy.signal.savgol_filter(y, window_length=5, polyorder=3, mode="interp"),
     # which it replaced
+    # each filter argument selects one filter, thus a command line that gives both is a user error
+    # and not an internal fault
+    with pytest.raises(ValueError, match="only one of -filtermovingavg and -filtersavgol"):
+        at.get_filterfunc(argparse.Namespace(filtermovingavg=3, filtersavgol=["5", "3"]))
+
     filterfunc = at.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
     assert filterfunc is not None
     yvalues = np.sin(np.linspace(0.0, 3.0, num=12)) + np.linspace(0.0, 0.5, num=12) ** 2
@@ -1083,6 +1088,9 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
     assert at.get_timestep_of_timedays(tmp_path, 149) == 4
     assert at.get_timestep_of_timedays(tmp_path, "125d") == 2  # accepts a "<days>d" string
 
+    # the message says the model covers up to 150 days, thus exactly 150 names the last timestep
+    assert at.get_timestep_of_timedays(tmp_path, 150) == 4
+
     # the message names the range that the run covers, so that the user can correct the value
     with pytest.raises(ValueError, match=r"No timestep of this model covers 500 days.*100\.00 to 150\.00 days"):
         at.get_timestep_of_timedays(tmp_path, 500)
@@ -1114,6 +1122,16 @@ def test_get_deposition(tmp_path: Path) -> None:
 
     with pytest.raises(AssertionError, match="Deposition times do not match"):
         at.get_deposition(baddir).collect()
+
+    # a file with more rows than the model has timesteps gets the same message, not a broadcast error
+    longdir = tmp_path / "long"
+    longdir.mkdir()
+    write_timesteps_out(longdir)
+    longlines = deplines + [f"{155 + ts * 10} 1.0 0.1 1.1" for ts in range(2)]
+    (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
+
+    with pytest.raises(AssertionError, match="Deposition times do not match"):
+        at.get_deposition(longdir).collect()
 
 
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:

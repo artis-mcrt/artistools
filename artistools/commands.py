@@ -695,6 +695,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-colors",
     "-colour_evolution",
     "-composition",
+    "-coneangle",
     "-dashes",
     "-deltalambda",
     "-deltalogx",

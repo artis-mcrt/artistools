@@ -70,7 +70,9 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
     # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
     t_mid_days = depdata.select("tmid_days").collect().to_series().to_numpy()
-    if not np.allclose(t_mid_days, ts_mids[: len(t_mid_days)], rtol=0.01):
+    # a file with more rows than the model has timesteps is a mismatch. The slice comparison
+    # below raises a broadcast error for such a file instead of the message
+    if len(t_mid_days) > len(ts_mids) or not np.allclose(t_mid_days, ts_mids[: len(t_mid_days)], rtol=0.01):
         msg = "Deposition times do not match the timesteps"
         raise AssertionError(msg)
 
@@ -162,6 +164,10 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend, strict=False)):
         if tstart <= timedays_float < tend:
             return ts
+
+    # the message below says the model covers up to the last tend, thus that exact time must match
+    if arr_tstart and timedays_float == arr_tend[-1]:
+        return len(arr_tstart) - 1
 
     msg = (
         f"No timestep of this model covers {timedays_float:g} days. It has {len(arr_tstart)} timesteps, "

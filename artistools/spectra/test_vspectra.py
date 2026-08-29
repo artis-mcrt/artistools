@@ -1,3 +1,5 @@
+import shutil
+from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
@@ -114,3 +116,26 @@ def test_vpkt_frompackets_spectrum_plot(mockplot: mock.MagicMock) -> None:
         rtol=0.001,
         atol=0.0,
     )
+
+
+def test_average_vspecpol_files(tmp_path: Path) -> None:
+    """--averagevspecpolfiles averages the vspecpol_total files of every -specpath model.
+
+    make_averaged_vspecfiles read args.modelpath, and plotspectra stores every path under
+    args.specpath, thus the command stopped with AttributeError before this test existed.
+    """
+    modeldirs = [tmp_path / "model_a", tmp_path / "model_b"]
+    for modeldir in modeldirs:
+        modeldir.mkdir()
+        for filename in ("vspecpol_total-0.out", "vspecpol_total-1.out"):
+            shutil.copy(at.get_path("testdata") / "vspecpolmodel" / filename, modeldir / filename)
+
+    at.spectra.plot(argsraw=[], specpath=[str(modeldir) for modeldir in modeldirs], averagevspecpolfiles=True)
+
+    for specindex in (0, 1):
+        averagedpath = modeldirs[0] / f"vspecpol_averaged-{specindex}.out"
+        assert averagedpath.is_file()
+        # the two models hold the same data, thus the average equals the source
+        averaged = np.loadtxt(averagedpath)
+        source = np.loadtxt(modeldirs[0] / f"vspecpol_total-{specindex}.out")
+        assert np.allclose(averaged, source, rtol=1e-6)

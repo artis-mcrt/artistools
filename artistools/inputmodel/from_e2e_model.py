@@ -253,15 +253,23 @@ def get_grid(
             for _n_z in range(nvz)
         ]).reshape(nvr, nvz)
     elif model_dim == 3:
-        nvz = (
-            numb_cells_ARTIS_z // eqsymfac
-        )  # number of mapping grid cells in z direction depends on equatorial symmetry
-        vminr, vmaxr, nvr = -0.5, 0.5, 50
-        vxgridl = np.array([vminr + i * (vmaxr - vminr) / nvr for i in np.arange(numb_cells_ARTIS_x)])
-        vxgridr = np.flip(np.array([vmaxr - i * (vmaxr - vminr) / nvr for i in np.arange(numb_cells_ARTIS_x)]))
-        vxgridc = 0.5 * (vxgridl + vxgridr)
-        vygridl, vygridc, vygridr = vxgridl, vxgridc, vxgridr
-        vzgridl, vzgridc, vzgridr = vxgridl, vxgridc, vxgridr
+        # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
+        # by the cylindrical radius
+        if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
+            msg = f"-ngridx and -ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            raise ValueError(msg)
+
+        vminr, vmaxr = -vmax_on_c, vmax_on_c
+
+        def axis_grid(ncells: int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+            """Return the left edges, the centres, and the right edges of one axis of the velocity grid."""
+            gridl = np.array([vminr + i * (vmaxr - vminr) / ncells for i in range(ncells)])
+            gridr = gridl + (vmaxr - vminr) / ncells
+            return gridl, 0.5 * (gridl + gridr), gridr
+
+        vxgridl, vxgridc, vxgridr = axis_grid(numb_cells_ARTIS_x)
+        vygridl, vygridc, vygridr = axis_grid(numb_cells_ARTIS_y)
+        vzgridl, vzgridc, vzgridr = axis_grid(numb_cells_ARTIS_z)
 
         x3d = op(op(vxgridc, np.ones(numb_cells_ARTIS_y)), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
         y3d = op(op(np.ones(numb_cells_ARTIS_x), vygridc), np.ones(numb_cells_ARTIS_z)) * (CLIGHT * t_model_init_s)
@@ -330,7 +338,7 @@ def get_grid(
         hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
     elif model_dim == 3:
         distall = np.sqrt(oa(R3d, -rcyltraj) ** 2 + oa(z3d, -zcyltraj) ** 2)
-        hall = np.multiply.outer(np.ones((nvr, nvr, nvr)), hsmooth)
+        hall = np.multiply.outer(np.ones((numb_cells_ARTIS_x, numb_cells_ARTIS_y, numb_cells_ARTIS_z)), hsmooth)
     wall = sphkernel(distall, hall, nu)
     weight = wall * (mtraj / rho2dhat)
     weinor = (weight.T / (np.sum(weight, axis=interpol_axis) + 1.0e-100).T).T
