@@ -253,6 +253,12 @@ def get_grid(
             for _n_z in range(nvz)
         ]).reshape(nvr, nvz)
     elif model_dim == 3:
+        # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
+        # by the cylindrical radius
+        if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
+            msg = f"-ngridx and -ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            raise ValueError(msg)
+
         vminr, vmaxr = -vmax_on_c, vmax_on_c
 
         def axis_grid(ncells: int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:

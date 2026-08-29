@@ -198,10 +198,10 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         logprint("from along the axis")
         slice1d = get_profile_along_axis(args)
         # pos_min is the inner edge of a cell. On the positive axis, the outer edge is pos_min plus the
-        # cell width. On the negative axis, pos_min is already the outer edge, and the reverse and
-        # negate step below makes the velocities positive.
+        # cell width of the slice axis. On the negative axis, pos_min is already the outer edge, and
+        # the reverse and negate step below makes the velocities positive.
         pos_outer = (
-            pl.col(f"pos_{args.sliceaxis}_min") + modelmeta["wid_init"]
+            pl.col(f"pos_{args.sliceaxis}_min") + modelmeta[f"wid_init_{args.sliceaxis}"]
             if args.positive_axis
             else pl.col(f"pos_{args.sliceaxis}_min")
         )

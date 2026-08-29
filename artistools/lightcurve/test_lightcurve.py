@@ -1631,3 +1631,28 @@ def test_angle_averaged_peakmag_without_filter_reads_the_averaged_file(
     )
 
     assert list(tmp_path.glob("*angle_averaged_all_models_data.txt"))
+
+
+def test_viewing_angle_peakmag_export_without_filter_fits_each_direction_bin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--save_viewing_angle_peakmag_risetime_delta_m15_to_file without -filter fits each selected bin.
+
+    Only the angle-averaged modes force dirbin -1. This export must keep the parsed direction bins
+    and read the direction-resolved light curve file.
+    """
+    monkeypatch.chdir(tmp_path)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotviewingangle=[0, 1],
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        timemin=3.2,
+        timemax=7.5,
+        outputfile=tmp_path,
+    )
+
+    datafiles = list(tmp_path.glob("*_viewing_angle_data.txt"))
+    assert len(datafiles) == 1
+    peakmag_risetime_deltam15 = np.loadtxt(datafiles[0], skiprows=1)
+    assert peakmag_risetime_deltam15.shape == (2, 3), "the export holds one row per selected direction bin"

@@ -2175,6 +2175,21 @@ def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
     assert np.isclose(z3d_min.min(), -xmax_cm, rtol=1e-10)
     assert np.amax(rhoint) > 0.0
 
+    # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides by
+    # the cylindrical radius. The command must reject such a grid with a message
+    with pytest.raises(ValueError, match="must be even"):
+        get_grid(
+            datpath,
+            isopath,
+            vmax_on_c,
+            model_dim=3,
+            grid_dims=np.array([5, 6, 6]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+
 
 def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> None:
     """-maxatomicnumber reads an integer from the command line.
