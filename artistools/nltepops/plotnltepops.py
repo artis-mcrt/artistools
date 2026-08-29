@@ -842,6 +842,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if not args.levels:
             at.exit_with_error("no levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
 
+    timesteps_selected: list[int] | None = None
     if args.timedays:
         # a command line gives a string, and a keyword argument of the API gives a number
         if "-" in str(args.timedays):
@@ -854,9 +855,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.timestepmin, args.timestepmax = timestep, timestep
     elif args.timedayslist:
         print(f"Plotting the times {args.timedayslist}")
-        # the branches below read args.timestepmin and args.timestepmax, thus set them from the listed times
-        timesteps = [at.get_timestep_of_timedays(modelpath, timedays) for timedays in args.timedayslist]
-        args.timestepmin, args.timestepmax = min(timesteps), max(timesteps)
+        # the -x time path reads args.timestepmin and args.timestepmax, thus set them from the
+        # listed times. The level-index loop below iterates only the listed timesteps, because a
+        # range would add the timesteps between two non-adjacent list entries.
+        timesteps_selected = sorted({
+            at.get_timestep_of_timedays(modelpath, timedays) for timedays in args.timedayslist
+        })
+        args.timestepmin, args.timestepmax = timesteps_selected[0], timesteps_selected[-1]
     elif args.timestep is not None:
         args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timestep_range_str=str(args.timestep))
     elif args.x in {"time", "velocity"}:
@@ -909,6 +914,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot_populations_with_time_or_velocity(modelpaths=args.modelpath, args=args)
         return
 
+    timesteps_included = (
+        timesteps_selected if timesteps_selected is not None else list(range(args.timestepmin, args.timestepmax + 1))
+    )
     for el_in in args.elements:
         try:
             atomic_number = int(el_in)
@@ -919,7 +927,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if atomic_number < 1:
                 print(f"Could not find element '{elsymbol}'")
 
-        for timestep in range(args.timestepmin, args.timestepmax + 1):
+        for timestep in timesteps_included:
             make_singletimestep_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
 
 
