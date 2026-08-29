@@ -1,6 +1,5 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
-import calendar
 import contextlib
 import datetime
 import errno
@@ -30,6 +29,7 @@ from artistools.misc import get_file_identity
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_warning
+from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import stripallsuffixes
@@ -335,44 +335,35 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
+# The version of the model parquet cache format. Increase it for a change that makes an older cache
+# file incorrect, e.g. a new column or a different data type.
+CACHEVERSION = 1
+
+
 def read_model_parquet_cache(
     parquetfilepath: Path, textsource_mtime: float, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]] | None:
     """Return the cached model table and its metadata, or None if the cache is absent, stale, or unreadable.
 
-    An unreadable cache file is deleted, so that it is rebuilt from the text source rather than
-    rediscovered as broken on every run.
+    A rejected cache stays in place: get_modeldata() rewrites it through write_parquet_atomic(), which
+    replaces only the exact file that this check saw. A deletion here could remove the fresh cache
+    that a rival process installed after this check.
     """
     if not parquetfilepath.is_file():
         return None
 
-    cache_mtime = parquetfilepath.stat().st_mtime
-    if cache_mtime < textsource_mtime:
-        print(f"{parquetfilepath} is older than its text source. Will regenerate.")
+    pqmetadata = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+    if pqmetadata is None:
+        print(f"{parquetfilepath} is not a current cache of the text source. Will regenerate.")
         return None
 
-    t_lastschemachange = calendar.timegm((2025, 8, 5, 9, 0, 0))
-    if cache_mtime < t_lastschemachange:
-        print(f"{parquetfilepath} was generated before the last schema change. Will regenerate.")
-        return None
-
-    # read_parquet_metadata is eager, so a damaged file raises here instead of at some distant
-    # collect(). scan_parquet resolves its schema from the same footer, so no further check is needed
+    # scan_parquet resolves its schema from the same footer that gave the metadata. Thus the check
+    # above already rejects a damaged file, and this code needs no further check
     try:
-        pqmetadata = pl.read_parquet_metadata(parquetfilepath)
-        cached_source_mtime = pqmetadata["textsource_mtime"]
         modelmeta = json.loads(pqmetadata["modelmeta_json"])
         dfmodel = pl.scan_parquet(parquetfilepath)
     except (pl.exceptions.PolarsError, KeyError, json.JSONDecodeError, OSError) as exc:
-        print(f"Could not read {parquetfilepath} ({type(exc).__name__}: {exc}). Will delete and regenerate.")
-        parquetfilepath.unlink(missing_ok=True)
-        return None
-
-    if cached_source_mtime != str(textsource_mtime):
-        print(
-            f"Modification time of text source ({textsource_mtime}) does not match parquet metadata "
-            f"({cached_source_mtime}). Will regenerate."
-        )
+        print(f"Could not read {parquetfilepath} ({type(exc).__name__}: {exc}). Will regenerate.")
         return None
 
     if not printwarningsonly:
@@ -451,6 +442,7 @@ def get_modeldata(
                 replaces=outdatedparquet,
                 metadata={
                     "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                    "cacheversion": str(CACHEVERSION),
                     "textsource_mtime": str(textsource_mtime),
                     "modelmeta_json": json.dumps(modelmeta),
                 },

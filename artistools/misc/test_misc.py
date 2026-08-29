@@ -202,6 +202,60 @@ def test_one_rule_finds_the_reference_data_of_each_kind(tmp_path: Path) -> None:
     assert not at.path_is_reference_data(tmp_path / "nosuchfile.txt", "data/refspectra")
 
 
+def test_reference_data_search_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A relative name must not match after a change of the working folder.
+
+    A cache held the full result. Thus the first answer kept a working folder that no longer
+    applied, and a miss stayed None after the file appeared.
+    """
+    folder_with_file = tmp_path / "a"
+    folder_with_file.mkdir()
+    (folder_with_file / "myref.txt").write_bytes(b"")
+    empty_folder = tmp_path / "b"
+    empty_folder.mkdir()
+
+    monkeypatch.chdir(empty_folder)
+    assert at.find_reference_data_file("myref.txt", "data/refspectra") is None
+
+    monkeypatch.chdir(folder_with_file)
+    assert at.find_reference_data_file("myref.txt", "data/refspectra") == Path("myref.txt")
+
+    monkeypatch.chdir(empty_folder)
+    assert at.find_reference_data_file("myref.txt", "data/refspectra") is None
+
+
+def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> None:
+    """A run that appends timesteps makes the batch cache stale, thus the text files answer.
+
+    get_runfolder_timesteps read the first batch cache with no freshness check. Thus a plot during
+    a run excluded the new timesteps of the folder.
+    """
+    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    stale_folder = tmp_path / "stale"
+    stale_folder.mkdir()
+    (stale_folder / "estimators_0000.out").write_text("timestep 0 header\ntimestep 1 header\n")
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        stale_folder / "estimbatch00_0000_0000.out.parquet.tmp",
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0"},
+    )
+    assert get_runfolder_timesteps(stale_folder) == (0, 1)
+
+    current_folder = tmp_path / "current"
+    current_folder.mkdir()
+    textfile = current_folder / "estimators_0000.out"
+    textfile.write_text("timestep 0 header\ntimestep 1 header\n")
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        current_folder / "estimbatch00_0000_0000.out.parquet.tmp",
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfile.stat().st_mtime)},
+    )
+    # the current cache answers, thus the extra timestep of the text file stays unread
+    assert get_runfolder_timesteps(current_folder) == (0,)
+
+
 def test_add_cli_arg_helpers() -> None:
     """The shared argument helpers must define the standard flags, types, and defaults."""
     parser = argparse.ArgumentParser()

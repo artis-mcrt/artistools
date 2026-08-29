@@ -485,20 +485,30 @@ def firstexisting_or_none(
 
 
 @cache
+def find_bundled_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
+    """Return the path of a file in the named data folder of the package, or None when the folder holds none."""
+    from artistools.commands import get_path
+
+    return firstexisting_or_none(
+        filename, folder=Path(get_path("artistools_dir"), bundledsubfolder), tryzipped=True, search_subfolders=False
+    )
+
+
 def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
     """Return the path of a file of reference data, or None when no such file exists.
 
     The file is either at the given path or in the named folder of the data that the package holds,
     and a compressed file of the same name is also accepted. The light curves and the spectra each
     hold reference data of their own, thus the caller names the folder that holds its kind.
+
+    The search of the working folder runs on every call, because the working folder can change while
+    the process runs. A cache holds only the search of the package data, because that folder is
+    constant.
     """
-    from artistools.commands import get_path
+    if found := firstexisting_or_none(filename, folder=Path(), tryzipped=True, search_subfolders=False):
+        return found
 
-    for folder in (Path(), Path(get_path("artistools_dir"), bundledsubfolder)):
-        if found := firstexisting_or_none(filename, folder=folder, tryzipped=True, search_subfolders=False):
-            return found
-
-    return None
+    return find_bundled_data_file(filename, bundledsubfolder)
 
 
 def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
@@ -771,6 +781,28 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
             newfilepath.replace(destpath)
     finally:
         os.close(lockfd)
+
+
+def read_parquet_cache_metadata(
+    parquetfilepath: Path, cacheversion: int, textsource_mtime: float
+) -> dict[str, str] | None:
+    """Return the metadata of a parquet cache, or None when the cache is stale or unreadable.
+
+    The writer of a cache stamps the cache format version and the modification time of its text source
+    into the parquet metadata. A cache from a different artistools version, or from different text
+    files, fails the comparison. A new modification time of the cache does not make it current.
+    read_parquet_metadata is eager, thus a damaged file gives None here and not an error at a distant
+    collect().
+    """
+    try:
+        pqmetadata = pl.read_parquet_metadata(parquetfilepath)
+    except (pl.exceptions.PolarsError, OSError):
+        return None
+
+    iscurrent = pqmetadata.get("cacheversion") == str(cacheversion) and pqmetadata.get("textsource_mtime") == str(
+        textsource_mtime
+    )
+    return pqmetadata if iscurrent else None
 
 
 def write_parquet_atomic(

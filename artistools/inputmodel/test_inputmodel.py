@@ -2205,3 +2205,18 @@ def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> No
     assert "Fe" in csvytext
     assert "Co" not in csvytext
     assert "Ni" not in csvytext
+
+
+def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
+    """A rejected cache must stay in place, because a rival process possibly replaced it.
+
+    The reader deleted an unreadable file with a bare unlink, outside the identity rule of
+    write_parquet_atomic. That unlink can remove the fresh cache that a rival process installed.
+    """
+    from artistools.inputmodel.inputmodel_misc import read_model_parquet_cache
+
+    parquetfilepath = tmp_path / "model.txt.parquet.tmp"
+    parquetfilepath.write_bytes(b"not parquet")
+
+    assert read_model_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
+    assert parquetfilepath.is_file(), "the unreadable cache must stay for the identity-checked rewrite"
