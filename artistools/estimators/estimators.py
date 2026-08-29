@@ -387,11 +387,21 @@ CACHEVERSION = 1
 
 
 def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
-    """Return the time of the last change of each estimator text file in the folder, keyed by MPI rank."""
-    return {
-        int(textfile.name.split("_")[1].split(".")[0]): textfile.stat().st_mtime
-        for textfile in Path(folderpath).glob("estimators_????.out*")
-    }
+    """Return the time of the last change of each rank's estimator file, keyed by MPI rank.
+
+    The glob finds the ranks, and the suffix order then selects one file for each rank: the same
+    file that find_estimator_file() in rust/src/estimators.rs reads. A leftover sibling, e.g.
+    estimators_0000.out.bak beside estimators_0000.out, thus cannot decide the freshness.
+    """
+    folderpath = Path(folderpath)
+    ranks = {int(textfile.name.split("_")[1].split(".")[0]) for textfile in folderpath.glob("estimators_????.out*")}
+    mtimes: dict[int, float] = {}
+    for rank in sorted(ranks):
+        for suffix in ("", ".zst", ".gz", ".xz"):
+            with contextlib.suppress(FileNotFoundError):
+                mtimes[rank] = (folderpath / f"estimators_{rank:04d}.out{suffix}").stat().st_mtime
+                break
+    return mtimes
 
 
 def get_batch_textsource_mtime(textsource_mtimes: Mapping[int, float], rankmin: int, rankmax: int) -> float | None:

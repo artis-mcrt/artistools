@@ -829,6 +829,28 @@ def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
     assert get_batch_textsource_mtime(mtimes, 5, 9) is None
 
 
+def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
+    """The mtime of a rank comes from the file that the Rust parser selects, and no sibling decides.
+
+    The glob kept an arbitrary candidate of each rank. Thus a leftover sibling such as
+    estimators_0000.out.bak could give the stamp while the parser read estimators_0000.out.
+    """
+    from artistools.estimators.estimators import get_textsource_mtimes
+
+    outfile = tmp_path / "estimators_0000.out"
+    outfile.write_text("timestep 0\n")
+    bakfile = tmp_path / "estimators_0000.out.bak"
+    bakfile.write_text("timestep 0\n")
+    os.utime(bakfile, (outfile.stat().st_mtime + 100.0, outfile.stat().st_mtime + 100.0))
+
+    assert get_textsource_mtimes(tmp_path) == {0: outfile.stat().st_mtime}
+
+    # a compressed file counts only when the plain name is absent, in the order of the parser
+    gzfile = tmp_path / "estimators_0001.out.gz"
+    gzfile.write_bytes(b"")
+    assert get_textsource_mtimes(tmp_path)[1] == gzfile.stat().st_mtime
+
+
 def test_a_cached_scan_asks_for_no_progress_class() -> None:
     """A scan that converts no text file must not build the progress class, which takes a lock."""
     import artistools.misc.general
