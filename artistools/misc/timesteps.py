@@ -256,6 +256,10 @@ def get_time_range(
 
     time_days_lower, time_days_upper = None, None
 
+    # keep the bounds that the caller gave. The search below replaces a missing bound with a
+    # sentinel (-1.0 or inf), and the function must not return a sentinel as a time
+    user_timemin, user_timemax = timemin, timemax
+
     if timemin is not None and float(timemin) > tends[-1]:
         print_warning(f"{get_model_name(modelpath)}: timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, -math.inf, -math.inf
@@ -357,11 +361,11 @@ def get_time_range(
     # times available even if the caller asked not to clamp
     if time_days_lower is None:
         assert timestepmin is not None
-        time_days_lower = tstarts[timestepmin] if (clamp_to_timesteps or timemin is None) else float(timemin)
+        time_days_lower = tstarts[timestepmin] if (clamp_to_timesteps or user_timemin is None) else float(user_timemin)
 
     if time_days_upper is None:
         assert timestepmax is not None
-        time_days_upper = tends[timestepmax] if (clamp_to_timesteps or timemax is None) else float(timemax)
+        time_days_upper = tends[timestepmax] if (clamp_to_timesteps or user_timemax is None) else float(user_timemax)
 
     assert timestepmin is not None
     assert timestepmax is not None

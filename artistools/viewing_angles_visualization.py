@@ -13,32 +13,26 @@ from artistools.misc import addarg_output
 from artistools.misc import resolve_outputfile
 
 
-def get_theta_phi(anglebin: int) -> tuple[float | int | None, float | int | None]:
-    """Get the central theta and phi angles for given anglebin."""
-    assert isinstance(anglebin, int), "Anglebin has to be int"
-    cos_theta = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9]
-    theta = np.arccos(cos_theta)
-    phi = np.array([0.1, 0.3, 0.5, 0.7, 0.9, 1.9, 1.7, 1.5, 1.3, 1.1]) * np.pi
+def get_theta_phi(anglebin: int) -> tuple[float, float]:
+    """Return the central theta and phi angles of the given viewing angle bin.
 
-    anglenumber = 0
-    for t in theta:
-        for p in phi:
-            if anglenumber == anglebin:
-                return t, p
-
-            anglenumber += 1
-
-    return None, None
+    The bin boundaries come from the shared definitions in artistools.misc.dirbins, so the arrows
+    point where every other artistools plot puts the same bin.
+    """
+    costhetabin, phibin = divmod(anglebin, at.get_viewingdirection_phibincount())
+    costheta_lower, costheta_upper, _ = at.get_costheta_bins(usedegrees=False)
+    phi_lower, phi_upper, _ = at.get_phi_bins(usedegrees=False)
+    theta = float(np.arccos((costheta_lower[costhetabin] + costheta_upper[costhetabin]) / 2))
+    phi = float((phi_lower[phibin] + phi_upper[phibin]) / 2)
+    return theta, phi
 
 
 def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     """Return the Cartesian endpoint of a vector of the given length pointing into each viewing angle bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
-    for i in range(100):
+    for i in range(at.get_viewingdirectionbincount()):
         theta, phi = get_theta_phi(i)
-        assert theta is not None
-        assert phi is not None
         x_c = length * np.sin(theta) * np.cos(phi)
         y_c = length * np.sin(theta) * np.sin(phi)
         z_c = length * np.cos(theta)

@@ -37,7 +37,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the shell masses and radii come from the enclosed mass and velocity of each cell's outer boundary
     dfshells = (
         datain
-        .with_row_index("cellid")
+        .with_row_index("cellid", offset=1)  # ARTIS cell ids count from one
         .with_columns(
             m_enc_outer=pl.col("m") * Msun_to_g,  # convert Solar masses to grams
             v_outer=pl.col("v") * 1e-5,  # convert cm/s to km/s

@@ -27,6 +27,7 @@ from artistools.commands import run_subcommand
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.estimators import summarise_columns
@@ -709,19 +710,20 @@ def plot_multi_ion_series(
             # get the volumetric number density to later be multiplied by the surface area of a sphere or cylinder
             expr_normfactor = pl.lit(1)
         elif args.poptype == "cumulative":
-            # multiply by volume to get number of particles
-            expr_normfactor = pl.lit(1) / pl.col("volume")
+            expr_normfactor = pl.lit(1)
         else:
             raise AssertionError
 
-        # convert volumetric number density to radial density
+        # convert the volumetric number density [cm^-3] to a radial density [cm^-1] with the radius of each cell
+        expr_tmid_s = pl.col("tmid_days") * day_to_s
         if args.poptype == "radialdensity":
-            expr_yvals *= 4 * math.pi * pl.col("vel_r_mid").mean().pow(2)
+            expr_yvals *= 4 * math.pi * (pl.col("vel_r_mid") * expr_tmid_s).pow(2)
         elif args.poptype == "cylradialdensity":
-            expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid").mean()
+            expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid") * expr_tmid_s
 
         if args.poptype == "cumulative":
-            expr_yvals = expr_yvals.cum_sum()
+            # multiply each cell's number density by its volume before the sum, so the result is a particle count
+            expr_yvals = (expr_yvals * pl.col("volume")).cum_sum()
 
         lazyframes.append(
             estimators.select(
@@ -916,7 +918,9 @@ def get_xlist(
         estimators = (
             estimators
             .with_columns(
-                (pl.col("xvalue").cut(breaks=list(xbinedges)).to_physical().cast(pl.Int32) - 1).alias("xbinindex")
+                # give cut only the interior edges. A value at an outer edge then falls into the first
+                # or the last bin, not into an out-of-range category
+                pl.col("xvalue").cut(breaks=list(xbinedges[1:-1])).to_physical().cast(pl.Int32).alias("xbinindex")
             )
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .join(pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")
@@ -1411,7 +1415,8 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
         msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
         raise ValueError(msg)
 
-    args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["inputcellid"])
+    # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
+    args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
 
 
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:

@@ -765,9 +765,10 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
         newcolnames_unique = set(newcolnames)
         oldcolnames = res_specdata[dirbin].collect_schema().names()
         if len(newcolnames) > len(newcolnames_unique):
-            # for POL_ON, the time columns repeat for Q, U, and V stokes params.
-            # here, we keep the first set (I) and drop the rest of the columns
-            assert len(newcolnames) % len(newcolnames_unique) == 0  # must be an exact multiple
+            # for POL_ON, the time columns repeat for the Q and U stokes parameters.
+            # here, we keep the first set (I) and drop the rest of the columns.
+            # the layout is one nu column plus an exact multiple of the unique time columns
+            assert (len(newcolnames) - 1) % (len(newcolnames_unique) - 1) == 0
             newcolnames = newcolnames[: len(newcolnames_unique)]
             oldcolnames = oldcolnames[: len(newcolnames_unique)]
             res_specdata[dirbin] = res_specdata[dirbin].select(oldcolnames)
@@ -950,8 +951,8 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
     )
 
     print(f"Reading {specfilename}")
-    specdata = pl.scan_csv(
-        polars_source(specfilename), separator=" ", has_header=True, infer_schema=False
+    specdata = drop_trailing_null_column(
+        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
     ).with_columns(pl.all().cast(pl.Float64))
 
     return split_dataframe_stokesparams(specdata)

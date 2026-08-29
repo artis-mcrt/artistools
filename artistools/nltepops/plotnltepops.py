@@ -854,6 +854,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.timestepmin, args.timestepmax = timestep, timestep
     elif args.timedayslist:
         print(f"Plotting the times {args.timedayslist}")
+        # the branches below read args.timestepmin and args.timestepmax, thus set them from the listed times
+        timesteps = [at.get_timestep_of_timedays(modelpath, timedays) for timedays in args.timedayslist]
+        args.timestepmin, args.timestepmax = min(timesteps), max(timesteps)
     elif args.timestep is not None:
         args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timestep_range_str=str(args.timestep))
     elif args.x in {"time", "velocity"}:

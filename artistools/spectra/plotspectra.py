@@ -57,7 +57,6 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import get_vspec_dir_labels
 from artistools.misc import KeepGivenPaths
 from artistools.misc import makelist
-from artistools.misc import match_closest_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
@@ -247,20 +246,27 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     assert args.timemax is not None
 
     timeavg_float = (args.timemin + args.timemax) / 2.0
-    timeavg = f"{match_closest_time(timeavg_float, timearray):.4f}"
+
+    def timedistance(timestr: str) -> float:
+        return abs(float(timestr) - timeavg_float)
+
+    # select the column by the exact header string, because the file writes the times in its own format
+    timecolname = min(timearray, key=timedistance)
+    timeavg = f"{float(timecolname):.4f}"
 
     filterfunc = get_filterfunc(args)
     if filterfunc is not None:
         print("Applying filter to ARTIS spectrum")
-        dfspectrum = dfspectrum.with_columns(pl.Series(timeavg, filterfunc(dfspectrum[timeavg])))
+        dfspectrum = dfspectrum.with_columns(pl.Series(timecolname, filterfunc(dfspectrum[timecolname])))
 
-    vpkt_config = get_vpkt_config(modelpath)
-
-    linelabel = (
-        f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle // vpkt_config['nspectraperobs']]}"
-        if args.plotvspecpol
-        else f"{timeavg} days"
-    )
+    if args.plotvspecpol:
+        # the vpkt configuration is only necessary for the observer angle in the label
+        vpkt_config = get_vpkt_config(modelpath)
+        linelabel = (
+            f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle // vpkt_config['nspectraperobs']]}"
+        )
+    else:
+        linelabel = f"{timeavg} days"
 
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
@@ -270,7 +276,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         binned_flux = []
 
         wavelengths = dfspectrum["lambda_angstroms"]
-        fluxes = dfspectrum[timeavg]
+        fluxes = dfspectrum[timecolname]
         nbins = 5
 
         for i in range(0, len(wavelengths) - nbins + 1, nbins):
@@ -280,7 +286,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
         axis.plot(new_lambda_angstroms, binned_flux)
     else:
-        axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timeavg], label=linelabel)
+        axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timecolname], label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -1258,7 +1264,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     if args.normalised and args.ymax is None:
         args.ymax = 1.10
-    for index, axis in enumerate(axes):
+    for axis in axes:
         # the scale goes on before the limits: a limit turns autoscaling off, so setting one first would
         # lose the linear padding of a log axis. make_emissionabsorption_plot reads the x range back from
         # the axes, thus the x limits have to be applied here rather than after the data is drawn.
@@ -1288,21 +1294,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
 
-        if args.showtime:
-            if args.multispecplot:
-                _ymin, ymax = axis.get_ylim()
-                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
-            else:
-                timeavg = (args.timemin + args.timemax) / 2.0
-                axis.annotate(
-                    f"{timeavg:.2f} days",
-                    xy=(0.03, 0.97),
-                    xycoords="axes fraction",
-                    horizontalalignment="left",
-                    verticalalignment="top",
-                    fontsize="x-large",
-                )
-
     if not args.hidexticklabels:
         axes[-1].set_xlabel(xlabel)
 
@@ -1326,6 +1317,24 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         else:
             dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
+
+    # the annotation comes after the plot calls, because those calls resolve args.timemin and
+    # args.timemax when the command line gave the time as -timedays or -timestep
+    if args.showtime:
+        for index, axis in enumerate(axes):
+            if args.multispecplot:
+                _ymin, ymax = axis.get_ylim()
+                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+            else:
+                timeavg = (args.timemin + args.timemax) / 2.0
+                axis.annotate(
+                    f"{timeavg:.2f} days",
+                    xy=(0.03, 0.97),
+                    xycoords="axes fraction",
+                    horizontalalignment="left",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
 
     # the loop above sets the scale before the data exists, because make_emissionabsorption_plot reads
     # the x range back from the axes. Thus -yscale auto reads the values here and sets the scale itself
