@@ -2329,7 +2329,8 @@ def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
 
-    assert "Did you mean -dimensionreduce?" in capsys.readouterr().err
+    # a further -dim flag of that command joins the line, thus the test reads the name alone
+    assert "Did you mean -dimensionreduce" in capsys.readouterr().err
 
 
 def test_every_output_argument_records_what_the_command_writes() -> None:

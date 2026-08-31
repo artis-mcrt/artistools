@@ -682,7 +682,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
         helptext = ""
         if ambiguous is not None:
-            given = ambiguous.group(1)
+            # argparse names the whole token, thus "-ti=300" carries its value. The flag alone
+            # matches a name and gives a suggestion
+            given = ambiguous.group(1).partition("=")[0]
             # the user gave the start of a longer name, thus a flag that starts with it beats the
             # closest name of difflib, which gave "-d" for "-dim" on a command that takes
             # -dimensionreduce. addarg_collidingflags declares the names of the other commands,
