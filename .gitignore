@@ -23,6 +23,11 @@ coverage.xml
 
 *.so
 
+# write_parquet_atomic() leaves the lock file of a cache in place, and a run that stops early can
+# leave a partial file. No cache directory is a source directory
+*.replace-lock
+*.partial
+
 # Distribution / packaging
 .Python
 .venv/
