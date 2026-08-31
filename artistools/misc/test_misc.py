@@ -224,6 +224,54 @@ def test_reference_data_search_follows_the_working_folder(tmp_path: Path, monkey
     assert at.find_reference_data_file("myref.txt", "data/refspectra") is None
 
 
+def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
+    """A rejected cache must say which check failed, because a regeneration costs minutes.
+
+    The message said only that the cache was not current. Thus a user could not see whether a new
+    cache format version, a rewritten text file, or a damaged file caused the conversion.
+    """
+    cacheversion = 3
+    mtime = 1000.0
+
+    current = tmp_path / "current.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        current,
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
+    )
+    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime)
+    assert stalereason is None
+    assert pqmetadata is not None
+
+    def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
+        pqmetadata, stalereason = at.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
+        assert pqmetadata is None
+        assert stalereason is not None
+        return stalereason
+
+    # the text file changed after the run wrote the cache, thus the reason names both times
+    changedsource = get_reason(current, mtime + 10.0)
+    assert "the text source changed" in changedsource
+    assert str(mtime) in changedsource
+    assert str(mtime + 10.0) in changedsource
+
+    unstamped = tmp_path / "unstamped.parquet"
+    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
+    assert "no cacheversion stamp" in get_reason(unstamped, mtime)
+
+    oldversion = tmp_path / "oldversion.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
+    )
+    assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime)
+
+    unreadable = tmp_path / "unreadable.parquet"
+    unreadable.write_bytes(b"not parquet")
+    assert "not a readable parquet file" in get_reason(unreadable, mtime)
+
+    assert get_reason(tmp_path / "nosuchfile.parquet", mtime) == "the file does not exist"
+
+
 def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> None:
     """A run that appends timesteps makes the batch cache stale, thus the text files answer.
 

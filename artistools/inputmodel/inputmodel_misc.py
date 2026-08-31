@@ -352,9 +352,9 @@ def read_model_parquet_cache(
     if not parquetfilepath.is_file():
         return None
 
-    pqmetadata = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+    pqmetadata, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
     if pqmetadata is None:
-        print(f"{parquetfilepath} is not a current cache of the text source. Will regenerate.")
+        print(f"{parquetfilepath} is not a current cache of the text source, because {stalereason}. Will regenerate.")
         return None
 
     # scan_parquet resolves its schema from the same footer that gave the metadata. Thus the check

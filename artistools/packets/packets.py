@@ -408,7 +408,8 @@ def get_packets_rankbatch_parquetfile(
         ):
             last_textfile_mtime = text_filepath.stat().st_mtime
 
-            if read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, last_textfile_mtime) is not None:
+            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, last_textfile_mtime)
+            if stalereason is None:
                 conversion_needed = False
             else:
                 # the identity comes from the stat that showed the file is outdated, so only that exact
@@ -420,7 +421,8 @@ def get_packets_rankbatch_parquetfile(
                 # it missing or half-swapped
                 print(
                     f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of"
-                    f" {text_filepath.relative_to(modelpath)}. File will be regenerated..."
+                    f" {text_filepath.relative_to(modelpath)}, because {stalereason}."
+                    " File will be regenerated..."
                 )
         else:
             conversion_needed = False
