@@ -752,12 +752,13 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     from artistools.estimators.estimators import CACHEVERSION
     from artistools.estimators.estimators import get_rankbatch_parquetpath
     from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.estimators import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
 
     # a cache that no run wrote yet needs the conversion
-    assert not rankbatch_parquet_is_current(parquetfilepath, None)
+    assert rankbatch_parquet_staleness(parquetfilepath, None) == "the file does not exist"
 
     mtime = 1000.0
     at.write_parquet_atomic(

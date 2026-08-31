@@ -160,6 +160,7 @@ from artistools.misc import print_detail as print_detail
 from artistools.misc import print_heading as print_heading
 from artistools.misc import print_saved as print_saved
 from artistools.misc import print_theta_phi_definitions as print_theta_phi_definitions
+from artistools.misc import read_parquet_cache_metadata as read_parquet_cache_metadata
 from artistools.misc import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc import read_wsv as read_wsv
 from artistools.misc import readnoncommentline as readnoncommentline

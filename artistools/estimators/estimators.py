@@ -413,20 +413,24 @@ def get_batch_textsource_mtime(textsource_mtimes: Mapping[int, float], rankmin: 
     return max((mtime for rank, mtime in textsource_mtimes.items() if rankmin <= rank <= rankmax), default=None)
 
 
-def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
-    """Return True when the parquet cache matches the cache format version and the text files.
+def rankbatch_parquet_staleness(parquetfilepath: Path, textsource_mtime: float | None) -> str | None:
+    """Return the reason why the parquet cache is stale, or None when the cache is current.
 
     The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
-    conversion of the text files takes place. A cache in a folder that holds no text file stays
-    current, because no source remains for a new conversion.
+    conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
+    e.g. a cache that is absent, damaged, or written for a different cache format version.
     """
-    if not parquetfilepath.is_file():
-        return False
+    if textsource_mtime is None:
+        # a cache in a folder that holds no text file stays current, because no source remains for a
+        # new conversion. Only a cache that does not exist then needs one
+        return None if parquetfilepath.is_file() else "the file does not exist"
 
-    return (
-        textsource_mtime is None
-        or read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime) is not None
-    )
+    return read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)[1]
+
+
+def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
+    """Return True when the parquet cache matches the cache format version and the text files."""
+    return rankbatch_parquet_staleness(parquetfilepath, textsource_mtime) is None
 
 
 def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str) -> bool:
@@ -470,7 +474,8 @@ def get_estimators_rankbatch_parquetfile(
     textsource_mtime = get_batch_textsource_mtime(textsource_mtimes, min(batch_mpiranks), max(batch_mpiranks))
 
     outdatedparquet: tuple[int, int] | None = None
-    if not rankbatch_parquet_is_current(parquetfilepath, textsource_mtime):
+    stalereason = rankbatch_parquet_staleness(parquetfilepath, textsource_mtime)
+    if stalereason is not None:
         # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
         # the path always resolves to a complete parquet. Deleting it first opens a window in which a
         # concurrent reader finds it missing or half-swapped. The identity comes from the stat that showed
@@ -479,7 +484,7 @@ def get_estimators_rankbatch_parquetfile(
             outdatedparquet = at.get_file_identity(parquetfilepath.stat())
             print(
                 f"  {parquetfilepath.relative_to(modelpath.parent)} is not a current cache of the estimator"
-                " text files. File will be regenerated..."
+                f" text files, because {stalereason}. File will be regenerated..."
             )
 
         print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")

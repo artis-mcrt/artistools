@@ -1,6 +1,7 @@
 """File helpers: compressed text files, file searching, metadata, and atomic parquet writes."""
 
 import contextlib
+import datetime
 import io
 import os
 import re
@@ -783,26 +784,59 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         os.close(lockfd)
 
 
+def format_mtime(mtime: float | str | None) -> str:
+    """Return a file modification time as a local time string with the raw number.
+
+    A cache that holds no stamp gives "absent". A stamp that no writer of this repository can
+    produce, e.g. a hand-edited one, comes back unchanged.
+    """
+    if mtime is None:
+        return "absent"
+    try:
+        localtime = datetime.datetime.fromtimestamp(float(mtime)).astimezone()
+    except (ValueError, OSError, OverflowError):
+        return str(mtime)
+    return f"{localtime.isoformat(sep=' ', timespec='seconds')} ({mtime})"
+
+
 def read_parquet_cache_metadata(
     parquetfilepath: Path, cacheversion: int, textsource_mtime: float
-) -> dict[str, str] | None:
-    """Return the metadata of a parquet cache, or None when the cache is stale or unreadable.
+) -> tuple[dict[str, str] | None, str | None]:
+    """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
     The writer of a cache stamps the cache format version and the modification time of its text source
     into the parquet metadata. A cache from a different artistools version, or from different text
     files, fails the comparison. A new modification time of the cache does not make it current.
-    read_parquet_metadata is eager, thus a damaged file gives None here and not an error at a distant
+    read_parquet_metadata is eager, thus a damaged file gives a reason here and not an error at a distant
     collect().
+
+    A current cache gives its metadata and no reason. A stale cache gives no metadata and the reason
+    for the rejection, because a regeneration of a large cache costs minutes and the user must see
+    what caused it. Each reason reads as a lower-case clause after the word "because".
     """
     try:
         pqmetadata = pl.read_parquet_metadata(parquetfilepath)
-    except (pl.exceptions.PolarsError, OSError):
-        return None
+    except FileNotFoundError:
+        return None, "the file does not exist"
+    except (pl.exceptions.PolarsError, OSError) as exc:
+        return None, f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
 
-    iscurrent = pqmetadata.get("cacheversion") == str(cacheversion) and pqmetadata.get("textsource_mtime") == str(
-        textsource_mtime
-    )
-    return pqmetadata if iscurrent else None
+    foundversion = pqmetadata.get("cacheversion")
+    if foundversion != str(cacheversion):
+        return None, (
+            f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
+            if foundversion is not None
+            else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
+        )
+
+    foundmtime = pqmetadata.get("textsource_mtime")
+    if foundmtime != str(textsource_mtime):
+        return None, (
+            f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
+            f" but the text file now has {format_mtime(textsource_mtime)}"
+        )
+
+    return pqmetadata, None
 
 
 def write_parquet_atomic(
