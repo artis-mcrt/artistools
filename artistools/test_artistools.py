@@ -31,7 +31,11 @@ if t.TYPE_CHECKING:
     from collections.abc import Iterable
 
 modelpath = at.get_path("testdata") / "testmodel"
-RETIRED_COMMANDS = ("describeinputmodel", "makeartismodelfromparticlegridmap", "maptogrid")
+# each retired top-level name, with the module that its inputmodel command runs
+RETIRED_COMMANDS = (
+    ("makeartismodelfromparticlegridmap", "artistools.inputmodel.modelfromhydro"),
+    ("maptogrid", "artistools.inputmodel.maptogrid"),
+)
 DISPATCHERTARGET = "artistools.__main__:main"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -322,21 +326,41 @@ def test_lightcurve_title_arg() -> None:
 def test_retired_duplicate_commands_stay_gone() -> None:
     """The retired top-level duplicates neither parse nor appear, and their tree names work.
 
-    describeinputmodel, makeartismodelfromparticlegridmap, and maptogrid were hidden duplicates of the
-    inputmodel commands. The repository keeps no compatibility shim, thus they are deleted.
+    makeartismodelfromparticlegridmap and maptogrid were hidden duplicates of the inputmodel
+    commands. No script holds these names, thus the top level keeps none of them. The top-level
+    describeinputmodel is different, and test_describeinputmodel_names covers it.
     """
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
     helptext = parser.format_help()
-    for retiredname in RETIRED_COMMANDS:
+    for retiredname, modulename in RETIRED_COMMANDS:
         assert retiredname not in helptext
+        with pytest.raises(SystemExit):
+            parser.parse_args([retiredname])
 
-    with pytest.raises(SystemExit):
-        parser.parse_args(["describeinputmodel", "somemodelpath"])
+        assert parser.parse_args(["inputmodel", retiredname]).func.__module__ == modulename
 
-    args = parser.parse_args(["inputmodel", "describe", "somemodelpath"])
-    assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
+
+def test_describeinputmodel_names() -> None:
+    """Every spelling of the describe command runs the same module.
+
+    One spec gives the three names: "artistools describeinputmodel", "artistools inputmodel
+    describeinputmodel", and "artistools inputmodel describe". A script that holds an older
+    spelling still runs.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    for words in (["describeinputmodel"], ["inputmodel", "describe"], ["inputmodel", "describeinputmodel"]):
+        args = parser.parse_args([*words, "somemodelpath"])
+        assert args.func.__module__ == "artistools.inputmodel.describeinputmodel"
+
+    # the top-level name is an alias, thus the listing of the commands leaves it out
+    assert "describeinputmodel" not in parser.format_help()
+
+    # the module gives the name that the help lists, and not the hidden alias of the top level
+    assert at.commands.get_words_of_module("artistools.inputmodel.describeinputmodel") == ("inputmodel", "describe")
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2225,18 +2249,20 @@ def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
     addarg_collidingflags reads that table, thus a name that no line of it holds gives no message when
     another command reads it as a joined value. Building the tree to collect the names would import
     every command module, which the per-command console scripts do not do.
+
+    The walk covers every depth. A command under "artistools inputmodel" declares its flags in the
+    same way, and the top level alone left 41 of those names outside the table.
     """
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
     def islongsingledash(flag: str) -> bool:
         return flag.startswith("-") and not flag.startswith("--") and len(flag) > 2
 
     names = {
         flag
-        for subparser in subactions[0].choices.values()
+        for _, subparser in get_every_subcommand(parser)
         for action in subparser._actions  # ruff:ignore[private-member-access]
         for flag in action.option_strings
         if islongsingledash(flag) and not isinstance(action, at.misc.UnsupportedArgument)
@@ -2273,6 +2299,38 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     # a joined value of a flag of one letter still works, thus -t300 means -timedays 300
     artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
     assert "300 days falls in timestep 54" in capsys.readouterr().out
+
+
+def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An abbreviation that matches a declared name of another command must stop the command.
+
+    addarg_collidingflags declares -outputfolder on a command that takes -o. A filter of the declared
+    names let argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder
+    of that name. Thus the parser keeps every match, and the user reads a message.
+    """
+    import artistools.__main__
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfol", "--quiet"])
+
+    assert "ambiguous option: -outputfol" in capsys.readouterr().err
+    assert not list(tmp_path.iterdir()), "a command that stops must write nothing"
+
+    # the full name of another command gives its own message, because argparse reads it before a prefix
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfolder", "foo"])
+
+    assert "-outputfolder is not an argument of this command" in capsys.readouterr().err
+
+    # the user gave the start of a longer name, thus the help line names that name and not -d
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
+
+    # a further -dim flag of that command joins the line, thus the test reads the name alone
+    assert "Did you mean -dimensionreduce" in capsys.readouterr().err
 
 
 def test_every_output_argument_records_what_the_command_writes() -> None:
