@@ -687,10 +687,11 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # closest name of difflib, which gave "-d" for "-dim" on a command that takes
             # -dimensionreduce. addarg_collidingflags declares the names of the other commands,
             # which get_visible_flags leaves out, thus the suggestion names a flag of this command
-            starts = sorted(flag for flag in self.get_visible_flags() if flag.startswith(given))
-            helptext = (
-                f"Did you mean {', '.join(starts)}?" if starts else suggest_names(given, self.get_visible_flags())
-            )
+            visible = self.get_visible_flags()
+            # the shortest names first, and three of them, as suggest_names gives. "-ti" on
+            # plotspectra starts 13 flags, and a line of every one says less than a line of three
+            starts = sorted(sorted(flag for flag in visible if flag.startswith(given)), key=len)
+            helptext = f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(given, visible)
 
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
