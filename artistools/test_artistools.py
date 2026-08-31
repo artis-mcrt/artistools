@@ -2301,28 +2301,35 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     assert "300 days falls in timestep 54" in capsys.readouterr().out
 
 
-def test_an_ambiguous_abbreviation_names_the_flags_of_the_command(capsys: pytest.CaptureFixture[str]) -> None:
-    """The candidates of an ambiguous abbreviation must hold no flag of another command.
+def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An abbreviation that matches a declared name of another command must stop the command.
 
-    addarg_collidingflags declares the long names of the other commands, thus "-dim" on
-    makeartismodel gave "could match -dimensionreduce, -d, -dimensions". That command takes no
-    -dimensions, thus the message named a flag that the user cannot give.
+    addarg_collidingflags declares -outputfolder on a command that takes -o. A filter of the declared
+    names let argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder
+    of that name. Thus the parser keeps every match, and the user reads a message.
     """
     import artistools.__main__
 
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
-        artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
+        artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfol", "--quiet"])
 
-    message = capsys.readouterr().err
-    assert "ambiguous option: -dim" in message
-    assert "-dimensionreduce" in message
-    assert "-dimensions" not in message
+    assert "ambiguous option: -outputfol" in capsys.readouterr().err
+    assert not list(tmp_path.iterdir()), "a command that stops must write nothing"
 
-    # the full name still reports, because argparse reads an exact name before a prefix
+    # the full name of another command gives its own message, because argparse reads it before a prefix
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfolder", "foo"])
 
     assert "-outputfolder is not an argument of this command" in capsys.readouterr().err
+
+    # the user gave the start of a longer name, thus the help line names that name and not -d
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
+
+    assert "Did you mean -dimensionreduce?" in capsys.readouterr().err
 
 
 def test_every_output_argument_records_what_the_command_writes() -> None:

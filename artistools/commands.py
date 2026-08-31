@@ -551,25 +551,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     """
 
     @t.override
-    def _get_option_tuples(self, option_string: str) -> list[t.Any]:
-        """Give the flags that an abbreviation matches, and drop the names of the other commands.
-
-        addarg_collidingflags declares those names, thus "-dim" on a command that takes
-        -dimensionreduce gave "could match -dimensionreduce, -d, -dimensions". The message named a
-        flag that the command does not take. The full name of another command still gives its own
-        message, because argparse reads an exact name first.
-
-        Each tuple holds the action first. The number of the other members is different between the
-        versions of Python, thus the type of the list stays open.
-        """
-        from artistools.misc import UnsupportedArgument
-
-        matches = super()._get_option_tuples(option_string)
-        supported = [match for match in matches if not isinstance(match[0], UnsupportedArgument)]
-
-        return supported or matches
-
-    @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
         """Refuse a value outside the choices with a message that names the closest choice.
 
@@ -699,7 +680,17 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant
         ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
-        helptext = suggest_names(ambiguous.group(1), self.get_visible_flags()) if ambiguous is not None else ""
+        helptext = ""
+        if ambiguous is not None:
+            given = ambiguous.group(1)
+            # the user gave the start of a longer name, thus a flag that starts with it beats the
+            # closest name of difflib, which gave "-d" for "-dim" on a command that takes
+            # -dimensionreduce. addarg_collidingflags declares the names of the other commands,
+            # which get_visible_flags leaves out, thus the suggestion names a flag of this command
+            starts = sorted(flag for flag in self.get_visible_flags() if flag.startswith(given))
+            helptext = (
+                f"Did you mean {', '.join(starts)}?" if starts else suggest_names(given, self.get_visible_flags())
+            )
 
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
