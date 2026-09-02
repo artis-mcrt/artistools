@@ -66,16 +66,12 @@ def average_direction_bins(
         dirbindataframesout[start_bin] = dirbindataframes[start_bin].lazy()
         firstcolname = dirbindataframes[start_bin].collect_schema().names()[0]
         for dirbin in contribbins[1:]:
-            dirbindataframesout[start_bin] = (
-                dirbindataframesout[start_bin]
-                .lazy()
-                .join(
-                    dirbindataframes[dirbin].lazy(),
-                    on=firstcolname,
-                    how="left",
-                    suffix=f"_dirbin{dirbin}",
-                    maintain_order="left",
-                )
+            dirbindataframesout[start_bin] = dirbindataframesout[start_bin].join(
+                dirbindataframes[dirbin].lazy(),
+                on=firstcolname,
+                how="left",
+                suffix=f"_dirbin{dirbin}",
+                maintain_order="left",
             )
 
         dirbindataframesout[start_bin] = dirbindataframesout[start_bin].select(

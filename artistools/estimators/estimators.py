@@ -729,11 +729,8 @@ def scan_artis_estimators(
             print(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
-        pldflazy = (
-            pl
-            .concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
-            .unique(["timestep", "modelgridindex"], maintain_order=True, keep="first")
-            .lazy()
+        pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
+            ["timestep", "modelgridindex"], maintain_order=True, keep="first"
         )
     else:
         print_warning(

@@ -176,7 +176,7 @@ def plot_data(
     # Calculate the average line and optionally, the min-max bounding area
     dflinepoints = (
         dfplotdata
-        .group_by("xvalue_binned", maintain_order=True)
+        .group_by("xvalue_binned")
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
             yvalue_binned_min=pl.col("yvalue").min(),

@@ -490,7 +490,6 @@ def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) ->
         })
         .with_row_index("lambda_binindex")
         .with_columns(nu=(const.c_ang_per_s / pl.col("lambda_angstroms")))
-        .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
 

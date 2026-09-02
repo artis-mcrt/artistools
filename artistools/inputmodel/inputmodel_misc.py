@@ -896,7 +896,7 @@ def save_modeldata(
         assert vmax is None or vmax == modelmeta["vmax_cmps"]
         vmax = modelmeta["vmax_cmps"]
 
-    dfmodel_npts_model = dfmodel.select(pl.len()).lazy().collect().item()
+    dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
         assert modelmeta["npts_model"] == dfmodel_npts_model
     else:
@@ -1215,7 +1215,6 @@ def dimension_reduce_model(
 
     dfmodel_out = (
         dfmodel_out
-        .sort("mgiout")
         .group_by("mgiout", cs.starts_with("out_n_"))
         .agg(
             pl

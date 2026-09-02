@@ -899,7 +899,6 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         )
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
-        .with_columns(pl.col(pl.Int64).cast(pl.Int32))
     )
 
     if "ionstage" in linelist_lazy.collect_schema().names():
