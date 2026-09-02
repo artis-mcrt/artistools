@@ -645,7 +645,7 @@ def get_from_packets(
                     flux=pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
                     packetcount=pl.col("count"),
                 )
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True, maintain_order="left")
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
             )
@@ -703,7 +703,7 @@ def get_from_packets(
 
             dirbin_spectra[dirbin] = (
                 dirbin_spectra[dirbin]
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True, maintain_order="left")
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
                 .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))

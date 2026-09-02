@@ -834,7 +834,7 @@ def bin_and_sum(
     return (
         pl
         .LazyFrame({f"{bincol}_bin": range(nbins)}, schema={f"{bincol}_bin": pl.Int32})
-        .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
+        .join(wlbins, how="left", on=f"{bincol}_bin")
         # fill nulls with 0 for sum columns
         .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
         .with_columns(cs.by_name("count", require_all=False).fill_null(0))

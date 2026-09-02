@@ -215,7 +215,6 @@ def process_trajectory(
             ).select("#count", "time/s", "Qdot"),
             on="#count",
             how="left",
-            coalesce=True,
             maintain_order="left",
         )
         .rename({"#count": "nstep", "time/s": "timesec"})

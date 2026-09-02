@@ -546,7 +546,6 @@ def join_cell_modeldata(
         .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
-        coalesce=True,
         maintain_order="left",
     )
     dfmodel, modelmeta = at.inputmodel.get_modeldata(

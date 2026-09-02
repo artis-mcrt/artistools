@@ -164,7 +164,6 @@ def add_transition_columns(
             ),
             how="left",
             on="lower",
-            coalesce=True,
             maintain_order="left",
         )
         .join(
@@ -176,7 +175,6 @@ def add_transition_columns(
             ),
             how="left",
             on="upper",
-            coalesce=True,
             maintain_order="left",
         )
         .with_columns(epsilon_trans_ev=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")))
