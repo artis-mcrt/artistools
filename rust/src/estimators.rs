@@ -21,7 +21,7 @@ const ELSYMBOLS: [&str; 119] = [
     "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo",
 ];
 
-const ROMAN: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
+const ROMAN: [&str; 17] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI"];
 
 /// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
 fn token_pairs<'a>(tokens: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a str)> {
