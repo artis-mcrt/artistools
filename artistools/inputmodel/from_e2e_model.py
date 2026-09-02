@@ -650,7 +650,7 @@ def map_to_artis(
             # write "replaced" ejecta to seperate model files for plotting / consistency check
             # 1) 3D dynamical ejecta weighted but not scaled
             dyn_model = dyn_model.join(
-                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left"
+                dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left", maintain_order="left"
             ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
             at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
             dyn_modelmeta = {
@@ -688,7 +688,10 @@ def map_to_artis(
             dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
 
             dfmodel = dfmodel.join(
-                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]), on="inputcellid", how="left"
+                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]),
+                on="inputcellid",
+                how="left",
+                maintain_order="left",
             )
 
             dfmodel = dfmodel.with_columns([

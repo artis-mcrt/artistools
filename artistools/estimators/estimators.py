@@ -547,6 +547,7 @@ def join_cell_modeldata(
         on="timestep",
         how="left",
         coalesce=True,
+        maintain_order="left",
     )
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
         modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose
@@ -557,7 +558,9 @@ def join_cell_modeldata(
         for colname in dfmodel.collect_schema().names()
         if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
     })
-    return estimators.join(dfmodel, on="modelgridindex", how="inner", suffix="_initmodel").with_columns(
+    return estimators.join(
+        dfmodel, on="modelgridindex", how="inner", suffix="_initmodel", maintain_order="left"
+    ).with_columns(
         rho=pl.col("init_rho") * (modelmeta["t_model_init_days"] / pl.col("tmid_days")) ** 3,
         volume=pl.col("init_volume") * (pl.col("tmid_days") / modelmeta["t_model_init_days"]) ** 3,
         volume_prevtimestep=pl.col("init_volume")
@@ -740,7 +743,9 @@ def scan_artis_estimators(
             at
             .get_timesteps(modelpath)
             .select("timestep", "tmid_days", "twidth_days")
-            .join(at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross")
+            .join(
+                at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left"
+            )
         )
 
     return pldflazy
@@ -798,7 +803,7 @@ def get_averageexcitation(
     dfresolved = (
         dfpops
         .filter(pl.col("level") >= 0)
-        .join(dflevels, on="level", how="inner")
+        .join(dflevels, on="level", how="inner", maintain_order="left")
         .group_by(groupcols)
         .agg(energypopsum=(pl.col("energy_ev") * pl.col("n_NLTE")).sum(), levelnumber_sl=pl.col("level").max() + 1)
     )
@@ -810,8 +815,8 @@ def get_averageexcitation(
         .filter(pl.col("level") < 0)
         .group_by(groupcols)
         .agg(n_NLTE_sl=pl.col("n_NLTE").sum())
-        .join(dfresolved.select([*groupcols, "levelnumber_sl"]), on=groupcols, how="inner")
-        .join(dftexc, on=groupcols, how="inner")
+        .join(dfresolved.select([*groupcols, "levelnumber_sl"]), on=groupcols, how="inner", maintain_order="left")
+        .join(dftexc, on=groupcols, how="inner", maintain_order="left")
         .collect()
     )
 
@@ -821,9 +826,9 @@ def get_averageexcitation(
     # missing one cannot silently drop the superlevel term
     return (
         dfresolved
-        .join(dftexc.select(groupcols), on=groupcols, how="inner")
-        .join(dfionpopsum, on=groupcols, how="inner")
-        .join(dfsuperlevelenergy.lazy(), on=groupcols, how="left")
+        .join(dftexc.select(groupcols), on=groupcols, how="inner", maintain_order="left")
+        .join(dfionpopsum, on=groupcols, how="inner", maintain_order="left")
+        .join(dfsuperlevelenergy.lazy(), on=groupcols, how="left", maintain_order="left")
         .with_columns(
             averageexcitation=(pl.col("energypopsum") + pl.col("energypopsum_sl").fill_null(0.0)) / pl.col("ionpopsum")
         )
@@ -850,7 +855,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
         contributions.append(
             dfsuperlevel
             .filter(pl.col("levelnumber_sl") == levelnumber_sl)
-            .join(dflevels_above, how="cross")
+            .join(dflevels_above, how="cross", maintain_order="left")
             .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
             .group_by(groupcols)
             .agg(

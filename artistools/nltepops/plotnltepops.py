@@ -233,6 +233,7 @@ def print_top_radiative_decays(ion_data: dict[str, t.Any], dfpopthision: pl.Data
         left_on="upper",
         right_on="level",
         coalesce=True,
+        maintain_order="left",
     ).with_columns(
         emissionstrength=pl
         .when(pl.col("n_NLTE").is_not_null())

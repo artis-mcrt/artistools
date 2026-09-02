@@ -179,7 +179,7 @@ def read_modelfile_text(
                 .with_columns(pl.col("inputcellid").cast(pl.Int32))
             )
             assert len(dfmodel) == len(dfmodeloddlines)
-            dfmodel = dfmodel.join(dfmodeloddlines, on="inputcellid", how="left")
+            dfmodel = dfmodel.join(dfmodeloddlines, on="inputcellid", how="left", maintain_order="left")
 
         dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
@@ -458,7 +458,7 @@ def get_modeldata(
 
     if get_elemabundances:
         abundancedata = get_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
-        dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
+        dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
 
@@ -1250,6 +1250,7 @@ def dimension_reduce_model(
             pl.LazyFrame({"inputcellid": range(1, ncoordgridr * ncoordgridz + 1)}, schema={"inputcellid": pl.Int64}),
             on="inputcellid",
             how="right",
+            maintain_order="left",
         )
         .with_columns(
             rho=pl.lit(None).cast(pl.Float32),
@@ -1303,7 +1304,7 @@ def dimension_reduce_model(
             dfelabundances
             .lazy()
             .with_columns(pl.col("inputcellid").cast(pl.Int32))
-            .join(dfoutcell_inputcells_masses, on="inputcellid", how="left")
+            .join(dfoutcell_inputcells_masses, on="inputcellid", how="left", maintain_order="left")
             .drop("inputcellid")
             .group_by("out_inputcellid")
             .agg(
@@ -1324,7 +1325,7 @@ def dimension_reduce_model(
             .lazy()
             .with_columns(pl.col("cellindex").cast(pl.Int32))
             .rename({"cellindex": "inputcellid"})
-            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left", maintain_order="left")
             .drop("inputcellid")
             .group_by("out_inputcellid", "particleid")
             .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))

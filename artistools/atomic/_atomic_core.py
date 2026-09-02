@@ -165,6 +165,7 @@ def add_transition_columns(
             how="left",
             on="lower",
             coalesce=True,
+            maintain_order="left",
         )
         .join(
             dflevels.select(
@@ -176,6 +177,7 @@ def add_transition_columns(
             how="left",
             on="upper",
             coalesce=True,
+            maintain_order="left",
         )
         .with_columns(epsilon_trans_ev=(pl.col("upper_energy_ev") - pl.col("lower_energy_ev")))
     )
@@ -628,8 +630,8 @@ def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
     """
     return (
         lz
-        .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left")
-        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .join(get_ion_stage_roman_numeral_df().lazy(), on="ion_stage", how="left", maintain_order="left")
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left")
         .with_columns(ion_str=pl.col("elsymbol") + " " + pl.col("ion_stage_roman"))
         .drop("elsymbol", "ion_stage_roman")
     )
@@ -730,7 +732,7 @@ def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         pl
         .scan_csv(at.polars_source(filepath), separator=" ", has_header=True)
         .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
-        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left")
+        .join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left")
         .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
     ).with_columns(pl.col(pl.Int64).cast(pl.Int32))
 

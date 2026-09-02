@@ -655,7 +655,7 @@ def make_lightcurve_plot(
                             .group_by("pellet_nucindex")
                             .agg(pl.sum("e_rf").alias("e_rf_sum"))
                             .top_k(by="e_rf_sum", k=topnucs)
-                            .join(dfnuclides, on="pellet_nucindex", how="left")
+                            .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
                             .select(["e_rf_sum", "nucname", "pellet_nucindex"])
                             .collect()
                         )

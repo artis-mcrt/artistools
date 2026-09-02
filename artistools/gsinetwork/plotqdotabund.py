@@ -518,7 +518,12 @@ def get_dfcontribsparticledata(
         .lazy()
         .with_columns(modelgridindex=pl.col("cellindex") - 1)
         .filter(pl.col("frac_of_cellmass") > 0)
-    ).join(lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]), on="modelgridindex", how="inner")
+    ).join(
+        lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]),
+        on="modelgridindex",
+        how="inner",
+        maintain_order="left",
+    )
 
     allcontribparticleids = dfpartcontrib.select(pl.col("particleid").unique()).collect().to_series().to_list()
     list_particleids_getabund = (
@@ -545,7 +550,7 @@ def get_dfcontribsparticledata(
 
     allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
 
-    return dfpartcontrib.join(allparticledata, on="particleid", how="inner")
+    return dfpartcontrib.join(allparticledata, on="particleid", how="inner", maintain_order="left")
 
 
 def plot_qdot_abund_modelcells(

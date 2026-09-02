@@ -123,7 +123,9 @@ def plot_spherical(
             .drop_nulls()
             .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex"})
         )
-        dfpackets = dfpackets.join(dfestimators, on=["em_timestep", "em_modelgridindex"], how="left")
+        dfpackets = dfpackets.join(
+            dfestimators, on=["em_timestep", "em_modelgridindex"], how="left", maintain_order="left"
+        )
 
     if "temperature" in plotvars:
         aggs.append(((pl.col("TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
@@ -166,7 +168,7 @@ def plot_spherical(
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
             orient="col",
         )
-        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True)
+        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True, maintain_order="left")
         .fill_null(0)
         .sort(["costhetabin", "phibinmonotonicasc"])
     ).collect()

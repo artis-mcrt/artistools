@@ -216,6 +216,7 @@ def process_trajectory(
             on="#count",
             how="left",
             coalesce=True,
+            maintain_order="left",
         )
         .rename({"#count": "nstep", "time/s": "timesec"})
     )
@@ -284,7 +285,7 @@ def process_trajectory(
                 (pl.col("Z") + pl.col("N")).alias("A"),
                 (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
             ])
-            .join(nuc_data.lazy(), on=("Z", "A"), how="inner")
+            .join(nuc_data.lazy(), on=("Z", "A"), how="inner", maintain_order="left")
             .with_columns([(pl.col("num_nuc") / pl.col("tau[s]")).alias("N_dot")])
             .with_columns([
                 (pl.col("N_dot") * pl.col("Eneutrino[MeV]") * MEV_to_erg).alias("eps_nu"),

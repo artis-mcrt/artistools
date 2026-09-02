@@ -573,7 +573,9 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
             ).with_columns(em_log10nne=pl.col("em_nne").log10())
 
-            dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner")
+            dfpackets = dfpackets.join(
+                dfestimators, on=["em_timestep", em_mgicolumn], how="inner", maintain_order="left"
+            )
 
             # one collect gives all the time bins and features, then the loop filters the eager frame
             dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()
