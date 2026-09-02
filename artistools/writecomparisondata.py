@@ -175,7 +175,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
         .readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
-        .join(at.get_deposition(modelpath), on="timestep", how="inner", maintain_order="left")
+        .join(at.get_deposition(modelpath), on="timestep", how="inner")
         .filter(pl.col("timestep").is_in(list(selected_timesteps)))
         .sort("timestep")
         .select("timestep", "time_days", "luminosity_Lsun", "total_dep_Lsun")

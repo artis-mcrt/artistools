@@ -168,7 +168,7 @@ def plot_spherical(
             schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
             orient="col",
         )
-        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True, maintain_order="left")
+        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"], coalesce=True)
         .fill_null(0)
         .sort(["costhetabin", "phibinmonotonicasc"])
     ).collect()
