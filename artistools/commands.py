@@ -120,6 +120,14 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "other commands": ("completions", "getpath", "timesteps", "version"),
 })
 
+# "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
+# One spec gives every name of this command, thus no copy of its help text can drift
+DESCRIBEINPUTMODEL = CommandSpec(
+    "inputmodel.describeinputmodel",
+    helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
+    aliases=("describeinputmodel",),
+)
+
 subcommandtree: CommandTree = {
     "comparetogsinetwork": CommandSpec(
         "gsinetwork.plotqdotabund",
@@ -129,6 +137,8 @@ subcommandtree: CommandTree = {
     "completions": CommandSpec(
         "commands", funcname="setup_completions", helptext="Write a tab-completion script for a shell."
     ),
+    # the help lists this name under "inputmodel describe", thus the top level hides it
+    "describeinputmodel": dc.replace(DESCRIBEINPUTMODEL, aliases=(), hidden=True),
     "ejectaopacity": CommandSpec(
         "ejectaopacity",
         helptext="Compute the opacities of the ejecta.",
@@ -151,10 +161,7 @@ subcommandtree: CommandTree = {
         note="The data comes from the trajectories of a nucleosynthesis calculation.",
     ),
     "inputmodel": {
-        "describe": CommandSpec(
-            "inputmodel.describeinputmodel",
-            helptext="Describe an ARTIS input model, such as the mass, velocity structure, and abundances.",
-        ),
+        "describe": DESCRIBEINPUTMODEL,
         "energyfiles": CommandSpec(
             "inputmodel.energyinputfiles", helptext="Plot and inspect the ARTIS energy input files."
         ),
@@ -673,7 +680,20 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant
         ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
-        helptext = suggest_names(ambiguous.group(1), self.get_visible_flags()) if ambiguous is not None else ""
+        helptext = ""
+        if ambiguous is not None:
+            # argparse names the whole token, thus "-ti=300" carries its value. The flag alone
+            # matches a name and gives a suggestion
+            given = ambiguous.group(1).partition("=")[0]
+            # the user gave the start of a longer name, thus a flag that starts with it beats the
+            # closest name of difflib, which gave "-d" for "-dim" on a command that takes
+            # -dimensionreduce. addarg_collidingflags declares the names of the other commands,
+            # which get_visible_flags leaves out, thus the suggestion names a flag of this command
+            visible = self.get_visible_flags()
+            # the shortest names first, and three of them, as suggest_names gives. "-ti" on
+            # plotspectra starts 13 flags, and a line of every one says less than a line of three
+            starts = sorted(sorted(flag for flag in visible if flag.startswith(given)), key=len)
+            helptext = f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(given, visible)
 
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
@@ -683,6 +703,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 # long flag name of the tree, so that a command can declare the ones that collide with its own one-letter
 # flags and give a message. A test holds this table to the names that the tree gives.
 SINGLEDASHLONGFLAGS = frozenset({
+    "-abundtype",
     "-atomic_number",
     "-atomicdatabase",
     "-axis",
@@ -696,17 +717,23 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-colour_evolution",
     "-composition",
     "-coneangle",
+    "-coneshellspacingexponent",
     "-dashes",
     "-deltalambda",
     "-deltalogx",
     "-deltax",
+    "-dilution_factor",
+    "-dimensionreduce",
+    "-dimensions",
     "-dirbin",
     "-directions",
     "-dist",
     "-dist_mpc",
     "-distmpc",
     "-dlogx",
+    "-downsamplefactor",
     "-dpi",
+    "-dtextra_seconds",
     "-dx",
     "-elem",
     "-element",
@@ -728,14 +755,20 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-format",
     "-gaussian_sigma",
     "-gaussian_window",
+    "-gridfolderpath",
     "-groupby",
     "-hesmafile",
+    "-inputfolder",
+    "-inputpath",
+    "-interpolrescale",
     "-ion_stage",
     "-ion_stages",
     "-ionpoptype",
     "-ionstage",
+    "-iso",
     "-isomax",
     "-isomin",
+    "-kappa",
     "-label",
     "-labelfontsize",
     "-lambdamax",
@@ -748,33 +781,48 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-linelength",
     "-linestyle",
     "-linewidth",
+    "-localdynscale",
+    "-maxatomicnumber",
     "-maxlevel",
     "-maxpacketfiles",
     "-maxpacketsfiles",
     "-maxseriescount",
+    "-mergecells",
     "-mergerroot",
     "-mgi",
     "-modelgridindex",
     "-modelname",
     "-modelpath",
     "-modeltag",
+    "-modifysmoothinglength",
     "-nbins",
     "-ncolslegend",
+    "-ncoordgrid",
     "-ncosthetabins",
+    "-ngridrcyl",
+    "-ngridx",
+    "-ngridy",
+    "-ngridz",
     "-nnebound",
     "-nnefree",
     "-nphibins",
     "-npts",
     "-npz",
+    "-nshells",
     "-nsteps",
     "-nucdata",
     "-obsspec",
     "-opacity",
     "-opacityexclusions",
+    "-opdf",
     "-ostat",
     "-outputfile",
+    "-outputfolder",
+    "-outputgridsize",
     "-outputpath",
     "-pathtofiles",
+    "-pathtogriddata",
+    "-perturb3Dmodel",
     "-plot",
     "-plot_hesma_model",
     "-plotfile",
@@ -790,17 +838,27 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-refspeccolors",
     "-refspecfiles",
     "-refspecmarkers",
+    "-replacedyn",
+    "-replacethr",
+    "-rhoscale",
     "-scalefigwidth",
+    "-scalemass",
     "-scaletoreftime",
+    "-scalevelocity",
     "-selected_timesteps",
+    "-setgrid_fractionrmax",
     "-sigma_v",
+    "-snapshot",
+    "-sort",
     "-species",
     "-specpath",
     "-stokesparam",
     "-surface_count",
     "-surfaces3d",
+    "-targetmodeltime_days",
     "-tau-max",
     "-tdays",
+    "-temperature",
     "-time",
     "-timebins_tend",
     "-timebins_tstart",
@@ -818,21 +876,25 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-topnucs",
     "-trajectoryroot",
     "-trajroot",
+    "-trajthermofile",
     "-ts",
     "-vary",
     "-velocity",
     "-vgrid-lambdaranges",
     "-vgrid-tmax",
     "-vgrid-tmin",
+    "-vmax_on_c",
     "-vspec-tmax",
     "-vspec-tmin",
     "-wavelen",
     "-x_e",
+    "-xaxis",
     "-xbins",
     "-xmax",
     "-xmin",
     "-xunit",
     "-xunits",
+    "-yaxis",
     "-yemax",
     "-ymax",
     "-ymin",
@@ -850,13 +912,17 @@ SINGLEDASHLONGFLAGS_BYLETTER: Mapping[str, tuple[str, ...]] = MappingProxyType({
 
 
 def get_words_of_module(modulename: str) -> tuple[str, ...] | None:
-    """Return the words that name the subcommand of a module, or None when the tree holds no such module."""
+    """Return the words that name the subcommand of a module, or None when the tree holds no such module.
+
+    A hidden name is an alias of a visible one, thus the walk skips it. The usage text of
+    `python -m artistools.inputmodel.describeinputmodel` then gives the name that the help lists.
+    """
     modulename = modulename.removeprefix("artistools.")
 
     def walk(tree: CommandTree, prefix: tuple[str, ...]) -> tuple[str, ...] | None:
         for name, node in tree.items():
             if isinstance(node, CommandSpec):
-                if node.module == modulename:
+                if node.module == modulename and not node.hidden:
                     return (*prefix, name)
             elif (found := walk(node, (*prefix, name))) is not None:
                 return found
