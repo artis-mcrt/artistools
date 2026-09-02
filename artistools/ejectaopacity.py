@@ -32,7 +32,7 @@ def get_binned_opacities_ion(
 ) -> pl.LazyFrame:
     """Return one ion's Sobolev expansion opacity, summed into the given wavelength bins."""
     time_s = time_days * day_to_s
-    dfcelllevelpops = dflevels.join(dfcells, how="cross").with_columns(
+    dfcelllevelpops = dflevels.join(dfcells, how="cross", maintain_order="left").with_columns(
         nnlevel=pl.col("g")
         * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()
         / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum().over("modelgridindex"))
@@ -50,16 +50,18 @@ def get_binned_opacities_ion(
                 "lambda_angstroms_binindex"
             )
         )
-        .join(dfcells.select("modelgridindex", "rho"), how="cross")
+        .join(dfcells.select("modelgridindex", "rho"), how="cross", maintain_order="left")
         .join(
             dfcelllevelpops.select("modelgridindex", lower=pl.col("levelindex"), nnlevel_lower=pl.col("nnlevel")),
             on=("modelgridindex", "lower"),
             how="left",
+            maintain_order="left",
         )
         .join(
             dfcelllevelpops.select("modelgridindex", upper=pl.col("levelindex"), nnlevel_upper=pl.col("nnlevel")),
             on=("modelgridindex", "upper"),
             how="left",
+            maintain_order="left",
         )
         .with_columns(
             tau_sobolev=(pl.col("nnlevel_lower") * pl.col("B_lu") - pl.col("nnlevel_upper") * pl.col("B_ul"))
@@ -115,7 +117,7 @@ def get_expansion_opacities(
         .set_sorted("lambda_angstroms_binindex")
         .with_columns(lambda_angstroms_binlower=lambdamin + pl.col("lambda_angstroms_binindex") * deltalambda)
         .with_columns(lambda_angstroms_bin_mid=pl.col("lambda_angstroms_binlower") + (deltalambda / 2))
-        .join(dfestimators.select("modelgridindex", "Te", "mass_g").lazy(), how="cross")
+        .join(dfestimators.select("modelgridindex", "Te", "mass_g").lazy(), how="cross", maintain_order="left")
     )
 
     lambda_bin_edges = [lambdamin + i * deltalambda for i in range(numbins + 1)]
@@ -132,6 +134,7 @@ def get_expansion_opacities(
             ),
             on=("modelgridindex", "lambda_angstroms_binindex"),
             how="left",
+            maintain_order="left",
         )
 
     return dfbinnedopacities.select(

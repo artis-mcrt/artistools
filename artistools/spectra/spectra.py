@@ -490,7 +490,6 @@ def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) ->
         })
         .with_row_index("lambda_binindex")
         .with_columns(nu=(const.c_ang_per_s / pl.col("lambda_angstroms")))
-        .sort(["lambda_binindex", "lambda_angstroms"])
         .lazy()
     )
 
@@ -646,7 +645,7 @@ def get_from_packets(
                     flux=pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
                     packetcount=pl.col("count"),
                 )
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
             )
@@ -704,7 +703,7 @@ def get_from_packets(
 
             dirbin_spectra[dirbin] = (
                 dirbin_spectra[dirbin]
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", coalesce=True)
+                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
                 .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
                 .drop("flux")
                 .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
@@ -999,7 +998,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 
     stokes_params |= {
         f"{param}/I": stokes_params[param]
-        .join(stokes_params["I"], on="nu", how="left", suffix="_I")
+        .join(stokes_params["I"], on="nu", how="left", suffix="_I", maintain_order="left")
         .select(
             cs.by_name("nu"),
             *(
@@ -1466,7 +1465,10 @@ def get_flux_contributions_from_packets(
         # Select only the key column and the label column.
         # The nuclide table has more columns. Without this selection, each packet gets those columns.
         dfpackets = dfpackets.join(
-            emtypelabels.select(emtypecolumn, "emissiontype_str").collect(), on=emtypecolumn, how="left"
+            emtypelabels.select(emtypecolumn, "emissiontype_str").collect(),
+            on=emtypecolumn,
+            how="left",
+            maintain_order="left",
         ).drop(emtypecolumn)
 
         if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
@@ -1493,7 +1495,9 @@ def get_flux_contributions_from_packets(
             ),
         ])
 
-        dfpackets = dfpackets.join(abstypelabels.collect(), on="absorption_type", how="left").drop("absorption_type")
+        dfpackets = dfpackets.join(
+            abstypelabels.collect(), on="absorption_type", how="left", maintain_order="left"
+        ).drop("absorption_type")
 
     # The label column and the frequency column of each type of contribution.
     # When the code bins one type, it removes the columns of the other type.

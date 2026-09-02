@@ -175,7 +175,12 @@ def get_from_packets(
             )
             .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
             .rename({"count": "packetcount"})
-            .join(dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(), how="left", on="timestep")
+            .join(
+                dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(),
+                how="left",
+                on="timestep",
+                maintain_order="left",
+            )
             .with_columns(
                 luminosity_Lsun=(
                     pl.col("e_rf_sum")
@@ -202,6 +207,7 @@ def get_from_packets(
                     .drop("t_arrive_cmf_d_bin"),
                     how="left",
                     on="timestep",
+                    maintain_order="left",
                 )
                 .with_columns(
                     luminosity_cmf_Lsun=pl.col("e_cmf_sum")

@@ -300,6 +300,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
             has_header=False,
             comment_prefix="#",
             new_columns=column_names,
+            **at.extra_csv_columns_ignored(),
             infer_schema_length=20000,
             schema_overrides=dtype_overrides,
         )
@@ -352,6 +353,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         has_header=False,
         comment_prefix="#",
         new_columns=column_names,
+        **at.extra_csv_columns_ignored(),
         schema_overrides={
             "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
@@ -832,7 +834,7 @@ def bin_and_sum(
     return (
         pl
         .LazyFrame({f"{bincol}_bin": range(nbins)}, schema={f"{bincol}_bin": pl.Int32})
-        .join(wlbins, how="left", on=f"{bincol}_bin", coalesce=True)
+        .join(wlbins, how="left", on=f"{bincol}_bin")
         # fill nulls with 0 for sum columns
         .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
         .with_columns(cs.by_name("count", require_all=False).fill_null(0))

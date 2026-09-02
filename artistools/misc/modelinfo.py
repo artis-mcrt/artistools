@@ -17,6 +17,7 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
+from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import path_is_codecomparison
@@ -113,6 +114,7 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
         skip_rows=1,
         columns=[0],
         new_columns=["nu"],
+        **extra_csv_columns_ignored(),
     )
     return specdata["nu"].to_numpy()
 

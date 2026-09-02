@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import inspect
 import io
 import os
 import re
@@ -23,6 +24,15 @@ COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
 # polars can read these compressed formats directly from a path
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
+
+
+def extra_csv_columns_ignored() -> dict[str, t.Any]:
+    """Return the CSV reader arguments that drop the columns of a file that have no name.
+
+    polars 2 rejects a list of names that is shorter than the file, and polars 1 has no
+    `extra_columns` argument. The caller unpacks the dict into the call of the reader.
+    """
+    return {"extra_columns": "ignore"} if "extra_columns" in inspect.signature(pl.scan_csv).parameters else {}
 
 
 @t.overload
@@ -349,28 +359,23 @@ def read_wsv(
     with polars_error_note(filepath):
         normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
 
-    # polars projects by ascending column index and names the projected columns positionally, so
-    # translate a name-based projection of a headerless read into that form
-    projected_indices: list[int] | None = None
-    projected_new_columns = list(new_columns) if new_columns is not None else None
-    if columns is not None and new_columns is not None:
-        projected_indices = sorted(new_columns.index(col) for col in columns)
-        projected_new_columns = [new_columns[i] for i in projected_indices]
-
     def parse(infer_schema_length: int | None) -> pl.DataFrame:
         # this function runs again when the first schema turns out to be wrong, thus rewind the buffer
         normalised.seek(0)
 
-        return pl.read_csv(
+        # a lazy scan gets the name of every column, and the projection pushdown then parses only the
+        # requested columns. This works on polars 1 and polars 2, which differ in how read_csv
+        # matches a name list against a column selection
+        lzscan = pl.scan_csv(
             normalised,
             separator=" ",
             has_header=has_header,
-            new_columns=projected_new_columns,
-            columns=projected_indices if projected_indices is not None else (list(columns) if columns else None),
+            new_columns=list(new_columns) if new_columns is not None else None,
             schema_overrides=schema_overrides,
             infer_schema_length=infer_schema_length,
             null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
         )
+        return (lzscan.select(list(columns)) if columns is not None else lzscan).collect()
 
     def sample_missed_numeric_column(dfout: pl.DataFrame) -> bool:
         """Report a String column whose non-null values all parse as numbers: the sample saw only null tokens."""
@@ -402,10 +407,7 @@ def read_wsv(
         return parse(infer_schema_length=None)
 
     with polars_error_note(filepath):
-        dfout = parse_with_inference_fallback()
-
-    # restore the caller's requested column order, which index-based projection may have changed
-    return dfout.select(list(columns)) if columns is not None else dfout
+        return parse_with_inference_fallback()
 
 
 def firstexisting(

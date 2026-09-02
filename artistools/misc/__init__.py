@@ -69,6 +69,7 @@ from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_p
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc.fileio import combine_frames as combine_frames
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
+from artistools.misc.fileio import extra_csv_columns_ignored as extra_csv_columns_ignored
 from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none

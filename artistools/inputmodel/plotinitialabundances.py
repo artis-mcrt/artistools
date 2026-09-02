@@ -36,7 +36,7 @@ def make_plot(args: argparse.Namespace) -> None:
                 elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
                 A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
             )
-            .join(at.get_elsymbols_df(), on="elsymbol", how="left")
+            .join(at.get_elsymbols_df(), on="elsymbol", how="left", maintain_order="left")
             .rename({"atomic_number": "Z"})
             .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
             .collect()

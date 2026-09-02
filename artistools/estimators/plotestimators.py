@@ -176,7 +176,7 @@ def plot_data(
     # Calculate the average line and optionally, the min-max bounding area
     dflinepoints = (
         dfplotdata
-        .group_by("xvalue_binned", maintain_order=True)
+        .group_by("xvalue_binned")
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
             yvalue_binned_min=pl.col("yvalue").min(),
@@ -378,7 +378,7 @@ def plot_average_excitation(
 
         dfplotdata = (
             estimators
-            .join(dfavgexc, on=["timestep", "modelgridindex"], how="inner")
+            .join(dfavgexc, on=["timestep", "modelgridindex"], how="inner", maintain_order="left")
             .with_columns(celltsweight=weightcol * pl.col("deltavol_deltat"), yvalue=pl.col("averageexcitation"))
             .filter(pl.col("yvalue").is_not_nan() & pl.col("yvalue").is_not_null())
         )
@@ -923,7 +923,12 @@ def get_xlist(
                 pl.col("xvalue").cut(breaks=list(xbinedges[1:-1])).to_physical().cast(pl.Int32).alias("xbinindex")
             )
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
-            .join(pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"), on="xbinindex", how="left")
+            .join(
+                pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"),
+                on="xbinindex",
+                how="left",
+                maintain_order="left",
+            )
             .drop("xbinindex")
         )
     else:

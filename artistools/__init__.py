@@ -103,6 +103,7 @@ from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import check_averaging_angles as check_averaging_angles
 from artistools.misc import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc import exit_with_error as exit_with_error
+from artistools.misc import extra_csv_columns_ignored as extra_csv_columns_ignored
 from artistools.misc import find_reference_data_file as find_reference_data_file
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none

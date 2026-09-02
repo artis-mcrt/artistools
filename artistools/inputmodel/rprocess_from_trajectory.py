@@ -469,7 +469,7 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(dfnucabundances, how="left", on="inputcellid", coalesce=True).fill_null(0)
+    dfmodel = dfmodel.join(dfnucabundances, how="left", on="inputcellid", maintain_order="left").fill_null(0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, get_dfelemabund_from_dfmodel(dfmodel), dfcontribs

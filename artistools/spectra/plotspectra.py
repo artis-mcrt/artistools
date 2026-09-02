@@ -396,9 +396,7 @@ def plot_reference_spectrum(
     ).collect()
 
     if scale_to_peak:
-        specdata = specdata.with_columns(
-            y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak + offset
-        ).with_columns(y=pl.col("y_scaled"))
+        specdata = specdata.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak + offset)
     else:
         assert offset == 0
     ymax = specdata["y"].max()
@@ -610,7 +608,7 @@ def plot_artis_spectrum(
                 df_filter_minmax_bracketed(
                     atspectra.get_dfspectrum_x_y_with_units(
                         viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
-                    ).sort("x"),
+                    ),
                     colname="x",
                     minval=xmin,
                     maxval=xmax,
@@ -641,9 +639,7 @@ def plot_artis_spectrum(
             atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
             if scale_to_peak:
-                dfspectrum = dfspectrum.with_columns(
-                    y_scaled=pl.col("y") / pl.col("y").max() * scale_to_peak
-                ).with_columns(y=pl.col("y_scaled"))
+                dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
 
             if args.binflux:
                 new_lambda_angstroms = []
