@@ -852,7 +852,7 @@ def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
-    compression_level: int = 10,
+    compression_level: int = 13,
     replaces: tuple[int, int] | None = None,
 ) -> None:
     """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.

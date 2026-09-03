@@ -888,7 +888,6 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             pldf,
             parquetfile,
             metadata={"cacheversion": str(LINELIST_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
-            compression_level=8,
             replaces=outdatedparquet,
         )
         print(f"Wrote {parquetfile}")

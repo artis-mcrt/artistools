@@ -502,7 +502,6 @@ def get_packets_rankbatch_parquetfile(
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             },
-            compression_level=12,
             replaces=outdatedparquet,
         )
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")

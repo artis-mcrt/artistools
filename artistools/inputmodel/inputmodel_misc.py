@@ -412,7 +412,6 @@ def get_text_source_cached(
                 "textsource_mtime": str(textsource_mtime),
             }
             | extrametadata,
-            compression_level=8,
         )
         print("  Done.")
         del df
