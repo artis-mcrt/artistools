@@ -97,48 +97,73 @@ def add_lte_pops(
     ])
     dfpop = dfpop.join(dflte, on=["Z", "ion_stage", "level"], how="left", maintain_order="left")
 
-    for modelgridindex, timestep, Z, ion_stage in (
+    # a superlevel row (level -1) holds every level above the highest level of its ion in the cell. Its
+    # LTE population is the sum over those levels, and it takes a level number above every level
+    issuperlevel = pl.col("level") == -1
+    dfpop = dfpop.with_columns(
+        levelnumber_sl=pl.col("level").max().over("modelgridindex", "timestep", "Z", "ion_stage") + 1
+    )
+
+    superlevels = (
         dfpop
-        .filter(pl.col("level") == -1)
-        .select("modelgridindex", "timestep", "Z", "ion_stage")
+        .filter(issuperlevel)
+        .select("modelgridindex", "timestep", "Z", "ion_stage", "levelnumber_sl")
         .unique(maintain_order=True)
-        .iter_rows()
-    ):
-        maskion = (
-            (pl.col("modelgridindex") == modelgridindex)
-            & (pl.col("timestep") == timestep)
-            & (pl.col("Z") == Z)
-            & (pl.col("ion_stage") == ion_stage)
-        )
+    )
+    if superlevels.is_empty():
+        return dfpop.drop("levelnumber_sl")
 
-        maxlevel_ion = dfpop.filter(maskion)["level"].max()
-        assert isinstance(maxlevel_ion, int)
-        levelnumber_sl = maxlevel_ion + 1
+    superlevelpops_of_ion: dict[tuple[int, int, int], pl.DataFrame] = {}
+    for _modelgridindex, _timestep, Z, ion_stage, levelnumber_sl in superlevels.iter_rows():
+        if maxlevel >= 0 and levelnumber_sl > maxlevel:
+            continue
 
-        if maxlevel < 0 or levelnumber_sl <= maxlevel:
-            if not noprint:
-                print(f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber_sl}")
+        if not noprint:
+            print(f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber_sl}")
 
+        if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
             ionlevels = ionlevels_of_ion[Z, ion_stage]
-            superlevelpops = ionlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
-            dfpop = dfpop.with_columns(
-                pl
-                .when(maskion & (pl.col("level") == -1))
-                .then(superlevelpops[columnname].item())
-                .otherwise(pl.col(columnname))
-                .alias(columnname)
-                for columnname, _ in columntemperature_tuples
+            superlevelpops_of_ion[Z, ion_stage, levelnumber_sl] = (
+                ionlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
             )
 
-        dfpop = dfpop.with_columns(
-            pl
-            .when(maskion & (pl.col("level") == -1))
-            .then(levelnumber_sl + 2)
-            .otherwise(pl.col("level"))
-            .alias("level")
-        )
+    lte_columns = [columnname for columnname, _ in columntemperature_tuples]
+    superlevelschema = {
+        "Z": dfpop.schema["Z"],
+        "ion_stage": dfpop.schema["ion_stage"],
+        "levelnumber_sl": dfpop.schema["level"],
+        **{f"{columnname}_superlevel": pl.Float64 for columnname in lte_columns},
+    }
+    # the level limit can exclude every superlevel, thus the lookup can be empty
+    dfsuperlevelpops = pl.concat([
+        pl.DataFrame(schema=superlevelschema),
+        *(
+            superlevelpops.select(
+                pl.lit(Z, dtype=dfpop.schema["Z"]).alias("Z"),
+                pl.lit(ion_stage, dtype=dfpop.schema["ion_stage"]).alias("ion_stage"),
+                pl.lit(levelnumber_sl, dtype=dfpop.schema["level"]).alias("levelnumber_sl"),
+                pl.col(lte_columns).cast(pl.Float64).name.suffix("_superlevel"),
+            )
+            for (Z, ion_stage, levelnumber_sl), superlevelpops in superlevelpops_of_ion.items()
+        ),
+    ])
 
-    return dfpop
+    return (
+        dfpop
+        .join(dfsuperlevelpops, on=["Z", "ion_stage", "levelnumber_sl"], how="left", maintain_order="left")
+        .with_columns(
+            *[
+                pl
+                .when(issuperlevel & pl.col(f"{columnname}_superlevel").is_not_null())
+                .then(pl.col(f"{columnname}_superlevel"))
+                .otherwise(pl.col(columnname))
+                .alias(columnname)
+                for columnname in lte_columns
+            ],
+            level=pl.when(issuperlevel).then(pl.col("levelnumber_sl") + 2).otherwise(pl.col("level")),
+        )
+        .drop("levelnumber_sl", *(f"{columnname}_superlevel" for columnname in lte_columns))
+    )
 
 
 def read_files(

@@ -6,6 +6,7 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 import artistools as at
@@ -40,10 +41,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.inputpath)
 
-    pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
+    pldfmodel, modelmeta = at.inputmodel.get_modeldata(
+        modelpath, get_elemabundances=(args.abundtype == "elemental"), derived_cols=["rho"]
+    )
     t_model_init_days = modelmeta["t_model_init_days"]
 
-    dfmodel = pldfmodel.collect().with_columns(rho=pl.lit(10.0) ** pl.col("logrho"))
+    dfmodel = pldfmodel.collect()
 
     if args.abundtype == "nuclear":
         # nuclide abundances
@@ -83,18 +86,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     }
     from yaml import dump as yamldump
 
+    def format_scientific(colname: str) -> pl.Series:
+        """Format a column with four decimal digits in the scientific notation, e.g. 1.2345e-03."""
+        return pl.Series(colname, np.char.mod("%.4e", dfmodel[colname].cast(pl.Float64).to_numpy()))
+
+    dfout = pl.DataFrame([
+        dfmodel["vel_r_max_kmps"].cast(pl.Float64).alias("velocity"),
+        format_scientific("rho").alias("density"),
+        pl.repeat(str(temperature), dfmodel.height, dtype=pl.String, eager=True).alias("t_rad"),
+        pl.repeat(str(dilution_factor), dfmodel.height, dtype=pl.String, eager=True).alias("dilution_factor"),
+        *[format_scientific(f"X_{strnuc}").alias(strnuc) for strnuc in listspecies],
+    ])
+
     with outputfilepath.open("w", encoding="utf-8") as fileout:
         fileout.write("---\n")
         yamldump(dictmeta, fileout, sort_keys=False)
         fileout.write("---\n")
-        fileout.write(",".join(["velocity", "density", "t_rad", "dilution_factor", *listspecies]))
-        fileout.write("\n")
-
-        for cell in dfmodel.iter_rows(named=True):
-            abundlist = [f"{cell[f'X_{strnuc}']:.4e}" for strnuc in listspecies]
-            fileout.write(
-                f"{cell['vel_r_max_kmps']},{cell['rho']:.4e},{temperature},{dilution_factor},{','.join(abundlist)}\n"
-            )
+        fileout.flush()
+        dfout.write_csv(fileout, separator=",", quote_style="never")
 
     at.print_saved(outputfilepath)
 

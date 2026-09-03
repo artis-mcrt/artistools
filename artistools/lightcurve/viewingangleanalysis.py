@@ -41,19 +41,16 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     else:
         dirbins = [-1]
 
-    dirbin_definition: dict[int, str] = {}
+    dirbin_definition = at.get_dirbin_definitions(
+        modelpath,
+        dirbins,
+        vpkt_observers=bool(args.plotvspecpol),
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+        usedegrees=args.usedegrees,
+    )
 
-    if args.plotvspecpol:
-        dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
-    else:
-        dirbin_definition = at.get_dirbin_labels(
-            dirbins=dirbins,
-            modelpath=modelpath,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            usedegrees=args.usedegrees,
-        )
-
+    if not args.plotvspecpol:
         if args.average_over_phi_angle:
             for dirbin in dirbin_definition:
                 assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
@@ -202,12 +199,7 @@ def calculate_peak_time_mag_deltam15(
 
 
 def lightcurve_polyfit(
-    time: Sequence[float],
-    magnitude: npt.NDArray[np.floating],
-    args: argparse.Namespace,
-    deg: float = 10,
-    kernel_scale: float = 10,
-    lc_error: float = 0.01,
+    time: Sequence[float], magnitude: npt.NDArray[np.floating], args: argparse.Namespace
 ) -> tuple[t.Any, t.Any]:
     """Return a smooth fit to a band light curve, as (fitted magnitudes, times) in that order.
 
@@ -226,7 +218,7 @@ def lightcurve_polyfit(
             "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
             "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
         )
-        zfit = np.polyfit(x=time, y=magnitude, deg=deg)
+        zfit = np.polyfit(x=time, y=magnitude, deg=10)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
 
         # Taking line_min and line_max from the limits set for the lightcurve being plotted
@@ -236,7 +228,7 @@ def lightcurve_polyfit(
     else:
         from george import kernels
 
-        kernel = np.var(magnitude) * kernels.Matern32Kernel(kernel_scale)
+        kernel = np.var(magnitude) * kernels.Matern32Kernel(10)
         gp = george.GP(kernel)
 
         # Define the objective function (negative log-likelihood in this case).
@@ -251,7 +243,7 @@ def lightcurve_polyfit(
             return -gp.grad_log_likelihood(magnitude, quiet=True)
 
         # You need to compute the GP once before starting the optimization.
-        gp.compute(time, yerr=np.abs(magnitude) * lc_error)  # pyright: ignore[reportArgumentType]
+        gp.compute(time, yerr=np.abs(magnitude) * 0.01)  # pyright: ignore[reportArgumentType]
 
         # Run the optimization routine.
         p0 = gp.get_parameter_vector()
@@ -544,6 +536,9 @@ def peakmag_risetime_declinerate_init(
 
     modelnames = []  # save names of models
 
+    # a band light curve comes from the spectra, and the bolometric light curve from light_curve.out
+    plottinglist: list[str] = list(args.filter) if args.filter else ["lightcurve"]
+
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         # one entry per model, matching the per-model style lists and the one data file written per model
@@ -571,10 +566,6 @@ def peakmag_risetime_declinerate_init(
                 lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
                     modelpath, args, dirbin, modelnumber=modelnumber
                 )
-                plottinglist = args.filter
-
-            if not args.filter:
-                plottinglist = ["lightcurve"]
 
             for band_name in plottinglist:
                 if args.filter:
@@ -615,6 +606,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     axis = axesgrid[0][0]
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
+    nphibins = at.get_viewingdirection_phibincount()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs: dict[str, t.Any] = {}
@@ -627,23 +619,21 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time_days"].to_list())
     print(timetoplot)
 
+    # the colorbar shows one angle, thus the x axis shows the other one
+    xlabels = phi_viewing_angle_bins if args.colorbarcostheta else costheta_viewing_angle_bins
     for angleindex, lcdata in lcdataframes.items():
-        angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, scaledmap, plotkwargs, args
+            angleindex, scaledmap, plotkwargs, args
         )
 
         # readfile derives the erg/s column, so it does not have to be converted here again
         brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").item(0, 0)
-        if args.colorbarphi:
-            xvalues = int(angleindex / 10)
-            xlabels = costheta_viewing_angle_bins
-        if args.colorbarcostheta:
-            xvalues = angleindex % 10
-            xlabels = phi_viewing_angle_bins
+        costhetaindex, phiindex = divmod(angleindex, nphibins)
+        xvalues = phiindex if args.colorbarcostheta else costhetaindex
 
         axis.scatter(xvalues, brightness, **plotkwargs)
-        axis.set_xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha="right")
+
+    axis.set_xticks(ticks=np.arange(len(xlabels)), labels=xlabels, rotation=30, ha="right")
 
     at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, fig, axis)
 

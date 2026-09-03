@@ -5,9 +5,11 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
+import contextlib
 import math
 import string
 import typing as t
+from collections.abc import Callable
 from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
@@ -159,23 +161,26 @@ def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool)
     return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
 
 
-def plot_data(
-    dfplotdata: pl.DataFrame | pl.LazyFrame,
-    ax: mplax.Axes,
-    label: str | None,
-    args: argparse.Namespace,
-    startfromzero: bool = False,
-    **plotkwargs: t.Any,
-) -> None:
-    """Plot a series with an average line and optionally, a min-max bounding area.
+class SeriesPlan(t.NamedTuple):
+    """One series of a subplot before the collection of its data.
 
-    These columns are required: xvalue, xvalue_binned, yvalue, celltsweight (the weight for averaging, e.g., cell volume times timestep duration).
+    dfseries holds these columns: xvalue, xvalue_binned, yvalue, and celltsweight (the weight of the
+    average, e.g. the cell volume times the timestep duration).
     """
-    dfplotdata = dfplotdata.lazy()
 
-    # Calculate the average line and optionally, the min-max bounding area
+    label: str | None
+    dfseries: pl.LazyFrame
+    plotkwargs: dict[str, t.Any]
+
+
+# the series of one plot item, and the step that runs after the draw of those series
+type SubplotItem = tuple[list[SeriesPlan], Callable[[], None] | None]
+
+
+def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
+    """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
-        dfplotdata
+        dfseries
         .group_by("xvalue_binned")
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
@@ -192,64 +197,105 @@ def plot_data(
             pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
         )
 
-    # collect once and index the DataFrame, rather than re-running this aggregation for every column read below
-    dflinepointsdf = dflinepoints.collect()
+    return dflinepoints
 
+
+def draw_series(
+    dflinepoints: pl.DataFrame,
+    dfpoints: pl.DataFrame | None,
+    ax: mplax.Axes,
+    label: str | None,
+    args: argparse.Namespace,
+    startfromzero: bool = False,
+    **plotkwargs: t.Any,
+) -> None:
+    """Draw the average line of a series, with markers at the points or a min-max area.
+
+    dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
+    and --markers draws them.
+    """
     # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
     # the bin, thus reach the outer edges and leave no gap
-    xbinned = dflinepointsdf.get_column("xvalue_binned")
+    xbinned = dflinepoints.get_column("xvalue_binned")
     if args.xbins and xbinned.len() > 1:
         halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
-        dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[-1] + halfwidth, atstart=False)
+        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
         # startfromzero takes the line further to the left, thus that end comes below
         if not startfromzero:
-            dflinepointsdf = repeat_endpoint(dflinepointsdf, xbinned[0] - halfwidth, atstart=True)
+            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
 
     if startfromzero:
-        dflinepointsdf = repeat_endpoint(dflinepointsdf, 0.0, atstart=True)
+        dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
 
-    xvalues_binned = dflinepointsdf.get_column("xvalue_binned")
-    yvalues_binned = dflinepointsdf.get_column("yvalue_binned")
+    xvalues_binned = dflinepoints.get_column("xvalue_binned")
+    yvalues_binned = dflinepoints.get_column("yvalue_binned")
 
     (plotobj,) = ax.plot(xvalues_binned, yvalues_binned, label=label, **plotkwargs)
     color = plotobj.get_color()
 
     if args.markers:
+        assert dfpoints is not None
         plotkwargs_markers: dict[str, t.Any] = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
             "markersize": 5,
             "color": adjust_lightness(color, 1.5),
-            # "alpha": 0.4,
             "markeredgewidth": 0,
             "zorder": -1,
         }
         plotkwargs_markers.pop("dashes", None)
         plotkwargs_markers.pop("label", None)
-        dfplotdatadf = dfplotdata.select("xvalue", "yvalue").collect()
-        if dfplotdatadf.height > 10000:
+        if dfpoints.height > 10000:
             plotkwargs_markers["rasterized"] = True
-        # plot the markers first
-        ax.plot(dfplotdatadf.get_column("xvalue"), dfplotdatadf.get_column("yvalue"), **plotkwargs_markers)
+        ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), **plotkwargs_markers)
 
     else:
-        yvalues_binned_min = dflinepointsdf.get_column("yvalue_binned_min")
-        yvalues_binned_max = dflinepointsdf.get_column("yvalue_binned_max")
-        plotobj = ax.fill_between(
+        yvalues_binned_min = dflinepoints.get_column("yvalue_binned_min")
+        yvalues_binned_max = dflinepoints.get_column("yvalue_binned_max")
+        ax.fill_between(
             xvalues_binned, yvalues_binned_min, yvalues_binned_max, alpha=0.2, color=color, linewidth=0, zorder=-2
         )
 
 
-def plot_init_abundances(
-    ax: mplax.Axes,
-    specieslist: list[str],
-    estimators: pl.LazyFrame,
-    seriestype: str,
-    startfromzero: bool,
-    args: argparse.Namespace,
-    **plotkwargs: t.Any,
+def draw_subplot_items(
+    ax: mplax.Axes, items: Sequence[SubplotItem], args: argparse.Namespace, startfromzero: bool
 ) -> None:
-    """Plot the initial abundance or mass of each species in specieslist."""
+    """Collect the data of every series of the subplot in one pass, then draw the items in order.
+
+    Each series scans the estimators, thus one collect_all shares the scan between every series
+    of every item.
+    """
+    plans = [plan for series, _ in items for plan in series]
+    lazyframes = [get_line_points(plan.dfseries, args) for plan in plans]
+    if args.markers:
+        lazyframes += [plan.dfseries.select("xvalue", "yvalue") for plan in plans]
+
+    frames = pl.collect_all(lazyframes)
+    dflinepoints_of_plan = frames[: len(plans)]
+    dfpoints_of_plan = frames[len(plans) :] if args.markers else [None] * len(plans)
+
+    planindex = 0
+    for series, finish in items:
+        for plan in series:
+            draw_series(
+                dflinepoints_of_plan[planindex],
+                dfpoints_of_plan[planindex],
+                ax=ax,
+                label=plan.label,
+                args=args,
+                startfromzero=startfromzero,
+                **plan.plotkwargs,
+            )
+            planindex += 1
+
+        if finish is not None:
+            finish()
+
+
+def plot_init_abundances(
+    ax: mplax.Axes, specieslist: list[str], estimators: pl.LazyFrame, seriestype: str, **plotkwargs: t.Any
+) -> list[SeriesPlan]:
+    """Return the series of the initial abundance or mass of each species in specieslist."""
     if seriestype == "initmasses":
         estimators = estimators.with_columns(
             (pl.col(massfraccol) * pl.col("mass_g") / Msun_to_g).alias(
@@ -266,6 +312,7 @@ def plot_init_abundances(
         ax.set_ylabel("Initial mass fraction")
         valuetype = "init_X_"
 
+    plans = []
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
         elsymbol = splitvariablename[0].strip(string.digits)
@@ -293,26 +340,25 @@ def plot_init_abundances(
         plotkwargs.setdefault("linewidth", 1.5)
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
+        # the first species sets the line style of every species after it
         if "linestyle" not in plotkwargs:
             plotkwargs["linestyle"] = linestyle
 
-        plot_data(series, ax=ax, args=args, startfromzero=startfromzero, label=linelabel, **plotkwargs)
+        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs.copy()))
+
+    return plans
 
 
 def plot_average_ionisation(
-    ax: mplax.Axes,
-    params: Sequence[str],
-    estimators: pl.LazyFrame,
-    startfromzero: bool,
-    args: argparse.Namespace,
-    **plotkwargs: t.Any,
-) -> None:
-    """Plot the mean ion charge of each element in params."""
+    ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
+) -> list[SeriesPlan]:
+    """Return the series of the mean ion charge of each element in params."""
     ax.set_ylabel("Average ion charge")
 
     # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
     colnames = estimators.collect_schema().names()
 
+    plans = []
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
         atomic_number = at.get_atomic_number(paramvalue)
@@ -334,33 +380,22 @@ def plot_average_ionisation(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
-        plot_data(
-            dfplotdata=dfplotdata,
-            ax=ax,
-            args=args,
-            startfromzero=startfromzero,
-            label=paramvalue,
-            color=color,
-            **plotkwargs,
-        )
+        plans.append(SeriesPlan(label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs))
+
+    return plans
 
 
 def plot_average_excitation(
-    ax: mplax.Axes,
-    params: Sequence[str],
-    estimators: pl.LazyFrame,
-    modelpath: str | Path,
-    startfromzero: bool,
-    args: argparse.Namespace,
-    **plotkwargs: t.Any,
-) -> None:
-    """Plot the population-weighted mean level excitation energy of each requested ion."""
+    ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, modelpath: str | Path, **plotkwargs: t.Any
+) -> list[SeriesPlan]:
+    """Return the series of the population-weighted mean level excitation energy of each requested ion."""
     ax.set_ylabel("Average excitation energy [eV]")
 
     estimatorcolumns = estimators.collect_schema().names()
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
+    plans = []
     for paramvalue in params:
         print(f"  plotting averageexcitation {paramvalue}")
         iontuple = at.get_ion_tuple(paramvalue)
@@ -383,15 +418,15 @@ def plot_average_excitation(
             .filter(pl.col("yvalue").is_not_nan() & pl.col("yvalue").is_not_null())
         )
 
-        plot_data(
-            dfplotdata=dfplotdata,
-            ax=ax,
-            args=args,
-            startfromzero=startfromzero,
-            label=paramvalue,
-            color=get_elemcolor(atomic_number=atomic_number),
-            **plotkwargs,
+        plans.append(
+            SeriesPlan(
+                label=paramvalue,
+                dfseries=dfplotdata,
+                plotkwargs={"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs,
+            )
         )
+
+    return plans
 
 
 def plot_levelpop(
@@ -402,11 +437,9 @@ def plot_levelpop(
     timestepslist: Sequence[int],
     mgilist: Sequence[int | Sequence[int]],
     modelpath: str | Path,
-    startfromzero: bool,
-    args: argparse.Namespace,
     **plotkwargs: t.Any,
-) -> None:
-    """Plot the population of each level in params, either directly or per unit velocity."""
+) -> list[SeriesPlan]:
+    """Return the series of the population of each level in params, directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
     elif seriestype == "levelpopulation":
@@ -427,6 +460,7 @@ def plot_levelpop(
     # read_files is uncached, so read every rank's nlte output once rather than once per param
     dfnltepops_allions = at.nltepops.read_files(modelpath)
 
+    plans = []
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
@@ -474,16 +508,12 @@ def plot_levelpop(
             else:
                 ylist.append(valuesum / tdeltasum)
 
-        plot_data(
-            pl.DataFrame({"xvalue": xlist, "yvalue": ylist}, orient="col").with_columns(
-                xvalue_binned=pl.col("xvalue"), celltsweight=pl.lit(1.0)
-            ),
-            ax=ax,
-            args=args,
-            startfromzero=startfromzero,
-            label=label,
-            **plotkwargs,
+        dfseries = pl.LazyFrame({"xvalue": xlist, "yvalue": ylist}, orient="col").with_columns(
+            xvalue_binned=pl.col("xvalue"), celltsweight=pl.lit(1.0)
         )
+        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy()))
+
+    return plans
 
 
 # The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name
@@ -496,30 +526,36 @@ FIGURE_ARGUMENTS = ("xmin", "xmax")
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
-    """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]."""
-    # interpret bare integers as atomic numbers
-    if ionstr.isdigit():
-        atomic_number = int(ionstr)
-        return (atomic_number, "ALL")
+    """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')].
 
-    if ionstr in at.get_elsymbolset():
-        return (at.get_atomic_number(ionstr), "ALL")
+    An element gives "ALL". An isotope or a family of nuclides keeps its name, e.g. Fe56, Ni_56, or
+    Ni_stable, because the column name of the estimators holds that name. Every other name goes to
+    get_ion_tuple.
+    """
+    elsymbols = at.get_elsymbolset()
+    if ionstr not in elsymbols and not ionstr.isdigit():
+        stem = ionstr.rstrip("-0123456789")
+        if stem in elsymbols:
+            return (at.get_atomic_number(stem), ionstr)
 
-    # a space separates the element symbol from the ionstage, e.g. Fe II
-    if " " in ionstr:
-        return (at.get_atomic_number(ionstr.split(" ", maxsplit=1)[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
+        elsymbol, _, suffix = ionstr.partition("_")
+        if suffix and elsymbol in elsymbols and at.decode_roman_numeral(suffix) < 0:
+            return (at.get_atomic_number(elsymbol), ionstr)
 
-    # for element symbol with a mass number after it, e.g. Fe56
-    if ionstr.rstrip("-0123456789") in at.get_elsymbolset():
-        atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
-        return (atomic_number, ionstr)
+    # get_ion_tuple strips an X_, nnelement_, or nnion_ prefix. Such a prefix names a column and not
+    # an ion, thus a name that holds one goes to the fallback below and the caller then rejects it
+    if not ionstr.startswith(("X_", "nnelement_", "nnion_")):
+        with contextlib.suppress(ValueError):
+            return get_element_or_ion_tuple(ionstr)
 
-    # for element and ionstage without a space, e.g. FeII
-    if (compaction := at.atomic.split_compact_ion_name(ionstr)) is not None:
-        return compaction
+    # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
+    return (at.get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
 
-    atomic_number = at.get_atomic_number(ionstr.split("_", maxsplit=1)[0])
-    return (atomic_number, ionstr)
+
+def get_element_or_ion_tuple(ionstr: str) -> tuple[int, str | int]:
+    """Return the atomic number and the ion stage of a name that get_ion_tuple reads, or "ALL" for an element."""
+    iontuple = at.get_ion_tuple(ionstr)
+    return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
 
 
 def is_valid_ion(ionstr: str) -> bool:
@@ -651,17 +687,14 @@ def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -
 
 def plot_multi_ion_series(
     ax: mplax.Axes,
-    startfromzero: bool,
     seriestype: str,
     ionlist: Sequence[str],
     estimators: pl.LazyFrame,
     modelpath: str | Path,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-) -> None:
-    """Plot an ion-specific property, e.g., populations."""
-    plotted_something = False
-
+) -> SubplotItem:
+    """Return the series of an ion-specific property, e.g. populations."""
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
     iontuplelist.sort()
     print(f"Subplot with ions: {iontuplelist}")
@@ -684,9 +717,10 @@ def plot_multi_ion_series(
 
     except FileNotFoundError:
         print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
+        estimatorcolumns = estimators.collect_schema().names()
         for atomic_number, ion_stage in iontuplelist:
             ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-            if f"nnion_{ionstr}" not in estimators.collect_schema().names():
+            if f"nnion_{ionstr}" not in estimatorcolumns:
                 missingions.add((atomic_number, ion_stage))
 
     if missingions:
@@ -733,8 +767,8 @@ def plot_multi_ion_series(
             )
         )
 
-    for seriesindex, (iontuple, dfseries) in enumerate(zip(iontuplelist, pl.collect_all(lazyframes), strict=True)):
-        atomic_number, ion_stage = iontuple
+    plans = []
+    for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
@@ -768,17 +802,11 @@ def plot_multi_ion_series(
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
 
-        plot_data(
-            dfseries,
-            linewidth=linewidth,
-            label=plotlabel,
-            ax=ax,
-            args=args,
-            startfromzero=startfromzero,
-            color=color,
-            **plotkwargs,
+        plans.append(
+            SeriesPlan(
+                label=plotlabel, dfseries=dfseries, plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs
+            )
         )
-        plotted_something = True
 
     if seriestype == "populations":
         ylabel = POPTYPE_YLABELS.get(args.poptype)
@@ -789,27 +817,29 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
 
-    if plotted_something and ax.get_yscale() == "log":
+    def make_space_for_legend() -> None:
+        """Clip the bottom of a log axis to ten decades below the top, and lift the top for the legend."""
+        if ax.get_yscale() != "log":
+            return
         ymin, ymax = ax.get_ylim()
         ymin = max(ymin, ymax / 1e10)
         ax.set_ylim(bottom=ymin)
-        # make space for the legend
         new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
         if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
             ax.set_ylim(top=new_ymax)
 
+    return plans, make_space_for_legend if plans else None
+
 
 def plot_series(
     ax: mplax.Axes,
-    startfromzero: bool,
     variable: str | pl.Expr,
     showlegend: bool,
     estimators: pl.LazyFrame,
-    args: argparse.Namespace,
     nounits: bool = False,
     **plotkwargs: t.Any,
-) -> None:
-    """Plot something like Te or TR."""
+) -> list[SeriesPlan]:
+    """Return the series of an estimator variable such as Te or TR."""
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
@@ -841,7 +871,7 @@ def plot_series(
     plotkwargs.setdefault("linewidth", 1.5)
 
     print(f"  plotting {variablename}")
-    plot_data(series, ax=ax, label=linelabel, args=args, startfromzero=startfromzero, **plotkwargs)
+    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs)]
 
 
 def get_xlist(
@@ -1044,21 +1074,25 @@ def plot_subplot(
         else:
             remaining_plotitems.append(plotitem)
 
+    # each plot item gives its series before the draw, thus one collect_all reads the estimators one
+    # time for the whole subplot. The draw keeps the order of the items and of their series
+    items: list[SubplotItem] = []
     for plotitem in remaining_plotitems:
         if isinstance(plotitem, str | pl.Expr):
             variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
-            plot_series(
-                ax=ax,
-                startfromzero=startfromzero,
-                variable=plotitem,
-                showlegend=showlegend,
-                estimators=estimators,
-                args=args,
-                nounits=sameylabel,
-                **plotkwargs,
-            )
+            items.append((
+                plot_series(
+                    ax=ax,
+                    variable=plotitem,
+                    showlegend=showlegend,
+                    estimators=estimators,
+                    nounits=sameylabel,
+                    **plotkwargs,
+                ),
+                None,
+            ))
             if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
@@ -1067,36 +1101,21 @@ def plot_subplot(
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
-                plot_init_abundances(
-                    ax=ax,
-                    specieslist=params,
-                    estimators=estimators,
-                    seriestype=seriestype,
-                    startfromzero=startfromzero,
-                    args=args,
-                    **plotkwargs,
-                )
+                items.append((
+                    plot_init_abundances(
+                        ax=ax, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
+                    ),
+                    None,
+                ))
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                plot_levelpop(
-                    ax,
-                    xlist,
-                    seriestype,
-                    params,
-                    timestepslist,
-                    mgilist,
-                    modelpath,
-                    startfromzero=startfromzero,
-                    args=args,
-                )
+                items.append((plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath), None))
 
             elif seriestype == "averageionisation":
-                plot_average_ionisation(ax, params, estimators, startfromzero=startfromzero, args=args, **plotkwargs)
+                items.append((plot_average_ionisation(ax, params, estimators, **plotkwargs), None))
 
             elif seriestype == "averageexcitation":
-                plot_average_excitation(
-                    ax, params, estimators, modelpath, startfromzero=startfromzero, args=args, **plotkwargs
-                )
+                items.append((plot_average_excitation(ax, params, estimators, modelpath, **plotkwargs), None))
 
             else:
                 seriestype, ionlist = plotitem
@@ -1107,16 +1126,19 @@ def plot_subplot(
                 if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
                     legend_ncols = 2
 
-                plot_multi_ion_series(
-                    ax=ax,
-                    startfromzero=startfromzero,
-                    seriestype=seriestype,
-                    ionlist=ionlist,
-                    estimators=estimators,
-                    modelpath=modelpath,
-                    args=args,
-                    **plotkwargs,
+                items.append(
+                    plot_multi_ion_series(
+                        ax=ax,
+                        seriestype=seriestype,
+                        ionlist=ionlist,
+                        estimators=estimators,
+                        modelpath=modelpath,
+                        args=args,
+                        **plotkwargs,
+                    )
                 )
+
+    draw_subplot_items(ax, items, args, startfromzero)
 
     # Apply the requested limits now that the data has set the range of the axis. A fixed limit of the
     # plot list, e.g. the rho floor of the default list, suits one range of models. A limit outside the
@@ -1220,12 +1242,15 @@ def make_figure(
             strtimestep = (
                 f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
             )
-            dftimesteps = at.get_timesteps(modelpath)
-            timelow_days = (
-                dftimesteps.filter(pl.col("timestep") == timestepmin).select(pl.col("tstart_days")).collect().item()
-            )
-            timehigh_days = (
-                dftimesteps.filter(pl.col("timestep") == timestepmax).select(pl.col("tend_days")).collect().item()
+            timelow_days, timehigh_days = (
+                at
+                .get_timesteps(modelpath)
+                .select(
+                    pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
+                    pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
+                )
+                .collect()
+                .row(0)
             )
             strtimedays = f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
@@ -1417,12 +1442,18 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
+    modelpath = at.normalize_path_list(args.modelpath)[0]
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
-        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
+        dfmodel = at.inputmodel.get_modeldata(modelpath)[0].collect()
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around {args.axis} axis")
-        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, logprint=print)
+        # the cone selection reads the mid-point positions, which are derived columns
+        lzmodel = at.inputmodel.get_modeldata(
+            modelpath, derived_cols=at.inputmodel.slice1dfromconein3dmodel.CONE_DERIVED_COLS
+        )[0]
+        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, lzmodel, logprint=print)
     else:
         msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
         raise ValueError(msg)
@@ -1434,13 +1465,15 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
-    estimators = at.estimators.scan_estimators(modelpath=modelpath, classicartis=classicartis)
-    print(
-        f"Cells with data: {estimators.select(pl.col('modelgridindex').unique().sort()).collect().to_series().to_list()}"
+    cells, timesteps = (
+        at.estimators
+        .scan_estimators(modelpath=modelpath, classicartis=classicartis)
+        .select(pl.col("modelgridindex").unique().sort().implode(), pl.col("timestep").unique().sort().implode())
+        .collect()
+        .row(0)
     )
-    print(
-        f"Timesteps with data: {estimators.select(pl.col('timestep').unique().sort()).collect().to_series().to_list()}"
-    )
+    print(f"Cells with data: {cells}")
+    print(f"Timesteps with data: {timesteps}")
 
 
 SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"

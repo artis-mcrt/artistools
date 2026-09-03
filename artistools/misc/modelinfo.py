@@ -137,7 +137,7 @@ def shorten_middle(text: str, maxlen: int | None) -> str:
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
+def get_model_name(path: Path | str) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -156,7 +156,7 @@ def get_model_name(path: Path | str, maxlen: int | None = 50) -> str:
             return f.readline().strip()
     except FileNotFoundError:
         foldername = Path(modelpath).name
-        return shorten_middle(foldername, maxlen)
+        return shorten_middle(foldername, maxlen=50)
 
 
 @lru_cache(maxsize=8)

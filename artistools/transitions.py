@@ -210,14 +210,6 @@ def make_plot(
             fontsize="small",
         )
 
-    # at.spectra.plot_reference_spectrum(
-    #     'dop_dered_SN2013aa_20140208_fc_final.txt', axes[-1], xmin, xmax, True,
-    #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
-    #
-    # at.spectra.plot_reference_spectrum(
-    #     '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax,
-    #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
-
     axes[-1].set_xlabel(r"Wavelength ($\AA$)")
 
     for axis in axes:
@@ -233,12 +225,10 @@ def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
 
 
 def add_upper_lte_pop(
-    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str | None = None
+    dftransitions: pl.DataFrame, T_exc: float, ionpop: float, ltepartfunc: float, columnname: str
 ) -> pl.DataFrame:
     """Add a column of upper level populations in LTE at T_exc."""
     scalefactor = ionpop / ltepartfunc
-    if columnname is None:
-        columnname = f"upper_pop_lte_{T_exc:.0f}K"
 
     return dftransitions.with_columns(
         (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B_ev_per_K / T_exc).exp()).alias(
@@ -479,7 +469,7 @@ def get_ion_spectra(
     The plot marks the departure coefficient of the Fe II 7155 line and of the Ni II 7378 line, thus
     this function gives back both.
     """
-    yvalues = np.zeros((len(conditions.temperature_list) + 1, len(ionlist), len(xvalues)))
+    yvalues = np.zeros((len(conditions.temperature_list), len(ionlist), len(xvalues)))
     depcoeffs: dict[IonTuple, float] = {}
 
     iterdict: Iterable[Mapping[str, t.Any]] = (

@@ -69,40 +69,34 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     modelname = at.get_model_name(modelpath)
     angles = [0, 1, 2, 3, 4]
     vpkt_config = at.get_vpkt_config(modelpath)
-    angle_names = []
+    angle_names = [rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}" for dirbin in angles]
 
-    for dirbin in angles:
-        angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
-        print(rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}")
-        vspecdata = at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
-
-        timearray = vspecdata.columns[1:]
-        vspecdata = (
-            vspecdata
-            .sort("nu", descending=True)
-            .with_columns(lambda_angstroms=at.constants.c_ang_per_s / pl.col("nu"))
-            .with_columns(
-                # scale to 10 pc with the factor (1 Mpc / 10 pc) ** 2
-                pl.col(time) * pl.col("nu") / pl.col("lambda_angstroms") * 100000.0**2
-                for time in timearray
-            )
-            .select(pl.col("lambda_angstroms").alias("0"), *timearray)
-        )
-
-        outfilename = f"{modelname}_vspec_res.dat"
-        # create the file for the first direction bin, then append the others
-        with (outpath / outfilename).open("w" if dirbin == 0 else "a", encoding="utf-8") as fout:
-            vspecdata.write_csv(fout, separator=" ")
-
-    with (outpath / outfilename).open("r+") as f:  # add comment to start of file
-        content = f.read()
-        f.seek(0, 0)
-        f.write(
+    with (outpath / f"{modelname}_vspec_res.dat").open("w", encoding="utf-8") as fout:
+        fout.write(
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
             " containing spectra time is repeated at the beginning of each observer angle. Column 0 gives wavelength."
             " \n# Spectra are at a distance of 10 pc."
-            "\n" + content
+            "\n"
         )
+
+        for dirbin, angle_name in zip(angles, angle_names, strict=True):
+            print(angle_name)
+            vspecdata = at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
+
+            timearray = vspecdata.columns[1:]
+            vspecdata = (
+                vspecdata
+                .sort("nu", descending=True)
+                .with_columns(lambda_angstroms=at.constants.c_ang_per_s / pl.col("nu"))
+                .with_columns(
+                    # scale to 10 pc with the factor (1 Mpc / 10 pc) ** 2
+                    pl.col(time) * pl.col("nu") / pl.col("lambda_angstroms") * 100000.0**2
+                    for time in timearray
+                )
+                .select(pl.col("lambda_angstroms").alias("0"), *timearray)
+            )
+
+            vspecdata.write_csv(fout, separator=" ")
 
 
 def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:
@@ -135,7 +129,7 @@ def make_hesma_peakmag_dm15_dm40(
     outdata = {
         "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
         "dm15": dm15data["dm15"],
-        "angle_bin": np.arange(0, 100),
+        "angle_bin": np.arange(at.get_viewingdirectionbincount()),
     }
     if dm40:
         outdata["dm40"] = dm40data["dm40"]
@@ -204,8 +198,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def require(value: t.Any, argname: str, action: str) -> t.Any:
     """Return value, or exit with a message naming the argument the action needs."""
     if value is None:
-        print(f"ERROR: {action} requires {argname}")
-        raise SystemExit(1)
+        at.exit_with_error(f"{action} requires {argname}")
 
     return value
 

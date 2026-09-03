@@ -377,12 +377,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")
-    with summarypath.open("r", encoding="utf-8") as f:
-        if not f.readline().startswith("#"):
-            msg = "ERROR: No header found in summary-all.dat. Please check the file format."
-            raise ValueError(msg)
+    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True)
+    if "Ye" not in traj_summ_data.collect_schema().names():
+        msg = f"{summarypath} has no Ye column. The first line must be a header line that starts with #."
+        raise ValueError(msg)
 
-    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True).filter(
+    traj_summ_data = traj_summ_data.filter(
         pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins)
     )
 
@@ -437,20 +437,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             labelfull = ej_names[i]
             label = ej_names[i]
 
-        decay_powers = {
+        selected_traj_id_set = set(selected_traj_ids)
+        decay_powers: dict[str, npt.NDArray[np.floating]] = {
             k: sum(
-                trajdata[k]
-                for traj_id, trajdata in zip(traj_ids, alltraj_decay_powers, strict=True)
-                if traj_id in selected_traj_ids
+                (
+                    trajdata[k]
+                    for traj_id, trajdata in zip(traj_ids, alltraj_decay_powers, strict=True)
+                    if traj_id in selected_traj_id_set
+                ),
+                start=np.zeros_like(arr_t_day),
             )
             for k in alltraj_decay_powers[0]
             if k != "timedays"
         }
         decay_powers["timedays"] = np.array(arr_t_day)
 
-        assert isinstance(decay_powers["abundweighted_gamma"], np.ndarray)
-        assert isinstance(decay_powers["abundweighted_elec"], np.ndarray)
-        assert isinstance(decay_powers["abundweighted_nu"], np.ndarray)
         decay_powers["abundweighted_gammanuelec"] = (
             decay_powers["abundweighted_gamma"] + decay_powers["abundweighted_nu"] + decay_powers["abundweighted_elec"]
         )
@@ -462,56 +463,66 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             setparquetpath = parquet_dir / f"decay_powers_{labelfull}.parquet"
             at.write_parquet_atomic(traj_set_df, setparquetpath, replaces=at.get_file_identity(setparquetpath))
 
-        fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.913)
-        axes = axesgrid[:, 0]
-        ax0 = axes[0]
-        ax0.axhline(y=0.45, color=ARTIS_colors[2], linestyle="dotted", label=r"Barnes+16 $\gamma$")
-        ax0.axhline(y=0.20, color=ARTIS_colors[0], linestyle="dotted", label=r"Barnes+16 $e^{-}$")
-        ax0.axhline(y=0.35, color=ARTIS_colors[1], linestyle="dotted", label=r"Barnes+16 $\nu$")
-        ax0.plot(
-            arr_t_day,
-            decay_powers["abundweighted_gamma"] / decay_powers["abundweighted_gammanuelec"],
-            color=ARTIS_colors[2],
-            linestyle="-",
-            label=f"Traj {labelfull} gamma",
+        plot_decay_powers(
+            args,
+            decay_powers,
+            labelfull,
+            outfilepath=args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf",
         )
-        ax0.plot(
-            arr_t_day,
-            decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
-            color=ARTIS_colors[0],
-            linestyle="-",
-            label=rf"Traj {labelfull} $e^{{-}}$",
-        )
-        ax0.plot(
-            arr_t_day,
-            decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
-            color=ARTIS_colors[1],
-            linestyle="-",
-            label=rf"Traj {labelfull} $\nu$",
-        )
-        ax0.set_ylim(0.15, 0.55)
-        ax0.set_ylabel("energy release rate / Qdot")
-        ax1 = axes[1]
-        ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
-        ax1.plot(
-            arr_t_day,
-            decay_powers["abundweighted_gammanuelec"],
-            linestyle="-",
-            linewidth=2,
-            label=f"Traj {labelfull} abund -> beta + gamma + nu",
-        )
-        ax1.plot(
-            arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta"
-        )
-        ax1.set_ylabel("Energy release rate [erg/s]")
-        ax1.set_yscale("log")
-        for ax in axes:
-            set_legend(ax, args)
-            ax.set_xscale("log")
-        axes[-1].set_xlabel("Time [days]")
 
-        outfilepath = args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf"
-        save_figure(fig, outfilepath)
+
+def plot_decay_powers(
+    args: argparse.Namespace, decay_powers: dict[str, npt.NDArray[np.floating]], labelfull: str, outfilepath: Path
+) -> None:
+    """Plot the split of the decay power into gamma rays, electrons, and neutrinos, and the total rate."""
+    arr_t_day = decay_powers["timedays"]
+    fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.913)
+    axes = axesgrid[:, 0]
+    ax0 = axes[0]
+    ax0.axhline(y=0.45, color=ARTIS_colors[2], linestyle="dotted", label=r"Barnes+16 $\gamma$")
+    ax0.axhline(y=0.20, color=ARTIS_colors[0], linestyle="dotted", label=r"Barnes+16 $e^{-}$")
+    ax0.axhline(y=0.35, color=ARTIS_colors[1], linestyle="dotted", label=r"Barnes+16 $\nu$")
+    ax0.plot(
+        arr_t_day,
+        decay_powers["abundweighted_gamma"] / decay_powers["abundweighted_gammanuelec"],
+        color=ARTIS_colors[2],
+        linestyle="-",
+        label=f"Traj {labelfull} gamma",
+    )
+    ax0.plot(
+        arr_t_day,
+        decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
+        color=ARTIS_colors[0],
+        linestyle="-",
+        label=rf"Traj {labelfull} $e^{{-}}$",
+    )
+    ax0.plot(
+        arr_t_day,
+        decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
+        color=ARTIS_colors[1],
+        linestyle="-",
+        label=rf"Traj {labelfull} $\nu$",
+    )
+    ax0.set_ylim(0.15, 0.55)
+    ax0.set_ylabel("energy release rate / Qdot")
+    ax1 = axes[1]
+    ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
+    ax1.plot(
+        arr_t_day,
+        decay_powers["abundweighted_gammanuelec"],
+        linestyle="-",
+        linewidth=2,
+        label=f"Traj {labelfull} abund -> beta + gamma + nu",
+    )
+    ax1.plot(arr_t_day, decay_powers["abundweighted_Qdot"], linestyle="-", label=f"Traj {labelfull} abund -> Qdot_beta")
+    ax1.set_ylabel("Energy release rate [erg/s]")
+    ax1.set_yscale("log")
+    for ax in axes:
+        set_legend(ax, args)
+        ax.set_xscale("log")
+    axes[-1].set_xlabel("Time [days]")
+
+    save_figure(fig, outfilepath)
 
 
 if __name__ == "__main__":

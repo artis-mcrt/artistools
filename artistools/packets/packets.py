@@ -122,34 +122,18 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
-def add_derived_columns_lazy(
-    dfpackets: pl.LazyFrame | pl.DataFrame,
-    modelmeta: dict[str, t.Any] | None = None,
-    dfmodel: pl.DataFrame | pl.LazyFrame | None = None,
-    modelpath: Path | str | None = None,
-) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    if isinstance(dfmodel, pl.DataFrame):
-        dfmodel = dfmodel.lazy()
-
-    if dfmodel is None:
-        assert modelpath is not None, "modelpath must be provided if dfmodel is not provided"
-        dfmodel, modelmeta_read = at.get_modeldata(modelpath=modelpath)
-        if modelmeta is None:
-            modelmeta = modelmeta_read
-
-    dfpackets = dfpackets.lazy()
-
-    if modelpath is not None:
-        timebins = [tstart * day_to_s for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-            at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
-        ]
-        dfpackets = dfpackets.with_columns(
-            (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep")
-        )
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
+    timebins = [tstart * day_to_s for tstart in at.get_timestep_times(modelpath, loc="start")] + [
+        at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
+    ]
+    dfpackets = dfpackets.lazy().with_columns(
+        (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep")
+    )
 
     if "trueem_posx" in dfpackets.collect_schema().names():
         dfpackets = dfpackets.with_columns(
@@ -172,9 +156,6 @@ def add_derived_columns_lazy(
             / pl.col("em_time")
         ),
     )
-
-    if modelmeta is None:
-        return dfpackets
 
     if modelmeta["dimensions"] > 1:
         t_model_s = modelmeta["t_model_init_days"] * day_to_s
@@ -206,8 +187,6 @@ def add_derived_columns_lazy(
             )
 
     elif modelmeta["dimensions"] == 1:
-        assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
-
         velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
 
         def velocity_to_mgi(velcol: str) -> pl.Expr:
@@ -502,7 +481,6 @@ def get_packets_rankbatch_parquetfile(
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             },
-            compression_level=12,
             replaces=outdatedparquet,
         )
         print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
@@ -511,7 +489,7 @@ def get_packets_rankbatch_parquetfile(
 
 
 def get_packets_batch_parquet_paths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False, virtual: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, virtual: bool = False
 ) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = at.get_nprocs(modelpath)
@@ -527,12 +505,11 @@ def get_packets_batch_parquet_paths(
         msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1] + 1}"
         raise ValueError(msg)
 
-    if not printwarningsonly:
-        if maxpacketfiles is not None and nprocs > maxpacketfiles:
-            nprocs_read = mpirank_groups[-1][1][-1] + 1
-            print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
-        else:
-            print(f"Reading packets from {nprocs} ranks")
+    if maxpacketfiles is not None and nprocs > maxpacketfiles:
+        nprocs_read = mpirank_groups[-1][1][-1] + 1
+        print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
+    else:
+        print(f"Reading packets from {nprocs} ranks")
 
     parquetpacketsfiles = [
         get_packets_rankbatch_parquetfile(
@@ -585,7 +562,8 @@ def get_packets(
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
     # a cache file from an old artistools names the Stokes columns stokes1/2/3, where stokes1 holds the
-    # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U.
+    # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U. Such a cache is
+    # accepted without a version check when the run has no packet text files any more
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
         {"originated_from_positron": "originated_from_particlenotgamma", "stokes2": "stokes_q", "stokes3": "stokes_u"},
         strict=False,
@@ -795,7 +773,6 @@ def bin_and_sum(
     bins: Sequence[float | int],
     sumcols: list[str] | None = None,
     getcounts: bool = False,
-    otheraggs: pl.Expr | list[pl.Expr] | None = None,
 ) -> pl.LazyFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
@@ -821,12 +798,6 @@ def bin_and_sum(
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
-
-    if otheraggs is None:
-        otheraggs = []
-    elif isinstance(otheraggs, pl.Expr):
-        otheraggs = [otheraggs]
-    aggs.extend(otheraggs)
 
     wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs)
 

@@ -5,7 +5,11 @@ import argparse
 import typing as t
 from collections.abc import Sequence
 
+import matplotlib.axes as mplax
+import numpy as np
+import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s
@@ -49,6 +53,101 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
 
 
+PROFILE_COLUMNS = ("modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "vel_r_max_kmps", "mass_g", "Ye")
+
+
+def get_enclosed_mass(dfmodel: pl.DataFrame) -> tuple[list[float], list[float]]:
+    """Return the velocity [c] and the enclosed mass [Msun] at each outer cell velocity, from zero to c."""
+    dfsorted = dfmodel.sort("vel_r_mid").with_columns(enclosed_mass_g=pl.col("mass_g").cum_sum())
+    vuppers = dfsorted.select(pl.col("vel_r_max").unique().sort()).to_series()
+
+    # the enclosed mass at vupper is the cumulative sum at the last cell with vel_r_mid <= vupper
+    cellcount_below = np.searchsorted(dfsorted["vel_r_mid"].to_numpy(), vuppers.to_numpy(), side="right")
+    enclosed_mass = np.concatenate(([0.0], dfsorted["enclosed_mass_g"].to_numpy()))[cellcount_below] / Msun_to_g
+    total_mass_msun = float(dfsorted["mass_g"].sum()) / Msun_to_g
+
+    return [0.0, *(vuppers / C_cm_per_s).to_list(), 1.0], [0.0, *enclosed_mass.tolist(), total_mass_msun]
+
+
+def get_binned_profile(
+    dfmodel: pl.DataFrame, vupperscoarse: Sequence[float], plotye: bool
+) -> tuple[list[float], list[float], list[float]]:
+    """Return the step-plot velocities [c], dM/dv [Msun/c], and the mass-weighted Ye of each velocity bin."""
+    binedges = np.array([0.0, *vupperscoarse])
+    assert np.all(np.diff(binedges) > 0)
+    nbins = len(vupperscoarse)
+
+    binindex = np.searchsorted(binedges, dfmodel["vel_r_mid"].to_numpy(), side="right") - 1
+    dfbinned = (
+        dfmodel
+        .with_columns(binindex=pl.Series(binindex, dtype=pl.Int64))
+        .filter(pl.col("binindex").is_between(0, nbins - 1))
+        .group_by("binindex")
+        .agg(mass_g=pl.col("mass_g").sum(), ye_mass_g=(pl.col("Ye").dot(pl.col("mass_g")) if plotye else pl.lit(0.0)))
+        .join(pl.DataFrame({"binindex": range(nbins)}, schema={"binindex": pl.Int64}), on="binindex", how="right")
+        .sort("binindex")
+        .fill_null(0.0)
+        .with_columns(
+            dmass_on_dbeta=pl.col("mass_g") / Msun_to_g / (pl.Series(np.diff(binedges)) / C_cm_per_s),
+            ye=pl.col("ye_mass_g") / pl.col("mass_g"),
+        )
+    )
+
+    # each bin gives two points, so that the profile is a step plot
+    binned_xvals = np.repeat(binedges, 2)[1:-1] / C_cm_per_s
+    binned_massvals = np.repeat(dfbinned["dmass_on_dbeta"].to_numpy(), 2)
+    binned_yevals = np.repeat(dfbinned["ye"].to_numpy(), 2) if plotye else np.array([])
+
+    return binned_xvals.tolist(), binned_massvals.tolist(), binned_yevals.tolist()
+
+
+def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None) -> list[float]:
+    """Return the upper velocities [cm/s] of the bins for the dM/dv profile."""
+    if nbins:
+        return [(i + 1) * (C_cm_per_s / nbins) for i in range(nbins)]
+
+    if "vel_r_max_kmps" in dfmodel.columns:
+        # 1D spherical has a radial velocity specified
+        return dfmodel.select(pl.col("vel_r_max").unique().sort()).to_series().to_list()
+
+    # a 2D or 3D model has a variable spacing in the radial velocity, thus the largest step sets the bin size
+    xmin, xmax, xdeltamax = dfmodel.select(
+        pl.col("vel_r_mid").min(), pl.col("vel_r_mid").max(), pl.col("vel_r_mid").sort().diff().max()
+    ).row(0)
+    ncoarsevelbins = int((xmax - xmin) / xdeltamax)
+    print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
+    return [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
+
+
+def plot_density_profiles(args: argparse.Namespace, axes: npt.NDArray[np.object_] | Sequence[mplax.Axes]) -> float:
+    """Plot the enclosed mass, dM/dv, and Ye profile of each model, and return the largest vmax [c]."""
+    max_vmax_on_c = float("-inf")
+    for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
+        print(f"Plotting {label}")
+        lzdfmodel, modelmeta = at.get_modeldata(
+            modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
+        )
+
+        vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
+        max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
+
+        dfmodel = lzdfmodel.select(cs.by_name(*PROFILE_COLUMNS, require_all=False)).collect()
+
+        enclosed_xvals, enclosed_yvals = get_enclosed_mass(dfmodel)
+        axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
+
+        vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins)
+        plotye = args.plotye and "Ye" in dfmodel.columns
+        binned_xvals, binned_massvals, binned_yevals = get_binned_profile(dfmodel, vupperscoarse, plotye)
+
+        # close the mass profile with a zero-valued step out to the edge of the plot
+        axes[1].plot([*binned_xvals, binned_xvals[-1], 1.0], [*binned_massvals, 0.0, 0.0], label=label, color=color)
+        if plotye:
+            axes[2].plot(binned_xvals, binned_yevals, label=label, color=color)
+
+    return max_vmax_on_c
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radial density profile of an ARTIS model."""
     args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -64,70 +163,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for index, modelpath in enumerate(args.modelpath)
     ]
 
-    max_vmax_on_c = float("-inf")
-    for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
-        print(f"Plotting {label}")
-        dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"])
-
-        vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
-        max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
-
-        dfmodel = dfmodel.sort(by="vel_r_mid")
-
-        cols = ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
-        if "Ye" in dfmodel.collect_schema().names():
-            cols.append("Ye")
-
-        dfmodelcollect = dfmodel.select(cols).collect()
-
-        vuppers = dfmodelcollect.select(pl.col("vel_r_max").unique().sort()).to_series()
-        enclosed_xvals = [0.0, *(vuppers / C_cm_per_s).to_list(), 1.0]
-        enclosed_yvals = [0.0] + [
-            float(dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum()) / Msun_to_g
-            for vupper in vuppers
-        ]
-        enclosed_yvals.append(float(dfmodelcollect["mass_g"].sum()) / Msun_to_g)
-        axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
-
-        if "vel_r_max_kmps" in dfmodel.collect_schema().names():
-            # 1D spherical has a radial velocity specified
-            vupperscoarse = vuppers.to_list()
-        else:
-            # 2D cylindrical or 3D Cartesian will have variable spacing in v_rad
-            # so use the largest difference to set the bin size
-            xmin = dfmodelcollect.select(pl.col("vel_r_mid").min()).item()
-            # if we want to include the corners, then use this
-            xmax = dfmodelcollect.select(pl.col("vel_r_mid").max()).item()
-            # to exclude the corners:
-            xdeltamax = dfmodelcollect.select(pl.col("vel_r_mid").sort().diff().max()).item()
-            ncoarsevelbins = int((xmax - xmin) / xdeltamax)
-            print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
-            vupperscoarse = [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
-
-        if args.nbins:
-            vupperscoarse = [(i + 1) * (C_cm_per_s / args.nbins) for i in range(args.nbins)]
-
-        plotye = args.plotye and "Ye" in dfmodelcollect.columns
-        binned_xvals: list[float] = []
-        binned_massvals: list[float] = []
-        binned_yevals: list[float] = []
-        for vlower, vupper in zip([0.0, *vupperscoarse[:-1]], vupperscoarse, strict=True):
-            assert vlower < vupper
-            dfvelbin = dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))
-            binned_xvals.extend((vlower / C_cm_per_s, vupper / C_cm_per_s))
-
-            delta_beta = (vupper - vlower) / C_cm_per_s
-            dmass_on_dbeta = float(dfvelbin["mass_g"].sum()) / Msun_to_g / delta_beta
-            binned_massvals.extend((dmass_on_dbeta, dmass_on_dbeta))
-
-            if plotye:
-                ye = dfvelbin.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).item()
-                binned_yevals.extend((ye, ye))
-
-        # close the mass profile with a zero-valued step out to the edge of the plot
-        axes[1].plot([*binned_xvals, binned_xvals[-1], 1.0], [*binned_massvals, 0.0, 0.0], label=label, color=color)
-        if plotye:
-            axes[2].plot(binned_xvals, binned_yevals, label=label, color=color)
+    max_vmax_on_c = plot_density_profiles(args, axes)
 
     axes[0].set_xlim(left=0.0 if args.xmin is None else args.xmin)
     axes[0].set_xlim(right=max_vmax_on_c if args.xmax is None else args.xmax)
@@ -142,9 +178,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
-    outfilepath = args.outputfile
-
-    save_figure(fig, outfilepath, args=args)
+    save_figure(fig, args.outputfile, args=args)
 
 
 if __name__ == "__main__":

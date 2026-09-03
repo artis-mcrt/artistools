@@ -4,6 +4,7 @@ import argparse
 import math
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import cache
 
@@ -13,6 +14,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
+import polars as pl
 
 from artistools.commands import get_path
 from artistools.misc import print_saved
@@ -622,28 +624,22 @@ def save_figure(
     outpath: "Path | str",
     *,
     args: argparse.Namespace | None = None,
-    show: bool = False,
-    openfile: bool = False,
     isframe: bool = False,
     **savefig_kwargs: t.Any,
 ) -> None:
     """Save the figure to outpath, report the path, and close the figure.
 
-    A caller passes args, and the --show and --open flags of the command then apply. With show, the
-    figure opens in a window first, thus a resize there reaches the saved file. With openfile, the
-    saved file opens in its default application, thus --open needs no copied command.
+    A caller passes args, and the --show and --open flags of the command then apply. With --show, the
+    figure opens in a window first, thus a resize there reaches the saved file. With --open, the
+    saved file opens in its default application.
 
     isframe says that this figure is one part of a product that combine_frames makes, e.g. a frame of a
     gif. Such a figure does not open on its own, because the product opens in its place, and it takes no
     line of its own, because a merge takes the frames away and that line would name a file that went.
     --show still opens each figure, because the user asked to see them.
     """
-    if args is not None:
-        show = show or getattr(args, "show", False)
-        openfile = openfile or getattr(args, "open", False)
-
-    if isframe:
-        openfile = False
+    show = args is not None and getattr(args, "show", False)
+    openfile = args is not None and not isframe and getattr(args, "open", False)
 
     if show:
         plt.show()
@@ -693,6 +689,42 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
         )
     else:
         ax.set_title(title)
+
+
+def print_dirbin_summary(dirbin: int, definition: str, dfseries: "pl.DataFrame") -> None:
+    """Print the direction bin, its definition, and the packet count when dfseries has a packetcount column."""
+    print(f"  direction {dirbin:4d}  {definition}", end="")
+    if "packetcount" in dfseries.columns:
+        npkts_selected = dfseries.select(pl.col("packetcount").sum()).item()
+        print(f"\t({npkts_selected:.2e} packets)")
+    else:
+        print()
+
+
+def label_dirbin_series(
+    dirbin: int,
+    dirbins: Sequence[int],
+    dirbin_definitions: Mapping[int, str],
+    linelabel: str | None,
+    linelabel_is_custom: bool,
+    plotkwargs: dict[str, t.Any],
+) -> str | None:
+    """Return the legend label of one direction bin series.
+
+    The function also clears the -color entry of each bin after the first one. One -color entry serves
+    the first bin, and the other bins take a colour each from the cycle. A bin
+    that is not the spherical average names itself in the label, unless the user gave a label for that
+    one bin.
+    """
+    if dirbin != dirbins[0]:
+        plotkwargs["color"] = None
+
+    if dirbin != -1 and (len(dirbins) > 1 or not linelabel_is_custom):
+        # the caller gives a label for the series, thus a bin can name itself after it
+        assert linelabel is not None
+        return f"{linelabel} {dirbin_definitions[dirbin]}"
+
+    return linelabel
 
 
 def get_next_color(ax: mplax.Axes) -> str:

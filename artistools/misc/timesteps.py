@@ -387,6 +387,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
+@lru_cache(maxsize=16)
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)

@@ -139,3 +139,30 @@ def test_average_vspecpol_files(tmp_path: Path) -> None:
         averaged = np.loadtxt(averagedpath)
         source = np.loadtxt(modeldirs[0] / f"vspecpol_total-{specindex}.out")
         assert np.allclose(averaged, source, rtol=1e-6)
+
+
+def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
+    """--makevspecpol sums the flux of every rank and keeps the time header and the frequency column.
+
+    Each rank file holds one table for each observer. Two ranks with the same data give a total of
+    twice the flux.
+    """
+    sourcedir = at.get_path("testdata") / "vspecpolmodel"
+    shutil.copy(sourcedir / "vpkt.txt", tmp_path / "vpkt.txt")
+    # get_nprocs reads the rank count from line 22 of input.txt
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+
+    nobservers = 10
+    ranktext = "".join((sourcedir / f"vspecpol_total-{specindex}.out").read_text() for specindex in range(nobservers))
+    for mpirank in range(2):
+        (tmp_path / f"vspecpol_{mpirank:04d}.out").write_text(ranktext, encoding="utf-8")
+
+    at.spectra.make_virtual_spectra_summed_file(tmp_path)
+
+    for specindex in range(nobservers):
+        source = np.loadtxt(sourcedir / f"vspecpol_total-{specindex}.out")
+        total = np.loadtxt(tmp_path / f"vspecpol_total-{specindex}.out")
+        assert total.shape == source.shape
+        assert np.array_equal(total[0], source[0]), "the time header must not be summed"
+        assert np.array_equal(total[1:, 0], source[1:, 0]), "the frequency column must not be summed"
+        assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12)

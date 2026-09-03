@@ -6,6 +6,7 @@ import math
 import typing as t
 from collections import Counter
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -83,6 +84,32 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindices: Sequence[int]
 
 
+def get_timebins(
+    modelpath: Path | str, arr_tstart: Sequence[float] | None, arr_tend: Sequence[float] | None
+) -> tuple[Sequence[float], Sequence[float], npt.NDArray[np.floating]]:
+    """Return the start, the end, and the mid time in days of each time bin.
+
+    A bin that covers one timestep of the model takes the mid time of that timestep, which is
+    logarithmic. A bin that the caller gives covers no single timestep, thus it takes the mean of
+    its own two edges.
+    """
+    arr_tstart_model = at.get_timestep_times(modelpath, loc="start")
+    arr_tend_model = at.get_timestep_times(modelpath, loc="end")
+    if arr_tstart is None:
+        arr_tstart = arr_tstart_model
+    if arr_tend is None:
+        arr_tend = arr_tend_model
+
+    ismodeltimesteps = list(arr_tstart) == arr_tstart_model and list(arr_tend) == arr_tend_model
+    arr_tmid = (
+        np.array(at.get_timestep_times(modelpath, loc="mid"))
+        if ismodeltimesteps
+        else (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    )
+
+    return arr_tstart, arr_tend, arr_tmid
+
+
 def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
@@ -95,13 +122,8 @@ def get_line_luminosities_from_packets(
 
     The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
     """
-    if arr_tstart is None:
-        arr_tstart = at.get_timestep_times(modelpath, loc="start")
-    if arr_tend is None:
-        arr_tend = at.get_timestep_times(modelpath, loc="end")
-
+    arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
@@ -143,12 +165,7 @@ def get_line_luminosities_from_pops(
     arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
-    if arr_tstart is None:
-        arr_tstart = at.get_timestep_times(modelpath, loc="start")
-    if arr_tend is None:
-        arr_tend = at.get_timestep_times(modelpath, loc="end")
-
-    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
     modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
 
@@ -158,83 +175,127 @@ def get_line_luminosities_from_pops(
     # read_files is uncached, so read every rank's nlte output once rather than once per feature
     dfnltepops_allions = at.nltepops.read_files(modelpath)
 
+    # the shell velocities do not change with time, thus the volume of a shell scales with t^3
+    v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
+    v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
+    shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
+
+    timesteps = [at.get_timestep_of_timedays(modelpath, float(timedays)) for timedays in arr_tmid]
+    dftimes = pl.DataFrame({
+        "timeindex": range(len(arr_tmid)),
+        "timestep": timesteps,
+        "t_sec_cubed": [(timedays * day_to_s) ** 3 for timedays in arr_tmid],
+    })
+
     dictlcdata = {"time": arr_tmid}
     for feature in emfeatures:
-        lumdata = np.zeros_like(arr_tmid, dtype=float)
-
-        dfnltepops = dfnltepops_allions.filter(
-            (pl.col("Z") == feature.atomic_number)
-            & (pl.col("ion_stage") == feature.ion_stage)
-            & pl.col("level").is_in(feature.upperlevelindices)
+        # a duplicated key keeps its first row
+        dfnltepops = (
+            dfnltepops_allions
+            .filter(
+                (pl.col("Z") == feature.atomic_number)
+                & (pl.col("ion_stage") == feature.ion_stage)
+                & pl.col("level").is_in(feature.upperlevelindices)
+            )
+            .select("timestep", "level", "modelgridindex", "n_NLTE")
+            .unique(subset=["timestep", "level", "modelgridindex"], keep="first", maintain_order=True)
         )
 
         ion = adata.filter((pl.col("Z") == feature.atomic_number) & (pl.col("ion_stage") == feature.ion_stage)).row(
             0, named=True
         )
 
-        # one pass over the populations instead of re-filtering the whole frame for every cell below.
-        # setdefault keeps the first row for a duplicated key, matching the .item(0) this replaces
-        levelpop_of_ts_level_mgi: dict[tuple[int, int, int], float] = {}
-        for ts, level, mgi, n_nlte in zip(
-            dfnltepops["timestep"], dfnltepops["level"], dfnltepops["modelgridindex"], dfnltepops["n_NLTE"], strict=True
-        ):
-            levelpop_of_ts_level_mgi.setdefault((ts, level, mgi), n_nlte)
-
-        # the shell velocities do not change with time, so take them out of the loop and scale the volume by t^3
-        v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
-        v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
-        shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
-
         # the transition data is the same for every cell and timestep, so look it up once per line. An IndexError
         # here is a missing transition rather than an empty cell, and must not be silently absorbed below
         dftransitions_ion = ion["transitions"].collect()
-        linedata = []
+        A_values = []
+        delta_ergs_values = []
         for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindices, feature.lowerlevelindices, strict=False):
-            A_val = dftransitions_ion.filter(
-                (pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex)
-            )["A"].item(0)
+            A_values.append(
+                dftransitions_ion.filter((pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex))[
+                    "A"
+                ].item(0)
+            )
 
-            delta_ergs = (
-                ion["levels"]["energy_ev"].item(upperlevelindex) - ion["levels"]["energy_ev"].item(lowerlevelindex)
-            ) * EV_to_erg
-            linedata.append((upperlevelindex, A_val, delta_ergs))
+            delta_ergs_values.append(
+                (ion["levels"]["energy_ev"].item(upperlevelindex) - ion["levels"]["energy_ev"].item(lowerlevelindex))
+                * EV_to_erg
+            )
 
-        for timeindex, timedays in enumerate(arr_tmid):
-            t_sec = timedays * day_to_s
-            shell_volumes = shell_volumes_at_1s * t_sec**3
+        dflines = pl.DataFrame({
+            "lineindex": range(len(A_values)),
+            "level": feature.upperlevelindices[: len(A_values)],
+            "A": A_values,
+            "delta_ergs": delta_ergs_values,
+        })
 
-            timestep = at.get_timestep_of_timedays(modelpath, float(timedays))
+        for timedays, timestep in zip(arr_tmid, timesteps, strict=True):
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
-            for upperlevelindex, A_val, delta_ergs in linedata:
-                unaccounted_shellvol = 0.0  # account for the volume of empty shells
-                unaccounted_shells: list[int] = []
-
-                for modelgridindex in range(modeldata.height):
-                    levelpop = levelpop_of_ts_level_mgi.get((timestep, upperlevelindex, modelgridindex))
-                    if levelpop is None:
-                        # no population data for this cell, so roll its volume into the next one that has data
-                        unaccounted_shellvol += shell_volumes[modelgridindex]
-                        unaccounted_shells.append(modelgridindex)
-                        continue
-
-                    # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                    # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
-                    #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
-                    #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
-
-                    lumdata[timeindex] += (
-                        delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                    )
-
-                    unaccounted_shellvol = 0.0
-                if unaccounted_shells:
-                    print(f"No data for cells {unaccounted_shells} (expected for empty cells)")
-                assert len(unaccounted_shells) < modeldata.height  # must be data for at least one shell
-
-        dictlcdata[feature.colname] = lumdata
+        dictlcdata[feature.colname] = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s)
 
     return pl.DataFrame(dictlcdata)
+
+
+def sum_line_luminosities(
+    dfnltepops: pl.DataFrame,
+    dflines: pl.DataFrame,
+    dftimes: pl.DataFrame,
+    shell_volumes_at_1s: npt.NDArray[np.floating],
+) -> npt.NDArray[np.floating]:
+    """Return the luminosity of the lines at each time, summed over the lines and the cells.
+
+    dfnltepops gives the population of each upper level (timestep, level, modelgridindex, n_NLTE).
+    dflines gives each line (lineindex, level, A, delta_ergs), and dftimes gives each time
+    (timeindex, timestep, t_sec_cubed). A cell with no population data gives its volume to the next
+    cell outward that has data. Thus an empty shell inside the ejecta counts, and the outermost empty
+    shells do not. Each time must have data for at least one cell.
+    """
+    keydtypes = {colname: dfnltepops.schema[colname] for colname in ("timestep", "level", "modelgridindex")}
+    dfshells = pl.DataFrame({
+        "modelgridindex": pl.Series(range(len(shell_volumes_at_1s)), dtype=keydtypes["modelgridindex"]),
+        "shell_volume_at_1s": shell_volumes_at_1s,
+    })
+
+    hasdata = pl.col("n_NLTE").is_not_null()
+    dfcells = (
+        dftimes
+        .with_columns(pl.col("timestep").cast(keydtypes["timestep"]))
+        .join(dflines.with_columns(pl.col("level").cast(keydtypes["level"])), how="cross", maintain_order="left")
+        .join(dfshells, how="cross", maintain_order="left")
+        .join(dfnltepops, on=["timestep", "level", "modelgridindex"], how="left", maintain_order="left")
+        .sort("timeindex", "lineindex", "modelgridindex")
+        .with_columns(
+            shell_volume=pl.col("shell_volume_at_1s") * pl.col("t_sec_cubed"),
+            # the empty cells in front of a cell with data belong to its volume segment
+            volumesegment=hasdata.cast(pl.Int32).cum_sum().shift(1, fill_value=0).over("timeindex", "lineindex"),
+        )
+        .with_columns(effective_volume=pl.col("shell_volume").cum_sum().over("timeindex", "lineindex", "volumesegment"))
+    )
+
+    emptycells = (
+        dfcells
+        .filter(~hasdata)
+        .group_by("timeindex", "lineindex", maintain_order=True)
+        .agg(pl.col("modelgridindex"), emptycellcount=pl.len())
+    )
+    for _timeindex, _lineindex, modelgridindices, _ in emptycells.iter_rows():
+        print(f"No data for cells {modelgridindices} (expected for empty cells)")
+
+    assert (emptycells["emptycellcount"] < len(shell_volumes_at_1s)).all()  # must be data for at least one shell
+
+    # a cumulative sum adds the terms in the order of the lines and the cells, as a loop does
+    dfluminosity = (
+        dfcells
+        .filter(hasdata)
+        .with_columns(luminosity=pl.col("delta_ergs") * pl.col("A") * pl.col("n_NLTE") * pl.col("effective_volume"))
+        .group_by("timeindex", maintain_order=True)
+        .agg(pl.col("luminosity").cum_sum().last())
+    )
+
+    lumdata = np.zeros(dftimes.height, dtype=float)
+    lumdata[dfluminosity["timeindex"].to_numpy()] = dfluminosity["luminosity"].to_numpy()
+    return lumdata
 
 
 def get_closelines(
@@ -289,6 +350,18 @@ def get_closelines(
 
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.Any]) -> list[FeatureTuple]:
     """Return one feature per search specification in emfeaturesearch."""
+    return list(get_labelandlineindices_cached(Path(modelpath), tuple(tuple(params) for params in emfeaturesearch)))
+
+
+@lru_cache(maxsize=16)
+def get_labelandlineindices_cached(
+    modelpath: Path, emfeaturesearch: tuple[tuple[t.Any, ...], ...]
+) -> tuple[FeatureTuple, ...]:
+    """Return one feature per search specification, and keep them for the next caller.
+
+    The emitting regions plot asks for the features of each model at each epoch, and each search
+    reads the line list of the model.
+    """
     labelandlineindices = []
     for params in emfeaturesearch:
         feature = get_closelines(modelpath, params[0], params[1], params[2], *params[3:])
@@ -298,7 +371,7 @@ def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.A
         )
         labelandlineindices.append(feature)
 
-    return labelandlineindices
+    return tuple(labelandlineindices)
 
 
 def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> None:
@@ -452,55 +525,11 @@ def plot_nne_te_points(
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
 
-    # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
-    #              edgecolors='none')
     alpha = 0.8
     axis.scatter(arr_log10nne, arr_te, s=arr_size, marker=marker, color=color_adj, lw=0, alpha=alpha)
 
     # make an invisible plot series to appear in the legend with a fixed marker size
     axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle="None", label=serieslabel, alpha=alpha)
-
-    # axis.plot(em_log10nne, em_Te, label=serieslabel, linestyle='None',
-    #           marker='o', markersize=2.5, markeredgewidth=0, alpha=0.05,
-    #           fillstyle='full', color=color_b)
-
-
-def plot_nne_te_bars(
-    axis: mplax.Axes,
-    em_log10nne: Sequence[float] | npt.NDArray[np.floating],
-    em_Te: Sequence[float] | npt.NDArray[np.floating],
-    color: t.Any,
-) -> None:
-    """Draw error bars at the mean electron density and temperature of the emitting cells, sized by their spread."""
-    if len(em_log10nne) == 0:
-        return
-    # black larger one for an outline
-    axis.errorbar(
-        np.mean(em_log10nne),
-        np.mean(em_Te),
-        xerr=np.std(em_log10nne),
-        yerr=np.std(em_Te),
-        color="black",
-        markersize=12.0,
-        fillstyle="full",
-        capthick=4,
-        capsize=15,
-        linewidth=4.0,
-        alpha=1.0,
-    )
-    axis.errorbar(
-        np.mean(em_log10nne),
-        np.mean(em_Te),
-        xerr=np.std(em_log10nne),
-        yerr=np.std(em_Te),
-        color=color,
-        markersize=8.0,
-        fillstyle="full",
-        capthick=2,
-        capsize=14,
-        linewidth=2.0,
-        alpha=1.0,
-    )
 
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
@@ -636,27 +665,21 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     )
 
             if modeltag == "all":
-                for bars in (False,):  # (False, True)
-                    for truemodelindex in range(modelindex):
-                        emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
+                for truemodelindex in range(modelindex):
+                    emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
-                        em_log10nne = np.concatenate([
-                            emdata_all[truemodelindex][tmid, feature.colname]["em_log10nne"] for feature in emfeatures
-                        ])
+                    em_log10nne = np.concatenate([
+                        emdata_all[truemodelindex][tmid, feature.colname]["em_log10nne"] for feature in emfeatures
+                    ])
 
-                        em_Te = np.concatenate([
-                            emdata_all[truemodelindex][tmid, feature.colname]["em_Te"] for feature in emfeatures
-                        ])
+                    em_Te = np.concatenate([
+                        emdata_all[truemodelindex][tmid, feature.colname]["em_Te"] for feature in emfeatures
+                    ])
 
-                        normtotalpackets = len(em_log10nne) * 8.0  # circles have more area than triangles, so decrease
-                        modelcolor = args.color[truemodelindex]
-                        label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
-                        if not bars:
-                            plot_nne_te_points(
-                                axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s"
-                            )
-                        else:
-                            plot_nne_te_bars(axis, em_log10nne, em_Te, modelcolor)
+                    normtotalpackets = len(em_log10nne) * 8.0  # circles have more area than triangles, so decrease
+                    modelcolor = args.color[truemodelindex]
+                    label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
+                    plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s")
             else:
                 assert isinstance(modelpath, Path | str)
                 emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -684,31 +707,26 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     label="All cells",
                 )
 
-                for bars in (False,):  # (False, True)
-                    for featureindex, feature in enumerate(emfeatures):
-                        emdata = emdata_all[modelindex][tmid, feature.colname]
+                for featureindex, feature in enumerate(emfeatures):
+                    emdata = emdata_all[modelindex][tmid, feature.colname]
 
-                        if not bars:
-                            print(f"   {len(emdata['em_log10nne'])} points plotted for {feature.featurelabel}")
+                    print(f"   {len(emdata['em_log10nne'])} points plotted for {feature.featurelabel}")
 
-                        serieslabel = (
-                            (modellabel + " " + feature.featurelabel)
-                            .format(timeavg=tmid, modeltag=modeltag)
-                            .replace("Å", r" $\mathrm{\AA}$")
-                        )
+                    serieslabel = (
+                        (modellabel + " " + feature.featurelabel)
+                        .format(timeavg=tmid, modeltag=modeltag)
+                        .replace("Å", r" $\mathrm{\AA}$")
+                    )
 
-                        if not bars:
-                            plot_nne_te_points(
-                                axis,
-                                serieslabel,
-                                emdata["em_log10nne"],
-                                emdata["em_Te"],
-                                normtotalpackets,
-                                featurecolours[featureindex],
-                                marker=markers[featureindex],
-                            )
-                        else:
-                            plot_nne_te_bars(axis, emdata["em_log10nne"], emdata["em_Te"], featurecolours[featureindex])
+                    plot_nne_te_points(
+                        axis,
+                        serieslabel,
+                        emdata["em_log10nne"],
+                        emdata["em_Te"],
+                        normtotalpackets,
+                        featurecolours[featureindex],
+                        marker=markers[featureindex],
+                    )
 
             if tmid == times_days[-1]:
                 set_legend(
@@ -729,9 +747,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             axis.set_xlabel(r"log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])")
             axis.set_ylabel(r"Electron Temperature [K]")
-
-            # axis.annotate(f'{tmid:.0f}d', xy=(0.98, 0.5), xycoords='axes fraction',
-            #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
             save_figure(fig, outputfile, format="pdf", args=args)
@@ -785,12 +800,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Tag packets by their last scattering rather than thermal emission type",
     )
 
-    # parser.add_argument('-timemin', type=float,
-    #                     help='Lower time in days to integrate spectrum')
-    #
-    # parser.add_argument('-timemax', type=float,
-    #                     help='Upper time in days to integrate spectrum')
-    #
     # the x axis of this command is a time in days, thus it takes no wavelength aliases
     addarg_axislimits(
         parser,

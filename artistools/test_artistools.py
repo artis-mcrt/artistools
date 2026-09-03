@@ -534,6 +534,33 @@ def test_plotspherical_gaussian_filter() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=funcoutpath)
 
 
+def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
+    """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
+    from artistools.plotspherical import bin_packets_by_direction
+
+    nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
+    tstarts = at.get_timestep_times(modelpath, loc="start")
+    tends = at.get_timestep_times(modelpath, loc="end")
+    # the last range repeats the first one, as every frame does when the observer never gets light from the full ejecta
+    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62, 60)]
+    plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc", "emvelocityoverc_sigma"]
+
+    dfonepass, _ = bin_packets_by_direction(
+        modelpath, dfpackets, nprocs_read, timeranges, 8, 4, plotvars, dfestimators=None
+    )
+    assert dfonepass.height == 4 * 8 * 4
+    assert dfonepass["count"].sum() > 0
+
+    for timebin, timerange in enumerate(timeranges):
+        dfsingle, _ = bin_packets_by_direction(
+            modelpath, dfpackets, nprocs_read, [timerange], 8, 4, plotvars, dfestimators=None
+        )
+        pltest.assert_frame_equal(
+            dfonepass.filter(pl.col("timebin") == timebin).with_columns(timebin=pl.lit(0, dtype=pl.Int32)), dfsingle
+        )
+
+
 def test_plotspherical_gif() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
@@ -915,7 +942,7 @@ def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> 
     """An action must name the argument it needs rather than failing on a None."""
     with pytest.raises(SystemExit):
         at.hesma_scripts.main(argsraw=["vspecfiles"])
-    assert "requires -modelpath" in capsys.readouterr().out
+    assert "requires -modelpath" in capsys.readouterr().err
 
 
 def test_opacity_condition_labels_match_artis() -> None:
@@ -1186,6 +1213,56 @@ def test_linefluxes_default_timebins_use_each_models_timesteps() -> None:
     )
 
     pltest.assert_frame_equal(dflcdata_default, dflcdata_explicit)
+
+
+def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
+    """The vectorised sum over the lines and the cells must give what the loop over each cell gave.
+
+    A cell without population data gives its volume to the next cell outward that has data, and the
+    outermost empty cells give their volume to no cell. The loop here is the former algorithm.
+    """
+    from artistools.linefluxes import sum_line_luminosities
+
+    rng = np.random.default_rng(seed=3)
+    ncells = 6
+    shell_volumes_at_1s = rng.uniform(1e40, 2e40, size=ncells)
+    dftimes = pl.DataFrame({"timeindex": [0, 1, 2], "timestep": [4, 7, 7], "t_sec_cubed": [1e21, 8e21, 8e21]})
+    dflines = pl.DataFrame({"lineindex": [0, 1], "level": [12, 9], "A": [0.3, 0.02], "delta_ergs": [2e-12, 1.5e-12]})
+
+    # cell 0 and cell 3 hold no data in timestep 4, and the last two cells hold no data in timestep 7
+    poprows = [
+        (timestep, level, modelgridindex, float(rng.uniform(1e5, 1e6)))
+        for timestep, emptycells in ((4, {0, 3}), (7, {4, 5}))
+        for level in (12, 9)
+        for modelgridindex in range(ncells)
+        if modelgridindex not in emptycells
+    ]
+    dfnltepops = pl.DataFrame(
+        poprows,
+        schema={"timestep": pl.Int32, "level": pl.Int32, "modelgridindex": pl.Int32, "n_NLTE": pl.Float64},
+        orient="row",
+    )
+    levelpop_of_key = {(timestep, level, mgi): n_nlte for timestep, level, mgi, n_nlte in poprows}
+
+    expected = np.zeros(dftimes.height)
+    for timeindex, timestep, t_sec_cubed in dftimes.iter_rows():
+        shell_volumes = shell_volumes_at_1s * t_sec_cubed
+        for level, A_val, delta_ergs in dflines.select("level", "A", "delta_ergs").iter_rows():
+            unaccounted_shellvol = 0.0
+            for modelgridindex in range(ncells):
+                levelpop = levelpop_of_key.get((timestep, level, modelgridindex))
+                if levelpop is None:
+                    unaccounted_shellvol += shell_volumes[modelgridindex]
+                    continue
+                expected[timeindex] += (
+                    delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                )
+                unaccounted_shellvol = 0.0
+
+    lumdata = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s)
+
+    assert lumdata.shape == expected.shape
+    assert np.allclose(lumdata, expected, rtol=1e-13)
 
 
 def test_linefluxes_rejects_lone_timebin_argument() -> None:

@@ -1,4 +1,3 @@
-import contextlib
 import string
 import time
 import typing as t
@@ -20,11 +19,13 @@ from artistools.commands import get_path
 from artistools.constants import hc_in_ev_angstrom
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
+from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 
-if t.TYPE_CHECKING:
-    import os
+# The version of the line list parquet cache format. Increase it for a change that makes an older
+# cache file incorrect, e.g. a new column, a removed column, or a different data type.
+LINELIST_CACHEVERSION = 1
 
 
 def parse_adata(
@@ -189,8 +190,9 @@ def add_transition_columns(
         if col not in columns_before and col not in columns and col != "levelindex"
     )
 
+    columns_after = dftransitions.collect_schema().names()
     for col in columns:
-        assert col in dftransitions.collect_schema().names(), f"Invalid column name {col}"
+        assert col in columns_after, f"Invalid column name {col}"
 
     return dftransitions
 
@@ -857,12 +859,16 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     )
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
-    parquetstat: os.stat_result | None = None
-    with contextlib.suppress(FileNotFoundError):
-        parquetstat = parquetfile.stat()
-    if parquetstat is None or parquetstat.st_mtime < textfile.stat().st_mtime:
-        # the identity comes from the stat that showed the cache is out of date, so only that file is replaced
-        outdatedparquet = get_file_identity(parquetstat) if parquetstat else None
+    textsource_mtime = textfile.stat().st_mtime
+    # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step. The
+    # identity comes from before the check below, thus a fresh file that a rival process installs after
+    # the check keeps its place and only the file that the check saw is replaced
+    outdatedparquet = get_file_identity(parquetfile)
+    _, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
+    if stalereason is not None:
+        if outdatedparquet is not None:
+            print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
+
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
         pldf = (
@@ -877,12 +883,17 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             .with_row_index(name="lineindex")
             .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
         )
-        write_parquet_atomic(pldf, parquetfile, compression_level=8, replaces=outdatedparquet)
+        write_parquet_atomic(
+            pldf,
+            parquetfile,
+            metadata={"cacheversion": str(LINELIST_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
+            replaces=outdatedparquet,
+        )
         print(f"Wrote {parquetfile}")
     else:
         print(f"Reading {parquetfile}")
 
-    linelist_lazy = (
+    return (
         pl
         .scan_parquet(parquetfile)
         .with_columns(
@@ -898,8 +909,3 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
     )
-
-    if "ionstage" in linelist_lazy.collect_schema().names():
-        linelist_lazy = linelist_lazy.rename({"ionstage": "ion_stage"})
-
-    return linelist_lazy

@@ -48,6 +48,7 @@ from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc.cliutils import resolve_output_argument as resolve_output_argument
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
+from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import suggest_names as suggest_names
@@ -57,6 +58,7 @@ from artistools.misc.dirbins import average_direction_bins as average_direction_
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
+from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc.dirbins import get_dirbin_labels as get_dirbin_labels
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
@@ -75,6 +77,7 @@ from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
+from artistools.misc.fileio import get_model_folder as get_model_folder
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model

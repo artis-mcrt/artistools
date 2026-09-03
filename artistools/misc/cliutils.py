@@ -499,7 +499,7 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
     )
 
 
-def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -> str:
+def suggest_names(name: str, candidates: "Collection[str]") -> str:
     """Return a sentence that names the closest candidates, or an empty string when none is close.
 
     The sentence goes on the help line of an error, thus it carries no leading space. A name that
@@ -512,7 +512,7 @@ def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -
     if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
         return f"Did you mean {samecase[0]}?"
 
-    matches = difflib.get_close_matches(name, names, n=count, cutoff=0.6)
+    matches = difflib.get_close_matches(name, names, n=3, cutoff=0.6)
 
     return f"Did you mean {', '.join(matches)}?" if matches else ""
 
@@ -980,6 +980,24 @@ def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[
         assert len(listout) == requiredlength
         list_sequence.append(listout)
     return list_sequence
+
+
+def resolve_series_styles(
+    args: argparse.Namespace, isreference: Sequence[bool], usercolors: Sequence[str | None], *stylenames: str
+) -> list[str]:
+    """Return one colour for each series.
+
+    The function also pads each style list in args to one entry for each series. A colour in usercolors
+    has priority. A reference series gets black and then greys, and an ARTIS
+    model gets a colour of the cycle. A style list gets None where the user gave no entry.
+    """
+    from artistools.plottools import get_series_colors
+
+    seriescount = len(isreference)
+    for stylename in stylenames:
+        setattr(args, stylename, trim_or_pad(seriescount, getattr(args, stylename))[0])
+
+    return get_series_colors(isreference, makelist(usercolors))
 
 
 def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:

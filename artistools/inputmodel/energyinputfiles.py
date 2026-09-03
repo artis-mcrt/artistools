@@ -29,9 +29,7 @@ def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.f
     return np.concatenate(([0.0], np.cumsum(np.diff(xarr) * (yarr[:-1] + yarr[1:]) / 2.0)))
 
 
-def quad_adaptive(
-    func: Callable[[float], float], a: float, b: float, *, rtol: float = 1.5e-8, maxdepth: int = 20
-) -> float:
+def quad_adaptive(func: Callable[[float], float], a: float, b: float) -> float:
     """Integrate a smooth function over [a, b] with adaptive Simpson quadrature.
 
     rtol must stay above the rounding noise of the integrand (e.g. cancellation in
@@ -40,6 +38,8 @@ def quad_adaptive(
     maxdepth is exhausted, which would cost up to 2**maxdepth evaluations and silently return
     an unconverged result.
     """
+    rtol = 1.5e-8
+    maxdepth = 20
 
     def simpson(x0: float, x2: float, f0: float, f1: float, f2: float) -> float:
         return (x2 - x0) / 6.0 * (f0 + 4.0 * f1 + f2)
@@ -87,11 +87,7 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 
     integrated_rate = dE / dt
     scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
-    print(np.mean(scale_factor_energy_diff))
     E_tot *= scale_factor_energy_diff
-
-    dE = np.diff(dftimes_and_rate["rate"] * E_tot)
-    dt = np.diff(times * 24 * 60 * 60)
 
     return dftimes_and_rate, E_tot
 
@@ -103,10 +99,8 @@ def make_energydistribution_weightedbyrho(
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
     print("Etot", Etot)
-    numberofcells = len(rho)
 
-    cellenergy = np.array([Etot] * numberofcells)
-    cellenergy *= rho / sum(rho)
+    cellenergy = Etot * rho / rho.sum()
 
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 

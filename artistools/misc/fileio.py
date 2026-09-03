@@ -171,7 +171,7 @@ def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = 
     return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
 
 
-def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
+def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
     """Return a polars source for filename, or for a compressed sibling when the named file does not exist.
 
     The named file wins, for the same reason as in zopen. If polars can read the file directly, this
@@ -179,9 +179,9 @@ def zopenpl(filename: Path | str, mode: str = "r", encoding: str | None = None) 
     """
     filepath = Path(filename)
     if not filepath.is_file() and (found := find_compressed(filename)):
-        return polars_source(found[1], mode=mode, encoding=encoding)
+        return polars_source(found[1])
 
-    return polars_source(filepath, mode=mode, encoding=encoding)
+    return polars_source(filepath)
 
 
 @contextlib.contextmanager
@@ -540,6 +540,13 @@ def stripallsuffixes(f: Path) -> Path:
     return f_nosuffixes
 
 
+def get_model_folder(modelpath: str | Path) -> Path:
+    """Return the model folder, whether modelpath names the folder itself or a file inside it."""
+    path = Path(modelpath)
+
+    return path.parent if path.is_file() else path
+
+
 def path_is_artis_model(filepath: Path | str) -> bool:
     """Return whether the path is an ARTIS model and not a reference data file.
 
@@ -845,7 +852,6 @@ def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
-    compression_level: int = 10,
     replaces: tuple[int, int] | None = None,
 ) -> None:
     """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
@@ -883,9 +889,7 @@ def write_parquet_atomic(
     destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
-        pldf.lazy().sink_parquet(
-            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
-        )
+        pldf.lazy().sink_parquet(partialfilepath, compression="zstd", compression_level=13, metadata=metadata)
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears
             # complete in one step and no reader of it ever sees a different file at the same path

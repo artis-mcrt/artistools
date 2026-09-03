@@ -2,7 +2,7 @@
 
 Artistools is a toolkit that plots data, analyses data, and converts files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) and a small Rust extension (`rust/`, imported as `artistools.rustext`).
 
-The package has **no public API**. You can delete code that has no callers. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
+The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
 
 A command-line argument is different. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument
@@ -67,6 +67,8 @@ Do not report that a check passed if you did not run it. Tell the user which che
 - Write code for Python 3.13 or a later version. The syntax must also be correct on the later versions and on the free-threaded builds that CI tests. The file `.github/workflows/pytest.yml` gives the list of versions. Do not add mutable state at module level. Do not use the GIL for thread safety.
 - Give a full annotation to every function. The type checkers run in strict mode, and they report an untyped def or an untyped call as an error.
 - Do not prefix a function name with an underscore.
+- Do not add a class unless it makes the code much simpler or much more robust. Three fields is the minimum for a `NamedTuple` or a dataclass. For two values, use a plain tuple or separate variables.
+- A type alias takes the same minimum of three items. Below that, write the type itself: `tuple[float, float]` needs no name. A shorter alias is permitted only when its parts are long and many signatures repeat them, e.g. `type SubplotItem = tuple[list[SeriesPlan], Callable[[], None] | None]`.
 - Use the modern generics: `list[str]`, `X | None`, and PEP 695 (`def f[T](...)`, `type Alias = ...`). Do not use `typing.List` or `typing.Optional`. Use `Any` only if no more accurate type is possible.
 - Pyrefly must infer the parameter types of a lambda from the call site (`implicit-any-lambda`). A lambda accepts no annotations. Thus, if pyrefly cannot infer the types of a `sorted`, `min`, or `filter` key, write an annotated `def`. Use a comprehension in place of `filter(lambda ...)`.
 - Put the message of an exception in a variable. Do not use a literal:

@@ -1,6 +1,5 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
-import contextlib
 import datetime
 import errno
 import gc
@@ -335,24 +334,28 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
-# The version of the model parquet cache format. Increase it for a change that makes an older cache
-# file incorrect, e.g. a new column or a different data type.
+# The version of the parquet cache format of every text source that get_text_source_cached() reads,
+# which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
+# incorrect, e.g. a new column or a different data type in either one.
 CACHEVERSION = 1
 
 
-def read_model_parquet_cache(
-    parquetfilepath: Path, textsource_mtime: float, printwarningsonly: bool = False
-) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]] | None:
-    """Return the cached model table and its metadata, or None if the cache is absent, stale, or unreadable.
+def read_parquet_cache(
+    parquetfilepath: Path, textsource_mtime: float, metadatakeys: Sequence[str] = (), printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[str, str]] | None:
+    """Return the cached table and its metadata, or None if the cache is absent, stale, or unreadable.
 
-    A rejected cache stays in place: get_modeldata() rewrites it through write_parquet_atomic(), which
-    replaces only the exact file that this check saw. A deletion here could remove the fresh cache
-    that a rival process installed after this check.
+    A cache without one of metadatakeys is stale. A rejected cache stays in place: the caller rewrites
+    it through write_parquet_atomic(), which replaces only the exact file that this check saw. A
+    deletion here could remove the fresh cache that a rival process installed after this check.
     """
     if not parquetfilepath.is_file():
         return None
 
     pqmetadata, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+    if pqmetadata is not None and (missingkey := next((key for key in metadatakeys if key not in pqmetadata), None)):
+        pqmetadata, stalereason = None, f"the file has no {missingkey} stamp"
+
     if pqmetadata is None:
         print(f"{parquetfilepath} is not a current cache of the text source, because {stalereason}. Will regenerate.")
         return None
@@ -360,16 +363,75 @@ def read_model_parquet_cache(
     # scan_parquet resolves its schema from the same footer that gave the metadata. Thus the check
     # above already rejects a damaged file, and this code needs no further check
     try:
-        modelmeta = json.loads(pqmetadata["modelmeta_json"])
-        dfmodel = pl.scan_parquet(parquetfilepath)
-    except (pl.exceptions.PolarsError, KeyError, json.JSONDecodeError, OSError) as exc:
+        df = pl.scan_parquet(parquetfilepath)
+    except (pl.exceptions.PolarsError, OSError) as exc:
         print(f"Could not read {parquetfilepath} ({type(exc).__name__}: {exc}). Will regenerate.")
         return None
 
     if not printwarningsonly:
-        print(f"Reading model table from {parquetfilepath}")
+        print(f"Reading table from {parquetfilepath}")
 
-    return dfmodel, modelmeta
+    return df, pqmetadata
+
+
+def get_text_source_cached(
+    textfilepath: Path,
+    read_text_source: Callable[[], tuple[pl.LazyFrame, dict[str, str]]],
+    metadatakeys: Sequence[str] = (),
+    printwarningsonly: bool = False,
+    validate_metadata: Callable[[dict[str, str]], None] | None = None,
+) -> tuple[pl.LazyFrame, dict[str, str]]:
+    """Return the table of a text file from its parquet cache, or read the text file and write the cache.
+
+    read_text_source returns the table and the extra metadata strings that the cache stores under
+    metadatakeys. The cache is written for a text file above 2 MiB, and also for a smaller text file
+    when a cache already existed, so a rejected cache is replaced and not read and rejected on each run.
+
+    validate_metadata reads the stored metadata strings of a cache. It raises ValueError for a value
+    that it cannot read, e.g. a malformed json string, and the cache is then stale.
+    """
+    textsource_mtime = textfilepath.stat().st_mtime
+    parquetfilepath = stripallsuffixes(textfilepath).with_suffix(".txt.parquet.tmp")
+    # the identity of the cache that a rewrite replaces, from the same moment as the existence check
+    outdatedparquet = get_file_identity(parquetfilepath)
+    hadcachefile = outdatedparquet is not None
+
+    cached = read_parquet_cache(
+        parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
+    )
+    if cached is not None:
+        if validate_metadata is None:
+            return cached
+
+        try:
+            validate_metadata(cached[1])
+        except ValueError as exc:
+            print(f"{parquetfilepath} holds metadata that this version cannot read ({exc}). Will regenerate.")
+        else:
+            return cached
+
+    df, extrametadata = read_text_source()
+
+    mebibyte = 1024 * 1024
+    if hadcachefile or textfilepath.stat().st_size > 2 * mebibyte:
+        print(f"Saving {parquetfilepath}")
+        write_parquet_atomic(
+            df,
+            parquetfilepath,
+            replaces=outdatedparquet,
+            metadata={
+                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "cacheversion": str(CACHEVERSION),
+                "textsource_mtime": str(textsource_mtime),
+            }
+            | extrametadata,
+        )
+        print("  Done.")
+        del df
+        gc.collect()
+        df = pl.scan_parquet(parquetfilepath)
+
+    return df, extrametadata
 
 
 def get_modeldata(
@@ -414,44 +476,21 @@ def get_modeldata(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    textsource_mtime = Path(textfilepath).stat().st_mtime
-    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
-    # the identity of the cache that a rewrite replaces, from the same moment as the existence check
-    outdatedparquet = get_file_identity(parquetfilepath)
-    hadcachefile = outdatedparquet is not None
-
-    cached = read_model_parquet_cache(parquetfilepath, textsource_mtime, printwarningsonly=printwarningsonly)
-    dfmodel: pl.LazyFrame | None = None
-    if cached is not None:
-        dfmodel, modelmeta = cached
-
-    if dfmodel is None:
-        # read from text file
+    def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         dfmodel, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
+        return dfmodel, {"modelmeta_json": json.dumps(modelmeta)}
 
-        assert dfmodel is not None
+    def check_modelmeta(metadata: dict[str, str]) -> None:
+        json.loads(metadata["modelmeta_json"])
 
-        # rewrite a cache that already existed even for a small text file, so a rejected one is
-        # replaced instead of being re-read and re-rejected on every run
-        mebibyte = 1024 * 1024
-        if hadcachefile or textfilepath.stat().st_size > 2 * mebibyte:
-            print(f"Saving {parquetfilepath}")
-            write_parquet_atomic(
-                dfmodel,
-                parquetfilepath,
-                replaces=outdatedparquet,
-                metadata={
-                    "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
-                    "cacheversion": str(CACHEVERSION),
-                    "textsource_mtime": str(textsource_mtime),
-                    "modelmeta_json": json.dumps(modelmeta),
-                },
-                compression_level=8,
-            )
-            print("  Done.")
-            del dfmodel
-            gc.collect()
-            dfmodel = pl.scan_parquet(parquetfilepath)
+    dfmodel, metadata = get_text_source_cached(
+        Path(textfilepath),
+        read_text,
+        metadatakeys=["modelmeta_json"],
+        printwarningsonly=printwarningsonly,
+        validate_metadata=check_modelmeta,
+    )
+    modelmeta: dict[str, t.Any] = json.loads(metadata["modelmeta_json"])
 
     if not printwarningsonly:
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
@@ -552,14 +591,14 @@ def add_derived_cols_to_modeldata(
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     keep_all = any(c.lower() == "all" for c in derived_cols)
 
-    if "logrho" not in dfmodel.collect_schema().names() and "rho" in dfmodel.collect_schema().names():
+    if "logrho" not in original_cols and "rho" in original_cols:
         # clamp at -99 to match save_modeldata(), which treats -99 as the empty-cell marker. A plain log10() would give
         # -inf for rho == 0, which cannot be written to model.txt
         dfmodel = dfmodel.with_columns(
             logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
         )
 
-    if "rho" not in dfmodel.collect_schema().names() and "logrho" in dfmodel.collect_schema().names():
+    if "rho" not in original_cols and "logrho" in original_cols:
         dfmodel = dfmodel.with_columns(
             rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
         )
@@ -705,49 +744,47 @@ def add_derived_cols_to_modeldata(
         kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
     )
 
-    for col in dfmodel.collect_schema().names():
-        if col.startswith("pos_"):
-            dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
+    colnames = dfmodel.collect_schema().names()
+    dfmodel = dfmodel.with_columns(
+        (pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_"))
+        for col in colnames
+        if col.startswith("pos_")
+    )
 
-    if "rho" in dfmodel.collect_schema().names() and "volume" in dfmodel.collect_schema().names():
+    if "rho" in colnames and "volume" in colnames:
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
     # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
     dfmodel = dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
+    colnames = dfmodel.collect_schema().names()
 
     if unknown_cols := [
         col
         for col in derived_cols
-        if col not in dfmodel.collect_schema().names() and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
+        if col not in colnames and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
     ]:
         print_warning(f"Unknown derived columns: {unknown_cols}")
 
     if "pos_min" in derived_cols:
-        derived_cols.extend(
-            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_min")
-        )
+        derived_cols.extend(col for col in colnames if col.startswith("pos_") and col.endswith("_min"))
 
     if "pos_max" in derived_cols:
-        derived_cols.extend(
-            col for col in dfmodel.collect_schema().names() if col.startswith("pos_") and col.endswith("_max")
-        )
+        derived_cols.extend(col for col in colnames if col.startswith("pos_") and col.endswith("_max"))
 
     if "velocity" in derived_cols:
-        derived_cols.extend(col for col in dfmodel.collect_schema().names() if col.startswith("vel_"))
+        derived_cols.extend(col for col in colnames if col.startswith("vel_"))
 
     if not keep_all:
-        dfmodel = dfmodel.drop([
-            col for col in dfmodel.collect_schema().names() if col not in original_cols and col not in derived_cols
-        ])
+        dfmodel = dfmodel.drop([col for col in colnames if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = get_cell_angle(dfmodel.collect()).lazy()
+        dfmodel = get_cell_angle(dfmodel)
 
     return dfmodel
 
 
-def get_cell_angle(dfmodel: pl.DataFrame) -> pl.DataFrame:
+def get_cell_angle(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis.
 
     The azimuthal angle is named phi_mirrored rather than phi because it is measured in the opposite sense to the
@@ -850,8 +887,6 @@ def backup_existing_file(filepath: Path) -> None:
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | None = None,
-    headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> None:
@@ -888,13 +923,8 @@ def save_modeldata(
 
     modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
 
-    if "headercommentlines" in modelmeta:
-        assert headercommentlines is None
-        headercommentlines = modelmeta["headercommentlines"]
-
-    if "vmax_cmps" in modelmeta:
-        assert vmax is None or vmax == modelmeta["vmax_cmps"]
-        vmax = modelmeta["vmax_cmps"]
+    headercommentlines = modelmeta.get("headercommentlines")
+    vmax = modelmeta.get("vmax_cmps")
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
@@ -1015,25 +1045,8 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
 def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
-    parquetfilepath = stripallsuffixes(Path(textfilepath)).with_suffix(".txt.parquet.tmp")
 
-    # leave a stale cache in place rather than deleting it: write_parquet_atomic() puts the new one at the
-    # path in one step, so the path always resolves to a complete parquet while another process regenerates it
-    parquetstat: os.stat_result | None = None
-    with contextlib.suppress(FileNotFoundError):
-        parquetstat = parquetfilepath.stat()
-    cache_is_current = parquetstat is not None and Path(textfilepath).stat().st_mtime <= parquetstat.st_mtime
-    # the identity comes from the stat that showed the cache is out of date, so only that file is replaced
-    outdatedparquet = get_file_identity(parquetstat) if parquetstat and not cache_is_current else None
-    if parquetstat is not None and not cache_is_current:
-        print(f"{textfilepath} has been modified after {parquetfilepath}. Regenerating out of date parquet file.")
-
-    if cache_is_current:
-        if not printwarningsonly:
-            print(f"Reading {parquetfilepath}")
-
-        abundancedata_lazy = pl.scan_parquet(parquetfilepath)
-    else:
+    def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
 
@@ -1044,18 +1057,9 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
             col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
         }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
 
-        mebibyte = 1024 * 1024
-        if textfilepath.stat().st_size > 2 * mebibyte:
-            print(f"Saving {parquetfilepath}")
-            write_parquet_atomic(abundancedata, parquetfilepath, compression_level=8, replaces=outdatedparquet)
-            print("  Done.")
-            del abundancedata
-            gc.collect()
-            abundancedata_lazy = pl.scan_parquet(parquetfilepath)
-        else:
-            abundancedata_lazy = abundancedata.lazy()
+        return abundancedata.lazy(), {}
 
-    return abundancedata_lazy
+    return get_text_source_cached(Path(textfilepath), read_text, printwarningsonly=printwarningsonly)[0]
 
 
 def save_initelemabundances(

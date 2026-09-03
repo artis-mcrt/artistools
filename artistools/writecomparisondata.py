@@ -30,11 +30,9 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
     # area in cm^2 of a sphere of radius 1 Mpc
     area = 4.0 * math.pi * at.constants.megaparsec_to_cm**2
 
-    lum_lambda = np.zeros((len(lambdas), len(times)))
-
     # convert flux to power by multiplying by area
-    for n in range(len(lambdas)):
-        lum_lambda[n, :] = fluxes_nu[n, :] * at.constants.c_ang_per_s / lambdas[n] / lambdas[n] * area
+    lambdacolumn = lambdas[:, np.newaxis]
+    lum_lambda = fluxes_nu * at.constants.c_ang_per_s / lambdacolumn / lambdacolumn * area
 
     with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -57,6 +55,14 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int],
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
+def get_nonempty_cells(
+    modelpath: str | Path, allnonemptymgilist: Sequence[int]
+) -> tuple[pl.DataFrame, dict[str, t.Any]]:
+    """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
+    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
+    return lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect(), modelmeta
+
+
 def write_single_estimator(
     modelpath: str | Path,
     selected_timesteps: Sequence[int],
@@ -66,8 +72,7 @@ def write_single_estimator(
     keyname: str,
 ) -> None:
     """Write one estimator's value in every cell at the selected timesteps, in code comparison workshop format."""
-    lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
-    lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+    modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
@@ -76,7 +81,7 @@ def write_single_estimator(
             f.write("#vel_mid[km/s] ne_t0[/cm^3] ne_t1[/cm^3] … ne_tn[/cm^3]\n")
         elif keyname == "Te":
             f.write("#vel_mid[km/s] Tgas_t0[K] Tgas_t1[K] ... Tgas_tn[K]\n")
-        for modelgridindex, vel_r_mid in lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().iter_rows():
+        for modelgridindex, vel_r_mid in modeldata.select("modelgridindex", "vel_r_mid").iter_rows():
             f.write(f"{vel_r_mid / km_to_cm:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[timestep, modelgridindex][keyname]
@@ -94,12 +99,10 @@ def write_ionfracts(
 ) -> None:
     """Write the ion fractions of every element in code comparison workshop format, one file per element."""
     times = at.get_timestep_times(modelpath)
-    lzmodeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
-    lzmodeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+    modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
-    # invariant to element and timestep, so collect once instead of inside both loops
-    cellrows = lzmodeldata.select(["modelgridindex", "vel_r_mid"]).collect().rows()
+    cellrows = modeldata.select("modelgridindex", "vel_r_mid").rows()
     for elementindex in range(nelements):
         atomic_number = elementlist["Z"].item(elementindex)
         elsymb = at.get_elsymbol(atomic_number)
@@ -142,8 +145,7 @@ def write_phys(
 ) -> None:
     """Write the physical conditions of every cell in code comparison workshop format."""
     times = at.get_timestep_times(modelpath)
-    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
-    modeldata = lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect()
+    modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -234,9 +236,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
-        # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputfile, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
-
         write_single_estimator(
             modelpath,
             selected_timesteps,
@@ -245,9 +244,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
             keyname="total_dep",
         )
-
-        # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-        #                        Path(args.outputfile, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
         write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
         write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)

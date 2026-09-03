@@ -615,7 +615,6 @@ def make_singletimestep_plot(
     )
 
     time_days = at.get_timestep_time(modelpath, timestep)
-    modelname = at.get_model_name(modelpath)
 
     # one read of the ranks that own the cells in mgilist supplies the data for every cell
     dfpop_allcells = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
@@ -692,24 +691,10 @@ def make_singletimestep_plot(
 
         dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
-        max_ion_stage = dfpop["ion_stage"].max()
-
-        assert isinstance(max_ion_stage, int)
-        if dfpop.filter(pl.col("ion_stage") == max_ion_stage).height == 1:  # single-level ion, so skip it
-            max_ion_stage -= 1
-
         subplot_title = modelname
         if len(subplot_title) > 10:
             subplot_title += "\n"
-        subplot_title += f" {velocity_kmps_of_mgi[modelgridindex]:.0f} km/s at"
-
-        try:
-            time_days = at.get_timestep_time(modelpath, timestep)
-        except FileNotFoundError:
-            time_days = 0
-            subplot_title += f" timestep {timestep:d}"
-        else:
-            subplot_title += f" {time_days:.0f}d"
+        subplot_title += f" {velocity_kmps_of_mgi[modelgridindex]:.0f} km/s at {time_days:.0f}d"
         subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{{-3}}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         at.plottools.set_plot_title(axes[mgifirstaxindex], subplot_title, args)

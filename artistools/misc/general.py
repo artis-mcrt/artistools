@@ -159,20 +159,16 @@ def get_progress_class() -> "type[t.Any]":
 
 
 def parallel_map[IterableType, ResultType](
-    fn: Callable[[IterableType], ResultType],
-    *iterables: Iterable[IterableType],
-    allow_multiprocessing: bool = True,
-    **kwargs: t.Any,
+    fn: Callable[[IterableType], ResultType], *iterables: Iterable[IterableType], **kwargs: t.Any
 ) -> list[ResultType]:
-    """Execute a parallel map with a progress bar using either multithreading (for free-threading python or allow_multiprocessing=False) or multiprocessing."""
+    """Execute a parallel map with a progress bar, with threads on a free-threaded build and processes otherwise."""
     progressclass = get_progress_class()
 
-    use_multiprocessing = allow_multiprocessing
-    if allow_multiprocessing:
-        with contextlib.suppress(AttributeError):
-            if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-                # return a thread pool if we have no GIL (free threading)
-                use_multiprocessing = False
+    use_multiprocessing = True
+    with contextlib.suppress(AttributeError):
+        if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            # return a thread pool if we have no GIL (free threading)
+            use_multiprocessing = False
 
     if use_multiprocessing:
         import multiprocessing as mp

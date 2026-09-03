@@ -1,9 +1,9 @@
 """Resample a 3D ARTIS model onto a coarser Cartesian grid."""
 
-import itertools
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 import artistools as at
@@ -12,6 +12,22 @@ from artistools.inputmodel.inputmodel_misc import save_initelemabundances
 from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
+
+
+def downscale_cell_sums(values: npt.NDArray[np.float64], merge: int) -> npt.NDArray[np.float64]:
+    """Sum an array indexed [x, y, z, ...] over each block of merge^3 cells."""
+    nx, ny, nz = (n // merge for n in values.shape[:3])
+    blocks = values.reshape((nx, merge, ny, merge, nz, merge, *values.shape[3:]))
+    return blocks.sum(axis=(1, 3, 5))
+
+
+def downscale_mass_fractions(
+    massfracs: npt.NDArray[np.float64], rho: npt.NDArray[np.float64], merge: int
+) -> npt.NDArray[np.float64]:
+    """Return the density-weighted mean of the mass fractions [x, y, z, i] over each block of merge^3 cells."""
+    mass_small = downscale_cell_sums(massfracs * rho[..., np.newaxis], merge)
+    rho_small = downscale_cell_sums(rho, merge)[..., np.newaxis]
+    return np.divide(mass_small, rho_small, out=np.zeros_like(mass_small), where=rho_small > 0)
 
 
 def make_downscaled_3d_grid(
@@ -39,47 +55,23 @@ def make_downscaled_3d_grid(
     smallabundancefile = outputfolder / "abundances.txt"
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
-    nabundcols = len(abundcols)
     elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
-    max_atomic_number = len(elemcolnames)
 
     print("reading abundance file")
 
     # the flat cell lists vary x fastest, so a Fortran-order reshape gives arrays indexed [x, y, z]
-    abund = dfelemabund.to_numpy().reshape((grid, grid, grid, max_atomic_number + 1), order="F")
+    abund = dfelemabund.select(elemcolnames).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F")
 
     print("reading model file")
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
-    rho = dfmodel["rho"].to_numpy().reshape((grid, grid, grid), order="F")
-    radioabunds = dfmodel.select(abundcols).to_numpy().reshape((grid, grid, grid, nabundcols), order="F")
+    rho = dfmodel["rho"].to_numpy().astype(np.float64).reshape((grid, grid, grid), order="F")
+    radioabunds = dfmodel.select(abundcols).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F")
 
-    rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))
-    abund_small = np.zeros((smallgrid, smallgrid, smallgrid, max_atomic_number + 1))
-
-    for z, y, x, zz, yy, xx in itertools.product(
-        range(smallgrid), range(smallgrid), range(smallgrid), range(merge), range(merge), range(merge)
-    ):
-        rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
-        for i in range(nabundcols):
-            radioabunds_small[x, y, z, i] += (
-                radioabunds[x * merge + xx, y * merge + yy, z * merge + zz, i]
-                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-            )
-
-        abund_small[x, y, z, :] += (
-            abund[x * merge + xx, y * merge + yy, z * merge + zz] * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-        )
-
-    for z, y, x in itertools.product(range(smallgrid), range(smallgrid), range(smallgrid)):
-        if rho_small[x, y, z] > 0:
-            radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
-
-            for i in range(1, max_atomic_number + 1):
-                abund_small[x, y, z, i] /= rho_small[x, y, z]
-            rho_small[x, y, z] /= merge**3
+    rho_small = downscale_cell_sums(rho, merge) / merge**3
+    radioabunds_small = downscale_mass_fractions(radioabunds, rho, merge)
+    abund_small = downscale_mass_fractions(abund, rho, merge)
 
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
@@ -97,7 +89,7 @@ def make_downscaled_3d_grid(
     ])
 
     dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns([
-        pl.Series(elemcol, abund_small[:, :, :, i + 1].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)
+        pl.Series(elemcol, abund_small[:, :, :, i].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)
     ])
 
     modelmeta_small = modelmeta | {

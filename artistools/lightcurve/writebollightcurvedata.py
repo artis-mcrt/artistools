@@ -21,9 +21,9 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     selected = [(ts, timestr) for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
     lightcurvedata: dict[str, t.Any] = {"time": [timestr for _, timestr in selected]}
     timesteps = [ts for ts, _ in selected]
-    for angle in range(len(res_specdata)):
-        luminosities = get_bolometric_luminosities(modelpath, timesteps, dirbin=angle)
-        lightcurvedata[f"angle={angle}"] = np.log10(luminosities)
+    luminosities = get_bolometric_luminosities(modelpath, timesteps, dirbins=range(len(res_specdata)))
+    for angle, angleluminosities in luminosities.items():
+        lightcurvedata[f"angle={angle}"] = np.log10(angleluminosities)
 
     lightcurvedataframe = pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
     print(lightcurvedataframe)
