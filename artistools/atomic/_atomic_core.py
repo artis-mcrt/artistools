@@ -1,4 +1,3 @@
-import contextlib
 import string
 import time
 import typing as t
@@ -861,13 +860,13 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
+    # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step. The
+    # identity comes from before the check below, thus a fresh file that a rival process installs after
+    # the check keeps its place and only the file that the check saw is replaced
+    outdatedparquet = get_file_identity(parquetfile)
     _, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
     if stalereason is not None:
-        # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step. The
-        # identity comes from the stat that showed the file is stale, thus only that exact file is replaced
-        outdatedparquet: tuple[int, int] | None = None
-        with contextlib.suppress(FileNotFoundError):
-            outdatedparquet = get_file_identity(parquetfile.stat())
+        if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
         lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)

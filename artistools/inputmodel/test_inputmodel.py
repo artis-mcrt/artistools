@@ -2279,3 +2279,29 @@ def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
     remap_args = (red_fact, n_r_new, n_z_new, n_r_old, delta_r, delta_z)
     assert np.allclose(remap_mass_weighted_quantity(dfmodel, "mass_g", *remap_args), expected_rho, rtol=1e-12)
     assert np.allclose(remap_mass_weighted_quantity(dfmodel, "Ye", *remap_args), expected_ye, rtol=1e-12)
+
+
+def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
+    """A cache with a current stamp but an unreadable modelmeta_json must be regenerated from model.txt."""
+    modelfile = tmp_path / "model.txt"
+    shutil.copy(at.firstexisting("model.txt", folder=modelpath, tryzipped=True), modelfile)
+
+    dfmodel_expected, modelmeta_expected = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+
+    # a cache whose stamps are current, thus only the malformed json can reject it
+    parquetfile = tmp_path / "model.txt.parquet.tmp"
+    at.write_parquet_atomic(
+        dfmodel_expected.collect(),
+        parquetfile,
+        metadata={
+            "cacheversion": str(at.inputmodel.inputmodel_misc.CACHEVERSION),
+            "textsource_mtime": str(modelfile.stat().st_mtime),
+            "modelmeta_json": "{this is not json",
+        },
+    )
+    assert parquetfile.is_file()
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+
+    assert modelmeta == modelmeta_expected
+    pltest.assert_frame_equal(dfmodel.collect(), dfmodel_expected.collect())

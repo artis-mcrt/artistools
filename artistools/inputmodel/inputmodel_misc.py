@@ -378,12 +378,16 @@ def get_text_source_cached(
     read_text_source: Callable[[], tuple[pl.LazyFrame, dict[str, str]]],
     metadatakeys: Sequence[str] = (),
     printwarningsonly: bool = False,
+    validate_metadata: Callable[[dict[str, str]], None] | None = None,
 ) -> tuple[pl.LazyFrame, dict[str, str]]:
     """Return the table of a text file from its parquet cache, or read the text file and write the cache.
 
     read_text_source returns the table and the extra metadata strings that the cache stores under
     metadatakeys. The cache is written for a text file above 2 MiB, and also for a smaller text file
     when a cache already existed, so a rejected cache is replaced and not read and rejected on each run.
+
+    validate_metadata reads the stored metadata strings of a cache. It raises ValueError for a value
+    that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
     textsource_mtime = textfilepath.stat().st_mtime
     parquetfilepath = stripallsuffixes(textfilepath).with_suffix(".txt.parquet.tmp")
@@ -395,7 +399,15 @@ def get_text_source_cached(
         parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
     )
     if cached is not None:
-        return cached
+        if validate_metadata is None:
+            return cached
+
+        try:
+            validate_metadata(cached[1])
+        except ValueError as exc:
+            print(f"{parquetfilepath} holds metadata that this version cannot read ({exc}). Will regenerate.")
+        else:
+            return cached
 
     df, extrametadata = read_text_source()
 
@@ -467,8 +479,15 @@ def get_modeldata(
         dfmodel, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
         return dfmodel, {"modelmeta_json": json.dumps(modelmeta)}
 
+    def check_modelmeta(metadata: dict[str, str]) -> None:
+        json.loads(metadata["modelmeta_json"])
+
     dfmodel, metadata = get_text_source_cached(
-        Path(textfilepath), read_text, metadatakeys=["modelmeta_json"], printwarningsonly=printwarningsonly
+        Path(textfilepath),
+        read_text,
+        metadatakeys=["modelmeta_json"],
+        printwarningsonly=printwarningsonly,
+        validate_metadata=check_modelmeta,
     )
     modelmeta: dict[str, t.Any] = json.loads(metadata["modelmeta_json"])
 
