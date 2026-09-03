@@ -46,16 +46,9 @@ def parse_plotvar(plotvar: str) -> str:
     raise argparse.ArgumentTypeError(msg)
 
 
-class TimeRange(t.NamedTuple):
-    """The arrival times of the packets of one direction map."""
-
-    timemindays: float
-    timemaxdays: float
-
-
 def resolve_time_range(
     modelpath: str | Path, dfpackets: pl.LazyFrame, timemindays: float | None, timemaxdays: float | None
-) -> TimeRange:
+) -> tuple[float, float]:
     """Return the time range of one direction map, with the valid observable range as the default."""
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
@@ -65,7 +58,7 @@ def resolve_time_range(
         )
         assert timemindays is not None
         assert timemaxdays is not None
-        return TimeRange(float(timemindays), float(timemaxdays))
+        return float(timemindays), float(timemaxdays)
 
     if timemindays is None:
         print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
@@ -83,14 +76,14 @@ def resolve_time_range(
             f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
         )
 
-    return TimeRange(timemindays, timemaxdays)
+    return timemindays, timemaxdays
 
 
 def bin_packets_by_direction(
     modelpath: str | Path,
     dfpackets: pl.LazyFrame,
     nprocs_read: int,
-    timeranges: Sequence[TimeRange],
+    timeranges: Sequence[tuple[float, float]],
     nphibins: int,
     ncosthetabins: int,
     plotvars: Sequence[str],
@@ -106,8 +99,8 @@ def bin_packets_by_direction(
     condition = ""
 
     timebinexpr = pl.lit(None, dtype=pl.Int32)
-    for timebin, timerange in reversed(list(enumerate(timeranges))):
-        inrange = pl.col("t_arrive_d").is_between(timerange.timemindays, timerange.timemaxdays)
+    for timebin, (timemindays, timemaxdays) in reversed(list(enumerate(timeranges))):
+        inrange = pl.col("t_arrive_d").is_between(timemindays, timemaxdays)
         timebinexpr = pl.when(inrange).then(pl.lit(timebin, dtype=pl.Int32)).otherwise(timebinexpr)
 
     dfpackets = dfpackets.with_columns(timebin=timebinexpr).filter(pl.col("timebin").is_not_null())
@@ -183,7 +176,7 @@ def bin_packets_by_direction(
         dftimebinwidths = pl.LazyFrame(
             {
                 "timebin": range(len(timeranges)),
-                "timebinwidth_d": [timerange.timemaxdays - timerange.timemindays for timerange in timeranges],
+                "timebinwidth_d": [timemaxdays - timemindays for timemindays, timemaxdays in timeranges],
             },
             schema={"timebin": pl.Int32, "timebinwidth_d": pl.Float64},
         )
@@ -432,7 +425,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             phireverse=args.phireverse,
         )
 
-        timemindays, timemaxdays = timerange.timemindays, timerange.timemaxdays
+        timemindays, timemaxdays = timerange
         if not args.notitle:
             axes[0].set_title(
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0

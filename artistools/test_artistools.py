@@ -537,13 +537,12 @@ def test_plotspherical_gaussian_filter() -> None:
 def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
     """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
     from artistools.plotspherical import bin_packets_by_direction
-    from artistools.plotspherical import TimeRange
 
     nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     tstarts = at.get_timestep_times(modelpath, loc="start")
     tends = at.get_timestep_times(modelpath, loc="end")
-    timeranges = [TimeRange(tstarts[ts], tends[ts]) for ts in (60, 61, 62)]
+    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62)]
     plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc", "emvelocityoverc_sigma"]
 
     dfonepass, _ = bin_packets_by_direction(

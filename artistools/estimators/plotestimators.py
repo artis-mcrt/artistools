@@ -172,11 +172,8 @@ class SeriesPlan(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
 
 
-class SubplotItem(t.NamedTuple):
-    """The series of one plot item, and the step that runs after the draw of those series."""
-
-    series: list[SeriesPlan]
-    finish: Callable[[], None] | None = None
+# the series of one plot item, and the step that runs after the draw of those series
+type SubplotItem = tuple[list[SeriesPlan], Callable[[], None] | None]
 
 
 def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
@@ -267,7 +264,7 @@ def draw_subplot_items(
     Each series scans the estimators, thus one collect_all shares the scan between every series
     of every item.
     """
-    plans = [plan for item in items for plan in item.series]
+    plans = [plan for series, _ in items for plan in series]
     lazyframes = [get_line_points(plan.dfseries, args) for plan in plans]
     if args.markers:
         lazyframes += [plan.dfseries.select("xvalue", "yvalue") for plan in plans]
@@ -277,8 +274,8 @@ def draw_subplot_items(
     dfpoints_of_plan = frames[len(plans) :] if args.markers else [None] * len(plans)
 
     planindex = 0
-    for item in items:
-        for plan in item.series:
+    for series, finish in items:
+        for plan in series:
             draw_series(
                 dflinepoints_of_plan[planindex],
                 dfpoints_of_plan[planindex],
@@ -290,8 +287,8 @@ def draw_subplot_items(
             )
             planindex += 1
 
-        if item.finish is not None:
-            item.finish()
+        if finish is not None:
+            finish()
 
 
 def plot_init_abundances(
@@ -823,7 +820,7 @@ def plot_multi_ion_series(
         if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
             ax.set_ylim(top=new_ymax)
 
-    return SubplotItem(series=plans, finish=make_space_for_legend if plans else None)
+    return plans, make_space_for_legend if plans else None
 
 
 def plot_series(
@@ -1077,18 +1074,17 @@ def plot_subplot(
             variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
-            items.append(
-                SubplotItem(
-                    plot_series(
-                        ax=ax,
-                        variable=plotitem,
-                        showlegend=showlegend,
-                        estimators=estimators,
-                        nounits=sameylabel,
-                        **plotkwargs,
-                    )
-                )
-            )
+            items.append((
+                plot_series(
+                    ax=ax,
+                    variable=plotitem,
+                    showlegend=showlegend,
+                    estimators=estimators,
+                    nounits=sameylabel,
+                    **plotkwargs,
+                ),
+                None,
+            ))
             if showlegend and sameylabel and ylabel is not None:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
@@ -1097,24 +1093,21 @@ def plot_subplot(
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
-                items.append(
-                    SubplotItem(
-                        plot_init_abundances(
-                            ax=ax, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
-                        )
-                    )
-                )
+                items.append((
+                    plot_init_abundances(
+                        ax=ax, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
+                    ),
+                    None,
+                ))
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                items.append(
-                    SubplotItem(plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath))
-                )
+                items.append((plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath), None))
 
             elif seriestype == "averageionisation":
-                items.append(SubplotItem(plot_average_ionisation(ax, params, estimators, **plotkwargs)))
+                items.append((plot_average_ionisation(ax, params, estimators, **plotkwargs), None))
 
             elif seriestype == "averageexcitation":
-                items.append(SubplotItem(plot_average_excitation(ax, params, estimators, modelpath, **plotkwargs)))
+                items.append((plot_average_excitation(ax, params, estimators, modelpath, **plotkwargs), None))
 
             else:
                 seriestype, ionlist = plotitem
