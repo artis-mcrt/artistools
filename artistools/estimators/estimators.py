@@ -15,6 +15,7 @@ from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
 from itertools import batched
+from itertools import starmap
 from pathlib import Path
 from types import MappingProxyType
 
@@ -452,12 +453,14 @@ def get_estimators_rankbatch_parquetfile(
     batchindex: int,
     textsource_mtime: float | None,
     stalereason: str | None,
+    outdatedparquet: tuple[int, int] | None,
     verbose: bool = False,
 ) -> Path:
-    """Return the parquet cache for one batch of MPI ranks' estimator files, and make it if it is stale.
+    """Return the parquet cache of the estimator files of one batch of MPI ranks, and make it if it is stale.
 
     The caller reads the freshness of every batch one time with rankbatch_parquet_staleness, thus it
-    gives the reason here. A reason of None says that the cache is current.
+    gives the reason here. A reason of None says that the cache is current. The caller also gives the
+    identity of the file that it saw, because only that file can take the place of a new cache.
     """
 
     def printornot(msg: str) -> None:
@@ -471,14 +474,11 @@ def get_estimators_rankbatch_parquetfile(
     )
     assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
 
-    outdatedparquet: tuple[int, int] | None = None
     if stalereason is not None:
         # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
-        # the path always resolves to a complete parquet. Deleting it first opens a window in which a
-        # concurrent reader finds it missing or half-swapped. The identity comes from the stat that showed
-        # the file is stale, so only that exact file can be replaced by this rewrite
-        with contextlib.suppress(FileNotFoundError):
-            outdatedparquet = at.get_file_identity(parquetfilepath.stat())
+        # the path always resolves to a complete parquet. A delete first opens a window in which a
+        # concurrent reader finds the file missing or half-swapped
+        if outdatedparquet is not None:
             print(
                 f"  {parquetfilepath.relative_to(modelpath.parent)} is not a current cache of the estimator"
                 f" text files, because {stalereason}. File will be regenerated..."
@@ -693,15 +693,19 @@ def scan_artis_estimators(
             get_batch_textsource_mtime(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
             for runfolder, _batchindex, mpiranks in pairs
         ]
-        stalereasons = [
-            rankbatch_parquet_staleness(get_rankbatch_parquetpath(runfolder, mpiranks, batchindex), textsource_mtime)
-            for (runfolder, batchindex, mpiranks), textsource_mtime in zip(pairs, batchmtimes, strict=True)
+        cachepaths = [
+            get_rankbatch_parquetpath(runfolder, mpiranks, batchindex) for runfolder, batchindex, mpiranks in pairs
         ]
+        # each identity comes from before the freshness check of its own file. A fresh cache that a rival
+        # process installs after that check then keeps its place, because a rewrite replaces only the
+        # file that the check saw
+        outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
+        stalereasons = list(starmap(rankbatch_parquet_staleness, zip(cachepaths, batchmtimes, strict=True)))
 
         # a bar is worth its place only when a batch converts text files, which takes minutes. Current
         # parquet caches read no text, and their scan is lazy, thus a bar would show no work
-        batches: Iterable[tuple[tuple[Path, int, Sequence[int]], float | None, str | None]] = list(
-            zip(pairs, batchmtimes, stalereasons, strict=True)
+        batches: Iterable[tuple[tuple[Path, int, Sequence[int]], float | None, str | None, tuple[int, int] | None]] = (
+            list(zip(pairs, batchmtimes, stalereasons, outdatedparquets, strict=True))
         )
         if any(reason is not None for reason in stalereasons) and len(pairs) > 1:
             from artistools.misc.general import get_progress_class
@@ -716,9 +720,10 @@ def scan_artis_estimators(
                 batchindex=batchindex,
                 textsource_mtime=textsource_mtime,
                 stalereason=stalereason,
+                outdatedparquet=outdatedparquet,
                 verbose=verbose,
             )
-            for (runfolder, batchindex, mpiranks), textsource_mtime, stalereason in batches
+            for (runfolder, batchindex, mpiranks), textsource_mtime, stalereason, outdatedparquet in batches
         ]
 
         assert bool(parquetfiles)
