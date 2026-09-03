@@ -39,7 +39,9 @@ def parse_plotvar(plotvar: str) -> str:
     The choices of argparse cannot hold nnelement_ and every element symbol, thus this validator
     stands in for them.
     """
-    if plotvar in PLOTVARS or (plotvar.startswith("nnelement_") and at.get_atomic_number(plotvar) > 0):
+    if plotvar in PLOTVARS or (
+        plotvar.startswith("nnelement_") and at.get_atomic_number(plotvar.removeprefix("nnelement_")) > 0
+    ):
         return plotvar
 
     msg = f"'{plotvar}' is not a plot variable. Give one of {', '.join(PLOTVARS)}, or nnelement_ and an element symbol"
@@ -98,16 +100,18 @@ def bin_packets_by_direction(
     """Return each plot variable in each direction bin of each time range, and the packet selection condition.
 
     The frame holds one row for each direction bin of each time range. The timebin column gives the
-    index of the time range. Each packet takes the index of the first range that holds it.
+    index of the time range. Each packet takes the first distinct range that holds it, thus two
+    frames with the same range get the same map.
     """
     condition = ""
 
-    timebinexpr = pl.lit(None, dtype=pl.Int32)
-    for timebin, (timemindays, timemaxdays) in reversed(list(enumerate(timeranges))):
+    distinctranges = list(dict.fromkeys(timeranges))
+    rangebinexpr = pl.lit(None, dtype=pl.Int32)
+    for rangebin, (timemindays, timemaxdays) in reversed(list(enumerate(distinctranges))):
         inrange = pl.col("t_arrive_d").is_between(timemindays, timemaxdays)
-        timebinexpr = pl.when(inrange).then(pl.lit(timebin, dtype=pl.Int32)).otherwise(timebinexpr)
+        rangebinexpr = pl.when(inrange).then(pl.lit(rangebin, dtype=pl.Int32)).otherwise(rangebinexpr)
 
-    dfpackets = dfpackets.with_columns(timebin=timebinexpr).filter(pl.col("timebin").is_not_null())
+    dfpackets = dfpackets.with_columns(rangebin=rangebinexpr).filter(pl.col("rangebin").is_not_null())
 
     dfpackets = at.packets.bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
@@ -174,26 +178,32 @@ def bin_packets_by_direction(
         )
 
     aggs.append(pl.len().alias("count"))
-    dfdirbins = dfpackets.group_by(["timebin", "costhetabin", "phibinmonotonicasc"]).agg(aggs)
+    dfdirbins = dfpackets.group_by(["rangebin", "costhetabin", "phibinmonotonicasc"]).agg(aggs)
 
     if "luminosity" in plotvars:
-        dftimebinwidths = pl.LazyFrame(
+        dfrangewidths = pl.LazyFrame(
             {
-                "timebin": range(len(timeranges)),
-                "timebinwidth_d": [timemaxdays - timemindays for timemindays, timemaxdays in timeranges],
+                "rangebin": range(len(distinctranges)),
+                "rangewidth_d": [timemaxdays - timemindays for timemindays, timemaxdays in distinctranges],
             },
-            schema={"timebin": pl.Int32, "timebinwidth_d": pl.Float64},
+            schema={"rangebin": pl.Int32, "rangewidth_d": pl.Float64},
         )
-        dfdirbins = dfdirbins.join(dftimebinwidths, on="timebin", how="left", maintain_order="left").with_columns(
-            luminosity=pl.col("luminosity") / pl.col("timebinwidth_d") / day_to_s
+        dfdirbins = dfdirbins.join(dfrangewidths, on="rangebin", how="left", maintain_order="left").with_columns(
+            luminosity=pl.col("luminosity") / pl.col("rangewidth_d") / day_to_s
         )
 
-    dfdirbins = dfdirbins.select(["timebin", "costhetabin", "phibinmonotonicasc", "count", *plotvars])
+    dfdirbins = dfdirbins.select(["rangebin", "costhetabin", "phibinmonotonicasc", "count", *plotvars])
 
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
         pl
-        .LazyFrame({"timebin": range(len(timeranges))}, schema={"timebin": pl.Int32})
+        .LazyFrame(
+            {
+                "timebin": range(len(timeranges)),
+                "rangebin": [distinctranges.index(timerange) for timerange in timeranges],
+            },
+            schema={"timebin": pl.Int32, "rangebin": pl.Int32},
+        )
         .join(
             pl.LazyFrame(
                 {
@@ -206,7 +216,8 @@ def bin_packets_by_direction(
             how="cross",
             maintain_order="left",
         )
-        .join(dfdirbins, how="left", on=["timebin", "costhetabin", "phibinmonotonicasc"], maintain_order="left")
+        .join(dfdirbins, how="left", on=["rangebin", "costhetabin", "phibinmonotonicasc"], maintain_order="left")
+        .drop("rangebin")
         .fill_null(0)
         .sort(["timebin", "costhetabin", "phibinmonotonicasc"])
     ).collect()

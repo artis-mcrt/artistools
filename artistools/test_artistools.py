@@ -542,13 +542,14 @@ def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     tstarts = at.get_timestep_times(modelpath, loc="start")
     tends = at.get_timestep_times(modelpath, loc="end")
-    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62)]
+    # the last range repeats the first one, as every frame does when the observer never gets light from the full ejecta
+    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62, 60)]
     plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc", "emvelocityoverc_sigma"]
 
     dfonepass, _ = bin_packets_by_direction(
         modelpath, dfpackets, nprocs_read, timeranges, 8, 4, plotvars, dfestimators=None
     )
-    assert dfonepass.height == 3 * 8 * 4
+    assert dfonepass.height == 4 * 8 * 4
     assert dfonepass["count"].sum() > 0
 
     for timebin, timerange in enumerate(timeranges):

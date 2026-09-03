@@ -195,7 +195,7 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
     assert math.isclose(result.filter(pl.col("level") == 4)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
 
 
-@pytest.mark.parametrize("maxlevel", [-1, 3])
+@pytest.mark.parametrize("maxlevel", [-1, 0, 3])
 def test_add_lte_pops_matches_a_row_by_row_reference(maxlevel: int) -> None:
     """The vectorised superlevel treatment must give what the loop over each cell, timestep, and ion gave.
 

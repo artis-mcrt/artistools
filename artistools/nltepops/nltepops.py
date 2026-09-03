@@ -128,14 +128,24 @@ def add_lte_pops(
             )
 
     lte_columns = [columnname for columnname, _ in columntemperature_tuples]
+    superlevelschema = {
+        "Z": dfpop.schema["Z"],
+        "ion_stage": dfpop.schema["ion_stage"],
+        "levelnumber_sl": dfpop.schema["level"],
+        **{f"{columnname}_superlevel": pl.Float64 for columnname in lte_columns},
+    }
+    # the level limit can exclude every superlevel, thus the lookup can be empty
     dfsuperlevelpops = pl.concat([
-        superlevelpops.select(
-            pl.lit(Z, dtype=dfpop.schema["Z"]).alias("Z"),
-            pl.lit(ion_stage, dtype=dfpop.schema["ion_stage"]).alias("ion_stage"),
-            pl.lit(levelnumber_sl, dtype=dfpop.schema["level"]).alias("levelnumber_sl"),
-            pl.col(lte_columns).name.suffix("_superlevel"),
-        )
-        for (Z, ion_stage, levelnumber_sl), superlevelpops in superlevelpops_of_ion.items()
+        pl.DataFrame(schema=superlevelschema),
+        *(
+            superlevelpops.select(
+                pl.lit(Z, dtype=dfpop.schema["Z"]).alias("Z"),
+                pl.lit(ion_stage, dtype=dfpop.schema["ion_stage"]).alias("ion_stage"),
+                pl.lit(levelnumber_sl, dtype=dfpop.schema["level"]).alias("levelnumber_sl"),
+                pl.col(lte_columns).cast(pl.Float64).name.suffix("_superlevel"),
+            )
+            for (Z, ion_stage, levelnumber_sl), superlevelpops in superlevelpops_of_ion.items()
+        ),
     ])
 
     return (
