@@ -852,7 +852,6 @@ def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
-    compression_level: int = 13,
     replaces: tuple[int, int] | None = None,
 ) -> None:
     """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
@@ -890,9 +889,7 @@ def write_parquet_atomic(
     destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
-        pldf.lazy().sink_parquet(
-            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
-        )
+        pldf.lazy().sink_parquet(partialfilepath, compression="zstd", compression_level=13, metadata=metadata)
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears
             # complete in one step and no reader of it ever sees a different file at the same path
