@@ -87,12 +87,13 @@ def get_dfspectrum_x_y_with_units(
     # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
     if unit.kind == "wavelength":
         dfspectrum = dfspectrum.with_columns(
-            x=pl.col("lambda_angstroms") / unit.factor, dflux_on_dx_onempc=pl.col("f_lambda") * unit.factor
+            x=pl.col("lambda_angstroms") / unit.unit_in_base_units,
+            dflux_on_dx_onempc=pl.col("f_lambda") * unit.unit_in_base_units,
         )
     elif unit.kind == "frequency":
         dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), dflux_on_dx_onempc=pl.col("f_nu"))
     else:
-        dfspectrum = dfspectrum.with_columns(x=h_ev_s * pl.col("nu") / unit.factor).with_columns(
+        dfspectrum = dfspectrum.with_columns(x=h_ev_s * pl.col("nu") / unit.unit_in_base_units).with_columns(
             dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
         )
 
@@ -264,11 +265,15 @@ def get_lambda_bin_edges(
 
 
 class XUnit(t.NamedTuple):
-    """One unit of the horizontal axis of a spectrum, and the spellings that a user can give for it."""
+    """One unit of the horizontal axis of a spectrum, and the spellings that a user can give for it.
+
+    The conversions work in a base unit of each kind: the angstrom for a wavelength, the hertz for
+    a frequency, and the electronvolt for an energy. unit_in_base_units gives the size of this unit
+    in that base unit, e.g. 10.0 for a nanometre and 1000.0 for a kiloelectronvolt.
+    """
 
     kind: t.Literal["wavelength", "frequency", "energy"]
-    # the angstroms in one unit of a wavelength, or the electronvolts in one unit of an energy
-    factor: float
+    unit_in_base_units: float
     label: str
     aliases: tuple[str, ...]
 
@@ -344,12 +349,12 @@ def convert_angstroms_to_unit(
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
     unit = get_xunit(new_units)
     if unit.kind == "wavelength":
-        return value_angstroms / unit.factor
+        return value_angstroms / unit.unit_in_base_units
     if unit.kind == "frequency":
         return const.c_ang_per_s / value_angstroms
 
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
-    return hc_ev_angstroms / value_angstroms / unit.factor
+    return hc_ev_angstroms / value_angstroms / unit.unit_in_base_units
 
 
 @t.overload
@@ -366,12 +371,12 @@ def convert_unit_to_angstroms(
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
     unit = get_xunit(old_units)
     if unit.kind == "wavelength":
-        return value * unit.factor
+        return value * unit.unit_in_base_units
     if unit.kind == "frequency":
         return const.c_ang_per_s / value
 
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
-    return hc_ev_angstroms / value / unit.factor
+    return hc_ev_angstroms / value / unit.unit_in_base_units
 
 
 def convert_xlimits_to_lambda_range(xmin: float, xmax: float, xunit: str) -> tuple[float, float]:
