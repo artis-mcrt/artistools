@@ -53,6 +53,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
 
 
+PROFILE_COLUMNS = ("modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "vel_r_max_kmps", "mass_g", "Ye")
+
+
 def get_enclosed_mass(dfmodel: pl.DataFrame) -> tuple[list[float], list[float]]:
     """Return the velocity [c] and the enclosed mass [Msun] at each outer cell velocity, from zero to c."""
     dfsorted = dfmodel.sort("vel_r_mid").with_columns(enclosed_mass_g=pl.col("mass_g").cum_sum())
@@ -107,13 +110,10 @@ def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None) -> list[f
         # 1D spherical has a radial velocity specified
         return dfmodel.select(pl.col("vel_r_max").unique().sort()).to_series().to_list()
 
-    # 2D cylindrical or 3D Cartesian will have variable spacing in v_rad
-    # so use the largest difference to set the bin size
-    xmin = dfmodel.select(pl.col("vel_r_mid").min()).item()
-    # if we want to include the corners, then use this
-    xmax = dfmodel.select(pl.col("vel_r_mid").max()).item()
-    # to exclude the corners:
-    xdeltamax = dfmodel.select(pl.col("vel_r_mid").sort().diff().max()).item()
+    # a 2D or 3D model has a variable spacing in the radial velocity, thus the largest step sets the bin size
+    xmin, xmax, xdeltamax = dfmodel.select(
+        pl.col("vel_r_mid").min(), pl.col("vel_r_mid").max(), pl.col("vel_r_mid").sort().diff().max()
+    ).row(0)
     ncoarsevelbins = int((xmax - xmin) / xdeltamax)
     print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
     return [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
@@ -131,18 +131,7 @@ def plot_density_profiles(args: argparse.Namespace, axes: npt.NDArray[np.object_
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
         max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)
 
-        dfmodel = lzdfmodel.select(
-            cs.by_name(
-                "modelgridindex",
-                "vel_r_min",
-                "vel_r_mid",
-                "vel_r_max",
-                "vel_r_max_kmps",
-                "mass_g",
-                "Ye",
-                require_all=False,
-            )
-        ).collect()
+        dfmodel = lzdfmodel.select(cs.by_name(*PROFILE_COLUMNS, require_all=False)).collect()
 
         enclosed_xvals, enclosed_yvals = get_enclosed_mass(dfmodel)
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)

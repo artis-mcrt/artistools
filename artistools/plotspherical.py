@@ -2,7 +2,6 @@
 """Plot packet escape luminosity and estimator values on a sphere of viewing directions."""
 
 import argparse
-import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -52,8 +51,6 @@ class TimeRange(t.NamedTuple):
 
     timemindays: float
     timemaxdays: float
-    # the packets outside the range go into the map when the observer never gets light from the full ejecta
-    filterpackets: bool
 
 
 def resolve_time_range(
@@ -68,7 +65,7 @@ def resolve_time_range(
         )
         assert timemindays is not None
         assert timemaxdays is not None
-        return TimeRange(float(timemindays), float(timemaxdays), filterpackets=False)
+        return TimeRange(float(timemindays), float(timemaxdays))
 
     if timemindays is None:
         print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
@@ -86,67 +83,7 @@ def resolve_time_range(
             f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
         )
 
-    return TimeRange(timemindays, timemaxdays, filterpackets=True)
-
-
-def time_ranges_overlap(timeranges: Sequence[TimeRange]) -> bool:
-    """Return True when a packet can fall into two of the time ranges."""
-    ordered = sorted(timeranges)
-    return any(
-        not earlier.filterpackets or later.timemindays < earlier.timemaxdays
-        for earlier, later in itertools.pairwise(ordered)
-    )
-
-
-def get_direction_maps(
-    modelpath: str | Path,
-    dfpackets: pl.LazyFrame,
-    nprocs_read: int,
-    timeranges: Sequence[TimeRange],
-    nphibins: int,
-    ncosthetabins: int,
-    plotvars: Sequence[str],
-    dfestimators: pl.LazyFrame | None = None,
-    atomic_number: int | None = None,
-    ion_stage: int | None = None,
-) -> tuple[pl.DataFrame, str]:
-    """Return each plot variable in each direction bin of each time range, and the packet selection condition.
-
-    The frame holds one row for each direction bin of each time range. The timebin column gives the
-    index of the time range. A time range that shares a packet with another one takes its own pass
-    over the packets, because the time bin of a packet can hold one index alone.
-    """
-    if time_ranges_overlap(timeranges):
-        maps = []
-        for timebin, timerange in enumerate(timeranges):
-            dfmap, condition = bin_packets_by_direction(
-                modelpath,
-                dfpackets,
-                nprocs_read,
-                [timerange],
-                nphibins,
-                ncosthetabins,
-                plotvars,
-                dfestimators=dfestimators,
-                atomic_number=atomic_number,
-                ion_stage=ion_stage,
-            )
-            maps.append(dfmap.with_columns(timebin=pl.lit(timebin, dtype=pl.Int32)))
-
-        return pl.concat(maps), condition
-
-    return bin_packets_by_direction(
-        modelpath,
-        dfpackets,
-        nprocs_read,
-        timeranges,
-        nphibins,
-        ncosthetabins,
-        plotvars,
-        dfestimators=dfestimators,
-        atomic_number=atomic_number,
-        ion_stage=ion_stage,
-    )
+    return TimeRange(timemindays, timemaxdays)
 
 
 def bin_packets_by_direction(
@@ -161,19 +98,16 @@ def bin_packets_by_direction(
     atomic_number: int | None = None,
     ion_stage: int | None = None,
 ) -> tuple[pl.DataFrame, str]:
-    """Return each plot variable in each direction bin of each time range, in one pass over the packets.
+    """Return each plot variable in each direction bin of each time range, and the packet selection condition.
 
-    The time ranges must not share a packet. Each packet takes the index of the first range that holds it.
+    The frame holds one row for each direction bin of each time range. The timebin column gives the
+    index of the time range. Each packet takes the index of the first range that holds it.
     """
     condition = ""
 
     timebinexpr = pl.lit(None, dtype=pl.Int32)
     for timebin, timerange in reversed(list(enumerate(timeranges))):
-        inrange = (
-            pl.col("t_arrive_d").is_between(timerange.timemindays, timerange.timemaxdays)
-            if timerange.filterpackets
-            else pl.lit(value=True)
-        )
+        inrange = pl.col("t_arrive_d").is_between(timerange.timemindays, timerange.timemaxdays)
         timebinexpr = pl.when(inrange).then(pl.lit(timebin, dtype=pl.Int32)).otherwise(timebinexpr)
 
     dfpackets = dfpackets.with_columns(timebin=timebinexpr).filter(pl.col("timebin").is_not_null())
@@ -295,7 +229,7 @@ def plot_spherical(
 ) -> tuple[mplfig.Figure, t.Any]:
     """Plot each plot variable of one time range on a sphere of viewing directions, and return the figure and axes.
 
-    dirbins holds the rows of one time range of the frame that get_direction_maps returns.
+    dirbins holds the rows of one time range of the frame that bin_packets_by_direction returns.
     """
     print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
@@ -470,7 +404,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     timeranges = [resolve_time_range(args.modelpath, dfpackets, tstart, tend) for tstart, tend, _ in time_ranges]
 
     # one pass over the packets gives the map of every frame
-    dfdirbins, condition = get_direction_maps(
+    dfdirbins, condition = bin_packets_by_direction(
         modelpath=args.modelpath,
         dfpackets=dfpackets,
         dfestimators=dfestimators,
