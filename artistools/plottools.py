@@ -624,28 +624,22 @@ def save_figure(
     outpath: "Path | str",
     *,
     args: argparse.Namespace | None = None,
-    show: bool = False,
-    openfile: bool = False,
     isframe: bool = False,
     **savefig_kwargs: t.Any,
 ) -> None:
     """Save the figure to outpath, report the path, and close the figure.
 
-    A caller passes args, and the --show and --open flags of the command then apply. With show, the
-    figure opens in a window first, thus a resize there reaches the saved file. With openfile, the
-    saved file opens in its default application, thus --open needs no copied command.
+    A caller passes args, and the --show and --open flags of the command then apply. With --show, the
+    figure opens in a window first, thus a resize there reaches the saved file. With --open, the
+    saved file opens in its default application.
 
     isframe says that this figure is one part of a product that combine_frames makes, e.g. a frame of a
     gif. Such a figure does not open on its own, because the product opens in its place, and it takes no
     line of its own, because a merge takes the frames away and that line would name a file that went.
     --show still opens each figure, because the user asked to see them.
     """
-    if args is not None:
-        show = show or getattr(args, "show", False)
-        openfile = openfile or getattr(args, "open", False)
-
-    if isframe:
-        openfile = False
+    show = args is not None and getattr(args, "show", False)
+    openfile = args is not None and not isframe and getattr(args, "open", False)
 
     if show:
         plt.show()

@@ -372,11 +372,7 @@ def spectrum_to_bolometric_lum(dfspectrum: pl.DataFrame) -> float:
 
 
 def get_bolometric_luminosities(
-    modelpath: Path,
-    timesteps: Sequence[int],
-    dirbins: Sequence[int] = (-1,),
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    modelpath: Path, timesteps: Sequence[int], dirbins: Sequence[int] = (-1,)
 ) -> dict[int, list[float]]:
     """Return the bolometric luminosity in erg/s of each direction bin at each given timestep.
 
@@ -384,13 +380,7 @@ def get_bolometric_luminosities(
     One collect_all call evaluates the queries of all the direction bins and timesteps together.
     """
     lazyspectra = [
-        at.spectra.get_spectra(
-            modelpath=modelpath,
-            timestepmin=timestep,
-            timestepmax=timestep,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-        )
+        at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
         for timestep in timesteps
     ]
     spectra = pl.collect_all([spectra_timestep[dirbin] for dirbin in dirbins for spectra_timestep in lazyspectra])

@@ -29,9 +29,7 @@ def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.f
     return np.concatenate(([0.0], np.cumsum(np.diff(xarr) * (yarr[:-1] + yarr[1:]) / 2.0)))
 
 
-def quad_adaptive(
-    func: Callable[[float], float], a: float, b: float, *, rtol: float = 1.5e-8, maxdepth: int = 20
-) -> float:
+def quad_adaptive(func: Callable[[float], float], a: float, b: float) -> float:
     """Integrate a smooth function over [a, b] with adaptive Simpson quadrature.
 
     rtol must stay above the rounding noise of the integrand (e.g. cancellation in
@@ -40,6 +38,8 @@ def quad_adaptive(
     maxdepth is exhausted, which would cost up to 2**maxdepth evaluations and silently return
     an unconverged result.
     """
+    rtol = 1.5e-8
+    maxdepth = 20
 
     def simpson(x0: float, x2: float, f0: float, f1: float, f2: float) -> float:
         return (x2 - x0) / 6.0 * (f0 + 4.0 * f1 + f2)

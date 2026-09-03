@@ -199,12 +199,7 @@ def calculate_peak_time_mag_deltam15(
 
 
 def lightcurve_polyfit(
-    time: Sequence[float],
-    magnitude: npt.NDArray[np.floating],
-    args: argparse.Namespace,
-    deg: float = 10,
-    kernel_scale: float = 10,
-    lc_error: float = 0.01,
+    time: Sequence[float], magnitude: npt.NDArray[np.floating], args: argparse.Namespace
 ) -> tuple[t.Any, t.Any]:
     """Return a smooth fit to a band light curve, as (fitted magnitudes, times) in that order.
 
@@ -223,7 +218,7 @@ def lightcurve_polyfit(
             "Could not find 'george' module, falling back to polynomial fit. WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
             "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit using the --test_viewing_angle_fit flag"
         )
-        zfit = np.polyfit(x=time, y=magnitude, deg=deg)
+        zfit = np.polyfit(x=time, y=magnitude, deg=10)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
 
         # Taking line_min and line_max from the limits set for the lightcurve being plotted
@@ -233,7 +228,7 @@ def lightcurve_polyfit(
     else:
         from george import kernels
 
-        kernel = np.var(magnitude) * kernels.Matern32Kernel(kernel_scale)
+        kernel = np.var(magnitude) * kernels.Matern32Kernel(10)
         gp = george.GP(kernel)
 
         # Define the objective function (negative log-likelihood in this case).
@@ -248,7 +243,7 @@ def lightcurve_polyfit(
             return -gp.grad_log_likelihood(magnitude, quiet=True)
 
         # You need to compute the GP once before starting the optimization.
-        gp.compute(time, yerr=np.abs(magnitude) * lc_error)  # pyright: ignore[reportArgumentType]
+        gp.compute(time, yerr=np.abs(magnitude) * 0.01)  # pyright: ignore[reportArgumentType]
 
         # Run the optimization routine.
         p0 = gp.get_parameter_vector()

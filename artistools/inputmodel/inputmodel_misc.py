@@ -867,8 +867,6 @@ def backup_existing_file(filepath: Path) -> None:
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
-    vmax: float | None = None,
-    headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> None:
@@ -905,13 +903,8 @@ def save_modeldata(
 
     modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
 
-    if "headercommentlines" in modelmeta:
-        assert headercommentlines is None
-        headercommentlines = modelmeta["headercommentlines"]
-
-    if "vmax_cmps" in modelmeta:
-        assert vmax is None or vmax == modelmeta["vmax_cmps"]
-        vmax = modelmeta["vmax_cmps"]
+    headercommentlines = modelmeta.get("headercommentlines")
+    vmax = modelmeta.get("vmax_cmps")
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:

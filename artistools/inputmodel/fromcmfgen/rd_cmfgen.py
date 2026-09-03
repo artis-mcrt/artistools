@@ -7,13 +7,14 @@ import typing as t
 import numpy as np
 
 
-def rd_sn_hydro_data(file: str, ncol: int = 8, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
+def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
     """Read an SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL file into a dict of arrays.
 
     Set reverse=True to output vectors from vmin to vmax (CMFGEN's grid moves inward from vmax to vmin).
     Set quiet=True to disable verbose output.
     """
     MAX_POP_DIFF = 1e-5  # maximum absolute difference between sum(isofrac) and corresponding specfrac
+    ncol = 8
 
     # open file
     with pathlib.Path(file).open(encoding="utf-8") as f:

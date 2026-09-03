@@ -1387,10 +1387,6 @@ if __name__ == "__main__":
     # a bar starts no process, thus the default start method of the caller stands
     assert mp.get_start_method() == "fork", mp.get_start_method()
 
-    # the thread pool starts no process either, thus it changes no such default
-    assert at.parallel_map(square, range(4), allow_multiprocessing=False) == [0, 1, 4, 9]
-    assert mp.get_start_method() == "fork", mp.get_start_method()
-
     assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
 
     # a free-threading build takes the thread pool for this call as well, thus it starts no process

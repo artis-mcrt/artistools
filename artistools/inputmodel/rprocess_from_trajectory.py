@@ -272,24 +272,14 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 
 
 def get_trajectory_abund_q(
-    particleid: int,
-    traj_root: Path,
-    t_model_s: float | None = None,
-    nts: int | None = None,  # GSI network timestep number
-    getqdotintegral: bool = False,
+    particleid: int, traj_root: Path, t_model_s: float, getqdotintegral: bool = False
 ) -> dict[tuple[int, int] | str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
-    if (t_model_s is None) == (nts is None):
-        msg = "Either t_model_s or nts must be specified (but not both)"
-        raise ValueError(msg)
-
-    if t_model_s is not None:
-        # find the closest timestep to the required time
-        try:
-            nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
-        except FileNotFoundError:
-            return {}
-    assert nts is not None
+    # find the closest timestep to the required time
+    try:
+        nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
+    except FileNotFoundError:
+        return {}
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 
     try:

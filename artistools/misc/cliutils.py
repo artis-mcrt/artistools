@@ -499,7 +499,7 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
     )
 
 
-def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -> str:
+def suggest_names(name: str, candidates: "Collection[str]") -> str:
     """Return a sentence that names the closest candidates, or an empty string when none is close.
 
     The sentence goes on the help line of an error, thus it carries no leading space. A name that
@@ -512,7 +512,7 @@ def suggest_names(name: str, candidates: "Collection[str]", *, count: int = 3) -
     if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
         return f"Did you mean {samecase[0]}?"
 
-    matches = difflib.get_close_matches(name, names, n=count, cutoff=0.6)
+    matches = difflib.get_close_matches(name, names, n=3, cutoff=0.6)
 
     return f"Did you mean {', '.join(matches)}?" if matches else ""
 
