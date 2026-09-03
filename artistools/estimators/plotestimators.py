@@ -160,16 +160,10 @@ def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool)
     return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
 
 
-class SeriesPlan(t.NamedTuple):
-    """One series of a subplot before the collection of its data.
-
-    dfseries holds these columns: xvalue, xvalue_binned, yvalue, and celltsweight (the weight of the
-    average, e.g. the cell volume times the timestep duration).
-    """
-
-    label: str | None
-    dfseries: pl.LazyFrame
-    plotkwargs: dict[str, t.Any]
+# one series of a subplot before the collection of its data: the label, the lazy frame, and the plot
+# keywords. The frame holds the columns xvalue, xvalue_binned, yvalue, and celltsweight (the weight of
+# the average, e.g. the cell volume times the timestep duration)
+type SeriesPlan = tuple[str | None, pl.LazyFrame, dict[str, t.Any]]
 
 
 # the series of one plot item, and the step that runs after the draw of those series
@@ -265,9 +259,9 @@ def draw_subplot_items(
     of every item.
     """
     plans = [plan for series, _ in items for plan in series]
-    lazyframes = [get_line_points(plan.dfseries, args) for plan in plans]
+    lazyframes = [get_line_points(dfseries, args) for _, dfseries, _ in plans]
     if args.markers:
-        lazyframes += [plan.dfseries.select("xvalue", "yvalue") for plan in plans]
+        lazyframes += [dfseries.select("xvalue", "yvalue") for _, dfseries, _ in plans]
 
     frames = pl.collect_all(lazyframes)
     dflinepoints_of_plan = frames[: len(plans)]
@@ -275,15 +269,15 @@ def draw_subplot_items(
 
     planindex = 0
     for series, finish in items:
-        for plan in series:
+        for label, _, plotkwargs in series:
             draw_series(
                 dflinepoints_of_plan[planindex],
                 dfpoints_of_plan[planindex],
                 ax=ax,
-                label=plan.label,
+                label=label,
                 args=args,
                 startfromzero=startfromzero,
-                **plan.plotkwargs,
+                **plotkwargs,
             )
             planindex += 1
 
@@ -311,7 +305,7 @@ def plot_init_abundances(
         ax.set_ylabel("Initial mass fraction")
         valuetype = "init_X_"
 
-    plans = []
+    plans: list[SeriesPlan] = []
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
         elsymbol = splitvariablename[0].strip(string.digits)
@@ -343,7 +337,7 @@ def plot_init_abundances(
         if "linestyle" not in plotkwargs:
             plotkwargs["linestyle"] = linestyle
 
-        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs.copy()))
+        plans.append((linelabel, series, plotkwargs.copy()))
 
     return plans
 
@@ -357,7 +351,7 @@ def plot_average_ionisation(
     # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
     colnames = estimators.collect_schema().names()
 
-    plans = []
+    plans: list[SeriesPlan] = []
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
         atomic_number = at.get_atomic_number(paramvalue)
@@ -379,7 +373,7 @@ def plot_average_ionisation(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
-        plans.append(SeriesPlan(label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs))
+        plans.append((paramvalue, dfplotdata, {"color": color} | plotkwargs))
 
     return plans
 
@@ -394,7 +388,7 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    plans = []
+    plans: list[SeriesPlan] = []
     for paramvalue in params:
         print(f"  plotting averageexcitation {paramvalue}")
         iontuple = at.get_ion_tuple(paramvalue)
@@ -417,13 +411,7 @@ def plot_average_excitation(
             .filter(pl.col("yvalue").is_not_nan() & pl.col("yvalue").is_not_null())
         )
 
-        plans.append(
-            SeriesPlan(
-                label=paramvalue,
-                dfseries=dfplotdata,
-                plotkwargs={"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs,
-            )
-        )
+        plans.append((paramvalue, dfplotdata, {"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs))
 
     return plans
 
@@ -459,7 +447,7 @@ def plot_levelpop(
     # read_files is uncached, so read every rank's nlte output once rather than once per param
     dfnltepops_allions = at.nltepops.read_files(modelpath)
 
-    plans = []
+    plans: list[SeriesPlan] = []
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
@@ -510,7 +498,7 @@ def plot_levelpop(
         dfseries = pl.LazyFrame({"xvalue": xlist, "yvalue": ylist}, orient="col").with_columns(
             xvalue_binned=pl.col("xvalue"), celltsweight=pl.lit(1.0)
         )
-        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy()))
+        plans.append((label, dfseries, plotkwargs.copy()))
 
     return plans
 
@@ -759,7 +747,7 @@ def plot_multi_ion_series(
             )
         )
 
-    plans = []
+    plans: list[SeriesPlan] = []
     for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
         plotlabel = str(
             ion_stage
@@ -794,11 +782,7 @@ def plot_multi_ion_series(
         if plotkwargs.get("linestyle", "solid") != "None":
             plotkwargs["dashes"] = dashes
 
-        plans.append(
-            SeriesPlan(
-                label=plotlabel, dfseries=dfseries, plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs
-            )
-        )
+        plans.append((plotlabel, dfseries, {"linewidth": linewidth, "color": color} | plotkwargs))
 
     if seriestype == "populations":
         ylabel = POPTYPE_YLABELS.get(args.poptype)
@@ -863,7 +847,7 @@ def plot_series(
     plotkwargs.setdefault("linewidth", 1.5)
 
     print(f"  plotting {variablename}")
-    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs)]
+    return [(linelabel, series, plotkwargs)]
 
 
 def get_xlist(
