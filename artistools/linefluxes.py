@@ -100,7 +100,7 @@ def get_timebins(
     if arr_tend is None:
         arr_tend = arr_tend_model
 
-    ismodeltimesteps = list(arr_tstart) == list(arr_tstart_model) and list(arr_tend) == list(arr_tend_model)
+    ismodeltimesteps = list(arr_tstart) == arr_tstart_model and list(arr_tend) == arr_tend_model
     arr_tmid = (
         np.array(at.get_timestep_times(modelpath, loc="mid"))
         if ismodeltimesteps
