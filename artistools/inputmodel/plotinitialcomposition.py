@@ -300,7 +300,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hideemptycells", action="store_true", help="Don't plot empty cells")
 
     # the argument has no effect. It stays, because a script can still pass it
-    parser.add_argument("--opacity", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
