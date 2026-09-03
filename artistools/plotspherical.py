@@ -46,9 +46,13 @@ def parse_plotvar(plotvar: str) -> str:
     raise argparse.ArgumentTypeError(msg)
 
 
+# the first and the last arrival time [days] of the packets of one direction map
+type TimeRange = tuple[float, float]
+
+
 def resolve_time_range(
     modelpath: str | Path, dfpackets: pl.LazyFrame, timemindays: float | None, timemaxdays: float | None
-) -> tuple[float, float]:
+) -> TimeRange:
     """Return the time range of one direction map, with the valid observable range as the default."""
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
@@ -83,7 +87,7 @@ def bin_packets_by_direction(
     modelpath: str | Path,
     dfpackets: pl.LazyFrame,
     nprocs_read: int,
-    timeranges: Sequence[tuple[float, float]],
+    timeranges: Sequence[TimeRange],
     nphibins: int,
     ncosthetabins: int,
     plotvars: Sequence[str],
