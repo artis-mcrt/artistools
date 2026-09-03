@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import re
 import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -84,59 +83,18 @@ def get_dfspectrum_x_y_with_units(
     if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
+    unit = get_xunit(xunit)
     # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
-    match xunit.lower():
-        case "angstroms":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("lambda_angstroms"), dflux_on_dx_onempc=pl.col("f_lambda"))
-
-        case "nm":
-            dfspectrum = dfspectrum.with_columns(
-                x=pl.col("lambda_angstroms") / 10, dflux_on_dx_onempc=pl.col("f_lambda") * 10
-            )
-
-        case "micron":
-            dfspectrum = dfspectrum.with_columns(
-                x=pl.col("lambda_angstroms") / 10000, dflux_on_dx_onempc=pl.col("f_lambda") * 10000
-            )
-
-        case "hz":
-            dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), dflux_on_dx_onempc=pl.col("f_nu"))
-
-        case "erg":
-            dfspectrum = (
-                dfspectrum
-                .with_columns(en_erg=h_erg_s * pl.col("nu"))
-                .with_columns(f_en_erg=pl.col("f_nu") * pl.col("nu") / pl.col("en_erg"))
-                .with_columns(x=pl.col("en_erg"), dflux_on_dx_onempc=pl.col("f_en_erg"))
-            )
-
-        case "ev":
-            dfspectrum = (
-                dfspectrum
-                .with_columns(en_ev=h_ev_s * pl.col("nu"))
-                .with_columns(f_en_ev=pl.col("f_nu") * pl.col("nu") / pl.col("en_ev"))
-                .with_columns(x=pl.col("en_ev"), dflux_on_dx_onempc=pl.col("f_en_ev"))
-            )
-
-        case "kev":
-            dfspectrum = (
-                dfspectrum
-                .with_columns(en_kev=h_ev_s * pl.col("nu") / 1000.0)
-                .with_columns(f_en_kev=pl.col("f_nu") * pl.col("nu") / pl.col("en_kev"))
-                .with_columns(x=pl.col("en_kev"), dflux_on_dx_onempc=pl.col("f_en_kev"))
-            )
-
-        case "mev":
-            dfspectrum = (
-                dfspectrum
-                .with_columns(en_mev=h_ev_s * pl.col("nu") / 1e6)
-                .with_columns(f_en_mev=pl.col("f_nu") * pl.col("nu") / pl.col("en_mev"))
-                .with_columns(x=pl.col("en_mev"), dflux_on_dx_onempc=pl.col("f_en_mev"))
-            )
-
-        case _:
-            msg = f"Unit {xunit} not implemented"
-            raise NotImplementedError(msg)
+    if unit.kind == "wavelength":
+        dfspectrum = dfspectrum.with_columns(
+            x=pl.col("lambda_angstroms") / unit.factor, dflux_on_dx_onempc=pl.col("f_lambda") * unit.factor
+        )
+    elif unit.kind == "frequency":
+        dfspectrum = dfspectrum.with_columns(x=pl.col("nu"), dflux_on_dx_onempc=pl.col("f_nu"))
+    else:
+        dfspectrum = dfspectrum.with_columns(x=h_ev_s * pl.col("nu") / unit.factor).with_columns(
+            dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
+        )
 
     match yvariable.lower():
         case "luminosity":
@@ -305,23 +263,42 @@ def get_lambda_bin_edges(
     return lambda_bin_edges
 
 
-# the spellings that a user can give for each unit of the horizontal axis of a spectrum. One table
-# gives the conversion, the message that names the units, and the suggestion for a name that is close.
-XUNITALIASES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
-    "angstroms": ("angstrom", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m"),
-    "nm": ("nanometer", "nanometers"),
-    "micron": ("microns", "mu", "\u03bc", "\u03bcm"),
-    "hz": (),
-    "erg": ("ergs",),
-    "ev": ("electronvolt",),
-    "kev": ("kiloelectronvolt",),
-    "mev": ("megaelectronvolt",),
+class XUnit(t.NamedTuple):
+    """One unit of the horizontal axis of a spectrum, and the spellings that a user can give for it."""
+
+    kind: t.Literal["wavelength", "frequency", "energy"]
+    # the angstroms in one unit of a wavelength, or the electronvolts in one unit of an energy
+    factor: float
+    label: str
+    aliases: tuple[str, ...]
+
+
+# one table gives the conversion factor and the axis label. The unit message and the name
+# suggestion also read it, thus a new unit needs one entry only
+XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
+    "angstroms": XUnit("wavelength", 1.0, "\u00c5", ("angstrom", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
+    "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
+    "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
+    "hz": XUnit("frequency", 1.0, "Hz", ()),
+    "erg": XUnit("energy", 1.0 / const.EV_to_erg, "erg", ("ergs",)),
+    "ev": XUnit("energy", 1.0, "eV", ("electronvolt",)),
+    "kev": XUnit("energy", 1.0e3, "keV", ("kiloelectronvolt",)),
+    "mev": XUnit("energy", 1.0e6, "MeV", ("megaelectronvolt",)),
 })
 
 
 def get_xunit_names() -> list[str]:
     """Return every spelling of a unit of the horizontal axis that a user can give."""
-    return [name for canonical, aliases in XUNITALIASES.items() for name in (canonical, *aliases)]
+    return [name for canonical, unit in XUNITS.items() for name in (canonical, *unit.aliases)]
+
+
+def get_xunit(xunit: str) -> XUnit:
+    """Return the unit of the horizontal axis that has this canonical name."""
+    try:
+        return XUNITS[xunit.lower()]
+    except KeyError:
+        msg = f"Unknown xunit {xunit}"
+        raise ValueError(msg) from None
 
 
 def parse_xunit_argument(value: str) -> str:
@@ -335,7 +312,7 @@ def parse_xunit_argument(value: str) -> str:
     try:
         return convert_xunit_aliases_to_canonical(value)
     except ValueError:
-        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITALIASES)}"
+        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITS)}"
         msg = f"'{value}' is not a unit of the horizontal axis. {suggestion}"
         raise argparse.ArgumentTypeError(msg) from None
 
@@ -343,8 +320,8 @@ def parse_xunit_argument(value: str) -> str:
 def convert_xunit_aliases_to_canonical(xunit: str) -> str:
     """Return the canonical spelling of a spectrum x-axis unit name."""
     lowered = xunit.lower()
-    for canonical, aliases in XUNITALIASES.items():
-        if lowered == canonical or lowered in aliases:
+    for canonical, unit in XUNITS.items():
+        if lowered == canonical or lowered in unit.aliases:
             return canonical
 
     msg = f"Unknown xunit {xunit}"
@@ -365,28 +342,14 @@ def convert_angstroms_to_unit(
     value_angstroms: float | npt.NDArray[np.floating], new_units: str
 ) -> float | npt.NDArray[np.floating]:
     """Convert a wavelength in angstroms to a different unit, either length, frequency, or energy."""
+    unit = get_xunit(new_units)
+    if unit.kind == "wavelength":
+        return value_angstroms / unit.factor
+    if unit.kind == "frequency":
+        return const.c_ang_per_s / value_angstroms
+
     hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
-    hc_erg_angstroms = hc_ev_angstroms * const.EV_to_erg  # [erg angstroms]
-    match new_units.lower():
-        case "erg":
-            return hc_erg_angstroms / value_angstroms
-        case "ev":
-            return hc_ev_angstroms / value_angstroms
-        case "kev":
-            return hc_ev_angstroms / value_angstroms / 1.0e3
-        case "mev":
-            return hc_ev_angstroms / value_angstroms / 1.0e6
-        case "hz":
-            return const.c_ang_per_s / value_angstroms
-        case "angstroms":
-            return value_angstroms
-        case "nm":
-            return value_angstroms / 10.0
-        case "micron":
-            return value_angstroms / 10000.0
-        case _:
-            msg = f"Unknown xunit {new_units}"
-            raise ValueError(msg)
+    return hc_ev_angstroms / value_angstroms / unit.factor
 
 
 @t.overload
@@ -401,29 +364,14 @@ def convert_unit_to_angstroms(
     value: float | npt.NDArray[np.floating], old_units: str
 ) -> float | npt.NDArray[np.floating]:
     """Convert a wavelength, frequency, or energy to wavelength angstroms."""
-    c = const.c_ang_per_s
-    h = const.h_ev_s
-    hc_ev_angstroms = h * c  # [eV angstroms]
-    match old_units.lower():
-        case "erg":
-            return hc_ev_angstroms * const.EV_to_erg / value
-        case "ev":
-            return hc_ev_angstroms / value
-        case "kev":
-            return hc_ev_angstroms / value / 1e3
-        case "mev":
-            return hc_ev_angstroms / value / 1e6
-        case "hz":
-            return c / value
-        case "angstroms":
-            return value
-        case "nm":
-            return value * 10
-        case "micron":
-            return value * 10000
-        case _:
-            msg = f"Unknown xunit {old_units}"
-            raise ValueError(msg)
+    unit = get_xunit(old_units)
+    if unit.kind == "wavelength":
+        return value * unit.factor
+    if unit.kind == "frequency":
+        return const.c_ang_per_s / value
+
+    hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
+    return hc_ev_angstroms / value / unit.factor
 
 
 def convert_xlimits_to_lambda_range(xmin: float, xmax: float, xunit: str) -> tuple[float, float]:
@@ -447,6 +395,18 @@ def weighted_average_spectra(
     return np.average(spectra, axis=0, weights=factors)
 
 
+def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycol: str) -> pl.DataFrame:
+    """Return the mean x and the mean y of each group of nbins consecutive rows. The last group can be smaller."""
+    return (
+        dfspectrum
+        .select(xcol, ycol)
+        .with_row_index("bin")
+        .group_by(pl.col("bin") // nbins, maintain_order=True)
+        .mean()
+        .drop("bin")
+    )
+
+
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
@@ -455,11 +415,11 @@ def get_spectrum_at_time(
     dirbin: int = -1,
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Return the spectrum of one direction bin at a single timestep."""
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args).collect()
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -472,7 +432,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
-    )[dirbin].collect()
+    )[dirbin]
 
 
 @lru_cache(maxsize=4)
@@ -521,7 +481,7 @@ def get_escape_surface_gamma(modelpath: Path | str) -> float:
     """Return the Lorentz factor correction at the outer model boundary."""
     from artistools.inputmodel import get_modeldata
 
-    _, modelmeta = get_modeldata(modelpath)
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_beta = float(modelmeta["vmax_cmps"]) / const.C_cm_per_s
     return math.sqrt(1 - vmax_beta**2)
 
@@ -615,8 +575,7 @@ def get_from_packets(
     ])
 
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
-    escapesurfacegamma: float | int | None = None
-    dirbin_spectra: dict[int, pl.LazyFrame] = {}
+    dirbin_fluxes: dict[int, pl.LazyFrame] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
@@ -628,40 +587,26 @@ def get_from_packets(
                 else nu_column.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
             )
             energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
-
-            dirbin_spectra[vspecindex] = (
-                atpackets
-                .bin_and_sum(
-                    dfpackets
-                    if packets_are_time_filtered
-                    else dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays)),
-                    bincol=lambda_column,
-                    bins=lambda_bin_edges.tolist(),
-                    sumcols=[energy_column],
-                    getcounts=True,
-                )
-                .select(
-                    lambda_binindex=pl.col(f"{lambda_column}_bin"),
-                    flux=pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
-                    packetcount=pl.col("count"),
-                )
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
-                .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
-                .drop("flux")
+            dfpackets_dirbin = (
+                dfpackets
+                if packets_are_time_filtered
+                else dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
             )
 
-            if fluxfilterfunc:
-                dirbin_spectra[vspecindex] = (
-                    dirbin_spectra[vspecindex]
-                    .with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
-                    .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-                )
+            dirbin_fluxes[vspecindex] = bin_packet_flux(
+                dfpackets_dirbin,
+                lambda_column,
+                lambda_bin_edges,
+                energy_column,
+                pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
+            )
 
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
+        escapesurfacegamma: float | None = None
         if packets_are_time_filtered:
             if use_time == "escape":
                 escapesurfacegamma = get_escape_surface_gamma(modelpath)
@@ -677,47 +622,59 @@ def get_from_packets(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
 
-            dirbin_spectra[dirbin] = atpackets.bin_and_sum(
-                pldfpackets_dirbin_lazy,
-                bincol=lambda_column,
-                bins=lambda_bin_edges.tolist(),
-                sumcols=[energy_column],
-                getcounts=True,
-            ).select(
-                lambda_binindex=pl.col(f"{lambda_column}_bin"),
-                flux=(
-                    pl.col(f"{energy_column}_sum")
-                    / delta_time_s
-                    * inverse_solidangle_fraction
-                    / (4 * math.pi * const.megaparsec_to_cm**2)
-                    / nprocs_read
-                ),
-                packetcount=pl.col("count"),
+            fluxexpr = (
+                pl.col(f"{energy_column}_sum")
+                / delta_time_s
+                * inverse_solidangle_fraction
+                / (4 * math.pi * const.megaparsec_to_cm**2)
+                / nprocs_read
             )
-
             if use_time == "escape":
                 assert escapesurfacegamma is not None
-                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    pl.col("flux").mul(1.0 / escapesurfacegamma)
-                )
+                fluxexpr = fluxexpr.mul(1.0 / escapesurfacegamma)
 
-            dirbin_spectra[dirbin] = (
-                dirbin_spectra[dirbin]
-                .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
-                .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
-                .drop("flux")
-                .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+            dirbin_fluxes[dirbin] = bin_packet_flux(
+                pldfpackets_dirbin_lazy, lambda_column, lambda_bin_edges, energy_column, fluxexpr
             )
 
-            if fluxfilterfunc:
-                dirbin_spectra[dirbin] = dirbin_spectra[dirbin].with_columns(
-                    cs.by_name(("f_lambda", "f_nu")).map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
-                )
+    dirbin_spectra = {
+        dirbin: (
+            dfflux
+            .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
+            .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
+            .drop("flux")
+            .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+        )
+        for dirbin, dfflux in dirbin_fluxes.items()
+    }
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
+        dirbin_spectra = {
+            dirbin: dfspectrum.with_columns(
+                cs.by_name(("f_lambda", "f_nu")).map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+            )
+            for dirbin, dfspectrum in dirbin_spectra.items()
+        }
 
     return dirbin_spectra
+
+
+def bin_packet_flux(
+    dfpackets: pl.LazyFrame,
+    lambda_column: str,
+    lambda_bin_edges: npt.NDArray[np.floating],
+    energy_column: str,
+    fluxexpr: pl.Expr,
+) -> pl.LazyFrame:
+    """Return the flux and the packet count of each wavelength bin.
+
+    fluxexpr gives the flux of a bin from the column {energy_column}_sum, which holds the sum of the
+    packet energies in that bin.
+    """
+    return atpackets.bin_and_sum(
+        dfpackets, bincol=lambda_column, bins=lambda_bin_edges.tolist(), sumcols=[energy_column], getcounts=True
+    ).select(lambda_binindex=pl.col(f"{lambda_column}_bin"), flux=fluxexpr, packetcount=pl.col("count"))
 
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
@@ -874,15 +831,13 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     """Sum the per-rank virtual packet spectra into one vspecpol_total file per observer direction."""
     nprocs = get_nprocs(modelpath)
     print("nprocs", nprocs)
-    # virtual packet spectra for each observer (all directions and opacity choices)
-    vspecpol_data_allranks: dict[int, pl.DataFrame] = {}
     vpktconfig = get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
         f" {nvirtual_spectra})"
     )
-    vspecpol_data = None
+    vspecpol_data_allranks: dict[int, list[pl.DataFrame]] = {}
     for mpirank in range(nprocs):
         vspecpolpath = firstexisting(
             [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
@@ -896,19 +851,17 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         vspecpol_data = {k: v.collect() for k, v in split_multitable_dataframe(vspecpol_data_alldirs).items()}
         assert len(vspecpol_data) == nvirtual_spectra
 
-        for specindex in vspecpol_data:
-            if specindex not in vspecpol_data_allranks:
-                vspecpol_data_allranks[specindex] = vspecpol_data[specindex]
-            else:
-                vspecpol_data_allranks[specindex] = vspecpol_data_allranks[specindex].with_columns([
-                    (pl.col(col) + vspecpol_data[specindex].get_column(col)).alias(col)
-                    for col in vspecpol_data_allranks[specindex].columns[1:]
-                ])
+        for specindex, dfrank in vspecpol_data.items():
+            vspecpol_data_allranks.setdefault(specindex, []).append(dfrank)
 
-    assert vspecpol_data is not None
-    for spec_index, vspecpol in vspecpol_data_allranks.items():
-        # fix the header row, which got summed along with the data
-        dfvspecpol = pl.concat([vspecpol_data[spec_index][0], vspecpol[1:]])
+    for spec_index, rankframes in vspecpol_data_allranks.items():
+        # the first row holds the times and the first column holds the frequencies, thus the sum
+        # takes the flux block below and right of them
+        dfflux = pl.DataFrame(
+            np.sum([dfrank[1:, 1:].to_numpy() for dfrank in rankframes], axis=0),
+            schema=list(rankframes[0].schema.items())[1:],
+        ).insert_column(0, rankframes[0][1:, 0])
+        dfvspecpol = pl.concat([rankframes[0][0], dfflux])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
         dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
@@ -921,16 +874,11 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
         vspecfile.name for vspecfile in Path(modelpaths[0]).iterdir() if vspecfile.name.startswith("vspecpol_total-")
     ]
 
-    def sorted_by_number(lst: list[str]) -> list[str]:
-        def convert(text: str) -> int | str:
-            return int(text) if text.isdigit() else text
+    def observer_index(filename: str) -> tuple[int, str]:
+        """Return the observer number n of a vspecpol_total-n.out file name, then the name for a tie."""
+        return int(filename.removeprefix("vspecpol_total-").split(".", 1)[0]), filename
 
-        def alphanum_key(key: str) -> list[int | str]:
-            return [convert(c) for c in re.split(r"([0-9]+)", key)]
-
-        return sorted(lst, key=alphanum_key)
-
-    filenames = sorted_by_number(filenames)
+    filenames.sort(key=observer_index)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
         vspecarrays = [read_wsv(modelpath / filename, has_header=False).to_numpy() for modelpath in modelpaths]
@@ -1140,64 +1088,46 @@ def get_flux_contributions(
     maxion: int | None = None
     polarisation_notified = False
 
+    def read_emabs_for_dirbin(filenames: list[str], dbin: int) -> tuple[pl.DataFrame, int]:
+        """Return the emission or absorption dataframe of one direction bin, and its count of time blocks."""
+        nonlocal polarisation_notified
+        if dbin != -1:
+            filenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in filenames]
+
+        emabsfilename = firstexisting(filenames, folder=modelpath, tryzipped=True)
+        dfemabs = read_emission_absorption_file(emabsfilename).collect()
+        ntimeblocks = get_emabs_timeblock_count(dfemabs, len(arraynu_full), len(arr_tmid), str(emabsfilename))
+
+        if ntimeblocks > len(arr_tmid) and not polarisation_notified:
+            print("This artis run contains polarisation data")
+            polarisation_notified = True
+
+        return dfemabs, ntimeblocks
+
+    def check_maxion(maxion_float: float, source: str) -> None:
+        """Record MAXION from the first file. Check that each later file gives the same value."""
+        nonlocal maxion
+        assert maxion_float.is_integer()
+        if maxion is None:
+            maxion = int(maxion_float)
+            print(
+                f" inferred MAXION = {maxion} from the {source} file with nelements = {nelements} from compositiondata.txt"
+            )
+        else:
+            assert maxion == int(maxion_float)
+
     for dbin in dbinlist:
         if getemission:
             emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
-
-            if dbin != -1:
-                emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
-
-            emissionfilename = firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
-
-            emissiondata[dbin] = read_emission_absorption_file(emissionfilename).collect()
-            emission_timeblocks[dbin] = get_emabs_timeblock_count(
-                emissiondata[dbin], len(arraynu_full), len(arr_tmid), str(emissionfilename)
-            )
-
-            if emission_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
-                print("This artis run contains polarisation data")
-                polarisation_notified = True
-
-            maxion_float = (
-                (len(emissiondata[dbin].collect_schema().names()) - 1) / 2.0 / nelements
-            )  # also known as MIONS in ARTIS sn3d.h
-            assert maxion_float.is_integer()
-            if maxion is None:
-                maxion = int(maxion_float)
-                print(
-                    f" inferred MAXION = {maxion} from emission file using nlements = {nelements} from"
-                    " compositiondata.txt"
-                )
-            else:
-                assert maxion == int(maxion_float)
+            emissiondata[dbin], emission_timeblocks[dbin] = read_emabs_for_dirbin(emissionfilenames, dbin)
+            # the column count is one plus twice MAXION times the element count (MIONS in ARTIS sn3d.h)
+            check_maxion((emissiondata[dbin].width - 1) / 2.0 / nelements, "emission")
 
         if getabsorption:
-            absorptionfilenames = ["absorption.out", "absorptionpol.out"]
-            if dbin != -1:
-                absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
-
-            absorptionfilename = firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
-
-            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename).collect()
-            absorption_timeblocks[dbin] = get_emabs_timeblock_count(
-                absorptiondata[dbin], len(arraynu_full), len(arr_tmid), str(absorptionfilename)
+            absorptiondata[dbin], absorption_timeblocks[dbin] = read_emabs_for_dirbin(
+                ["absorption.out", "absorptionpol.out"], dbin
             )
-
-            if absorption_timeblocks[dbin] > len(arr_tmid) and not polarisation_notified:
-                print("This artis run contains polarisation data")
-                polarisation_notified = True
-
-            absorption_maxion_float = len(absorptiondata[dbin].collect_schema().names()) / nelements
-            assert absorption_maxion_float.is_integer()
-            absorption_maxion = int(absorption_maxion_float)
-            if maxion is None:
-                maxion = absorption_maxion
-                print(
-                    f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from"
-                    " compositiondata.txt"
-                )
-            else:
-                assert absorption_maxion == maxion
+            check_maxion(absorptiondata[dbin].width / nelements, "absorption")
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
@@ -1690,57 +1620,45 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    # combine the items past maxseriescount or not in manual list into a single item
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_fluxcontrib = 0.0
-
-    contribution_list_out = []
-    numotherprinted = 0
-    maxnumotherprinted = 20
-    entered_other = False
-    plotted_ion_list = []
-    index = 0
-
+    # the series past maxseriescount, or outside the manual list, join one "Other" series. A row that
+    # already carries that name goes there without a line of its own
+    kept: list[FluxContributionTuple] = []
+    other: list[FluxContributionTuple] = []
     for row in contribution_list:
-        if row.linelabel != "Other" and fixedionlist and row.linelabel in fixedionlist:
-            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
-        elif row.linelabel != "Other" and not fixedionlist and index < maxseriescount:
-            contribution_list_out.append(row._replace(color=color_list[index]))
-            plotted_ion_list.append(row.linelabel)
+        if row.linelabel != "Other" and (row.linelabel in fixedionlist if fixedionlist else len(kept) < maxseriescount):
+            kept.append(row)
         else:
-            remainder_fluxcontrib += row.fluxcontrib
-            remainder_flambda_emission += row.array_flambda_emission
-            remainder_flambda_absorption += row.array_flambda_absorption
-            if row.linelabel != "Other" and not entered_other:
-                print(f"  Other (top {maxnumotherprinted}):")
-                entered_other = True
+            other.append(row)
 
-        if row.linelabel != "Other":
-            index += 1
+    for row in kept:
+        print_contribution(row, arraylambda_angstroms)
 
-        if numotherprinted < maxnumotherprinted and row.linelabel != "Other":
-            integemiss = abs(np.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
-            integabsorp = abs(np.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
-            if integabsorp > 0.0 and integemiss > 0.0:
-                print(
-                    f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
-                    f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'"
-                )
-            elif integemiss > 0.0:
-                print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
-            else:
-                print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
+    maxnumotherprinted = 20
+    othernamed = [row for row in other if row.linelabel != "Other"]
+    if othernamed:
+        print(f"  Other (top {maxnumotherprinted}):")
+        for row in othernamed[:maxnumotherprinted]:
+            print_contribution(row, arraylambda_angstroms)
 
-            if entered_other:
-                numotherprinted += 1
+    contribution_list_out = [
+        row._replace(color=color_list[fixedionlist.index(row.linelabel) if fixedionlist else index])
+        for index, row in enumerate(kept)
+    ]
 
     if not fixedionlist:
+        plotted_ion_list = [row.linelabel for row in kept]
         cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
         print("To reuse this ion/process contribution list, pass the following command-line argument: ")
         print(f"     -fixedionlist {cmdarg}")
         print("Or in python: ")
         print(f"     fixedionlist={plotted_ion_list}")
+
+    remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
+    for row in other:
+        remainder_flambda_emission += row.array_flambda_emission
+        remainder_flambda_absorption += row.array_flambda_absorption
 
     if remainder_fluxcontrib > 0.0 and not hideother:
         contribution_list_out.append(
@@ -1754,6 +1672,21 @@ def sort_and_reduce_flux_contribution_list(
         )
 
     return contribution_list_out
+
+
+def print_contribution(row: FluxContributionTuple, arraylambda_angstroms: npt.NDArray[np.floating]) -> None:
+    """Print the integrated emission and absorption of one series."""
+    integemiss = abs(np.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
+    integabsorp = abs(np.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
+    if integabsorp > 0.0 and integemiss > 0.0:
+        print(
+            f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
+            f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'"
+        )
+    elif integemiss > 0.0:
+        print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
+    else:
+        print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
 
 
 def print_integrated_flux(

@@ -3,6 +3,7 @@
 __all__ = ["plot", "plotlightcurve"]
 
 from artistools.lightcurve import plotlightcurve
+from artistools.lightcurve.lightcurve import bracket_spectrum_to_band as bracket_spectrum_to_band
 from artistools.lightcurve.lightcurve import find_bol_reflightcurve_file as find_bol_reflightcurve_file
 from artistools.lightcurve.lightcurve import find_lightcurve_file as find_lightcurve_file
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data as generate_band_lightcurve_data
@@ -20,6 +21,7 @@ from artistools.lightcurve.lightcurve import read_hesma_lightcurve as read_hesma
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve_file as read_hesma_lightcurve_file
 from artistools.lightcurve.lightcurve import read_reflightcurve_band_data as read_reflightcurve_band_data
 from artistools.lightcurve.lightcurve import readfile as readfile
+from artistools.lightcurve.lightcurve import spectrum_to_bolometric_lum as spectrum_to_bolometric_lum
 from artistools.lightcurve.plotlightcurve import addargs as addargs
 from artistools.lightcurve.plotlightcurve import main as plot
 from artistools.lightcurve.viewingangleanalysis import (

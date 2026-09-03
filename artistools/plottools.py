@@ -4,6 +4,7 @@ import argparse
 import math
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import cache
 
@@ -13,6 +14,7 @@ import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
+import polars as pl
 
 from artistools.commands import get_path
 from artistools.misc import print_saved
@@ -693,6 +695,40 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
         )
     else:
         ax.set_title(title)
+
+
+def print_dirbin_summary(dirbin: int, definition: str, dfseries: "pl.DataFrame") -> None:
+    """Print the direction bin, its definition, and the packet count when dfseries has a packetcount column."""
+    print(f"  direction {dirbin:4d}  {definition}", end="")
+    if "packetcount" in dfseries.columns:
+        npkts_selected = dfseries.select(pl.col("packetcount").sum()).item()
+        print(f"\t({npkts_selected:.2e} packets)")
+    else:
+        print()
+
+
+def label_dirbin_series(
+    dirbin: int,
+    dirbins: Sequence[int],
+    dirbin_definitions: Mapping[int, str],
+    linelabel: str,
+    linelabel_is_custom: bool,
+    plotkwargs: dict[str, t.Any],
+) -> str:
+    """Return the legend label of one direction bin series.
+
+    The function also clears the -color entry of each bin after the first one. One -color entry serves
+    the first bin, and the other bins take a colour each from the cycle. A bin
+    that is not the spherical average names itself in the label, unless the user gave a label for that
+    one bin.
+    """
+    if dirbin != dirbins[0]:
+        plotkwargs["color"] = None
+
+    if dirbin != -1 and (len(dirbins) > 1 or not linelabel_is_custom):
+        return f"{linelabel} {dirbin_definitions[dirbin]}"
+
+    return linelabel
 
 
 def get_next_color(ax: mplax.Axes) -> str:

@@ -46,15 +46,15 @@ from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
-from artistools.misc import get_dirbin_labels
+from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
-from artistools.misc import get_vspec_dir_labels
 from artistools.misc import KeepGivenPaths
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
@@ -69,14 +69,16 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc import trim_or_pad
+from artistools.misc import resolve_series_styles
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
-from artistools.plottools import get_series_colors
+from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import plain_label
+from artistools.plottools import print_dirbin_summary
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
+from artistools.plottools import set_axis_properties
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
@@ -141,34 +143,9 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
-    match args.xunit.lower():
-        case "angstroms":
-            xtype = "Wavelength"
-            str_xunit = "Å"
-        case "nm":
-            xtype = "Wavelength"
-            str_xunit = "nm"
-        case "micron":
-            xtype = "Wavelength"
-            str_xunit = "μm"
-        case "hz":
-            xtype = "Frequency"
-            str_xunit = "Hz"
-        case "erg":
-            xtype = "Energy"
-            str_xunit = "erg"
-        case "ev":
-            xtype = "Energy"
-            str_xunit = "eV"
-        case "kev":
-            xtype = "Energy"
-            str_xunit = "keV"
-        case "mev":
-            xtype = "Energy"
-            str_xunit = "MeV"
-        case _:
-            msg = f"Unknown x-axis unit {args.xunit}"
-            raise AssertionError(msg)
+    xunit = atspectra.get_xunit(args.xunit)
+    xtype = {"wavelength": "Wavelength", "frequency": "Frequency", "energy": "Energy"}[xunit.kind]
+    str_xunit = xunit.label
 
     xlabel = None if args.hidexticklabels else f"{xtype} [{str_xunit}]"
 
@@ -199,11 +176,11 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             strdist = str(args.distmpc).removesuffix(".0") + " Mpc"
             match args.yvariable:
                 case "flux":
-                    if xtype == "Wavelength":
+                    if xunit.kind == "wavelength":
                         ylabel = rf"F$_\lambda$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
-                    elif xtype == "Frequency":
+                    elif xunit.kind == "frequency":
                         ylabel = rf"F$_\nu$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
-                    elif xtype == "Energy":
+                    else:
                         ylabel = f"dF/dE at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                 case "luminosity":
                     ylabel = f"Luminosity [{{}}erg/s/{str_xunit}]"
@@ -272,19 +249,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis = axesgrid[0][0]
 
     if args.binflux:
-        new_lambda_angstroms = []
-        binned_flux = []
-
-        wavelengths = dfspectrum["lambda_angstroms"]
-        fluxes = dfspectrum[timecolname]
-        nbins = 5
-
-        for i in range(0, len(wavelengths) - nbins + 1, nbins):
-            new_lambda_angstroms.append(wavelengths[i + nbins // 2])
-            sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
-            binned_flux.append(sum_flux / nbins)
-
-        axis.plot(new_lambda_angstroms, binned_flux)
+        dfbinned = atspectra.bin_spectrum(dfspectrum, 5, "lambda_angstroms", timecolname)
+        axis.plot(dfbinned["lambda_angstroms"], dfbinned[timecolname])
     else:
         axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timecolname], label=linelabel)
 
@@ -406,6 +372,33 @@ def plot_reference_spectrum(
     return lineplot, label, ymax
 
 
+def plot_reference_spectrum_for_args(
+    filename: Path | str,
+    axis: mplax.Axes,
+    args: argparse.Namespace,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    scale_to_peak: float | None,
+    offset: float = 0.0,
+    **plotkwargs: t.Any,
+) -> tuple[Line2D, str, float]:
+    """Plot a reference spectrum over the x range of the axes, in the units and at the distance that args give."""
+    xmin, xmax = axis.get_xlim()
+    return plot_reference_spectrum(
+        filename=filename,
+        axis=axis,
+        xmin=xmin,
+        xmax=xmax,
+        fluxfilterfunc=filterfunc,
+        scale_to_peak=scale_to_peak,
+        offset=offset,
+        scale_to_dist_mpc=args.distmpc,
+        scaletoreftime=args.scaletoreftime,
+        xunit=args.xunit,
+        yvariable=args.yvariable,
+        **plotkwargs,
+    )
+
+
 def plot_filter_functions(axis: mplax.Axes) -> None:
     """Plot the UBVI filter transmission curves on a twinned y axis."""
     filter_names = ["U", "B", "V", "I"]
@@ -447,10 +440,9 @@ def plot_artis_spectrum(
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
-    if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
-        specfilename = Path(modelpath).parts[-1]
-        print_warning(f"ignoring filename of {specfilename}")
-        modelpath = Path(modelpath).parent
+    if modelpath.is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
+        print_warning(f"ignoring filename of {modelpath.name}")
+        modelpath = get_model_folder(modelpath)
 
     if not modelpath.is_dir():
         print_warning(f"Skipping because {modelpath} does not exist")
@@ -517,8 +509,6 @@ def plot_artis_spectrum(
 
         check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
-        viewinganglespectra: dict[int, pl.LazyFrame] = {}
-
         xmin, xmax = axis.get_xlim()
         if from_packets:
             lambda_bin_edges = atspectra.get_lambda_bin_edges(
@@ -574,16 +564,13 @@ def plot_artis_spectrum(
                 gamma=args.gamma,
             )
 
-        dirbin_definitions = (
-            get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
-            if args.plotvspecpol
-            else get_dirbin_labels(
-                dirbins=directionbins,
-                modelpath=modelpath,
-                average_over_phi=average_over_phi,
-                average_over_theta=average_over_theta,
-                usedegrees=usedegrees,
-            )
+        dirbin_definitions = get_dirbin_definitions(
+            modelpath,
+            directionbins,
+            vpkt_observers=bool(args.plotvspecpol),
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            usedegrees=usedegrees,
         )
 
         missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
@@ -619,22 +606,10 @@ def plot_artis_spectrum(
         )
         for dirbin, dfspectrum_dirbin in dirbin_dfspec:
             dfspectrum = dfspectrum_dirbin
-            if len(directionbins) > 1 and dirbin != directionbins[0]:
-                # only one colour was specified, but we have multiple direction bins
-                # to zero out all but the first one
-                plotkwargs = plotkwargs.copy()
-                plotkwargs["color"] = None
-
-            linelabel_withdirbin = linelabel
-            print(f"  direction {dirbin:4d}  {dirbin_definitions[dirbin]}", end="")
-            if "packetcount" in dfspectrum.collect_schema().names():
-                npkts_selected = dfspectrum.select(pl.col("packetcount").sum()).item()
-                print(f"\t({npkts_selected:.2e} packets)")
-            else:
-                print()
-
-            if dirbin != -1 and (len(directionbins) > 1 or not linelabel_is_custom):
-                linelabel_withdirbin = f"{linelabel} {dirbin_definitions[dirbin]}"
+            print_dirbin_summary(dirbin, dirbin_definitions[dirbin], dfspectrum)
+            linelabel_withdirbin = label_dirbin_series(
+                dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
+            )
 
             atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
@@ -642,24 +617,12 @@ def plot_artis_spectrum(
                 dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
 
             if args.binflux:
-                new_lambda_angstroms = []
-                binned_flux = []
                 assert args.xunit.lower() == "angstroms"
-
-                wavelengths = dfspectrum["lambda_angstroms"]
-                fluxes = dfspectrum["y"]
-                nbins = 5
-
-                for i in range(0, len(wavelengths), nbins):
-                    i_max = min(i + nbins, len(wavelengths))
-                    ncontribs = i_max - i
-                    sum_lambda = sum(wavelengths[j] for j in range(i, i_max))
-                    new_lambda_angstroms.append(sum_lambda / ncontribs)
-                    sum_flux = sum(fluxes[j] for j in range(i, i_max))
-                    binned_flux.append(sum_flux / ncontribs)
-
-                dfspectrum = pl.DataFrame({"x": new_lambda_angstroms, "y": binned_flux}).with_columns(
-                    lambda_angstroms=pl.col("x"), f_lambda=pl.col("y")
+                dfspectrum = (
+                    atspectra
+                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", "y")
+                    .rename({"lambda_angstroms": "x"})
+                    .with_columns(lambda_angstroms=pl.col("x"), f_lambda=pl.col("y"))
                 )
 
             axis.plot(
@@ -680,7 +643,6 @@ def make_spectrum_plot(
     dfalldata = pl.DataFrame()
     artisindex = 0
     refspecindex = 0
-    seriesindex = 0
 
     set_prop_cycle_unusedcolors(axes, args.color)
     for axis in axes:
@@ -709,38 +671,14 @@ def make_spectrum_plot(
 
             if args.multispecplot:
                 plotkwargs["color"] = "k"
-                supxmin, supxmax = axes[refspecindex].get_xlim()
-                plot_reference_spectrum(
-                    filename=specpath,
-                    axis=axes[refspecindex],
-                    xmin=supxmin,
-                    xmax=supxmax,
-                    xunit=args.xunit,
-                    yvariable=args.yvariable,
-                    fluxfilterfunc=filterfunc,
-                    scale_to_peak=scale_to_peak,
-                    scale_to_dist_mpc=args.distmpc,
-                    scaletoreftime=args.scaletoreftime,
-                    **plotkwargs,
+                plot_reference_spectrum_for_args(
+                    specpath, axes[refspecindex], args, filterfunc, scale_to_peak, **plotkwargs
                 )
             else:
                 if args.label[seriesindex]:
                     plotkwargs["label"] = args.label[seriesindex]
                 for axis in axes:
-                    supxmin, supxmax = axis.get_xlim()
-                    plot_reference_spectrum(
-                        filename=specpath,
-                        axis=axis,
-                        xmin=supxmin,
-                        xmax=supxmax,
-                        xunit=args.xunit,
-                        yvariable=args.yvariable,
-                        fluxfilterfunc=filterfunc,
-                        scale_to_peak=scale_to_peak,
-                        scale_to_dist_mpc=args.distmpc,
-                        scaletoreftime=args.scaletoreftime,
-                        **plotkwargs,
-                    )
+                    plot_reference_spectrum_for_args(specpath, axis, args, filterfunc, scale_to_peak, **plotkwargs)
             refspecindex += 1
         elif path_is_codecomparison(specpath):
             (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
@@ -1070,20 +1008,8 @@ def plot_reference_spectra(
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
 
-        supxmin, supxmax = axis.get_xlim()
-        plotobj, serieslabel, ymaxref = plot_reference_spectrum(
-            filepath,
-            axis,
-            xmin=supxmin,
-            xmax=supxmax,
-            fluxfilterfunc=filterfunc,
-            scale_to_peak=scale_to_peak,
-            scale_to_dist_mpc=args.distmpc,
-            offset=0.3 if scale_to_peak else 0.0,
-            scaletoreftime=args.scaletoreftime,
-            xunit=args.xunit,
-            yvariable=args.yvariable,
-            **plotkwargs,
+        plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
+            filepath, axis, args, filterfunc, scale_to_peak, offset=0.3 if scale_to_peak else 0.0, **plotkwargs
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
 
@@ -1103,15 +1029,12 @@ def get_emission_plot_label(modelpath: Path, args: argparse.Namespace, modelname
         return plotlabel
 
     assert dirbin is not None
-    dirbin_definitions = (
-        get_vspec_dir_labels(modelpath=modelpath, usedegrees=args.usedegrees)
-        if args.plotvspecpol
-        else get_dirbin_labels(
-            modelpath=modelpath,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            usedegrees=args.usedegrees,
-        )
+    dirbin_definitions = get_dirbin_definitions(
+        modelpath,
+        vpkt_observers=bool(args.plotvspecpol),
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+        usedegrees=args.usedegrees,
     )
     plotlabel += f", {dirbin_definitions[dirbin]}"
 
@@ -1127,7 +1050,7 @@ def make_emissionabsorption_plot(
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
-) -> tuple[list[Artist], list[str], pl.DataFrame | None]:
+) -> tuple[list[Artist], list[str], pl.DataFrame]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
@@ -1140,7 +1063,7 @@ def make_emissionabsorption_plot(
 
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {modelname}...skipping")
-        return [], [], None
+        return [], [], pl.DataFrame()
 
     check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
 
@@ -1254,25 +1177,15 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     scale_to_peak = 1.0 if args.normalised else None
 
-    dfalldata: pl.DataFrame | None = pl.DataFrame()
-
     xlabel, ylabel = get_axis_labels(args)
 
     if args.normalised and args.ymax is None:
         args.ymax = 1.10
-    for axis in axes:
-        # the scale goes on before the limits: a limit turns autoscaling off, so setting one first would
-        # lose the linear padding of a log axis. make_emissionabsorption_plot reads the x range back from
-        # the axes, thus the x limits have to be applied here rather than after the data is drawn.
-        if args.logscalex:
-            axis.set_xscale("log")
-        if args.logscaley:
-            axis.set_yscale("log")
-        if args.xmin is not None or args.xmax is not None:
-            axis.set_xlim(args.xmin, args.xmax)
-        if args.ymin is not None or args.ymax is not None:
-            axis.set_ylim(args.ymin, args.ymax)
 
+    # make_emissionabsorption_plot reads the x range back from the axes, thus the scales and the
+    # limits go on before the plot calls draw the data
+    set_axis_properties(axes, args)
+    for axis in axes:
         if not args.logscalex:
             axis.xaxis.set_major_locator(ticker.MaxNLocator(nbins="auto", steps=[1, 2, 2.5, 5, 10], prune="both"))
             axis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
@@ -1374,7 +1287,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
-    assert dfalldata is not None
     return fig, axes, dfalldata
 
 
@@ -1667,8 +1579,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timedays = args.timedayslist[0]
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
-    args.color = get_series_colors(
-        [path_is_reference_spectrum(filepath) for filepath in args.specpath], makelist(args.color)
+    args.color = resolve_series_styles(
+        args,
+        [path_is_reference_spectrum(filepath) for filepath in args.specpath],
+        args.color,
+        "label",
+        "linestyle",
+        "linealpha",
+        "dashes",
+        "linewidth",
     )
 
     if args.distmpc is None:
@@ -1685,10 +1604,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.distmpc <= 0.0:
         msg = f"-distmpc gives the distance of the observer in Mpc, thus it must be above zero, not {args.distmpc}"
         raise ValueError(msg)
-
-    args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = trim_or_pad(
-        len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
-    )
 
     if args.vpkt_match_emission_exclusion_to_opac:
         assert args.showemission

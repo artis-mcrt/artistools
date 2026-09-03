@@ -982,6 +982,24 @@ def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[
     return list_sequence
 
 
+def resolve_series_styles(
+    args: argparse.Namespace, isreference: Sequence[bool], usercolors: Sequence[str | None], *stylenames: str
+) -> list[str]:
+    """Return one colour for each series.
+
+    The function also pads each style list in args to one entry for each series. A colour in usercolors
+    has priority. A reference series gets black and then greys, and an ARTIS
+    model gets a colour of the cycle. A style list gets None where the user gave no entry.
+    """
+    from artistools.plottools import get_series_colors
+
+    seriescount = len(isreference)
+    for stylename in stylenames:
+        setattr(args, stylename, trim_or_pad(seriescount, getattr(args, stylename))[0])
+
+    return get_series_colors(isreference, makelist(usercolors))
+
+
 def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:
     """Return the -label value for one series, or fallback when the user gave none for it.
 

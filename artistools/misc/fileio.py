@@ -540,6 +540,13 @@ def stripallsuffixes(f: Path) -> Path:
     return f_nosuffixes
 
 
+def get_model_folder(modelpath: str | Path) -> Path:
+    """Return the model folder, whether modelpath names the folder itself or a file inside it."""
+    path = Path(modelpath)
+
+    return path.parent if path.is_file() else path
+
+
 def path_is_artis_model(filepath: Path | str) -> bool:
     """Return whether the path is an ARTIS model and not a reference data file.
 

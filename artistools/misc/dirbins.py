@@ -126,6 +126,28 @@ def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False
     return list(range(get_viewingdirectionbincount()))
 
 
+def get_dirbin_definitions(
+    modelpath: Path | str,
+    dirbins: Sequence[int] | None = None,
+    *,
+    vpkt_observers: bool = False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    usedegrees: bool = False,
+) -> dict[int, str]:
+    """Return a label for each direction bin, or for each virtual packet observer when vpkt_observers is set."""
+    if vpkt_observers:
+        return get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
+
+    return get_dirbin_labels(
+        dirbins=dirbins,
+        modelpath=modelpath,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        usedegrees=usedegrees,
+    )
+
+
 def print_theta_phi_definitions() -> None:
     """Print the spherical polar convention that the theta and phi direction bins follow."""
     print(

@@ -113,8 +113,6 @@ def get_from_packets(
         at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
-
     timebinstarts_plusend = [
         *dftimesteps_selected["tstart_days"],
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
@@ -130,7 +128,7 @@ def get_from_packets(
         nprocs_read, dfpackets = at.packets.get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / C_cm_per_s) ** 2)
+        escapesurfacegamma = at.spectra.get_escape_surface_gamma(modelpath)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / day_to_s).alias("t_arrive_cmf_d")
         ])
@@ -285,7 +283,6 @@ def generate_band_lightcurve_data(
             # pol and res files repeat the time columns for the Stokes Q and U blocks, so keep the first of each
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
-    filters_dict = {}
     if filternames is None:
         # the colour evolution plot integrates the bands of every filter pair at once, so it names them here
         # rather than by assigning args.filter, which also selects the subplot layout and the plot type
@@ -296,90 +293,95 @@ def generate_band_lightcurve_data(
     # the caller gives the names, or args.filter holds them. Either way they are names from here on
     bandnames: list[str] = list(filternames or [])
 
-    for filter_name in bandnames:
-        if filter_name == "bol":
-            times, bol_magnitudes = bolometric_magnitude(
-                Path(modelpath),
-                timearray,
-                args,
-                angle=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-            )
-            filters_dict["bol"] = [
-                (time, bol_magnitude)
-                for time, bol_magnitude in zip(times, bol_magnitudes, strict=False)
-                if math.isfinite(bol_magnitude)
-            ]
-        elif filter_name not in filters_dict:
-            filters_dict[filter_name] = []
+    selectedtimes = [
+        (timestep, time)
+        for timestep, time in enumerate(float(time) for time in timearray)
+        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time)
+    ]
+
+    # one collect_all call evaluates the spectra of all the times together, and every band reads them
+    spectra = pl.collect_all([
+        at.spectra.get_spectrum_at_time(
+            Path(modelpath),
+            timestep=timestep,
+            time=time,
+            args=args,
+            dirbin=dirbin,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+        )
+        for timestep, time in selectedtimes
+    ])
+    times_spectra = list(zip((time for _, time in selectedtimes), spectra, strict=True))
 
     filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    filters_dict: dict[str, list[tuple[float, float]]] = {}
 
     for filter_name in bandnames:
         if filter_name == "bol":
+            bol_magnitudes = (
+                (time, float(lum_lsun_to_mag(np.asarray(spectrum_to_bolometric_lum(spectrum) / Lsun_to_erg_per_s))))
+                for time, spectrum in times_spectra
+            )
+            filters_dict["bol"] = [(time, magnitude) for time, magnitude in bol_magnitudes if math.isfinite(magnitude)]
             continue
+
+        bandpoints = filters_dict.setdefault(filter_name, [])
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
             filterdir, filter_name
         )
 
-        for timestep, time in enumerate(float(time) for time in timearray):
-            if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-                wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
-                    modelpath=modelpath,
-                    timestep=timestep,
-                    time=time,
-                    wavefilter_min=wavefilter_min,
-                    wavefilter_max=wavefilter_max,
-                    angle=dirbin,
-                    args=args,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
+        for time, spectrum in times_spectra:
+            wavelength_from_spectrum, flux = bracket_spectrum_to_band(spectrum, wavefilter_min, wavefilter_max)
+
+            # interpolate the series with the coarser samples onto the finer wavelength grid before the
+            # product. Outside the sampled range, the contribution is zero
+            spectrum_in_filter = np.logical_and(
+                wavelength_from_spectrum >= wavefilter_min, wavelength_from_spectrum <= wavefilter_max
+            )
+            wavelength_in_filter = wavelength_from_spectrum[spectrum_in_filter]
+            flux_in_filter = flux[spectrum_in_filter]
+            if len(wavelength_in_filter) > len(wavefilter):
+                integrand = flux_in_filter * np.interp(
+                    wavelength_in_filter, wavefilter, transmission, left=0.0, right=0.0
                 )
+                integration_grid = wavelength_in_filter
+            else:
+                integrand = np.interp(wavefilter, wavelength_from_spectrum, flux, left=0.0, right=0.0) * transmission
+                integration_grid = wavefilter
 
-                # interpolate the coarser-sampled series onto the finer wavelength grid before multiplying,
-                # with zero contribution outside the sampled range
-                spectrum_in_filter = np.logical_and(
-                    wavelength_from_spectrum >= wavefilter_min, wavelength_from_spectrum <= wavefilter_max
-                )
-                wavelength_in_filter = wavelength_from_spectrum[spectrum_in_filter]
-                flux_in_filter = flux[spectrum_in_filter]
-                if len(wavelength_in_filter) > len(wavefilter):
-                    integrand = flux_in_filter * np.interp(
-                        wavelength_in_filter, wavefilter, transmission, left=0.0, right=0.0
-                    )
-                    integration_grid = wavelength_in_filter
-                else:
-                    integrand = (
-                        np.interp(wavefilter, wavelength_from_spectrum, flux, left=0.0, right=0.0) * transmission
-                    )
-                    integration_grid = wavefilter
+            weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
+            if weighted_flux_obs <= 0.0:
+                # no flux in the band gives no magnitude. A zero magnitude would show an extremely bright source
+                print(f"  no {filter_name} band flux at {time:.2f} d. Skipping this time.")
+                continue
 
-                weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
-                if weighted_flux_obs <= 0.0:
-                    # no flux in the band, so there is no magnitude to report. Appending zero here would look like
-                    # an extremely bright source
-                    print(f"  no {filter_name} band flux at {time:.2f} d. Skipping this time.")
-                    continue
-
-                # 25 converts the apparent magnitude at 10 pc to an absolute magnitude
-                phot_filtobs_mag = -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux) - 25
-                filters_dict[filter_name].append((time, phot_filtobs_mag))
+            # the spectrum is at 1 Mpc, and 25 = 5 log10(1 Mpc / 10 pc) gives the absolute magnitude at 10 pc
+            phot_filtobs_mag = -2.5 * math.log10(weighted_flux_obs / zeropointenergyflux) - 25
+            bandpoints.append((time, phot_filtobs_mag))
 
     return filters_dict
+
+
+def spectrum_to_bolometric_lum(dfspectrum: pl.DataFrame) -> float:
+    """Return the bolometric luminosity in erg/s of a spectrum, given as f_lambda at a distance of 1 Mpc."""
+    Mpc_to_cm = at.constants.megaparsec_to_cm
+    return float(
+        np.trapezoid(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2)
+    )
 
 
 def get_bolometric_luminosities(
     modelpath: Path,
     timesteps: Sequence[int],
-    dirbin: int = -1,
+    dirbins: Sequence[int] = (-1,),
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> list[float]:
-    """Return the bolometric luminosity in erg/s of one direction bin at each given timestep.
+) -> dict[int, list[float]]:
+    """Return the bolometric luminosity in erg/s of each direction bin at each given timestep.
 
     The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc.
-    One collect_all call evaluates the queries of all the timesteps together.
+    One collect_all call evaluates the queries of all the direction bins and timesteps together.
     """
     lazyspectra = [
         at.spectra.get_spectra(
@@ -388,56 +390,16 @@ def get_bolometric_luminosities(
             timestepmax=timestep,
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
-        )[dirbin]
+        )
         for timestep in timesteps
     ]
-    Mpc_to_cm = at.constants.megaparsec_to_cm
-    return [
-        float(np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2))
-        for spectrum in pl.collect_all(lazyspectra)
-    ]
+    spectra = pl.collect_all([spectra_timestep[dirbin] for dirbin in dirbins for spectra_timestep in lazyspectra])
+    ntimesteps = len(timesteps)
 
-
-def bolometric_magnitude(
-    modelpath: Path,
-    timearray: Collection[float | str],
-    args: argparse.Namespace,
-    angle: int = -1,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
-) -> tuple[list[float], list[float]]:
-    """Return the times and bolometric magnitudes obtained by integrating the spectra of one direction bin."""
-    selectedtimes = [
-        (timestep, time)
-        for timestep, time in enumerate(float(time) for time in timearray)
-        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time)
-    ]
-
-    if angle != -1 and args.plotvspecpol:
-        Mpc_to_cm = at.constants.megaparsec_to_cm
-        luminosities = [
-            float(np.trapezoid(spectrum["f_lambda"], spectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2))
-            for spectrum in (
-                at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args).collect() for _, time in selectedtimes
-            )
-        ]
-    else:
-        # spec.out supplies the angle-averaged spectrum, and the direction-bin average options do not apply to it
-        if angle == -1:
-            average_over_phi = False
-            average_over_theta = False
-        luminosities = get_bolometric_luminosities(
-            modelpath,
-            [timestep for timestep, _ in selectedtimes],
-            dirbin=angle,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-        )
-
-    times = [time for _, time in selectedtimes]
-    magnitudes = [float(lum_lsun_to_mag(np.asarray(lum / Lsun_to_erg_per_s))) for lum in luminosities]
-
-    return times, magnitudes
+    return {
+        dirbin: [spectrum_to_bolometric_lum(spectrum) for spectrum in spectra[i * ntimesteps : (i + 1) * ntimesteps]]
+        for i, dirbin in enumerate(dirbins)
+    }
 
 
 def get_filter_data(
@@ -466,29 +428,10 @@ def get_filter_data(
     return zeropointenergyflux, arr_wavefilter, arr_transmission, float(arr_wavefilter[0]), float(arr_wavefilter[-1])
 
 
-def get_spectrum_in_filter_range(
-    modelpath: Path | str,
-    timestep: int,
-    time: float,
-    wavefilter_min: float,
-    wavefilter_max: float,
-    angle: int = -1,
-    args: argparse.Namespace | None = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+def bracket_spectrum_to_band(
+    spectrum: pl.DataFrame, wavefilter_min: float, wavefilter_max: float
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the spectrum rows that bracket a filter wavelength range."""
-    spectrum = at.spectra.get_spectrum_at_time(
-        Path(modelpath),
-        timestep=timestep,
-        time=time,
-        args=args,
-        dirbin=angle,
-        average_over_phi=average_over_phi,
-        average_over_theta=average_over_theta,
-    )
-    assert spectrum is not None
-
+    """Return the wavelengths and the fluxes of the spectrum rows that bracket a filter wavelength range."""
     spectrum_bracketed = (
         at.misc
         .df_filter_minmax_bracketed(spectrum, "lambda_angstroms", wavefilter_min, wavefilter_max)

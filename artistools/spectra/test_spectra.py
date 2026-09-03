@@ -687,6 +687,24 @@ def test_xunit_conversion_roundtrip(xunit: str) -> None:
     assert arr_roundtrip == pytest.approx(arr_lambda, rel=1e-9)
 
 
+def test_bin_spectrum_gives_the_mean_of_each_group() -> None:
+    """bin_spectrum replaced a loop that took the mean x and the mean y of each group of nbins rows."""
+    rng = np.random.default_rng(42)
+    nrows, nbins = 23, 5
+    wavelengths = np.sort(rng.uniform(3000.0, 9000.0, nrows))
+    fluxes = rng.uniform(0.0, 1.0, nrows)
+
+    expected_x = [np.mean(wavelengths[i : i + nbins]) for i in range(0, nrows, nbins)]
+    expected_y = [np.mean(fluxes[i : i + nbins]) for i in range(0, nrows, nbins)]
+
+    dfbinned = atspectra.bin_spectrum(pl.DataFrame({"x": wavelengths, "y": fluxes}), nbins, "x", "y")
+
+    assert dfbinned.columns == ["x", "y"]
+    assert dfbinned.height == 5, "the last group holds the three rows that remain"
+    assert np.allclose(dfbinned["x"].to_numpy(), expected_x)
+    assert np.allclose(dfbinned["y"].to_numpy(), expected_y)
+
+
 def test_get_emabs_timeblock_count() -> None:
     """The row stride must come from each file's own size, not from shared state."""
     n_nu, n_timesteps = 5, 4

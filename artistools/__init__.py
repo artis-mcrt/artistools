@@ -115,6 +115,7 @@ from artistools.misc import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc import get_costheta_bins as get_costheta_bins
 from artistools.misc import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc import get_deposition as get_deposition
+from artistools.misc import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc import get_dirbin_labels as get_dirbin_labels
 from artistools.misc import get_dirbins as get_dirbins
 from artistools.misc import get_escaped_arrivalrange as get_escaped_arrivalrange
@@ -123,6 +124,7 @@ from artistools.misc import get_file_metadata as get_file_metadata
 from artistools.misc import get_filterfunc as get_filterfunc
 from artistools.misc import get_grid_mapping as get_grid_mapping
 from artistools.misc import get_inputparams as get_inputparams
+from artistools.misc import get_model_folder as get_model_folder
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_mpiranklist as get_mpiranklist
 from artistools.misc import get_mpirankofcell as get_mpirankofcell
@@ -168,6 +170,7 @@ from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import require_action as require_action
 from artistools.misc import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc import resolve_outputfile as resolve_outputfile
+from artistools.misc import resolve_series_styles as resolve_series_styles
 from artistools.misc import resolve_yscale as resolve_yscale
 from artistools.misc import savgol_filter as savgol_filter
 from artistools.misc import set_args_from_dict as set_args_from_dict
