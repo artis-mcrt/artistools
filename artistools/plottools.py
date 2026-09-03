@@ -705,10 +705,10 @@ def label_dirbin_series(
     dirbin: int,
     dirbins: Sequence[int],
     dirbin_definitions: Mapping[int, str],
-    linelabel: str,
+    linelabel: str | None,
     linelabel_is_custom: bool,
     plotkwargs: dict[str, t.Any],
-) -> str:
+) -> str | None:
     """Return the legend label of one direction bin series.
 
     The function also clears the -color entry of each bin after the first one. One -color entry serves
@@ -720,6 +720,8 @@ def label_dirbin_series(
         plotkwargs["color"] = None
 
     if dirbin != -1 and (len(dirbins) > 1 or not linelabel_is_custom):
+        # the caller gives a label for the series, thus a bin can name itself after it
+        assert linelabel is not None
         return f"{linelabel} {dirbin_definitions[dirbin]}"
 
     return linelabel

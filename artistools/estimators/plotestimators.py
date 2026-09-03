@@ -5,6 +5,7 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
+import contextlib
 import math
 import string
 import typing as t
@@ -541,12 +542,19 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
         if suffix and elsymbol in elsymbols and at.decode_roman_numeral(suffix) < 0:
             return (at.get_atomic_number(elsymbol), ionstr)
 
-    try:
-        iontuple = at.get_ion_tuple(ionstr)
-    except ValueError:
-        # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
-        return (at.get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
+    # get_ion_tuple strips an X_, nnelement_, or nnion_ prefix. Such a prefix names a column and not
+    # an ion, thus a name that holds one goes to the fallback below and the caller then rejects it
+    if not ionstr.startswith(("X_", "nnelement_", "nnion_")):
+        with contextlib.suppress(ValueError):
+            return get_element_or_ion_tuple(ionstr)
 
+    # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
+    return (at.get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
+
+
+def get_element_or_ion_tuple(ionstr: str) -> tuple[int, str | int]:
+    """Return the atomic number and the ion stage of a name that get_ion_tuple reads, or "ALL" for an element."""
+    iontuple = at.get_ion_tuple(ionstr)
     return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
 
 

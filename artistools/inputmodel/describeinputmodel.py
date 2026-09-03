@@ -147,7 +147,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
         else:
-            print_mapped_masses(dfmodel, assoc_cells, mgi_of_propcells, modelmeta, initial_energy, mass_msun_rho)
+            print_mapped_masses(dfmodel, assoc_cells, mgi_of_propcells, modelmeta, vmax, initial_energy, mass_msun_rho)
 
     print(f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
@@ -174,13 +174,14 @@ def print_mapped_masses(
     assoc_cells: dict[int, list[int]],
     mgi_of_propcells: dict[int, int],
     modelmeta: dict[str, t.Any],
+    vmax: float,
     initial_energy: float,
     mass_msun_rho: float,
 ) -> None:
     """Print the mass and the initial energy of the model after ARTIS maps it to the cubic propagation grid."""
     ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-    wid_init = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / ncoordgridx
+    wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
 
     dfpropcellcounts = pl.LazyFrame(
         {"modelgridindex": list(assoc_cells.keys()), "n_assoc_cells": [len(cells) for cells in assoc_cells.values()]},

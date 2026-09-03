@@ -334,8 +334,9 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
-# The version of the model parquet cache format. Increase it for a change that makes an older cache
-# file incorrect, e.g. a new column or a different data type.
+# The version of the parquet cache format of every text source that get_text_source_cached() reads,
+# which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
+# incorrect, e.g. a new column or a different data type in either one.
 CACHEVERSION = 1
 
 

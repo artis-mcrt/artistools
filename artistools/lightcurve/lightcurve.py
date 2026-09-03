@@ -376,19 +376,21 @@ def get_bolometric_luminosities(
 ) -> dict[int, list[float]]:
     """Return the bolometric luminosity in erg/s of each direction bin at each given timestep.
 
-    The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc.
-    One collect_all call evaluates the queries of all the direction bins and timesteps together.
+    The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc. One
+    get_spectra call builds the queries of every timestep, and one collect_all call then evaluates
+    the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
         at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
         for timestep in timesteps
     ]
-    spectra = pl.collect_all([spectra_timestep[dirbin] for dirbin in dirbins for spectra_timestep in lazyspectra])
-    ntimesteps = len(timesteps)
 
     return {
-        dirbin: [spectrum_to_bolometric_lum(spectrum) for spectrum in spectra[i * ntimesteps : (i + 1) * ntimesteps]]
-        for i, dirbin in enumerate(dirbins)
+        dirbin: [
+            spectrum_to_bolometric_lum(spectrum)
+            for spectrum in pl.collect_all([spectra_timestep[dirbin] for spectra_timestep in lazyspectra])
+        ]
+        for dirbin in dirbins
     }
 
 

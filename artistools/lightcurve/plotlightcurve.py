@@ -896,6 +896,7 @@ def make_colorbar_viewingangles(
 
     # one tick at each bin boundary, on the scale of the colour map that has one colour per bin
     ticklocs = list(np.linspace(0, nbins - 1, num=nbins + 1, dtype=float))
+    assert len(ticklabels) == len(ticklocs), f"{len(ticklabels)} labels for {len(ticklocs)} ticks of {nbins} bins"
 
     # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
     axeslist = iter_axes(ax) if ax is not None else None

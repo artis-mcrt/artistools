@@ -377,7 +377,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")
-    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True).filter(
+    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True)
+    if "Ye" not in traj_summ_data.collect_schema().names():
+        msg = f"{summarypath} has no Ye column. The first line must be a header line that starts with #."
+        raise ValueError(msg)
+
+    traj_summ_data = traj_summ_data.filter(
         pl.any_horizontal(pl.col("Ye").is_between(Ye_lower, Ye_upper) for _, Ye_lower, Ye_upper in Ye_bins)
     )
 

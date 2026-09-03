@@ -868,12 +868,15 @@ def remap_mass_weighted_quantity(
     N_cell_r_old: int,
     Delta_r: float,
     Delta_z: float,
+    masses: npt.NDArray[np.float64] | None = None,
 ) -> npt.NDArray[np.float64]:
     """Return fieldname remapped onto the coarser grid, weighting each fine cell by its mass.
 
-    For the mass_g field, the result is the density of the coarse cell.
+    For the mass_g field, the result is the density of the coarse cell. A caller that remaps many
+    fields gives the mass blocks, because one call of coarse_grid_blocks copies the full fine grid.
     """
-    masses = coarse_grid_blocks(dfmodel_in["mass_g"].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
+    if masses is None:
+        masses = coarse_grid_blocks(dfmodel_in["mass_g"].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
     coarse_mass = masses.sum(axis=(1, 3))
 
     if fieldname == "mass_g":
@@ -881,6 +884,10 @@ def remap_mass_weighted_quantity(
         r_o = r_i + Delta_r
         V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
         return np.asarray((coarse_mass / V_new[np.newaxis, :]).ravel(), dtype=np.float64)
+
+    if not (coarse_mass > 0.0).all():
+        msg = f"a coarse cell holds no mass, thus the mass weighted average of {fieldname} has no value"
+        raise ValueError(msg)
 
     values = coarse_grid_blocks(dfmodel_in[fieldname].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
     return np.asarray(((values * masses).sum(axis=(1, 3)) / coarse_mass).ravel(), dtype=np.float64)
@@ -939,9 +946,10 @@ def merge_neighbour_cells(
 
     nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
 
+    massblocks = coarse_grid_blocks(dfmodel["mass_g"].to_numpy(), red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old)
     for nuclide in nuclide_columns:
         new_X_arr = remap_mass_weighted_quantity(
-            dfmodel, nuclide, red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old, Delta_r, Delta_z
+            dfmodel, nuclide, red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old, Delta_r, Delta_z, massblocks
         )
         dictabunds[nuclide] = new_X_arr
         el = "".join([i for i in nuclide[2:] if not i.isdigit()])

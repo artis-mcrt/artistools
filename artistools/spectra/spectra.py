@@ -631,7 +631,6 @@ def get_from_packets(
             .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
             .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
             .drop("flux")
-            .with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
         )
         for dirbin, dfflux in dirbin_fluxes.items()
     }
@@ -640,12 +639,16 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
         dirbin_spectra = {
             dirbin: dfspectrum.with_columns(
-                cs.by_name(("f_lambda", "f_nu")).map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+                pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
             )
             for dirbin, dfspectrum in dirbin_spectra.items()
         }
 
-    return dirbin_spectra
+    # f_nu takes the scale of the filtered f_lambda, because a filter does not commute with that scale
+    return {
+        dirbin: dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+        for dirbin, dfspectrum in dirbin_spectra.items()
+    }
 
 
 def bin_packet_flux(
@@ -825,7 +828,9 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
         f" {nvirtual_spectra})"
     )
-    vspecpol_data_allranks: dict[int, list[pl.DataFrame]] = {}
+    # one running sum for each observer, thus the frames of every rank do not stay in memory together
+    fluxsum_of_spec: dict[int, npt.NDArray[np.floating]] = {}
+    firstrank_of_spec: dict[int, pl.DataFrame] = {}
     for mpirank in range(nprocs):
         vspecpolpath = firstexisting(
             [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
@@ -840,16 +845,19 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         assert len(vspecpol_data) == nvirtual_spectra
 
         for specindex, dfrank in vspecpol_data.items():
-            vspecpol_data_allranks.setdefault(specindex, []).append(dfrank)
+            # the first row holds the times and the first column holds the frequencies, thus the sum
+            # takes the flux block below and right of them
+            fluxblock = dfrank[1:, 1:].to_numpy()
+            if specindex in fluxsum_of_spec:
+                fluxsum_of_spec[specindex] += fluxblock
+            else:
+                fluxsum_of_spec[specindex] = fluxblock.copy()
+                firstrank_of_spec[specindex] = dfrank
 
-    for spec_index, rankframes in vspecpol_data_allranks.items():
-        # the first row holds the times and the first column holds the frequencies, thus the sum
-        # takes the flux block below and right of them
-        dfflux = pl.DataFrame(
-            np.sum([dfrank[1:, 1:].to_numpy() for dfrank in rankframes], axis=0),
-            schema=list(rankframes[0].schema.items())[1:],
-        ).insert_column(0, rankframes[0][1:, 0])
-        dfvspecpol = pl.concat([rankframes[0][0], dfflux])
+    for spec_index, fluxsum in fluxsum_of_spec.items():
+        dffirst = firstrank_of_spec[spec_index]
+        dfflux = pl.DataFrame(fluxsum, schema=list(dffirst.schema.items())[1:]).insert_column(0, dffirst[1:, 0])
+        dfvspecpol = pl.concat([dffirst[0], dfflux])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
         dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
@@ -1099,7 +1107,8 @@ def get_flux_contributions(
         if maxion is None:
             maxion = int(maxion_float)
             print(
-                f" inferred MAXION = {maxion} from the {source} file with nelements = {nelements} from compositiondata.txt"
+                f" inferred MAXION = {maxion} from the {source} file with nelements = {nelements}"
+                " from compositiondata.txt"
             )
         else:
             assert maxion == int(maxion_float)
