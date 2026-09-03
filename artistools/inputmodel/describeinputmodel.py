@@ -38,7 +38,6 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
     globalelectronfrac = (
         dfmodel
         .with_columns(protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons))
-        .with_columns(electronfrac=pl.col("protons") / pl.col("nucleons"))
         .select(pl.col("protons").sum() / pl.col("nucleons").sum())
         .collect()
         .item()
@@ -84,7 +83,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             f" ({vmax / C_cm_per_s:.2f} * c)"
         )
     else:
-        nonemptycells = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
+        nonemptycells = dfmodel.select(pl.len()).collect().item()
         print(
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
             f"vmax = {vmax} cm/s ({vmax / C_cm_per_s:.2f} * c)"
@@ -148,32 +147,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
         else:
-            ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
-            wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
-            wid_init3 = wid_init**3
-            initial_energy_mapped = 0.0
-            cellmass_mapped = [
-                float(len(assoc_cells.get(modelgridindex, [])) * wid_init3 * rho)
-                for modelgridindex, rho in dfmodel.select(["modelgridindex", "rho"]).collect().iter_rows()
-            ]
-
-            if "q" in dfmodel.collect_schema().names():
-                initial_energy_mapped = sum(
-                    mass * float(q[0])
-                    for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().iter_rows(), strict=False)
-                )
-
-                print(
-                    f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
-                    f" {ncoordgridx}^3 cubic grid, error"
-                    f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
-                )
-
-            mtot_mapped_msun = sum(cellmass_mapped) / Msun_to_g
-            print(
-                f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
-                f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
-            )
+            print_mapped_masses(dfmodel, assoc_cells, mgi_of_propcells, modelmeta, initial_energy, mass_msun_rho)
 
     print(f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
@@ -191,9 +165,51 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
         )
 
-    if args.noabund:
-        return
+    if not args.noabund:
+        print_species_masses(dfmodel, args, mass_msun_rho)
 
+
+def print_mapped_masses(
+    dfmodel: pl.LazyFrame,
+    assoc_cells: dict[int, list[int]],
+    mgi_of_propcells: dict[int, int],
+    modelmeta: dict[str, t.Any],
+    initial_energy: float,
+    mass_msun_rho: float,
+) -> None:
+    """Print the mass and the initial energy of the model after ARTIS maps it to the cubic propagation grid."""
+    ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
+    wid_init = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / ncoordgridx
+
+    dfpropcellcounts = pl.LazyFrame(
+        {"modelgridindex": list(assoc_cells.keys()), "n_assoc_cells": [len(cells) for cells in assoc_cells.values()]},
+        schema={"modelgridindex": pl.Int32, "n_assoc_cells": pl.Int64},
+    )
+    dfmapped = (
+        dfmodel
+        .with_columns(pl.col("modelgridindex").cast(pl.Int32))
+        .join(dfpropcellcounts, on="modelgridindex", how="left", maintain_order="left")
+        .with_columns(mass_g_mapped=pl.col("n_assoc_cells").fill_null(0) * wid_init**3 * pl.col("rho"))
+    )
+
+    if "q" in dfmodel.collect_schema().names():
+        initial_energy_mapped = dfmapped.select(pl.col("q").dot(pl.col("mass_g_mapped"))).collect().item()
+        print(
+            f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
+            f" {ncoordgridx}^3 cubic grid, error"
+            f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
+        )
+
+    mtot_mapped_msun = dfmapped.select(pl.col("mass_g_mapped").sum()).collect().item() / Msun_to_g
+    print(
+        f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
+        f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+    )
+
+
+def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_msun_rho: float) -> None:
+    """Print the total mass of each element and isotope, and the lanthanide, actinide, and iron-group totals."""
     mass_msun_isotopes = 0.0
     mass_msun_elem = 0.0
     mass_msun_lanthanides = 0.0
@@ -274,7 +290,6 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     def sortkey(tup_species_mass_g: tuple[str, float]) -> tuple[int, int, str] | tuple[float, str]:
         species, mass_g = tup_species_mass_g
-        assert args is not None
         if args.sort in {"z", "a"}:
             # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
             strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(

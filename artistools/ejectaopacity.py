@@ -70,30 +70,24 @@ def get_binned_opacities_ion(
         )
         .group_by("modelgridindex", "lambda_angstroms_binindex")
         .agg(
-            (
-                (
-                    (1 - (-pl.col("tau_sobolev")).exp())
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (C_cm_per_s * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"exopac_contribution_{ionstr}"),
-            (
-                (
-                    pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (C_cm_per_s * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"linebinned_maxone_contribution_{ionstr}"),
-            (
-                (
-                    pl.col("tau_sobolev")
-                    * pl.col("lambda_angstroms")
-                    / expopac_deltalambda
-                    / (C_cm_per_s * time_s * pl.col("rho"))
-                ).sum()
-            ).alias(f"linebinned_contribution_{ionstr}"),
+            exopac=(
+                (1 - (-pl.col("tau_sobolev")).exp())
+                * pl.col("lambda_angstroms")
+                / expopac_deltalambda
+                / (C_cm_per_s * time_s * pl.col("rho"))
+            ).sum(),
+            linebinned_maxone=(
+                pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
+                * pl.col("lambda_angstroms")
+                / expopac_deltalambda
+                / (C_cm_per_s * time_s * pl.col("rho"))
+            ).sum(),
+            linebinned=(
+                pl.col("tau_sobolev")
+                * pl.col("lambda_angstroms")
+                / expopac_deltalambda
+                / (C_cm_per_s * time_s * pl.col("rho"))
+            ).sum(),
         )
     )
 
@@ -122,32 +116,42 @@ def get_expansion_opacities(
 
     lambda_bin_edges = [lambdamin + i * deltalambda for i in range(numbins + 1)]
 
+    estimatorcolumns = dfestimators.columns
+    ionframes = []
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         ionstr = at.get_ionstring(Z, ion_stage, sep="_")
-
-        if f"nnion_{ionstr}" not in dfestimators.collect_schema().names():
+        if f"nnion_{ionstr}" not in estimatorcolumns:
             continue
 
-        dfbinnedopacities = dfbinnedopacities.join(
+        ionframes.append(
             get_binned_opacities_ion(
                 dfestimators.lazy(), dflevels.lazy(), dftransitions, ionstr, lambda_bin_edges, deltalambda, time_days
-            ),
-            on=("modelgridindex", "lambda_angstroms_binindex"),
-            how="left",
-            maintain_order="left",
+            )
         )
 
-    return dfbinnedopacities.select(
-        "modelgridindex",
-        "lambda_angstroms_binindex",
-        "lambda_angstroms_bin_mid",
-        "Te",
-        "mass_g",
-        *[
-            pl.sum_horizontal(cs.starts_with(prefix)).alias(prefix.removesuffix("_contribution_"))
-            for prefix in ("exopac_contribution_", "linebinned_contribution_", "linebinned_maxone_contribution_")
-        ],
-    ).sort("modelgridindex", "lambda_angstroms_binindex")
+    if not ionframes:
+        msg = "The estimators hold no ion population column for any ion of the atomic data"
+        raise ValueError(msg)
+
+    # one sum over the rows of every ion, in place of one join for each ion and a sum across the columns
+    opacitycolumns = ["exopac", "linebinned", "linebinned_maxone"]
+    dfionsums = (
+        pl.concat(ionframes).group_by("modelgridindex", "lambda_angstroms_binindex").agg(pl.col(opacitycolumns).sum())
+    )
+
+    return (
+        dfbinnedopacities
+        .join(dfionsums, on=("modelgridindex", "lambda_angstroms_binindex"), how="left", maintain_order="left")
+        .select(
+            "modelgridindex",
+            "lambda_angstroms_binindex",
+            "lambda_angstroms_bin_mid",
+            "Te",
+            "mass_g",
+            pl.col(opacitycolumns).fill_null(0.0),
+        )
+        .sort("modelgridindex", "lambda_angstroms_binindex")
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

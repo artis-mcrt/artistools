@@ -20,12 +20,14 @@ from artistools.plottools import set_mpl_style
 
 
 def get_required_packets(
-    modelpath: Path, Z_list: Sequence[int], ion_stage_list: Sequence[int], srII_triplet: bool = False
+    modelpath: Path, Z_list: Sequence[int] | None, ion_stage_list: Sequence[int] | None, srII_triplet: bool = False
 ) -> tuple[int, pl.LazyFrame]:
-    """Options for this function: Either the Sr II triplet, specific or all ion stages of an element."""
+    """Return the escaped packets that a line of the given elements and ion stages last absorbed.
+
+    A None list selects every element or every ion stage. The Sr II triplet takes the place of both lists.
+    """
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
-    # Sr II triplet
     linelist_lazyframe = at.atomic.get_linelist_pldf(modelpath)
     if srII_triplet:
         linelist_lazyframe = linelist_lazyframe.filter(
@@ -38,9 +40,10 @@ def get_required_packets(
             )
         )
     else:
-        linelist_lazyframe = linelist_lazyframe.filter(
-            pl.col("atomic_number").is_in(Z_list) & pl.col("ion_stage").is_in(ion_stage_list)
-        )
+        if Z_list is not None:
+            linelist_lazyframe = linelist_lazyframe.filter(pl.col("atomic_number").is_in(Z_list))
+        if ion_stage_list is not None:
+            linelist_lazyframe = linelist_lazyframe.filter(pl.col("ion_stage").is_in(ion_stage_list))
     lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
     nprocs_read, dfpackets = at.packets.get_packets(
         modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -53,8 +56,8 @@ def get_required_packets(
 def get_reduced_packet_set(
     modelpath: Path,
     dirbin: int,
-    Z: Sequence[int],
-    ion_stage: Sequence[int],
+    Z: Sequence[int] | None,
+    ion_stage: Sequence[int] | None,
     wavelen: float | None = None,
     binwidth: float | None = None,
     srII_triplet: bool = False,
@@ -101,10 +104,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
     start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
     start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
 
-    # Step 1) collect packets IDs and select according to arrival time
-    Z_list = [Z] if Z else list(range(1, 101))
-    # the "all ions" case must cover every ion stage, otherwise the allions_ output filename is a lie
-    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else list(range(1, 102))
+    # Step 1) collect packets IDs and select according to arrival time. None selects every element or ion stage
+    Z_list = [Z] if Z else None
+    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
 
     nprocs_read, dfpackets = get_reduced_packet_set(
         modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
@@ -171,13 +173,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
         weights=weights,
     )
-    heatmap = (
-        hist2D
-        / (timemaxarray[timestep] - timeminarray[timestep])
-        / day_to_s
-        / nprocs_read
-        * inverse_solidangle_fraction
-    )
+    heatmap = hist2D / Delta_t_secs / nprocs_read * inverse_solidangle_fraction
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
     if colorlogscale:
         heatmap = np.ma.log(heatmap)

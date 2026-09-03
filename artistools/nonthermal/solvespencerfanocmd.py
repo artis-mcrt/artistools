@@ -178,7 +178,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.modelpath)
 
-    dfpops: pl.DataFrame | None
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
@@ -203,9 +202,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
-
-        if dfpops.is_empty():
+        if at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
             at.exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]
@@ -243,7 +240,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             nntot = 1.0
             x_e = (args.x_e * 10 ** (0.5 * step)) if args.vary == "x_e" else args.x_e
             ionpopdict = {}
-            dfpops = None
             T_e = 3000
             ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
 
@@ -253,7 +249,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         if args.noexcitation:
             adata = None
-            dfpops = None
         else:
             # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
             adata = at.atomic.get_levels(

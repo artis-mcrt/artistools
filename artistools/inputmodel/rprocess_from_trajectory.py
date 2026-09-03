@@ -12,7 +12,6 @@ import typing as t
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
-from itertools import chain
 from pathlib import Path
 
 import numpy as np
@@ -31,8 +30,9 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     ZMAX = dfnucabund["Z"].max()
     assert isinstance(ZMAX, int)
+    massfrac_of_z = dict(dfnucabund.group_by("Z").agg(pl.col("massfrac").sum()).iter_rows())
     return {
-        f"X_{at.get_elsymbol(atomic_number)}": float(dfnucabund.filter(pl.col("Z") == atomic_number)["massfrac"].sum())
+        f"X_{at.get_elsymbol(atomic_number)}": float(massfrac_of_z.get(atomic_number, 0.0))
         for atomic_number in range(1, ZMAX + 1)
     }
 
@@ -376,14 +376,21 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
         .collect()
     )
 
-    for _, dfparticlecontribs in dfcontribs.group_by(["cellindex"]):
-        frac_sum: float | int = float(dfparticlecontribs["frac_of_cellmass"].sum())
-        assert frac_sum == 0.0 or math.isclose(frac_sum, 1.0, rel_tol=0.02)
-
-        cell_frac_includemissing_sum_thiscell = float(dfparticlecontribs["frac_of_cellmass_includemissing"].sum())
-        assert cell_frac_includemissing_sum_thiscell == 0.0 or math.isclose(
-            cell_frac_includemissing_sum_thiscell, 1.0, rel_tol=0.02
+    # the fractions of each cell sum to one, or to zero for a cell without particles
+    fraccols = ["frac_of_cellmass", "frac_of_cellmass_includemissing"]
+    cellsums_ok = (
+        dfcontribs
+        .group_by("cellindex")
+        .agg(pl.col(fraccols).sum())
+        .select(
+            (
+                (pl.col(col) == 0.0) | ((pl.col(col) - 1.0).abs() <= 0.02 * pl.max_horizontal(pl.col(col).abs(), 1.0))
+            ).all()
+            for col in fraccols
         )
+        .row(0)
+    )
+    assert all(cellsums_ok), "the particle contributions of a cell do not sum to one"
 
     print("done")
 
@@ -437,12 +444,24 @@ def add_abundancecontributions(
 
     assert len(particleids) > n_missing_particles
 
-    allkeys = list(set(chain.from_iterable(list_traj_nuc_abund)))
-
-    dfnucabundances = pl.DataFrame({
-        f"particle_{particleid}": [traj_nuc_abund.get(k, 0.0) for k in allkeys]
-        for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund, strict=False)
-    }).with_columns(pl.all().cast(pl.Float64))
+    # a long table with one row for each particle and nuclide (or the "q" energy)
+    dfparticlenucabund = pl.DataFrame(
+        {
+            "particleid": [
+                particleid
+                for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund, strict=True)
+                for _ in traj_nuc_abund
+            ],
+            "colname": [
+                key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}"
+                for traj_nuc_abund in list_traj_nuc_abund
+                for key in traj_nuc_abund
+            ],
+            "massfrac": [value for traj_nuc_abund in list_traj_nuc_abund for value in traj_nuc_abund.values()],
+        },
+        schema={"particleid": pl.Int32, "colname": pl.String, "massfrac": pl.Float64},
+    )
+    allcolnames = dfparticlenucabund["colname"].unique().to_list()
 
     del list_traj_nuc_abund
     gc.collect()
@@ -452,19 +471,24 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
-    dfnucabundances = dfnucabundances.select([
-        pl.sum_horizontal([
-            pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
-            for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
-        ]).alias(str(cellindex))
-        for (cellindex,), dfthiscellcontribs in dfcontribs.group_by(["cellindex"])
-    ])
-
-    colnames = [key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}" for key in allkeys]
-
-    dfnucabundances = dfnucabundances.transpose(
-        include_header=True, column_names=colnames, header_name="inputcellid"
-    ).with_columns(pl.col("inputcellid").cast(pl.Int32))
+    # the mass fraction of a cell is the sum over the particles of the particle mass fraction times
+    # the fraction of the cell mass from that particle
+    dfnucabundances = (
+        dfcontribs
+        .lazy()
+        .select("particleid", "cellindex", "frac_of_cellmass")
+        .join(dfparticlenucabund.lazy(), on="particleid", how="inner", maintain_order="left")
+        .group_by("cellindex", "colname")
+        .agg((pl.col("massfrac") * pl.col("frac_of_cellmass")).sum())
+        .collect()
+        .pivot(on="colname", index="cellindex", values="massfrac")
+        .rename({"cellindex": "inputcellid"})
+        .with_columns(pl.col("inputcellid").cast(pl.Int32))
+    )
+    # a cell with no particle that has a nuclide gets a zero, and so does a nuclide that no cell got
+    dfnucabundances = dfnucabundances.with_columns(
+        pl.lit(0.0).alias(colname) for colname in allcolnames if colname not in dfnucabundances.columns
+    ).with_columns(cs.float().fill_null(0.0))
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()

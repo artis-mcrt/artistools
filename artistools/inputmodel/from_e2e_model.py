@@ -100,6 +100,9 @@ def get_grid(
     state = np.array([round(i) for i in dat.f.state])  # == -1,0,1 for dynamical, NS-torus, BH-torus
     dyncond = state == -1
     dynidall = np.array([i % 10000 for i in idx])
+    firstindex_of_id: dict[int, int] = {}
+    for i2, i1 in enumerate(dynidall.tolist()):
+        firstindex_of_id.setdefault(i1, i2)
     dynid = {i % 10000 for i in idx[dyncond]}  # original IDs of dynamical ejecta
     ndyn = len(dynid)
     nodid = {i % 10000 for i in idx[~dyncond]}  # IDs of other ejecta trajs.
@@ -145,7 +148,7 @@ def get_grid(
 
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
-        i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
+        i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
         qtraj[i] = np.trapezoid(
             time_by_t_snap[starting_idx:closest_idx] * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:closest_idx],
@@ -177,7 +180,7 @@ def get_grid(
     # ... non-dynamical ejecta
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
-        i2 = list(dynidall).index(i1)  # index in Zeweis extended list of trajs.
+        i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         xtraj[i, :] = xiso0[i2, :]
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
@@ -218,10 +221,8 @@ def get_grid(
 
     # ... cylindrical coordinates of the particle positions
     vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
-    rcyltraj, zcyltraj = np.zeros(ntraj), np.zeros(ntraj)
-    for i in range(ntraj):
-        rcyltraj[i] = vtraj[i] * np.sin(atraj[i]) * CLIGHT * t_model_init_s
-        zcyltraj[i] = vtraj[i] * np.cos(atraj[i]) * CLIGHT * t_model_init_s
+    rcyltraj = vtraj * np.sin(atraj) * CLIGHT * t_model_init_s
+    zcyltraj = vtraj * np.cos(atraj) * CLIGHT * t_model_init_s
     if model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
         nvr = numb_cells_ARTIS_radial
@@ -230,28 +231,23 @@ def get_grid(
         )  # number of mapping grid cells in z direction depends on equatorial symmetry
 
         wid_init_rcyl = vmax_cmps * t_model_init_s / nvr
-        pos_rcyl_min = np.array([vmax_cmps * t_model_init_s / nvr * nr for nr in range(nvr)])
+        pos_rcyl_min = vmax_cmps * t_model_init_s / nvr * np.arange(nvr)
         pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
         pos_rcyl_max = pos_rcyl_min + wid_init_rcyl
 
         wid_init_z = (2.0 / eqsymfac) * vmax_cmps * t_model_init_s / nvz
         if eqsymfac == 1:
-            pos_z_min = np.array([
-                -vmax_cmps * t_model_init_s + 2.0 * vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)
-            ])
+            pos_z_min = -vmax_cmps * t_model_init_s + 2.0 * vmax_cmps * t_model_init_s / nvz * np.arange(nvz)
         else:
-            pos_z_min = np.array([vmax_cmps * t_model_init_s / nvz * nz for nz in range(nvz)])
+            pos_z_min = vmax_cmps * t_model_init_s / nvz * np.arange(nvz)
         pos_z_mid = pos_z_min + 0.5 * wid_init_z
 
-        rgridc2d = np.array([pos_rcyl_mid[n_r] for n_r in range(nvr) for _n_z in range(nvz)]).reshape(nvr, nvz)
+        # grids indexed [n_r, n_z]
+        rgridc2d = np.broadcast_to(pos_rcyl_mid[:, np.newaxis], (nvr, nvz))
         # the z-grid has to be shifted to starting from zero to keep consistency with Oli's script
-        zgridc2d = np.array([pos_z_mid[n_z] for _n_r in range(nvr) for n_z in range(nvz)]).reshape(nvr, nvz)
+        zgridc2d = np.broadcast_to(pos_z_mid[np.newaxis, :], (nvr, nvz))
 
-        volgrid = np.array([
-            wid_init_z * np.pi * (pos_rcyl_max[n_r] ** 2 - pos_rcyl_min[n_r] ** 2)
-            for n_r in range(nvr)
-            for _n_z in range(nvz)
-        ]).reshape(nvr, nvz)
+        volgrid = np.broadcast_to((wid_init_z * np.pi * (pos_rcyl_max**2 - pos_rcyl_min**2))[:, np.newaxis], (nvr, nvz))
     elif model_dim == 3:
         # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
         # by the cylindrical radius
@@ -263,7 +259,7 @@ def get_grid(
 
         def axis_grid(ncells: int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
             """Return the left edges, the centres, and the right edges of one axis of the velocity grid."""
-            gridl = np.array([vminr + i * (vmaxr - vminr) / ncells for i in range(ncells)])
+            gridl = vminr + np.arange(ncells) * (vmaxr - vminr) / ncells
             gridr = gridl + (vmaxr - vminr) / ncells
             return gridl, 0.5 * (gridl + gridr), gridr
 
@@ -412,40 +408,32 @@ def get_grid(
     test = np.where(test > -1, test, 0.0)
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
-    # write file containing the contribution of each trajectory to each interpolated grid cell
-    dfcontributions_particleids = []
-    dfcontributions_cellindices = []
-    dfcontributions_fracofcellmass = []
+    # write file containing the contribution of each trajectory to each interpolated grid cell.
+    # wloc is the weight of each particle in each cell, normalised over the particles of the cell
+    wloc = wall * rho2dtraj / rho2dhat
+    with np.errstate(divide="ignore", invalid="ignore"):
+        wloc /= np.sum(wloc, axis=-1, keepdims=True)
+    cellhasmass = dmgrid > (1e-100 * mtot)
     if model_dim == 2:
-        for nz in range(nvz):
-            for nr in range(nvr):
-                cellid = nz * nvr + nr + 1
-                if dmgrid[nr, nz] > (1e-100 * mtot):
-                    wloc = wall[nr, nz, :] * rho2dtraj / rho2dhat
-                    wloc /= np.sum(wloc)
-                    pids = np.where(wloc > 1.0e-20)[0]
-                    for pid in pids:
-                        dfcontributions_particleids.append(pid)
-                        dfcontributions_cellindices.append(cellid)
-                        dfcontributions_fracofcellmass.append(wloc[pid])
-    elif model_dim == 3:
-        for nx in range(grid_dims[0]):
-            for ny in range(grid_dims[1]):
-                for nz in range(grid_dims[2]):
-                    cellid = nz * grid_dims[0] * grid_dims[1] + ny * grid_dims[0] + nx + 1
-                    if dmgrid[nx, ny, nz] > (1e-100 * mtot):
-                        wloc = wall[nx, ny, nz, :] * rho2dtraj / rho2dhat
-                        wloc /= np.sum(wloc)
-                        pids = np.where(wloc > 1.0e-20)[0]
-                        for pid in pids:
-                            dfcontributions_particleids.append(pid)
-                            dfcontributions_cellindices.append(cellid)
-                            dfcontributions_fracofcellmass.append(wloc[pid])
+        # the rows run over nz, then nr, then the particle id, thus put nz first
+        wloc = wloc.transpose((1, 0, 2))
+        cellhasmass = cellhasmass.T
+        cellids = (np.arange(nvz)[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[..., np.newaxis]
+    else:
+        nx, ny, nz = (np.arange(n) for n in grid_dims)
+        cellids = (
+            nz[np.newaxis, np.newaxis, :] * grid_dims[0] * grid_dims[1]
+            + ny[np.newaxis, :, np.newaxis] * grid_dims[0]
+            + nx[:, np.newaxis, np.newaxis]
+            + 1
+        )[..., np.newaxis]
+    contributes = cellhasmass[..., np.newaxis] & (wloc > 1.0e-20)
+    contribindices = np.nonzero(contributes)
 
     dfparticlecontribs = pl.DataFrame({
-        "particleid": dfcontributions_particleids,
-        "cellindex": dfcontributions_cellindices,
-        "frac_of_cellmass": dfcontributions_fracofcellmass,
+        "particleid": contribindices[-1],
+        "cellindex": np.broadcast_to(cellids, contributes.shape)[contribindices],
+        "frac_of_cellmass": wloc[contribindices],
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
 
     if model_dim == 2:
@@ -456,7 +444,6 @@ def get_grid(
 
 def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
     """Flatten an array and add a reflection in z."""
-    _ngridrcyl = arr.shape[0]
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
     assert isinstance(reflected, np.ndarray)
     return reflected
@@ -580,7 +567,6 @@ def map_to_artis(
         x_mid = (x3d).flatten(order="F") + cell_width / 2
         y_mid = (y3d).flatten(order="F") + cell_width / 2
         z_mid = (z3d).flatten(order="F") + cell_width / 2
-        V_dfmodel = np.ones(len(dfmodel)) * cell_width**3
 
         vel_r_mid_on_c = np.sqrt(x_mid**2 + y_mid**2 + z_mid**2) / (t_model_init_s * CLIGHT)
         dfmodel = dfmodel.with_columns([
@@ -714,12 +700,10 @@ def map_to_artis(
             # scale all mass fractions with scaling factor
             dfmodel = dfmodel.with_columns([(pl.col(col) * pl.col("X_scale")).alias(col) for col in X_list])
             # determine elemental abundances for abundances.txt as before again (no interpolation)
-            dictabunds = {}
             dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
             for isot_str in X_list:
                 Z = at.get_atomic_number(isot_str)
                 interpol_X_iso = dfmodel[isot_str].to_numpy()
-                dictabunds[isot_str] = interpol_X_iso
                 elem_str = f"X_{at.get_elsymbol(Z)}"
                 if elem_str == "X_N":
                     elem_str = "X_n"
@@ -791,7 +775,7 @@ def map_to_artis(
                     .alias("rho")
                 ])
 
-                M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_rescaled = (dfmodel.select((pl.col("rho") * cell_width**3).sum()).item()) / msol
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
 
             elif local_dyn_scale is not None:
@@ -818,7 +802,7 @@ def map_to_artis(
                     .alias("rho")
                 ])
 
-                M_rescaled = (dfmodel.select((pl.col("rho") * V_dfmodel).sum()).item()) / msol
+                M_rescaled = (dfmodel.select((pl.col("rho") * cell_width**3).sum()).item()) / msol
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
                 dfmodel = dfmodel.drop("vel_r_mid_on_c")
 
@@ -863,12 +847,16 @@ def map_to_artis(
     return dfmodel, dfelabundances, modelmeta
 
 
-def get_old_cell_indices(red_fact: int, new_r: int, new_z: int, N_cell_r_old: int) -> list[int]:
-    """Return the indices of the fine-grid cells that make up one cell of the grid coarsened by red_fact."""
-    old_r_indices = np.arange(red_fact * (new_r - 1) + 1, red_fact * new_r + 1)
-    old_z_indices = np.arange(red_fact * (new_z - 1), red_fact * new_z) * N_cell_r_old
-    indices = np.add.outer(old_r_indices, old_z_indices).flatten().tolist()
-    return sorted(int(x) for x in indices)
+def coarse_grid_blocks(
+    values: npt.NDArray[np.float64], red_fact: int, N_cell_r_new: int, N_cell_z_new: int, N_cell_r_old: int
+) -> npt.NDArray[np.float64]:
+    """Return the flat fine-grid values as an array [new_z, fine_z, new_r, fine_r] of the coarse cells.
+
+    The fine grid varies r fastest. A fine cell outside the first red_fact * N_cell_new cells of an axis
+    belongs to no coarse cell.
+    """
+    grid = values.reshape((-1, N_cell_r_old))[: red_fact * N_cell_z_new, : red_fact * N_cell_r_new]
+    return grid.reshape((N_cell_z_new, red_fact, N_cell_r_new, red_fact))
 
 
 def remap_mass_weighted_quantity(
@@ -881,32 +869,21 @@ def remap_mass_weighted_quantity(
     Delta_r: float,
     Delta_z: float,
 ) -> npt.NDArray[np.float64]:
-    """Return fieldname remapped onto the coarser grid, weighting each fine cell by its mass."""
-    new_numb_cells = N_cell_r_new * N_cell_z_new
-    new_field = np.zeros(new_numb_cells)
+    """Return fieldname remapped onto the coarser grid, weighting each fine cell by its mass.
 
-    # get arrays
-    mass_arr = dfmodel_in["mass_g"].to_numpy()
-    field_arr = dfmodel_in[fieldname].to_numpy()
+    For the mass_g field, the result is the density of the coarse cell.
+    """
+    masses = coarse_grid_blocks(dfmodel_in["mass_g"].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
+    coarse_mass = masses.sum(axis=(1, 3))
 
-    for new_z, new_r in itertools.product(range(1, N_cell_z_new + 1), range(1, N_cell_r_new + 1)):
-        new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
+    if fieldname == "mass_g":
+        r_i = np.arange(N_cell_r_new) * Delta_r
+        r_o = r_i + Delta_r
+        V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
+        return np.asarray((coarse_mass / V_new[np.newaxis, :]).ravel(), dtype=np.float64)
 
-        old_idxs = get_old_cell_indices(red_fact, new_r, new_z, N_cell_r_old)
-        old_idxs_np = np.array(old_idxs) - 1
-
-        masses = mass_arr[old_idxs_np]
-        values = field_arr[old_idxs_np]
-
-        if fieldname == "mass_g":
-            r_i = (new_r - 1) * Delta_r
-            r_o = new_r * Delta_r
-            V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
-            new_field[new_cell_idx - 1] = masses.sum() / V_new
-        else:
-            new_field[new_cell_idx - 1] = np.average(values, weights=masses)
-
-    return new_field
+    values = coarse_grid_blocks(dfmodel_in[fieldname].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
+    return np.asarray(((values * masses).sum(axis=(1, 3)) / coarse_mass).ravel(), dtype=np.float64)
 
 
 def merge_neighbour_cells(
@@ -962,18 +939,10 @@ def merge_neighbour_cells(
 
     nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
 
-    masses_all = dfmodel["mass_g"].to_numpy()
-    abunds_all = {nuclide: dfmodel[nuclide].to_numpy() for nuclide in nuclide_columns}
     for nuclide in nuclide_columns:
-        new_X_arr = np.zeros(new_numb_cells)
-        for new_z in range(1, N_cell_z_new + 1):
-            for new_r in range(1, N_cell_r_new + 1):
-                new_cell_idx = new_r + N_cell_r_new * (new_z - 1)
-                old_idxs = get_old_cell_indices(red_fact_1D, new_r, new_z, N_cell_r_old)
-                old_idxs_np = np.array(old_idxs) - 1
-                masses = masses_all[old_idxs_np]
-                abunds = abunds_all[nuclide][old_idxs_np]
-                new_X_arr[new_cell_idx - 1] = np.average(abunds, weights=masses)
+        new_X_arr = remap_mass_weighted_quantity(
+            dfmodel, nuclide, red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old, Delta_r, Delta_z
+        )
         dictabunds[nuclide] = new_X_arr
         el = "".join([i for i in nuclide[2:] if not i.isdigit()])
         if el in element_abbrevs_list_titled:

@@ -9,8 +9,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import matplotlib.cm as mplcm
-import matplotlib.colors as mplcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -20,7 +18,6 @@ from matplotlib.image import AxesImage
 import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -56,8 +53,8 @@ def plot_slice_modelcolumn(
     plotaxis2: str,
     t_model_d: float,
     args: argparse.Namespace,
-) -> tuple[AxesImage, mplcm.ScalarMappable | None]:
-    """Draw one model column as a colour image on the axes, and return the image and its scalar mappable."""
+) -> AxesImage:
+    """Draw one model column as a colour image on the axes, and return the image."""
     print(f"plotting {colname}")
     colorscale = (
         (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
@@ -75,15 +72,6 @@ def plot_slice_modelcolumn(
             ])
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
-
-    normalise_between_0_and_1 = False
-    if normalise_between_0_and_1:
-        norm = mplcolors.Normalize(vmin=0, vmax=1)
-        scaledmap = mplcm.ScalarMappable(cmap="viridis", norm=norm)
-        scaledmap.set_array([])
-        colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
-    else:
-        scaledmap = None
 
     cmps_to_beta = 1.0 / C_cm_per_s
     unitfactor = cmps_to_beta
@@ -138,7 +126,7 @@ def plot_slice_modelcolumn(
             verticalalignment="top",
         )
 
-    return im, scaledmap
+    return im
 
 
 def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) -> None:
@@ -150,17 +138,6 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     )
     assert modelmeta["dimensions"] > 1
     dfmodel = lzdfmodel.collect()
-
-    targetmodeltime_days = None
-    if targetmodeltime_days is not None:
-        print_warning(
-            f"Scaling positions/densities to {targetmodeltime_days} days. "
-            "The abundances are not updated for radioactive decays"
-        )
-
-        dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
-            targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
-        )
 
     if modelmeta["dimensions"] == 3:
         sliceaxis: AxisType = args.sliceaxis
@@ -196,7 +173,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     for plotvar, ax in zip(args.plotvars, axes, strict=False):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
 
-        im, _ = plot_slice_modelcolumn(
+        im = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
@@ -322,7 +299,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hideemptycells", action="store_true", help="Don't plot empty cells")
 
-    parser.add_argument("--opacity", action="store_true", help="Plot opacity from opacity.txt (if available for model)")
+    # the argument has no effect. It stays, because a script can still pass it
+    parser.add_argument("--opacity", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 

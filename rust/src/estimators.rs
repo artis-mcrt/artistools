@@ -283,16 +283,26 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
 }
 
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
+///
+/// The parse runs without the GIL, thus other Python threads can run at the same time.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
-pub fn estimparse(folderpath: PathBuf, rankmin: i32, rankmax: i32) -> PyResult<PyDataFrame> {
-    let vecdfs: Vec<DataFrame> = (rankmin..=rankmax)
-        .into_par_iter()
-        .map(|rank| read_estimator_file(&folderpath, rank))
-        .collect::<PolarsResult<_>>()
-        .map_err(PyPolarsErr::from)?;
+pub fn estimparse(
+    py: Python<'_>,
+    folderpath: PathBuf,
+    rankmin: i32,
+    rankmax: i32,
+) -> PyResult<PyDataFrame> {
+    let dfbatch = py
+        .detach(|| {
+            let vecdfs: Vec<DataFrame> = (rankmin..=rankmax)
+                .into_par_iter()
+                .map(|rank| read_estimator_file(&folderpath, rank))
+                .collect::<PolarsResult<_>>()?;
 
-    let dfbatch = polars::functions::concat_df_diagonal(&vecdfs).map_err(PyPolarsErr::from)?;
+            polars::functions::concat_df_diagonal(&vecdfs)
+        })
+        .map_err(PyPolarsErr::from)?;
 
     Ok(PyDataFrame(dfbatch))
 }

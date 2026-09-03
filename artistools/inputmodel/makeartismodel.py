@@ -106,7 +106,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.makemodelfromgriddata:
         print(args)
         at.inputmodel.modelfromhydro.makemodelfromgriddata(
-            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], args=args
+            gridfolderpath=args.pathtogriddata,
+            outputpath=args.modelpath[0],
+            fillcentralhole=args.fillcentralhole,
+            getcellopacityfromYe=args.getcellopacityfromYe,
         )
 
     if args.makeenergyinputfiles:

@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import itertools
 import json
 import math
 import multiprocessing
@@ -151,10 +152,10 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
 
 
 def test_get_cell_angle() -> None:
-    modeldata = at.inputmodel.get_modeldata(
+    lzmodeldata = at.inputmodel.get_modeldata(
         modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
-    )[0].collect()
-    modeldata = at.inputmodel.inputmodel_misc.get_cell_angle(modeldata)
+    )[0]
+    modeldata = at.inputmodel.inputmodel_misc.get_cell_angle(lzmodeldata).collect()
     assert "cos_bin" in modeldata.columns
     assert "phi_bin" in modeldata.columns
 
@@ -2213,10 +2214,68 @@ def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     The reader deleted an unreadable file with a bare unlink, outside the identity rule of
     write_parquet_atomic. That unlink can remove the fresh cache that a rival process installed.
     """
-    from artistools.inputmodel.inputmodel_misc import read_model_parquet_cache
+    from artistools.inputmodel.inputmodel_misc import read_parquet_cache
 
     parquetfilepath = tmp_path / "model.txt.parquet.tmp"
     parquetfilepath.write_bytes(b"not parquet")
 
-    assert read_model_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
+    assert read_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
     assert parquetfilepath.is_file(), "the unreadable cache must stay for the identity-checked rewrite"
+
+
+def test_downscale_mass_fractions_matches_cell_loop() -> None:
+    """The reshape and sum must give the same result as a loop over the cells of each block."""
+    from artistools.inputmodel.downscale3dgrid import downscale_cell_sums
+    from artistools.inputmodel.downscale3dgrid import downscale_mass_fractions
+
+    rng = np.random.default_rng(seed=3)
+    grid, merge, nabund = 6, 3, 4
+    smallgrid = grid // merge
+    rho = rng.uniform(0.0, 1.0, size=(grid, grid, grid))
+    rho[:merge, :merge, :merge] = 0.0
+    massfracs = rng.uniform(0.0, 1.0, size=(grid, grid, grid, nabund))
+
+    rho_small_expected = np.zeros((smallgrid, smallgrid, smallgrid))
+    massfracs_small_expected = np.zeros((smallgrid, smallgrid, smallgrid, nabund))
+    for x, y, z in itertools.product(range(smallgrid), repeat=3):
+        for xx, yy, zz in itertools.product(range(merge), repeat=3):
+            rho_cell = rho[x * merge + xx, y * merge + yy, z * merge + zz]
+            rho_small_expected[x, y, z] += rho_cell
+            massfracs_small_expected[x, y, z, :] += massfracs[x * merge + xx, y * merge + yy, z * merge + zz] * rho_cell
+        if rho_small_expected[x, y, z] > 0:
+            massfracs_small_expected[x, y, z, :] /= rho_small_expected[x, y, z]
+
+    assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12)
+    assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12)
+    assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0.0)
+
+
+def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
+    """The reshape to the merge axes must give the same result as the loop over the fine cells of each coarse cell."""
+    from artistools.inputmodel.from_e2e_model import remap_mass_weighted_quantity
+
+    rng = np.random.default_rng(seed=5)
+    red_fact, n_r_new, n_z_new = 2, 3, 4
+    n_r_old, n_z_old = red_fact * n_r_new, red_fact * n_z_new
+    delta_r, delta_z = 1.5, 1.5
+    dfmodel = pl.DataFrame({
+        "mass_g": rng.uniform(1.0, 2.0, size=n_r_old * n_z_old),
+        "Ye": rng.uniform(0.1, 0.5, size=n_r_old * n_z_old),
+    })
+
+    expected_rho = np.zeros(n_r_new * n_z_new)
+    expected_ye = np.zeros(n_r_new * n_z_new)
+    for new_z in range(1, n_z_new + 1):
+        for new_r in range(1, n_r_new + 1):
+            old_r_indices = np.arange(red_fact * (new_r - 1) + 1, red_fact * new_r + 1)
+            old_z_indices = np.arange(red_fact * (new_z - 1), red_fact * new_z) * n_r_old
+            old_idxs = np.add.outer(old_r_indices, old_z_indices).flatten() - 1
+            masses = dfmodel["mass_g"].to_numpy()[old_idxs]
+            new_cell_idx = new_r + n_r_new * (new_z - 1)
+            r_i, r_o = (new_r - 1) * delta_r, new_r * delta_r
+            expected_rho[new_cell_idx - 1] = masses.sum() / (np.pi * (r_o**2 - r_i**2) * delta_z)
+            expected_ye[new_cell_idx - 1] = np.average(dfmodel["Ye"].to_numpy()[old_idxs], weights=masses)
+
+    remap_args = (red_fact, n_r_new, n_z_new, n_r_old, delta_r, delta_z)
+    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "mass_g", *remap_args), expected_rho, rtol=1e-12)
+    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "Ye", *remap_args), expected_ye, rtol=1e-12)

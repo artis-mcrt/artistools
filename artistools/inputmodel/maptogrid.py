@@ -32,27 +32,15 @@ def get_wij() -> npt.NDArray[np.floating]:
     # --normalisation constant
     #
     cnormk = 1.0 / math.pi
-    # --build tables
-    #
-    #  a) v less than 1
-    #
+    # --build tables. Entry 0 and the entries above itable stay zero
     wij = np.zeros(itab + 1)
-    for i in range(1, i1 + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        v3 = v * v2
-        vsum = 1.0 - 1.5 * v2 + 0.75 * v3
-        wij[i] = cnormk * vsum
-
-    #
-    #  b) v greater than 1
-    #
-    for i in range(i1 + 1, itable + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        dif2 = 2.0 - v
-        vsum = 0.25 * dif2 * dif2 * dif2
-        wij[i] = cnormk * vsum
+    i = np.arange(1, itable + 1)
+    v2 = i * dvtable
+    v = np.sqrt(v2)
+    dif2 = 2.0 - v
+    # v less than 1 for the entries up to i1, and v greater than 1 above
+    vsum = np.where(i <= i1, 1.0 - 1.5 * v2 + 0.75 * (v * v2), 0.25 * dif2 * dif2 * dif2)
+    wij[1 : itable + 1] = cnormk * vsum
 
     return wij
 
@@ -162,8 +150,10 @@ def maptogrid(
     assert isinstance(rmax, float)
     with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
         fpartanalysis.writelines(
-            f"{part['dis']} {part['h']} {part['h'] / part['dis']} {part['vrad']} {part['vperp']} {part['vtot']}\n"
-            for part in dfsnapshot.select(["dis", "h", "vrad", "vperp", "vtot"]).iter_rows(named=True)
+            f"{dis} {hpart} {h_on_dis} {vrad} {vperp} {vtot}\n"
+            for dis, hpart, h_on_dis, vrad, vperp, vtot in dfsnapshot.select(
+                "dis", "h", (pl.col("h") / pl.col("dis")).alias("h_on_dis"), "vrad", "vperp", "vtot"
+            ).iter_rows()
         )
 
     logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
@@ -192,7 +182,10 @@ def maptogrid(
     grho = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid))
     gye = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid))
     gparticlecounter = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid), dtype=int)
-    particle_rho_contribs = {}
+    # the particle index, the cell indices, and the density contribution of each particle-cell pair
+    contrib_particle: list[int] = []
+    contrib_cell: list[tuple[int, int, int]] = []
+    contrib_rho: list[float] = []
 
     logprint(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
@@ -222,71 +215,73 @@ def maptogrid(
 
         # ... kernel reweighting ?
 
-        searchcoords = [
-            (i, j, k, (arrgx[i] - x[n]) ** 2 + (arrgy[j] - y[n]) ** 2 + (arrgz[k] - z[n]) ** 2)
-            for i in range(ilow, ihigh + 1)
-            for j in range(jlow, jhigh + 1)
-            for k in range(klow, khigh + 1)
-        ]
+        # the search box above uses the smoothing length of the snapshot. The kernel below uses the
+        # modified smoothing length
+        if modifysmoothinglength != "False":
+            # -- change h by hand ---------
 
-        for i, j, k, dis2 in searchcoords:
-            if modifysmoothinglength != "False":
-                # -- change h by hand --------- we could do these particle thinsg also further up
+            # option 1 minimum that no particle is lost
 
-                # option 1 minimum that no particle is lost
+            # option 2 increase smoothing everywhere, i.e. less holes but also less structure
 
-                # option 2 increase smoothing everywhere, i.e. less holes but also less structure
+            # option 3 increase smoothing beyond some distance
 
-                # option 3 increase smoothing beyond some distance
+            # options can be combined, i.e. option 1 alone fills the hole in the center
+            # (which we could also replace by later ejecta)
+            if modifysmoothinglength == "option1":
+                h[n] = max(h[n], 1.5 * dx)  # option 1
 
-                # options can be combined, i.e. option 1 alone fills the hole in the center
-                # (which we could also replace by later ejecta)
-                if modifysmoothinglength == "option1":
-                    h[n] = max(h[n], 1.5 * dx)  # option 1
+            dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
 
-                dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
+            if modifysmoothinglength == "option2":
+                h[n] = max(h[n], 0.25 * dis)  # option 2
 
-                if modifysmoothinglength == "option2":
-                    h[n] = max(h[n], 0.25 * dis)  # option 2
+            if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
+                h[n] = max(h[n], 0.4 * dis)  # option 3
 
-                if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
-                    h[n] = max(h[n], 0.4 * dis)  # option 3
+            # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
+            # from the particle h and 150% of the mean h for all particles
+            if modifysmoothinglength == "option4" and dis > rmean:
+                h[n] = max(h[n], hmean * 1.5)
+            # option 5 -- for particles with radius > mean particle radius, set a minimum smoothing length of 0.75 * dx,
+            # but also impose a maximum cap of 2500. This can help avoid excessively large smoothing lengths in the outer regions.
+            if modifysmoothinglength == "option5" and dis > rmean:
+                h[n] = max(h[n], 0.75 * dx)
+                h[n] = min(h[n], 2500)
+            # option 6 -- similar to option 5, but does not impose a maximum cap on the smoothing length.
+            # Use this if you want to allow smoothing lengths to grow freely beyond 0.75 * dx in the outer regions.
+            if modifysmoothinglength == "option6" and dis > rmean:
+                h[n] = max(h[n], 0.75 * dx)
 
-                # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
-                # from the particle h and 150% of the mean h for all particles
-                if modifysmoothinglength == "option4" and dis > rmean:
-                    h[n] = max(h[n], hmean * 1.5)
-                # option 5 -- for particles with radius > mean particle radius, set a minimum smoothing length of 0.75 * dx,
-                # but also impose a maximum cap of 2500. This can help avoid excessively large smoothing lengths in the outer regions.
-                if modifysmoothinglength == "option5" and dis > rmean:
-                    h[n] = max(h[n], 0.75 * dx)
-                    h[n] = min(h[n], 2500)
-                # option 6 -- similar to option 5, but does not impose a maximum cap on the smoothing length.
-                # Use this if you want to allow smoothing lengths to grow freely beyond 0.75 * dx in the outer regions.
-                if modifysmoothinglength == "option6" and dis > rmean:
-                    h[n] = max(h[n], 0.75 * dx)
+            maxdist2 = (2.0 * h[n]) ** 2
+            # -------------------------------
 
-                maxdist2 = (2.0 * h[n]) ** 2
-                # -------------------------------
+            # or via neighbors  - not yet implemented
 
-                # or via neighbors  - not yet implemented
+        for i in range(ilow, ihigh + 1):
+            for j in range(jlow, jhigh + 1):
+                for k in range(klow, khigh + 1):
+                    dis2 = (arrgx[i] - x[n]) ** 2 + (arrgy[j] - y[n]) ** 2 + (arrgz[k] - z[n]) ** 2
+                    if dis2 > maxdist2:
+                        continue
 
-            if dis2 <= maxdist2:
-                wtij = kernelvals2(dis2, float(h[n]), wij)
+                    wtij = kernelvals2(dis2, float(h[n]), wij)
 
-                # this particle's contribution to mass density (rho) in the cell
-                grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
+                    # this particle's contribution to mass density (rho) in the cell
+                    grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
 
-                grho[i, j, k] += grho_contrib
+                    grho[i, j, k] += grho_contrib
 
-                particle_rho_contribs[n, i, j, k] = grho_contrib
+                    contrib_particle.append(n)
+                    contrib_cell.append((i, j, k))
+                    contrib_rho.append(grho_contrib)
 
-                # mass-weighted electron fraction (needs to be normalised by cell density afterwards)
-                gye[i, j, k] += grho_contrib * Ye[n]
+                    # mass-weighted electron fraction (needs to be normalised by cell density afterwards)
+                    gye[i, j, k] += grho_contrib * Ye[n]
 
-                # count number of particles contributing to each grid cell
-                gparticlecounter[i, j, k] += 1
-                particlesused.add(n)
+                    # count number of particles contributing to each grid cell
+                    gparticlecounter[i, j, k] += 1
+                    particlesused.add(n)
 
     logprint(
         f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
@@ -305,11 +300,20 @@ def maptogrid(
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
 
+        contrib_i, contrib_j, contrib_k = np.array(contrib_cell, dtype=int).reshape((-1, 3)).T
+        contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
+        contrib_frac_of_cellmass = np.array(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
         with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
-            for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
-                gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
-                fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
+            fcontribs.writelines(
+                f"{pid} {gridindex} {frac}\n"
+                for pid, gridindex, frac in zip(
+                    particleid[contrib_particle].tolist(),
+                    contrib_gridindex.tolist(),
+                    contrib_frac_of_cellmass.tolist(),
+                    strict=True,
+                )
+            )
         logprint(f"saved {outputfolderpath / 'gridcontributions.txt'}")
 
     # check some stuff on the grid
@@ -353,17 +357,21 @@ def maptogrid(
         fgrid.write(f"{dtextra} # extra time after explosion simulation ended (in geom units)\n")
         fgrid.write(f"{x0} # xmax\n")
         fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n")
-        gridindex = 1
-        for k in range(ncoordgrid):
-            gz = z0 + dz * k
-            for j in range(ncoordgrid):
-                gy = y0 + dy * j
-                for i in range(ncoordgrid):
-                    fgrid.write(
-                        f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n"
-                    )
-
-                    gridindex += 1
+        # the cell order varies x fastest, which is the Fortran order of the [i, j, k] arrays
+        ncells = ncoordgrid**3
+        fgrid.writelines(
+            f"{gridindex:8d} {gx} {gy} {gz} {cellrho} {cellye} {tracercount}\n"
+            for gridindex, gx, gy, gz, cellrho, cellye, tracercount in zip(
+                range(1, ncells + 1),
+                np.tile(x0 + dx * np.arange(ncoordgrid), ncoordgrid**2).tolist(),
+                np.tile(np.repeat(y0 + dy * np.arange(ncoordgrid), ncoordgrid), ncoordgrid).tolist(),
+                np.repeat(z0 + dz * np.arange(ncoordgrid), ncoordgrid**2).tolist(),
+                grho.ravel(order="F").tolist(),
+                gye.ravel(order="F").tolist(),
+                gparticlecounter.ravel(order="F").tolist(),
+                strict=True,
+            )
+        )
 
     logprint(f"saved {outputfolderpath / 'grid.dat'}")
 

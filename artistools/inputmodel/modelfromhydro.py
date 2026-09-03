@@ -131,6 +131,13 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
+    factor_position = 1.478  # in km
+    with at.zopen(griddatfilepath) as gridfile:
+        ngrid = int(gridfile.readline().split()[0])
+        extratime_geomunits = float(gridfile.readline().split()[0])
+        xmax = abs(float(gridfile.readline().split()[0]))
+        xmax = (xmax * factor_position) * km_to_cm
+
     griddata = at.read_wsv(griddatfilepath, comment_prefix="#", skip_rows=3).rename(
         {
             "gridindex": "inputcellid",
@@ -144,7 +151,6 @@ def read_griddat_file(
         strict=False,
     )
 
-    factor_position = 1.478  # in km
     griddata = griddata.with_columns(
         # griddata in geom units
         cs.by_name("rho", "cellYe", "Q", require_all=False).fill_null(0.0)
@@ -153,14 +159,9 @@ def read_griddat_file(
         pl.col("rho") * 6.176e17,  # convert to g/cm³
     )
 
-    with griddatfilepath.open(encoding="utf-8") as gridfile:
-        ngrid = int(gridfile.readline().split()[0])
-        if ngrid != len(griddata["inputcellid"]):
-            print("length of file and ngrid don't match")
-            sys.exit(1)
-        extratime_geomunits = float(gridfile.readline().split()[0])
-        xmax = abs(float(gridfile.readline().split()[0]))
-        xmax = (xmax * factor_position) * km_to_cm
+    if ngrid != len(griddata["inputcellid"]):
+        print("length of file and ngrid don't match")
+        sys.exit(1)
 
     t_model_sec = (
         (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
@@ -178,7 +179,8 @@ def read_griddat_file(
     )
 
     if targetmodeltime_days is not None:
-        griddata, modelmeta = at.inputmodel.scale_model_to_time(
+        # the metadata that this function builds below replaces the metadata of the scaled model
+        griddata, _ = at.inputmodel.scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days
@@ -256,18 +258,18 @@ def makemodelfromgriddata(
     dimensions: int = 3,
     scalemass: float = 1.0,
     scalevelocity: float = 1.0,
-    *,
-    args: argparse.Namespace,
+    fillcentralhole: bool = False,
+    getcellopacityfromYe: bool = False,
 ) -> None:
     """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
     dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
-    if getattr(args, "fillcentralhole", False):
+    if fillcentralhole:
         dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days)
 
-    if getattr(args, "getcellopacityfromYe", False):
+    if getcellopacityfromYe:
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
 
     dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(gridfolderpath)
@@ -404,7 +406,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dimensions=args.dimensions,
         scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
-        args=args,
     )
 
 

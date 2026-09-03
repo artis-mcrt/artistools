@@ -62,19 +62,18 @@ def get_binaverage_field(
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = select_radfield_subset(radfielddata, pl.col("bin_num") >= 0, modelgridindex, timestep)
 
-    arr_lambda = c_ang_per_s / bindata["nu_upper"].to_numpy()
+    arr_lambda = np.array(get_binedges(bindata))
 
-    bindata = bindata.with_columns(dlambda=c_ang_per_s * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
+    yvalues = (
+        bindata
+        .with_columns(dlambda=c_ang_per_s * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
+        .select(pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0))
+        .to_series()
+        .to_numpy()
+    )
 
-    yvalues = bindata.select(
-        pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0)
-    ).to_numpy()
-
-    # add the starting point
-    arr_lambda = np.insert(arr_lambda, 0, c_ang_per_s / bindata["nu_lower"].item(0))
-    yvalues = np.insert(yvalues, 0, 0.0)
-
-    return arr_lambda, yvalues
+    # the first bin edge is a starting point with no field
+    return arr_lambda, np.insert(yvalues, 0, 0.0)
 
 
 def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T: float) -> list[float]:
@@ -240,6 +239,7 @@ def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
 
 def plot_celltimestep(
     modelpath: Path | str,
+    radfielddata_cell: pl.DataFrame,
     timestep: int,
     outputfile: Path | str,
     xmin: float,
@@ -251,11 +251,13 @@ def plot_celltimestep(
 ) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells).
 
+    radfielddata_cell holds the radiation field data of the cell at every timestep.
+
     A plot that the merge takes in is one part of the product, thus --show and --open leave it alone.
     merge_pdf_files also deletes such a file, thus an application that opened it would hold nothing.
     """
-    radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-    if radfielddata.select(pl.len()).item() == 0:
+    radfielddata = radfielddata_cell.filter(pl.col("timestep") == timestep)
+    if radfielddata.is_empty():
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
         return False
 
@@ -269,8 +271,6 @@ def plot_celltimestep(
     axis = axesgrid[0][0]
 
     assert isinstance(axis, mplax.Axes)
-
-    ymax = 0.0
 
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
 
@@ -336,10 +336,6 @@ def plot_celltimestep(
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
 
     set_plot_title(axis, figure_title, args)
-
-    # axis.annotate(figure_title,
-    #               xy=(0.02, 0.96), xycoords='axes fraction',
-    #               horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
@@ -435,10 +431,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
+        # read_files parses the rank file on each call, thus one read of the cell serves every timestep
+        radfielddata_cell = read_files(modelpath, modelgridindex=modelgridindex)
         for timestep in timesteplist:
             outputfile = at.format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(
                 modelpath,
+                radfielddata_cell,
                 timestep,
                 outputfile,
                 xmin=args.xmin,

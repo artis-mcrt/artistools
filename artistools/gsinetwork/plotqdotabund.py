@@ -64,11 +64,18 @@ def get_abundance_correction_factors(
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
         wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
-        lzdfmodel = lzdfmodel.with_columns(
-            n_assoc_cells=pl.Series([
-                len(assoc_cells.get(inputcellid - 1, []))
-                for (inputcellid,) in lzdfmodel.select("inputcellid").collect().iter_rows()
-            ])
+        dfpropcellcounts = pl.LazyFrame(
+            {
+                "modelgridindex": list(assoc_cells.keys()),
+                "n_assoc_cells": [len(cells) for cells in assoc_cells.values()],
+            },
+            schema={"modelgridindex": pl.Int32, "n_assoc_cells": pl.Int64},
+        )
+        lzdfmodel = (
+            lzdfmodel
+            .with_columns(pl.col("modelgridindex").cast(pl.Int32))
+            .join(dfpropcellcounts, on="modelgridindex", how="left", maintain_order="left")
+            .with_columns(pl.col("n_assoc_cells").fill_null(0))
         )
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -460,19 +467,16 @@ def get_particledata(
                 at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
                     particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0
                 )
+                # one sum per element and one per nuclide, and then a lookup for each species
+                massfrac_of_z = dict(dftrajnucabund.group_by("Z").agg(pl.col("massfrac").sum()).iter_rows())
+                massfrac_of_z_n = {
+                    (Z, N): massfrac
+                    for Z, N, massfrac in dftrajnucabund.group_by("Z", "N").agg(pl.col("massfrac").sum()).iter_rows()
+                }
                 for strnuc, Z, N in arr_strnuc_z_n:
-                    if N is None:
-                        # sum over all isotopes of this element
-                        arr_massfracs[strnuc][i] = (
-                            dftrajnucabund.filter(pl.col("Z") == Z).select(pl.col("massfrac").sum()).item()
-                        )
-                    else:
-                        arr_massfracs[strnuc][i] = (
-                            dftrajnucabund
-                            .filter((pl.col("Z") == Z) & (pl.col("N") == N))
-                            .select(pl.col("massfrac").sum())
-                            .item()
-                        )
+                    arr_massfracs[strnuc][i] = (
+                        massfrac_of_z.get(Z, 0.0) if N is None else massfrac_of_z_n.get((Z, N), 0.0)
+                    )
 
             particledata = particledata.with_columns(
                 pl.Series(
@@ -541,7 +545,8 @@ def get_dfcontribsparticledata(
 
     list_particledata_withabund = at.parallel_map(fworkerwithabund, list_particleids_getabund)
     print("  done")
-    list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in list_particleids_getabund]
+    particleids_getabund = set(list_particleids_getabund)
+    list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
@@ -562,20 +567,20 @@ def plot_qdot_abund_modelcells(
     nogsinet: bool = False,
 ) -> None:
     """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
+        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
+    )
+
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
     trajfolder: Path = Path("SFHo")
-    with at.zopen(modelpath / "model.txt") as fmodel:
-        while True:
-            line = fmodel.readline()
-            if not line.startswith("#"):
-                break
-            if line.startswith("# gridfolder:"):
-                griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
-                mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
-            elif line.startswith("# trajfolder:"):
-                trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
+    for line in modelmeta["headercommentlines"]:
+        if line.startswith("gridfolder:"):
+            griddatafolder = Path(line.strip().removeprefix("gridfolder: "))
+            mergermodelfolder = Path(line.strip().removeprefix("gridfolder: ").removesuffix("_snapshot"))
+        elif line.startswith("trajfolder:"):
+            trajfolder = Path(line.strip().removeprefix("trajfolder: ").replace("SFHO", "SFHo"))
 
     griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
@@ -598,9 +603,6 @@ def plot_qdot_abund_modelcells(
     arr_n = [a - z if a is not None else None for z, a in zip(arr_z, arr_a, strict=True)]
     arr_strnuc_z_n = list(zip(arr_species, arr_z, arr_n, strict=True))
 
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
-    )
     lzdfmodel = lzdfmodel.with_columns(cellmass_on_mtot=pl.col("mass_g") / pl.col("mass_g").sum())
 
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()

@@ -2,7 +2,9 @@
 """Plot packet escape luminosity and estimator values on a sphere of viewing directions."""
 
 import argparse
+import itertools
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.figure as mplfig
@@ -27,56 +29,154 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.plottools import save_figure
 
+DEFAULT_PLOTVARS = ("luminosity", "emvelocityoverc", "emlosvelocityoverc")
 
-def plot_spherical(
-    modelpath: str | Path,
-    dfpackets: pl.LazyFrame,
-    nprocs_read: int,
-    timemindays: float | None,
-    timemaxdays: float | None,
-    nphibins: int,
-    ncosthetabins: int,
-    dfestimators: pl.LazyFrame | None = None,
-    atomic_number: int | None = None,
-    ion_stage: int | None = None,
-    gaussian_sigma: int | None = None,
-    plotvars: list[str] | None = None,
-    figscale: float = 1.0,
-    cmap: str | None = None,
-    phireverse: bool = False,
-) -> tuple[mplfig.Figure, t.Any, float, float, str]:
-    """Plot each plotvar on a sphere of viewing directions, and return the figure, axes, time range, and condition."""
-    condition = ""
-    if plotvars is None:
-        plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
+PLOTVARS = (*DEFAULT_PLOTVARS, "emvelocityoverc_sigma", "temperature", "temperature_sigma")
 
+
+def parse_plotvar(plotvar: str) -> str:
+    """Return the name of a plot variable, or reject a name that is not one.
+
+    The choices of argparse cannot hold nnelement_ and every element symbol, thus this validator
+    stands in for them.
+    """
+    if plotvar in PLOTVARS or (plotvar.startswith("nnelement_") and at.get_atomic_number(plotvar) > 0):
+        return plotvar
+
+    msg = f"'{plotvar}' is not a plot variable. Give one of {', '.join(PLOTVARS)}, or nnelement_ and an element symbol"
+    raise argparse.ArgumentTypeError(msg)
+
+
+class TimeRange(t.NamedTuple):
+    """The arrival times of the packets of one direction map."""
+
+    timemindays: float
+    timemaxdays: float
+    # the packets outside the range go into the map when the observer never gets light from the full ejecta
+    filterpackets: bool
+
+
+def resolve_time_range(
+    modelpath: str | Path, dfpackets: pl.LazyFrame, timemindays: float | None, timemaxdays: float | None
+) -> TimeRange:
+    """Return the time range of one direction map, with the valid observable range as the default."""
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
         print_warning("The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
-            dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().to_numpy()[0]
+            dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().row(0)
         )
-    else:
-        if timemindays is None:
-            print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
-            timemindays = tmin_d_valid
-        elif timemindays < tmin_d_valid:
-            print_warning(
-                f"timemindays {timemindays} is too early for light to travel from the entire ejecta "
-                f"({tmin_d_valid:.2f} d)"
-            )
+        assert timemindays is not None
+        assert timemaxdays is not None
+        return TimeRange(float(timemindays), float(timemaxdays), filterpackets=False)
 
-        if timemaxdays is None:
-            print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
-            timemaxdays = tmax_d_valid
-        elif timemaxdays > tmax_d_valid:
-            print_warning(
-                f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
-            )
-        dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(timemindays, timemaxdays))
+    if timemindays is None:
+        print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
+        timemindays = tmin_d_valid
+    elif timemindays < tmin_d_valid:
+        print_warning(
+            f"timemindays {timemindays} is too early for light to travel from the entire ejecta ({tmin_d_valid:.2f} d)"
+        )
 
-    assert timemindays is not None
-    assert timemaxdays is not None
+    if timemaxdays is None:
+        print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
+        timemaxdays = tmax_d_valid
+    elif timemaxdays > tmax_d_valid:
+        print_warning(
+            f"timemaxdays {timemaxdays} is too late to receive light from the entire ejecta ({tmax_d_valid:.2f} d)"
+        )
+
+    return TimeRange(timemindays, timemaxdays, filterpackets=True)
+
+
+def time_ranges_overlap(timeranges: Sequence[TimeRange]) -> bool:
+    """Return True when a packet can fall into two of the time ranges."""
+    ordered = sorted(timeranges)
+    return any(
+        not earlier.filterpackets or later.timemindays < earlier.timemaxdays
+        for earlier, later in itertools.pairwise(ordered)
+    )
+
+
+def get_direction_maps(
+    modelpath: str | Path,
+    dfpackets: pl.LazyFrame,
+    nprocs_read: int,
+    timeranges: Sequence[TimeRange],
+    nphibins: int,
+    ncosthetabins: int,
+    plotvars: Sequence[str],
+    dfestimators: pl.LazyFrame | None = None,
+    atomic_number: int | None = None,
+    ion_stage: int | None = None,
+) -> tuple[pl.DataFrame, str]:
+    """Return each plot variable in each direction bin of each time range, and the packet selection condition.
+
+    The frame holds one row for each direction bin of each time range. The timebin column gives the
+    index of the time range. A time range that shares a packet with another one takes its own pass
+    over the packets, because the time bin of a packet can hold one index alone.
+    """
+    if time_ranges_overlap(timeranges):
+        maps = []
+        for timebin, timerange in enumerate(timeranges):
+            dfmap, condition = bin_packets_by_direction(
+                modelpath,
+                dfpackets,
+                nprocs_read,
+                [timerange],
+                nphibins,
+                ncosthetabins,
+                plotvars,
+                dfestimators=dfestimators,
+                atomic_number=atomic_number,
+                ion_stage=ion_stage,
+            )
+            maps.append(dfmap.with_columns(timebin=pl.lit(timebin, dtype=pl.Int32)))
+
+        return pl.concat(maps), condition
+
+    return bin_packets_by_direction(
+        modelpath,
+        dfpackets,
+        nprocs_read,
+        timeranges,
+        nphibins,
+        ncosthetabins,
+        plotvars,
+        dfestimators=dfestimators,
+        atomic_number=atomic_number,
+        ion_stage=ion_stage,
+    )
+
+
+def bin_packets_by_direction(
+    modelpath: str | Path,
+    dfpackets: pl.LazyFrame,
+    nprocs_read: int,
+    timeranges: Sequence[TimeRange],
+    nphibins: int,
+    ncosthetabins: int,
+    plotvars: Sequence[str],
+    dfestimators: pl.LazyFrame | None = None,
+    atomic_number: int | None = None,
+    ion_stage: int | None = None,
+) -> tuple[pl.DataFrame, str]:
+    """Return each plot variable in each direction bin of each time range, in one pass over the packets.
+
+    The time ranges must not share a packet. Each packet takes the index of the first range that holds it.
+    """
+    condition = ""
+
+    timebinexpr = pl.lit(None, dtype=pl.Int32)
+    for timebin, timerange in reversed(list(enumerate(timeranges))):
+        inrange = (
+            pl.col("t_arrive_d").is_between(timerange.timemindays, timerange.timemaxdays)
+            if timerange.filterpackets
+            else pl.lit(value=True)
+        )
+        timebinexpr = pl.when(inrange).then(pl.lit(timebin, dtype=pl.Int32)).otherwise(timebinexpr)
+
+    dfpackets = dfpackets.with_columns(timebin=timebinexpr).filter(pl.col("timebin").is_not_null())
 
     dfpackets = at.packets.bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
@@ -105,15 +205,8 @@ def plot_spherical(
 
     if "luminosity" in plotvars:
         inverse_solidangle_fraction = nphibins * ncosthetabins
-        aggs.append(
-            (
-                pl.col("e_rf").sum()
-                / nprocs_read
-                * inverse_solidangle_fraction
-                / (timemaxdays - timemindays)
-                / day_to_s
-            ).alias("luminosity")
-        )
+        # the width of the time range differs by time bin, thus the division comes after the join below
+        aggs.append((pl.col("e_rf").sum() / nprocs_read * inverse_solidangle_fraction).alias("luminosity"))
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
         assert dfestimators is not None
@@ -150,30 +243,61 @@ def plot_spherical(
         )
 
     aggs.append(pl.len().alias("count"))
-    dfpackets = (
-        dfpackets
-        .group_by(["costhetabin", "phibinmonotonicasc"])
-        .agg(aggs)
-        .select(["costhetabin", "phibinmonotonicasc", "count", *plotvars])
-    )
+    dfdirbins = dfpackets.group_by(["timebin", "costhetabin", "phibinmonotonicasc"]).agg(aggs)
+
+    if "luminosity" in plotvars:
+        dftimebinwidths = pl.LazyFrame(
+            {
+                "timebin": range(len(timeranges)),
+                "timebinwidth_d": [timerange.timemaxdays - timerange.timemindays for timerange in timeranges],
+            },
+            schema={"timebin": pl.Int32, "timebinwidth_d": pl.Float64},
+        )
+        dfdirbins = dfdirbins.join(dftimebinwidths, on="timebin", how="left", maintain_order="left").with_columns(
+            luminosity=pl.col("luminosity") / pl.col("timebinwidth_d") / day_to_s
+        )
+
+    dfdirbins = dfdirbins.select(["timebin", "costhetabin", "phibinmonotonicasc", "count", *plotvars])
 
     ndirbins = nphibins * ncosthetabins
     alldirbins = (
         pl
-        .LazyFrame(
-            {
-                "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
-                "costhetabin": [d // nphibins for d in range(ndirbins)],
-            },
-            schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
-            orient="col",
+        .LazyFrame({"timebin": range(len(timeranges))}, schema={"timebin": pl.Int32})
+        .join(
+            pl.LazyFrame(
+                {
+                    "phibinmonotonicasc": [d % nphibins for d in range(ndirbins)],
+                    "costhetabin": [d // nphibins for d in range(ndirbins)],
+                },
+                schema={"phibinmonotonicasc": pl.Int32, "costhetabin": pl.Int32},
+                orient="col",
+            ),
+            how="cross",
+            maintain_order="left",
         )
-        .join(dfpackets, how="left", on=["costhetabin", "phibinmonotonicasc"])
+        .join(dfdirbins, how="left", on=["timebin", "costhetabin", "phibinmonotonicasc"], maintain_order="left")
         .fill_null(0)
-        .sort(["costhetabin", "phibinmonotonicasc"])
+        .sort(["timebin", "costhetabin", "phibinmonotonicasc"])
     ).collect()
 
-    print(f"packets plotted: {alldirbins.select('count').sum().item(0, 0):.1e}")
+    return alldirbins, condition
+
+
+def plot_spherical(
+    dirbins: pl.DataFrame,
+    plotvars: Sequence[str],
+    nphibins: int,
+    ncosthetabins: int,
+    gaussian_sigma: int | None = None,
+    figscale: float = 1.0,
+    cmap: str | None = None,
+    phireverse: bool = False,
+) -> tuple[mplfig.Figure, t.Any]:
+    """Plot each plot variable of one time range on a sphere of viewing directions, and return the figure and axes.
+
+    dirbins holds the rows of one time range of the frame that get_direction_maps returns.
+    """
+    print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
@@ -203,7 +327,7 @@ def plot_spherical(
     assert isinstance(axes, np.ndarray)
 
     for ax, plotvar in zip(axes, plotvars, strict=False):
-        data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
+        data = dirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
             sigma_bins = gaussian_sigma / 360 * nphibins
@@ -242,12 +366,7 @@ def plot_spherical(
 
         ax.axis("off")
 
-        # yticks_deg = np.linspace(0, 180, 7)
-        # ax.set_yticks(
-        #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
-        # )
-
-    return fig, axes, timemindays, timemaxdays, condition
+    return fig, axes
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -262,10 +381,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
-        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
-        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
+        default=list(DEFAULT_PLOTVARS),
+        type=parse_plotvar,
         nargs="+",
-        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc, temperature",
+        help=(
+            f"Variables to plot: {', '.join(PLOTVARS)}, or nnelement_ and an element symbol for the number"
+            " density of that element, e.g. nnelement_Fe"
+        ),
     )
     parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
     parser.add_argument(
@@ -344,29 +466,39 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         gifduration=1000 / 1.5,
     )
 
+    # tstart and tend are requested, but the actual plotted time range may be different
+    timeranges = [resolve_time_range(args.modelpath, dfpackets, tstart, tend) for tstart, tend, _ in time_ranges]
+
+    # one pass over the packets gives the map of every frame
+    dfdirbins, condition = get_direction_maps(
+        modelpath=args.modelpath,
+        dfpackets=dfpackets,
+        dfestimators=dfestimators,
+        nprocs_read=nprocs_read,
+        timeranges=timeranges,
+        nphibins=args.nphibins,
+        ncosthetabins=args.ncosthetabins,
+        atomic_number=args.atomic_number,
+        ion_stage=args.ion_stage,
+        plotvars=args.plotvars,
+    )
+
     outputfilenames = []
-    for tstart, tend, label in time_ranges:
+    for timebin, ((tstart, tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
         if tend is not None:
             print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
-        # tstart and tend are requested, but the actual plotted time range may be different
-        fig, axes, timemindays, timemaxdays, condition = plot_spherical(
-            modelpath=args.modelpath,
-            dfpackets=dfpackets,
-            dfestimators=dfestimators,
-            nprocs_read=nprocs_read,
-            timemindays=tstart,
-            timemaxdays=tend,
+        fig, axes = plot_spherical(
+            dfdirbins.filter(pl.col("timebin") == timebin),
+            plotvars=args.plotvars,
             nphibins=args.nphibins,
             ncosthetabins=args.ncosthetabins,
             gaussian_sigma=args.gaussian_sigma,
-            atomic_number=args.atomic_number,
-            ion_stage=args.ion_stage,
-            plotvars=args.plotvars,
             cmap=args.cmap,
             figscale=args.figscale,
             phireverse=args.phireverse,
         )
 
+        timemindays, timemaxdays = timerange.timemindays, timerange.timemaxdays
         if not args.notitle:
             axes[0].set_title(
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0

@@ -584,11 +584,8 @@ def get_packets(
     packetsdatasize_gb = sum(f.stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
-    # a cache file from an old artistools names the Stokes columns stokes1/2/3, where stokes1 holds the
-    # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U.
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"originated_from_positron": "originated_from_particlenotgamma", "stokes2": "stokes_q", "stokes3": "stokes_u"},
-        strict=False,
+        {"originated_from_positron": "originated_from_particlenotgamma"}, strict=False
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()

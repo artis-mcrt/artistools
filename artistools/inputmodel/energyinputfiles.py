@@ -87,11 +87,7 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
 
     integrated_rate = dE / dt
     scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
-    print(np.mean(scale_factor_energy_diff))
     E_tot *= scale_factor_energy_diff
-
-    dE = np.diff(dftimes_and_rate["rate"] * E_tot)
-    dt = np.diff(times * 24 * 60 * 60)
 
     return dftimes_and_rate, E_tot
 
@@ -103,10 +99,8 @@ def make_energydistribution_weightedbyrho(
     print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
     print("Etot", Etot)
-    numberofcells = len(rho)
 
-    cellenergy = np.array([Etot] * numberofcells)
-    cellenergy *= rho / sum(rho)
+    cellenergy = Etot * rho / rho.sum()
 
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 
