@@ -84,6 +84,32 @@ class FeatureTuple(t.NamedTuple):
     lowerlevelindices: Sequence[int]
 
 
+def get_timebins(
+    modelpath: Path | str, arr_tstart: Sequence[float] | None, arr_tend: Sequence[float] | None
+) -> tuple[Sequence[float], Sequence[float], npt.NDArray[np.floating]]:
+    """Return the start, the end, and the mid time in days of each time bin.
+
+    A bin that covers one timestep of the model takes the mid time of that timestep, which is
+    logarithmic. A bin that the caller gives covers no single timestep, thus it takes the mean of
+    its own two edges.
+    """
+    arr_tstart_model = at.get_timestep_times(modelpath, loc="start")
+    arr_tend_model = at.get_timestep_times(modelpath, loc="end")
+    if arr_tstart is None:
+        arr_tstart = arr_tstart_model
+    if arr_tend is None:
+        arr_tend = arr_tend_model
+
+    ismodeltimesteps = list(arr_tstart) == list(arr_tstart_model) and list(arr_tend) == list(arr_tend_model)
+    arr_tmid = (
+        np.array(at.get_timestep_times(modelpath, loc="mid"))
+        if ismodeltimesteps
+        else (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    )
+
+    return arr_tstart, arr_tend, arr_tmid
+
+
 def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
@@ -96,13 +122,8 @@ def get_line_luminosities_from_packets(
 
     The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
     """
-    if arr_tstart is None:
-        arr_tstart = at.get_timestep_times(modelpath, loc="start")
-    if arr_tend is None:
-        arr_tend = at.get_timestep_times(modelpath, loc="end")
-
+    arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
@@ -144,12 +165,7 @@ def get_line_luminosities_from_pops(
     arr_tend: Sequence[float] | None = None,
 ) -> pl.DataFrame:
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
-    if arr_tstart is None:
-        arr_tstart = at.get_timestep_times(modelpath, loc="start")
-    if arr_tend is None:
-        arr_tend = at.get_timestep_times(modelpath, loc="end")
-
-    arr_tmid = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
+    _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
     modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
 
