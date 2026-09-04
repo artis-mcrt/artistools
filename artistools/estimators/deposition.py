@@ -31,8 +31,12 @@ DEFAULTOUTPUTNAME = "deposition.txt"
 
 
 def get_deposition_channels(colnames: Sequence[str]) -> list[str]:
-    """Return the deposition channels that the estimators of a model give."""
-    return [name.removeprefix(DEPOSITIONPREFIX) for name in colnames if name.startswith(DEPOSITIONPREFIX)]
+    """Return the deposition channels that the estimators of a model give, in alphabetical order.
+
+    The reader of the estimator files keeps the columns in a hash map, thus the order of the columns
+    changes between runs. The sort gives one order to the listing and to each message.
+    """
+    return sorted(name.removeprefix(DEPOSITIONPREFIX) for name in colnames if name.startswith(DEPOSITIONPREFIX))
 
 
 def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
@@ -88,8 +92,8 @@ def aggregate_deposition_rates(
         dep_erg_per_s=get_deposition_expression(colnames, channels) * pl.col("volume_prevtimestep"),
     )
 
-    # only a cell that holds matter has an ion. A NaN number density gives no count, and the
-    # comparison alone keeps such a cell, because polars reads a NaN as greater than zero
+    # only a cell that holds matter has an ion. The filter also names is_finite, because a NaN
+    # number density passes the comparison and gives no count
     dfcells = dfestim.filter(pl.col("nntot") > 0, pl.col("nntot").is_finite()).select(
         "timestep", "modelgridindex", "tmid_days", "mass_g", "volume", ioncount=pl.col("nntot") * pl.col("volume")
     )
