@@ -90,12 +90,12 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     Thus the count covers the cells that hold matter, and a range of a low Ye gets the number of
     cells that the table sums.
 
-    The check reads the model alone, and it gives the arguments that the reader of the estimators
-    gives. Thus a range that selects no cell stops the command before the much slower read of the
-    estimator files, and the two calls see the same cells.
+    The read asks for the density and for no other derived column, and it reads no abundance. Thus a
+    range that selects no cell stops the command before the much slower read of the estimator files,
+    and the check itself costs little on a model of many cells.
     """
     modelname = get_model_name(modelpath)
-    dfmodel, _ = get_modeldata(modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose)
+    dfmodel, _ = get_modeldata(modelpath, derived_cols=["rho"], printwarningsonly=not verbose)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = f"{modelname} gives no Ye of a cell. The model file must hold a Ye column"
         raise ValueError(msg)
