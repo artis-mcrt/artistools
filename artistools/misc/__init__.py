@@ -37,6 +37,7 @@ from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
+from artistools.misc.cliutils import parse_float_range as parse_float_range
 from artistools.misc.cliutils import parse_range as parse_range
 from artistools.misc.cliutils import parse_range_list as parse_range_list
 from artistools.misc.cliutils import print_detail as print_detail

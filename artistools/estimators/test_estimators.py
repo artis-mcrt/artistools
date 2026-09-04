@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
 
@@ -9,6 +10,7 @@ import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -1596,20 +1598,59 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
 DEPOSITIONLINE = "deposition: gamma 2.0e-10 positron 1.0e-10 electron 5.0e-11 alpha 2.5e-11"
 
 
-def make_model_with_deposition(tmp_path: Path) -> Path:
+def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = None) -> Path:
     """Return a copy of the test model whose estimators give the deposition rate of each channel.
 
     The copy holds the four small input files that the reader needs, thus it costs no time and no
     space. The atomic data of the test model stays where it is.
+
+    The model of the repository holds one cell and no Ye column. Thus cellye gives one Ye to each
+    cell, and it makes one copy of that cell for each value that it holds. A test of a selection of
+    the cells then has a model that the selection can divide.
     """
     modeldir = tmp_path / "modelwithdeposition"
     modeldir.mkdir()
     for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
         shutil.copy(modelpath / name, modeldir / name)
 
-    lines = (modelpath / "estimators_0000.out").read_text(encoding="utf-8").splitlines()
-    withdeposition = [f"{line}\n{DEPOSITIONLINE}" if line.startswith("timestep ") else line for line in lines]
-    (modeldir / "estimators_0000.out").write_text("\n".join(withdeposition) + "\n", encoding="utf-8")
+    ncells = 1 if cellye is None else len(cellye)
+    if cellye is not None:
+        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
+        cellnumber = pl.int_range(1, ncells + 1, dtype=pl.Int32)
+        dfcells = pl.concat([dfmodel.collect()] * ncells).with_columns(
+            inputcellid=cellnumber,
+            # each shell must end above the one in front of it, thus the outer speed grows with the id
+            vel_r_max_kmps=pl.col("vel_r_max_kmps") * cellnumber,
+            # each cell holds a density of its own, thus a selection of the cells changes the mass
+            logrho=pl.col("logrho") - (cellnumber - 1),
+            Ye=pl.Series(cellye),
+        )
+        modelmeta["npts_model"] = ncells
+        (modeldir / "model.txt").unlink()
+        at.inputmodel.save_modeldata(dfcells, outpath=modeldir, modelmeta=modelmeta)
+
+        abundfields = (modelpath / "abundances.txt").read_text(encoding="utf-8").split()
+        (modeldir / "abundances.txt").write_text(
+            "".join(" ".join([str(mgi + 1), *abundfields[1:]]) + "\n" for mgi in range(ncells)), encoding="utf-8"
+        )
+
+    # ARTIS writes one block for each cell of a timestep, thus each copy of the cell needs its block
+    blocks: list[list[str]] = []
+    for line in (modelpath / "estimators_0000.out").read_text(encoding="utf-8").splitlines():
+        if line.startswith("timestep "):
+            blocks.append([line, DEPOSITIONLINE])
+        else:
+            blocks[-1].append(line)
+
+    (modeldir / "estimators_0000.out").write_text(
+        "".join(
+            line.replace("modelgridindex 0", f"modelgridindex {mgi}") + "\n"
+            for block in blocks
+            for mgi in range(ncells)
+            for line in block
+        ),
+        encoding="utf-8",
+    )
 
     return modeldir
 
@@ -1681,6 +1722,108 @@ def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     )
 
 
+def test_deposition_reads_a_ye_range() -> None:
+    """-ye takes a range such as 0-0.2. A single number is no range, thus it gives an error."""
+    assert at.estimators.deposition.parse_ye_range("0-0.2") == pytest.approx((0.0, 0.2))
+
+    # a hyphen inside an exponent does not split the range, and a reversed range gives the same range
+    assert at.estimators.deposition.parse_ye_range("0.35-1e-3") == pytest.approx((0.001, 0.35))
+
+    for text in ("0.2", "0-0.1-0.2", "low-high"):
+        with pytest.raises(ValueError, match="as a Ye range"):
+            at.estimators.deposition.parse_ye_range(text)
+
+    # a Ye is 0 to 1, thus a value outside that range, a nan, and an infinity each give an error
+    for text in ("0-2", "0--1", "0-nan", "0.5-nan", "0-inf"):
+        with pytest.raises(ValueError, match="names a Ye outside 0 to 1"):
+            at.estimators.deposition.parse_ye_range(text)
+
+
+def test_deposition_selects_the_cells_of_a_ye_range() -> None:
+    """A Ye range keeps the cells inside it. The rate, the ions, the volume, and the mass follow it."""
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 0, 1, 1],
+        "modelgridindex": [0, 1, 0, 1],
+        "tmid_days": [10.0, 10.0, 11.0, 11.0],
+        "init_Ye": [0.15, 0.35, 0.15, 0.35],
+        "nntot": [10.0, 20.0, 9.0, 19.0],
+        "volume": [2.0, 4.0, 2.2, 4.4],
+        "volume_prevtimestep": [None, None, 2.0, 4.0],
+        "mass_g": [3.0, 5.0, 3.0, 5.0],
+        "deposition_gamma": [0.0, 0.0, 1.0e-9, 2.0e-9],
+    })
+
+    dflowye = at.estimators.deposition.aggregate_deposition_rates(dfestim, yerange=(0.0, 0.2))
+    rate_erg_per_s = 1.0e-9 * 2.0
+    assert dflowye["timestep"].to_list() == [0]
+    assert np.isclose(dflowye["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+    assert np.isclose(dflowye["dep_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 20.0, rtol=1e-12)
+    assert np.isclose(dflowye["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / 3.0, rtol=1e-12)
+
+    # a range that holds both cells gives the same rates as a selection of every cell
+    dfbothcells = at.estimators.deposition.aggregate_deposition_rates(dfestim, yerange=(0.0, 0.4))
+    pltest.assert_frame_equal(dfbothcells, at.estimators.deposition.aggregate_deposition_rates(dfestim))
+    assert np.isclose(
+        dfbothcells["dep_per_mass"].item(), (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 8.0, rtol=1e-12
+    )
+
+    # a frame of a run that gives no Ye must give a message, and not the error of the query engine
+    with pytest.raises(ValueError, match="gives no Ye of a cell"):
+        at.estimators.deposition.aggregate_deposition_rates(dfestim.drop("init_Ye"), yerange=(0.0, 0.2))
+
+
+def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A Ye range that no cell holds must stop the command, and the message must name the Ye of the model."""
+    with pytest.raises(ValueError, match="gives no Ye of a cell"):
+        at.estimators.deposition.check_ye_range(modelpath, (0.0, 0.2))
+
+    modeldir = make_model_with_deposition(tmp_path, cellye=[0.3])
+    outfile = tmp_path / "deposition.txt"
+    at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0.25-0.35", outputfile=outfile)
+
+    # the one cell of the model is inside the range, thus the table gives the rate of that cell
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("in 1 of 1 cells with matter, with a Ye of 0.25 to 0.35")
+    assert float(lines[3].split()[3]) == pytest.approx(
+        at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rel=1e-3
+    )
+    assert "1 of 1 cells with matter (100.0%) have a Ye of 0.25 to 0.35" in capsys.readouterr().out
+
+    # the one cell of the model holds matter and a Ye of 0.3, thus a range below that gets no cell
+    with pytest.raises(
+        ValueError, match=re.escape("has no cell with matter and a Ye of 0 to 0.2. Its cells with matter have a Ye")
+    ):
+        at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0-0.2")
+
+
+def test_deposition_ye_range_drops_a_cell_of_a_model(tmp_path: Path) -> None:
+    """A Ye range must divide the cells of a model that the reader of the estimators gives.
+
+    The model holds two cells of a different Ye, thus a range that takes one of them must give a rate
+    that is different from the rate of both cells.
+    """
+    modeldir = make_model_with_deposition(tmp_path, cellye=[0.15, 0.35])
+
+    dfbothcells = at.estimators.deposition.get_deposition_rates(modeldir, [54])
+    dflowye = at.estimators.deposition.get_deposition_rates(modeldir, [54], yerange=(0.1, 0.2))
+
+    assert at.estimators.deposition.check_ye_range(modeldir, (0.1, 0.2)) == (1, 2)
+    assert at.estimators.deposition.check_ye_range(modeldir, (0.1, 0.4)) == (2, 2)
+
+    # the outer cell of a low density holds most of the volume and little of the mass. Thus the inner
+    # cell alone gives a rate per unit mass that is far below the rate of both cells.
+    assert dflowye["dep_per_mass"].item() < dfbothcells["dep_per_mass"].item() / 2.0
+
+    # each cell gives the same rate per unit volume and holds the same ions, thus those two do not move
+    for name in ("dep_per_volume", "dep_per_ion"):
+        assert np.isclose(dflowye[name].item(), dfbothcells[name].item(), rtol=1e-6)
+
+    # a range that holds every cell must give the rates of every cell
+    pltest.assert_frame_equal(
+        at.estimators.deposition.get_deposition_rates(modeldir, [54], yerange=(0.1, 0.4)), dfbothcells
+    )
+
+
 def test_deposition_needs_the_deposition_estimators() -> None:
     """A model that gives no rate of a cell must give an error and no number.
 
@@ -1745,8 +1888,12 @@ def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture
         values[3], at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rtol=1e-3
     )
 
-    # the file of the next timestep holds the rate, thus the last timestep of the run gives none
+    # the file of the next timestep holds the rate, thus the timestep that -timestep last names gives none
     assert "no deposition rate for timestep 99" in capsys.readouterr().err
+
+    # a selection of every timestep always loses that one row, thus it must give no warning
+    at.estimators.deposition.main(argsraw=[], modelpath=modeldir)
+    assert "no deposition rate for" not in capsys.readouterr().err
 
 
 def test_deposition_lists_the_channels(tmp_path: Path) -> None:
