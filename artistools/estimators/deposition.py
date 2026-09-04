@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.constants import EV_to_erg
 from artistools.estimators.estimators import scan_estimators
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
@@ -20,6 +21,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import parse_float_range
 from artistools.misc import print_product
 from artistools.misc import print_saved
 from artistools.misc import print_warning
@@ -65,8 +67,75 @@ def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] |
     return pl.sum_horizontal((pl.col(f"{DEPOSITIONPREFIX}{channel}") for channel in channels), ignore_nulls=False)
 
 
+def parse_ye_range(text: str) -> tuple[float, float]:
+    """Return the lower end and the upper end of a Ye range such as 0-0.2.
+
+    A Ye is the number of electrons per nucleon, thus each end must be 0 to 1. That comparison also
+    refuses a nan and an infinity, because each comparison with a nan gives false.
+    """
+    yemin, yemax = sorted(parse_float_range(text, "a Ye range, such as 0-0.2"))
+    if not 0.0 <= yemin <= yemax <= 1.0:
+        msg = f"{text!r} names a Ye outside 0 to 1"
+        raise ValueError(msg)
+
+    return yemin, yemax
+
+
+def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose: bool = False) -> tuple[int, int]:
+    """Return how many cells a Ye range selects and how many hold matter, and print those counts.
+
+    A range that selects no cell gives an error.
+
+    A cell with no matter gives no deposition rate, and artistools writes a Ye of 0 for such a cell.
+    Thus the count covers the cells that hold matter, and a range of a low Ye gets the number of
+    cells that the table sums.
+
+    The check reads the model alone, and it gives the arguments that the reader of the estimators
+    gives. Thus a range that selects no cell stops the command before the much slower read of the
+    estimator files, and the two calls see the same cells.
+    """
+    modelname = get_model_name(modelpath)
+    dfmodel, _ = get_modeldata(modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose)
+    if "Ye" not in dfmodel.collect_schema().names():
+        msg = f"{modelname} gives no Ye of a cell. The model file must hold a Ye column"
+        raise ValueError(msg)
+
+    yemin, yemax = yerange
+    modelyemin, modelyemax, cellsinrange, cellswithmatter = (
+        dfmodel
+        .filter(pl.col("rho") > 0)
+        .select(
+            modelyemin=pl.col("Ye").min(),
+            modelyemax=pl.col("Ye").max(),
+            cellsinrange=pl.col("Ye").is_between(yemin, yemax).sum(),
+            cellswithmatter=pl.len(),
+        )
+        .collect()
+        .row(0)
+    )
+    if not cellsinrange:
+        # a model with no cell of matter, and a model of null Ye values, both give no minimum
+        yeofmodel = (
+            "It gives no Ye of a cell that holds matter"
+            if modelyemin is None
+            else f"Its cells with matter have a Ye of {modelyemin:g} to {modelyemax:g}"
+        )
+        msg = f"{modelname} has no cell with matter and a Ye of {yemin:g} to {yemax:g}. {yeofmodel}"
+        raise ValueError(msg)
+
+    print(
+        f"{modelname}: {cellsinrange} of {cellswithmatter} cells with matter "
+        f"({cellsinrange / cellswithmatter:.1%}) have a Ye of {yemin:g} to {yemax:g}"
+    )
+
+    return cellsinrange, cellswithmatter
+
+
 def aggregate_deposition_rates(
-    dfestim: pl.LazyFrame, timesteps: Sequence[int] | None = None, channels: Sequence[str] | None = None
+    dfestim: pl.LazyFrame,
+    timesteps: Sequence[int] | None = None,
+    channels: Sequence[str] | None = None,
+    yerange: tuple[float, float] | None = None,
 ) -> pl.DataFrame:
     """Return the deposition rate per unit volume, per ion, and per unit mass of each timestep.
 
@@ -77,6 +146,8 @@ def aggregate_deposition_rates(
 
     The join on the cell gives one row of one timestep to each cell. Thus the rate, the ion count,
     the volume, and the mass of a row cover one set of cells.
+
+    A Ye range keeps the cells of the model whose Ye is inside it. Both ends of the range count.
     """
     colnames = dfestim.collect_schema().names()
     if "nntot" not in colnames:
@@ -85,6 +156,14 @@ def aggregate_deposition_rates(
             "thus the command cannot count the ions"
         )
         raise ValueError(msg)
+
+    if yerange is not None:
+        # join_cell_modeldata puts an init_ prefix on each column of the model snapshot
+        if "init_Ye" not in colnames:
+            msg = "The model of this run gives no Ye of a cell, thus a Ye range selects nothing"
+            raise ValueError(msg)
+
+        dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
 
     dfrates = dfestim.select(
         timestep=pl.col("timestep") - 1,
@@ -137,16 +216,19 @@ def get_deposition_rates(
     modelpath: Path | str,
     timesteps: Sequence[int] | None = None,
     channels: Sequence[str] | None = None,
+    yerange: tuple[float, float] | None = None,
     verbose: bool = False,
 ) -> pl.DataFrame:
     """Read the estimators of a model, and return the deposition rate of each timestep.
 
-    A value of None for timesteps reads every timestep of the model.
+    A value of None for timesteps reads every timestep of the model. A value of None for yerange
+    keeps every cell. Call check_ye_range in front of this function, which gives a message for a
+    range that selects no cell.
     """
     readtimesteps = None if timesteps is None else tuple({*timesteps} | {timestep + 1 for timestep in timesteps})
     dfestim = scan_estimators(modelpath, timestep=readtimesteps, join_modeldata=True, verbose=verbose)
 
-    return aggregate_deposition_rates(dfestim, timesteps, channels)
+    return aggregate_deposition_rates(dfestim, timesteps, channels, yerange)
 
 
 def get_selected_timesteps(modelpath: Path | str, timedays: str | None, timestep: str | None) -> list[int] | None:
@@ -183,10 +265,26 @@ def format_channel_list(modelpath: Path | str, verbose: bool = False) -> str:
     return f"{get_model_name(modelpath)} holds {', '.join(channels) if channels else 'no deposition channel'}"
 
 
-def format_deposition_table(modelpath: Path | str, dftable: pl.DataFrame, channels: Sequence[str] | None) -> str:
-    """Return the deposition rates of one model as a table of one row for each timestep."""
+def format_deposition_table(
+    modelpath: Path | str,
+    dftable: pl.DataFrame,
+    channels: Sequence[str] | None,
+    yerange: tuple[float, float] | None = None,
+    yecells: tuple[int, int] | None = None,
+) -> str:
+    """Return the deposition rates of one model as a table of one row for each timestep.
+
+    The counts that check_ye_range gives go in the title. Thus the file that -o writes says how many
+    cells the Ye range selected, and --quiet takes no part of that away.
+    """
+    channeltext = ", ".join(channels) if channels else "every channel"
+    yetext = (
+        f" in {yecells[0]} of {yecells[1]} cells with matter, with a Ye of {yerange[0]:g} to {yerange[1]:g}"
+        if yerange is not None and yecells is not None
+        else ""
+    )
     lines = [
-        f"{get_model_name(modelpath)}: deposition of {', '.join(channels) if channels else 'every channel'}",
+        f"{get_model_name(modelpath)}: deposition of {channeltext}{yetext}",
         f"{'timestep':>8s} {'t_days':>10s} {'dep_per_volume':>15s} {'dep_per_ion':>15s} {'dep_per_mass':>15s}",
         f"{'':>8s} {'[d]':>10s} {'[eV/s/cm^3]':>15s} {'[eV/s]':>15s} {'[eV/s/g]':>15s}",
     ]
@@ -203,17 +301,30 @@ def format_deposition_table(modelpath: Path | str, dftable: pl.DataFrame, channe
 def warn_about_gaps(
     modelpath: Path | str, dftable: pl.DataFrame, timesteps: Sequence[int] | None, lasttimestep: int
 ) -> None:
-    """Print a warning for each timestep that got no row, and for the cells that gave no rate."""
+    """Print a warning for each timestep that got no row, and for the cells that gave no rate.
+
+    A run always gives no rate for its last timestep, thus a selection of every timestep asks for the
+    timesteps in front of that one alone. A complete run then gives no warning, and a run that
+    stopped early still gives one.
+    """
     modelname = get_model_name(modelpath)
     gotrows = set(dftable["timestep"].to_list())
-    # a run gives no rate for its last timestep, thus the default selection loses that one row
-    wanted = set(timesteps) if timesteps is not None else {lasttimestep}
+    wanted = set(timesteps) if timesteps is not None else set(range(lasttimestep))
     if missing := sorted(wanted - gotrows):
-        print_warning(
-            f"{modelname}: no deposition rate for timestep {', '.join(str(timestep) for timestep in missing)}. "
-            "The rate of a timestep arrives in the file of the next timestep, "
-            "thus the last timestep of a run gives none"
+        # a long list of timesteps hides the message, thus many of them give the count and the ends
+        missingtext = (
+            f"timestep {', '.join(str(timestep) for timestep in missing)}"
+            if len(missing) <= 6
+            else f"{len(missing)} timesteps, from {missing[0]} to {missing[-1]}"
         )
+        # that rule explains the last timestep alone, thus a gap of a different cause gets no reason
+        reason = (
+            " The rate of a timestep arrives in the file of the next timestep, "
+            "thus the last timestep of a run gives none."
+            if lasttimestep in missing
+            else ""
+        )
+        print_warning(f"{modelname}: no deposition rate for {missingtext}.{reason}")
 
     if cellswithnorate := int(dftable["cellswithnorate"].sum()):
         print_warning(f"{modelname}: {cellswithnorate} cells gave no deposition rate, thus a row can hold a NaN")
@@ -236,7 +347,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Default: every channel of the model. Give --listchannels to show the channels"
         ),
     )
-    parser.add_argument(
+    # --listchannels stops before it reads a cell, thus a Ye range with it selects nothing
+    listgroup = parser.add_mutually_exclusive_group()
+    listgroup.add_argument(
+        "-ye",
+        help=(
+            "Select the cells whose Ye (electrons per nucleon) of the model file is in a range, "
+            "e.g. 0-0.2. Both ends of the range count. Default: every cell. "
+            "The model file must hold a Ye column"
+        ),
+    )
+    listgroup.add_argument(
         "--listchannels", action="store_true", help="Show the deposition channels of the model. The command then stops"
     )
     addarg_output(parser, kind="file", helptext="Path/filename for the output text file")
@@ -248,15 +369,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     channels = str(args.channels).split(",") if args.channels else None
+    yerange = parse_ye_range(str(args.ye)) if args.ye is not None else None
+    modelpaths = normalize_path_list(args.modelpath)
+
+    # each model gets its check in front of the first slow read, thus a bad path wastes no work
+    yecellcounts = [
+        check_ye_range(modelpath, yerange, verbose=args.verbose) if yerange is not None else None
+        for modelpath in modelpaths
+    ]
+
     tables: list[str] = []
-    for modelpath in normalize_path_list(args.modelpath):
+    for modelpath, yecells in zip(modelpaths, yecellcounts, strict=True):
         if args.listchannels:
             tables.append(format_channel_list(modelpath, verbose=args.verbose))
         else:
             timesteps = get_selected_timesteps(modelpath, args.timedays, args.timestep)
-            dftable = get_deposition_rates(modelpath, timesteps, channels, verbose=args.verbose)
+            dftable = get_deposition_rates(modelpath, timesteps, channels, yerange, verbose=args.verbose)
             warn_about_gaps(modelpath, dftable, timesteps, len(get_timestep_times(modelpath, loc="mid")) - 1)
-            tables.append(format_deposition_table(modelpath, dftable, channels))
+            tables.append(format_deposition_table(modelpath, dftable, channels, yerange, yecells))
 
         print_product(args, tables[-1])
 

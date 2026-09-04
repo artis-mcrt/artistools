@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.cliutils import parse_float_range
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
@@ -180,25 +181,15 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 def parse_timedays_range(timedays_range_str: str | float) -> tuple[float, float] | None:
     """Return the two ends of a time range like 2.2-2.8, or None when the text names a single time.
 
-    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative time. The text is
-    read as one number first, thus only a hyphen that separates two numbers splits the range.
+    This function reads the text as one number first, thus a hyphen in front of a negative time
+    splits no range.
     """
     text = str(timedays_range_str).strip()
     with contextlib.suppress(ValueError):
         float(text)
         return None
 
-    # a digit or a decimal point in front of the hyphen means it separates two numbers
-    parts = re.split(r"(?<=[0-9.])-", text)
-    if len(parts) != 2:
-        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
-        raise ValueError(msg)
-
-    try:
-        return float(parts[0]), float(parts[1])
-    except ValueError as exc:
-        msg = f"Cannot read {text!r} as a time in days or as a range such as 2.2-2.8"
-        raise ValueError(msg) from exc
+    return parse_float_range(text, "a time in days or as a range such as 2.2-2.8")
 
 
 def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:

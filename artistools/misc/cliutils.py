@@ -3,6 +3,7 @@
 import argparse
 import dataclasses as dc
 import itertools
+import re
 import sys
 import typing as t
 from collections.abc import Callable
@@ -925,14 +926,28 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         raise ValueError(msg)
 
 
+def parse_float_range(text: str, description: str) -> tuple[float, float]:
+    """Return the two numbers of a range such as 2.2-2.8, in the order that the text gives them.
+
+    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative number. Thus only
+    a hyphen that comes after a digit or after a decimal point separates the two ends of the range.
+    The description names what the caller expects, and the message of an error gives that name.
+    """
+    try:
+        first, second = (float(part) for part in re.split(r"(?<=[0-9.])-", text.strip()))
+    except ValueError as exc:
+        msg = f"Cannot read {text!r} as {description}"
+        raise ValueError(msg) from exc
+
+    return first, second
+
+
 def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars.
 
     A hyphen also stands in front of a negative number, thus only a hyphen that follows a digit or a
     letter separates the two ends of the range. "-1" then names one number, which the caller refuses.
     """
-    import re
-
     strparts = re.split(r"(?<=[0-9a-zA-Z])-", rng.strip())
 
     if len(strparts) not in {1, 2}:
