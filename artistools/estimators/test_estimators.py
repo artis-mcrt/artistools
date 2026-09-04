@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import typing as t
 from pathlib import Path
 from unittest import mock
@@ -1588,3 +1589,170 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
 
     xvalues = np.concatenate([np.array(callargs[0][1], dtype=float) for callargs in mockplot.call_args_list])
     assert len(xvalues) > 0
+
+
+# the estimators of every test model of the repository hold no deposition_ column, thus a test that
+# needs one writes this line into a copy of the test model
+DEPOSITIONLINE = "deposition: gamma 2.0e-10 positron 1.0e-10 electron 5.0e-11 alpha 2.5e-11"
+
+
+def make_model_with_deposition(tmp_path: Path) -> Path:
+    """Return a copy of the test model whose estimators give the deposition rate of each channel.
+
+    The copy holds the four small input files that the reader needs, thus it costs no time and no
+    space. The atomic data of the test model stays where it is.
+    """
+    modeldir = tmp_path / "modelwithdeposition"
+    modeldir.mkdir()
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, modeldir / name)
+
+    lines = (modelpath / "estimators_0000.out").read_text(encoding="utf-8").splitlines()
+    withdeposition = [f"{line}\n{DEPOSITIONLINE}" if line.startswith("timestep ") else line for line in lines]
+    (modeldir / "estimators_0000.out").write_text("\n".join(withdeposition) + "\n", encoding="utf-8")
+
+    return modeldir
+
+
+def test_deposition_rates_read_the_next_timestep() -> None:
+    """The rate of timestep n comes from the rows of n + 1, weighted by the volume of n.
+
+    Every column of one row must cover one set of cells: a cell with no matter enters neither the
+    rate nor the volume, the ion count, or the mass. A cell that gives no rate is counted.
+    """
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 0, 0, 0, 1, 1, 1, 1],
+        "modelgridindex": [0, 1, 2, 3, 0, 1, 2, 3],
+        "tmid_days": [10.0] * 4 + [11.0] * 4,
+        "nntot": [10.0, 20.0, 0.0, 5.0, 9.0, 19.0, 0.0, 4.0],
+        "volume": [2.0, 4.0, 8.0, 1.0, 2.2, 4.4, 8.8, 1.1],
+        "volume_prevtimestep": [None] * 4 + [2.0, 4.0, 8.0, 1.0],
+        "mass_g": [3.0, 5.0, 7.0, 2.0, 3.0, 5.0, 7.0, 2.0],
+        "deposition_gamma": [0.0] * 4 + [1.0e-9, 2.0e-9, 5.0e-9, None],
+        "deposition_alpha": [0.0] * 4 + [1.0e-10, 0.0, 1.0e-9, 1.0e-9],
+    })
+
+    dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim)
+
+    # cell 2 holds no matter and cell 3 gives no rate, thus the rate covers cells 0 and 1 alone
+    rate_erg_per_s = 1.1e-9 * 2.0 + 2.0e-9 * 4.0
+    assert dftable["timestep"].to_list() == [0]
+    assert np.isclose(dftable["tmid_days"].item(), 10.0)
+    # cell 3 still holds matter, thus its volume, its ions, and its mass stay in the denominators
+    assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 7.0, rtol=1e-12)
+    assert np.isclose(dftable["dep_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 105.0, rtol=1e-12)
+    assert np.isclose(dftable["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / 10.0, rtol=1e-12)
+    assert dftable["cellswithnorate"].item() == 1
+
+    # one channel gives its own rate, and the ion count and the mass do not change
+    dfgamma = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
+    assert np.isclose(
+        dfgamma["dep_per_ion"].item(), (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 105.0, rtol=1e-12
+    )
+
+
+def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
+    """The rates of a model must match a calculation that reads the estimators on its own.
+
+    The volume of timestep 55 is 1.01 times the volume of 54, and the ion count of 55 is 0.99 times
+    the count of 54. Thus this test fails if the code reads a quantity at the wrong timestep.
+    """
+    modeldir = make_model_with_deposition(tmp_path)
+    dfestim = at.estimators.scan_estimators(modeldir, timestep=(54, 55), join_modeldata=True).collect()
+    row54 = dfestim.filter(pl.col("timestep") == 54)
+    # the four values of DEPOSITIONLINE, in erg/s/cm3
+    rate_erg_per_s = (2.0e-10 + 1.0e-10 + 5.0e-11 + 2.5e-11) * dfestim.filter(pl.col("timestep") == 55)[
+        "volume_prevtimestep"
+    ].item()
+
+    dftable = at.estimators.deposition.get_deposition_rates(modeldir, timesteps=[54])
+
+    assert dftable["timestep"].to_list() == [54]
+    assert np.isclose(
+        dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / row54["volume"].item(), rtol=1e-6
+    )
+    assert np.isclose(
+        dftable["dep_per_ion"].item(),
+        rate_erg_per_s / at.constants.EV_to_erg / (row54["nntot"].item() * row54["volume"].item()),
+        rtol=1e-6,
+    )
+    assert np.isclose(
+        dftable["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / row54["mass_g"].item(), rtol=1e-6
+    )
+
+
+def test_deposition_needs_the_deposition_estimators() -> None:
+    """A model that gives no rate of a cell must give an error and no number.
+
+    artistools derives total_dep from the heating rate for such a model. On the classic-mode test
+    model that total is 1400 times below the tally of deposition.out, thus it is no deposition rate.
+    """
+    with pytest.raises(ValueError, match="hold no deposition_ column"):
+        at.estimators.deposition.main(argsraw=[], modelpath=modelpath, timestep="54")
+
+    assert at.estimators.deposition.format_channel_list(modelpath).endswith("holds no deposition channel")
+
+
+def test_deposition_names_the_channels_of_the_model() -> None:
+    """An unknown channel must give a message that names the channels of the model."""
+    colnames = ["total_dep", "deposition_gamma", "deposition_positron"]
+    dfcell = pl.LazyFrame({"deposition_gamma": [1.0], "deposition_positron": [2.0]})
+
+    # no channel of its own means every channel of the model
+    expr = at.estimators.deposition.get_deposition_expression(colnames, None)
+    assert np.isclose(dfcell.select(expr).collect().item(), 3.0)
+
+    expr = at.estimators.deposition.get_deposition_expression(colnames, ["deposition_gamma"])
+    assert np.isclose(dfcell.select(expr).collect().item(), 1.0)
+
+    with pytest.raises(ValueError, match=re.escape("no deposition rate of alpha. It holds gamma, positron")):
+        at.estimators.deposition.get_deposition_expression(colnames, ["alpha"])
+
+
+def test_deposition_timeselection_takes_a_list_and_a_range() -> None:
+    """-timedays and -timestep each take a list. Each item of the list means what it means elsewhere."""
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    timesteps = at.estimators.deposition.get_selected_timesteps(modelpath, "260,300-303", None)
+
+    inrange = [timestep for timestep, tmid in enumerate(tmids) if 300 <= tmid <= 303]
+    assert timesteps == sorted({at.get_timestep_of_timedays(modelpath, 260), *inrange})
+
+    assert at.estimators.deposition.get_selected_timesteps(modelpath, None, "4,9-11") == [4, 9, 10, 11]
+    assert at.estimators.deposition.get_selected_timesteps(modelpath, None, "last") == [len(tmids) - 1]
+    assert at.estimators.deposition.get_selected_timesteps(modelpath, None, None) is None
+
+    # a range that holds no timestep gives an error, and not a selection that quietly loses it
+    with pytest.raises(ValueError, match="does not include any full timesteps"):
+        at.estimators.deposition.get_selected_timesteps(modelpath, "303-300,260", None)
+
+
+def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The command writes the table that it prints. It also reports each timestep with no rate."""
+    modeldir = make_model_with_deposition(tmp_path)
+    outfile = tmp_path / "deposition.txt"
+    at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54,last", outputfile=outfile)
+
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith(at.get_model_name(modeldir))
+    assert lines[1].split() == ["timestep", "t_days", "dep_per_volume", "dep_per_ion", "dep_per_mass"]
+    assert lines[2].split() == ["[d]", "[eV/s/cm^3]", "[eV/s]", "[eV/s/g]"]
+
+    values = [float(value) for value in lines[3].split()]
+    assert len(lines) == 4, "the last timestep gets no rate, thus the table holds one row"
+    assert values[0] == pytest.approx(54)
+    # the table gives four digits, thus the value in the file has less precision
+    assert np.isclose(
+        values[3], at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rtol=1e-3
+    )
+
+    # the file of the next timestep holds the rate, thus the last timestep of the run gives none
+    assert "no deposition rate for timestep 99" in capsys.readouterr().err
+
+
+def test_deposition_lists_the_channels(tmp_path: Path) -> None:
+    """--listchannels must name the channels of the model, and write them when -o asks."""
+    modeldir = make_model_with_deposition(tmp_path)
+    outfile = tmp_path / "channels.txt"
+    at.estimators.deposition.main(argsraw=[], modelpath=modeldir, listchannels=True, outputfile=outfile)
+
+    assert outfile.read_text(encoding="utf-8").strip().endswith("holds alpha, electron, gamma, positron")

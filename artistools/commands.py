@@ -108,6 +108,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     ),
     "model commands": ("inputmodel", "makevpktinput"),
     "data commands": (
+        "deposition",
         "ejectaopacity",
         "exportmassfractions",
         "gsinetworkdecayproducts",
@@ -136,6 +137,14 @@ subcommandtree: CommandTree = {
     ),
     "completions": CommandSpec(
         "commands", funcname="setup_completions", helptext="Write a tab-completion script for a shell."
+    ),
+    "deposition": CommandSpec(
+        "estimators.deposition",
+        helptext="Give the deposition rate per unit volume, per ion, and per unit mass.",
+        note=(
+            "The deposition_ estimators of each cell give the rate, thus the command needs a run of a"
+            " recent ARTIS version. Every column covers the cells that hold matter."
+        ),
     ),
     # the help lists this name under "inputmodel describe", thus the top level hides it
     "describeinputmodel": dc.replace(DESCRIBEINPUTMODEL, aliases=(), hidden=True),
@@ -711,6 +720,8 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-binwidth",
     "-cell",
     "-cell-is-optically-thick",
+    "-channel",
+    "-channels",
     "-cmap",
     "-color",
     "-colors",
