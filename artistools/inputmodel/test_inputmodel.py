@@ -218,7 +218,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "maptogridargs": {"ncoordgrid": 16},
         "maptogrid_sums": {
             "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
-            "grid.dat": "b179427dc76e3b465d83fb303c866812fa9cb775114d1b8c45411dd36bf295b2",
+            "grid.dat": "d7dbe63efe3544f5d6f77acc202e110e197b02dcfa953d8f2bf84b24d9b8e76d",
             "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
         },
         # the model and abundance files carry eight significant figures, and the vmax header nine, so
@@ -227,7 +227,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
             "abundances.txt": "3fa70e381e9d538d7c07d8447b3b8a23d34a2bcc996370b4b71990e42f219baf",
-            "model.txt": "c0af5ae9e2dda0cf27656f8488030dd03f016d53e3869c0fa4478a2ed1634d9c",
+            "model.txt": "83801b752c315925602929943a42a3fec9ea88b65b20960dcc1b30c2da681e3a",
         },
     }
 
@@ -383,7 +383,7 @@ def test_make_empty_abundance_file() -> None:
 
 def test_opacity_by_Ye_file() -> None:
     griddata = pl.DataFrame({
-        "cellYe": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
+        "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
         "rho": [0.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
         "inputcellid": range(1, 9),
     })
@@ -391,7 +391,7 @@ def test_opacity_by_Ye_file() -> None:
 
 
 def test_opacity_by_integer_Ye(tmp_path: Path) -> None:
-    griddata = pl.DataFrame({"cellYe": [0, 1], "rho": [1.0, 1.0], "inputcellid": [1, 2]})
+    griddata = pl.DataFrame({"Ye": [0, 1], "rho": [1.0, 1.0], "inputcellid": [1, 2]})
     at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
     assert np.allclose(np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1], [19.5, 0.96])
 
@@ -2339,3 +2339,40 @@ def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None
         )
 
     assert mockimshow.call_args.kwargs["vmin"] == 0.0
+
+
+def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) -> None:
+    """An old model.txt names the electron fraction cellYe, and get_modeldata returns the column as Ye."""
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-10.0, -11.0],
+        "X_Fegroup": [1.0, 1.0],
+        "X_Ni56": [0.5, 0.4],
+        "X_Co56": [0.0, 0.0],
+        "X_Fe52": [0.0, 0.0],
+        "X_Cr48": [0.0, 0.0],
+        "Ye": [0.3, 0.4],
+    })
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
+    modelfile = tmp_path / "model.txt"
+    modeltext = modelfile.read_text(encoding="utf-8")
+    assert " Ye\n" in modeltext
+    modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
+
+    lzdfmodel, _modelmeta = at.inputmodel.get_modeldata(tmp_path)
+
+    columns = lzdfmodel.collect_schema().names()
+    assert "Ye" in columns
+    assert "cellYe" not in columns
+    assert lzdfmodel.select("Ye").collect().to_series().to_list() == pytest.approx([0.3, 0.4])
+
+
+def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:
+    """The grid.dat of the kilonova test data names the electron fraction cellYe, and the reader gives Ye."""
+    from artistools.inputmodel.modelfromhydro import read_griddat_file
+
+    griddata, _t_model, _t_merger, _vmax, _modelmeta = read_griddat_file(at.get_path("testdata") / "kilonova")
+
+    assert "Ye" in griddata.columns
+    assert "cellYe" not in griddata.columns

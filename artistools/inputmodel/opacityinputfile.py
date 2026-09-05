@@ -18,7 +18,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     """Opacities from Table 1 Tanaka 2020."""
     print("Getting opacity kappa from Ye")
 
-    Ye = pl.col("cellYe")
+    Ye = pl.col("Ye")
     griddata = griddata.with_columns(
         opacity=pl
         .when((Ye == 0.0) & (pl.col("rho") == 0))
@@ -52,7 +52,7 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     with Path(outputfilepath, "Ye.txt").open("w", encoding="utf-8") as fYe:
         fYe.write(f"{griddata.height}\n")
         # ARTIS needs a number in every field, thus write a missing and a NaN electron fraction as zero
-        griddata.select("inputcellid", pl.col("cellYe").cast(pl.Float64).fill_null(0.0).fill_nan(0.0)).write_csv(
+        griddata.select("inputcellid", pl.col("Ye").cast(pl.Float64).fill_null(0.0).fill_nan(0.0)).write_csv(
             fYe, separator="\t", include_header=False, float_precision=10
         )
 

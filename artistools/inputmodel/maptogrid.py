@@ -356,7 +356,7 @@ def maptogrid(
         fgrid.write(f"{ncoordgrid**3} # ncoordgrid\n")
         fgrid.write(f"{dtextra} # extra time after explosion simulation ended (in geom units)\n")
         fgrid.write(f"{x0} # xmax\n")
-        fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n")
+        fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    Ye    tracercount\n")
         # the cell order varies x fastest, which is the Fortran order of the [i, j, k] arrays
         ncells = ncoordgrid**3
         fgrid.writelines(

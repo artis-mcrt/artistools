@@ -147,13 +147,15 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
+            # an old grid.dat names the electron fraction cellYe, and Ye is the name everywhere after this point
+            "cellYe": "Ye",
         },
         strict=False,
     )
 
     griddata = griddata.with_columns(
         # griddata in geom units
-        cs.by_name("rho", "cellYe", "Q", require_all=False).fill_null(0.0)
+        cs.by_name("rho", "Ye", "Q", require_all=False).fill_null(0.0)
     ).with_columns(
         cs.starts_with("pos_") * factor_position * km_to_cm,
         pl.col("rho") * 6.176e17,  # convert to g/cm³
@@ -242,7 +244,7 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.Dat
 
     griddata = griddata.with_columns(
         rho=pl.when(inhole).then(pl.col("rho") + density_hole).otherwise(pl.col("rho")),
-        cellYe=pl.when(inhole).then(pl.max_horizontal(pl.col("cellYe"), pl.lit(0.4))).otherwise(pl.col("cellYe")),
+        Ye=pl.when(inhole).then(pl.max_horizontal(pl.col("Ye"), pl.lit(0.4))).otherwise(pl.col("Ye")),
     )
 
     print(griddata.filter(inhole).select(showcols))
@@ -326,7 +328,7 @@ def makemodelfromgriddata(
             modelmeta=modelmeta,
         )
 
-    if "cellYe" in dfmodel:
+    if "Ye" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
