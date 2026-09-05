@@ -1,5 +1,7 @@
 import math
+import os
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
@@ -205,9 +207,9 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
     assert dfpackets["mpirank"].to_list() == [0, 0, 0]
 
 
-def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unrelated_filename", [None, "packets00_note.out"])
+def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unrelated_filename: str | None) -> None:
     """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
-    import os
     import shutil
 
     from artistools.packets.packets import get_packets_rankbatch_parquetfile
@@ -219,6 +221,9 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
 
+    if unrelated_filename is not None:
+        (tmp_path / unrelated_filename).touch()
+
     # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
     newtime = firstrankfile.stat().st_mtime + 100.0
@@ -227,3 +232,59 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
 
     assert parquetpath.stat().st_mtime_ns > firstwrite
+
+
+@pytest.mark.parametrize("virtual", [False, True])
+def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> None:
+    """Keep the number of directory scans independent of the number of ranks."""
+    from artistools.packets.packets import CACHEVERSION
+    from artistools.packets.packets import get_packets_rankbatch_parquetfile
+
+    sourcefolder = tmp_path / "run1"
+    sourcefolder.mkdir()
+    prefix = "vpackets" if virtual else "packets00"
+    sourcefiles = [sourcefolder / f"{prefix}_{rank:04d}.out" for rank in range(32)]
+    for sourcefile in sourcefiles:
+        sourcefile.touch()
+    packetkind = "vpackets" if virtual else "packets"
+    cachefolder = tmp_path / packetkind
+    cachefolder.mkdir()
+    cachepath = cachefolder / f"{packetkind}batch00_0000_0031.out.parquet.tmp"
+    at.write_parquet_atomic(
+        pl.DataFrame({"number": [0]}),
+        cachepath,
+        metadata={
+            "cacheversion": str(CACHEVERSION),
+            "textsource_mtime": str(max(path.stat().st_mtime for path in sourcefiles)),
+        },
+    )
+    firstwrite = cachepath.stat().st_mtime_ns
+
+    with mock.patch("os.scandir", wraps=os.scandir) as scandir:
+        result = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=range(32), batchindex=0, virtual=virtual)
+
+    assert result == cachepath
+    assert result.stat().st_mtime_ns == firstwrite
+    assert scandir.call_count <= 3
+
+
+def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
+    """Use the source reader's order for folders and compressed files, and omit absent sources."""
+    sourcefolder = tmp_path / "run1"
+    sourcefolder.mkdir()
+    filenames = [f"packets00_{rank:04d}.out" for rank in (0, 1, 10000)]
+    paths = [
+        tmp_path / f"{filenames[0]}.gz",
+        sourcefolder / filenames[0],
+        sourcefolder / f"{filenames[1]}.gz",
+        sourcefolder / f"{filenames[1]}.zst",
+        sourcefolder / f"{filenames[2]}.xz",
+        sourcefolder / "packets00_note.out",
+    ]
+    for index, path in enumerate(paths):
+        path.touch()
+        os.utime(path, (1000 + index, 1000 + index))
+
+    mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
+    expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
+    assert sorted(mtimes) == pytest.approx(sorted(expected))
