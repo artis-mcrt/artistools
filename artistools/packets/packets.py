@@ -18,6 +18,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import read_parquet_cache_metadata
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -360,6 +361,26 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 CACHEVERSION = 1
 
 
+def get_packets_textsource_mtimes(modelpath: Path, filenames: Sequence[str]) -> list[float]:
+    """Return source modification times with at most one scan of each folder."""
+    rootentries = list(modelpath.iterdir())
+    mtimes: dict[str, float] = {}
+    for folder in (modelpath, *(entry for entry in rootentries if entry.is_dir())):
+        entries = rootentries if folder == modelpath else folder.iterdir()
+        paths = {entry.name: entry for entry in entries}
+        for filename in filenames:
+            if filename in mtimes:
+                continue
+            # Use the same folder and compression order as the source reader.
+            for suffix in ("", *COMPRESSED_EXTENSIONS):
+                if (path := paths.get(f"{filename}{suffix}")) is not None and path.exists():
+                    mtimes[filename] = path.stat().st_mtime
+                    break
+        if len(mtimes) == len(filenames):
+            break
+    return list(mtimes.values())
+
+
 def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
@@ -384,11 +405,7 @@ def get_packets_rankbatch_parquetfile(
         parquetstat = parquetfilepath.stat()
         # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
         # restart rewrote then makes the whole batch cache stale
-        textsource_mtimes = [
-            textpath.stat().st_mtime
-            for filename in text_filenames
-            if (textpath := at.firstexisting_or_none(filename, folder=modelpath)) is not None
-        ]
+        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
         if len(textsource_mtimes) == len(batch_mpiranks):
             textsource_mtime = max(textsource_mtimes)
 
