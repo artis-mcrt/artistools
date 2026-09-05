@@ -29,8 +29,8 @@ outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot: mock.MagicMock, benchmark: BenchmarkFixture) -> None:
-    benchmark(lambda: at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False))
+def test_lightcurve_plot(mockplot: mock.MagicMock, benchmark: BenchmarkFixture, tmp_path: Path) -> None:
+    benchmark(lambda: at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=tmp_path, frompackets=False))
 
     arr_time_d = np.array(mockplot.call_args[0][1])
     arr_lum = np.array(mockplot.call_args[0][2])
@@ -218,7 +218,7 @@ def test_band_magnitude_selection_and_colour() -> None:
     ])
 
 
-def test_band_lightcurve_peakmag_risetime_plot() -> None:
+def test_band_lightcurve_peakmag_risetime_plot(tmp_path: Path) -> None:
     at.lightcurve.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -228,7 +228,7 @@ def test_band_lightcurve_peakmag_risetime_plot() -> None:
         timemin=250,
         timemax=300,
         save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
 
@@ -252,8 +252,8 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
 
 
-def test_band_lightcurve_subplots() -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
+def test_band_lightcurve_subplots(tmp_path: Path) -> None:
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=tmp_path)
 
 
 def test_colour_evolution_plot() -> None:
@@ -1650,3 +1650,23 @@ def test_viewing_angle_peakmag_export_without_filter_fits_each_direction_bin(
     assert len(datafiles) == 1
     peakmag_risetime_deltam15 = np.loadtxt(datafiles[0], skiprows=1)
     assert peakmag_risetime_deltam15.shape == (2, 3), "the export holds one row per selected direction bin"
+
+
+def test_band_peakmag_export_writes_one_file_for_each_band(tmp_path: Path) -> None:
+    """Each band has its own data file with one row for each direction bin, and the decline rate is positive."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        filter=["bol", "B"],
+        plotviewingangle=-1,
+        timemin=250,
+        timemax=300,
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        outputfile=tmp_path,
+    )
+
+    for band in ("bol", "B"):
+        (datafile,) = tmp_path.glob(f"{band}band_*_viewing_angle_data.txt")
+        data = np.loadtxt(datafile, skiprows=1, ndmin=2)
+        assert data.shape == (1, 3)
+        assert data[0, 2] > 0.0

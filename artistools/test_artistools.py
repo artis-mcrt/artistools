@@ -2568,3 +2568,9 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
     message = capsys.readouterr().err
     assert "This command needs nosuchpackage" in message
     assert "Traceback" not in message
+
+
+def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> None:
+    """An empty timestep list wrote files that hold a header and no data."""
+    with pytest.raises(ValueError, match="selected_timesteps"):
+        at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])

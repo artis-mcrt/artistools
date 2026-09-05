@@ -267,7 +267,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timedays(parser, kind="str")
 
-    addarg_timestep(parser, default=70)
+    addarg_timestep(parser, default="last")
 
     addarg_modelgridindex(parser, default=0)
 

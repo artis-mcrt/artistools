@@ -66,7 +66,7 @@ def plot_slice_modelcolumn(
 
     if args.logcolorscale:
         # logscale for colormap
-        if args.floorval:
+        if args.floorval is not None:
             colorscale = np.array([
                 args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale
             ])
@@ -94,14 +94,14 @@ def plot_slice_modelcolumn(
     vmax_ax2 = posmax_ax2 / t_model_s * unitfactor
     if colname == "rho":
         if args.logcolorscale:
-            vmin = args.floorval or -15
+            vmin = -15 if args.floorval is None else args.floorval
             vmax = -7
         else:
-            vmin = args.floorval or 1e-15
+            vmin = 1e-15 if args.floorval is None else args.floorval
             vmax = 1e-7
     elif colname == "Ye":
         assert not args.logcolorscale, "log colorscale not supported for Ye"
-        vmin = args.floorval or 0
+        vmin = 0 if args.floorval is None else args.floorval
         vmax = 0.6
     else:
         vmin = None
@@ -303,7 +303,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="Define positions of surfaces for 3D plots")
 
-    parser.add_argument("-floorval", default=False, type=float, help="Set a floor value for colorscale. Expects float")
+    parser.add_argument("-floorval", default=None, type=float, help="Set a floor value for colorscale. Expects float")
 
     parser.add_argument(
         "-axis",

@@ -586,12 +586,13 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
         # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
 
-    # only fill the number density columns: ARTIS omits zero-abundance ions and isotopes from the estimator files,
-    # so a missing number density means zero. The file reader already fills these with zero for cells that skip them
-    # within one file, and this makes the columns that a whole rank omitted agree. Every other column (Te, TR, nne,
-    # ...) must keep its nulls so that missing data isn't silently read as a real zero
+    # ARTIS omits a zero-abundance ion and an absent channel of a process from the estimator files, thus a null
+    # in these columns means zero. This fill makes a column that a whole rank omitted agree with the file reader.
+    # The heating ratios stay out, because a ratio of zero makes gamma_dep and total_dep a division by zero.
+    # Every other column (Te, TR, nne, ...) keeps its nulls, because a null there is missing data and not a zero
     # a selector that matches nothing makes this a no-op, so no guard is needed here
-    pldflazy = pldflazy.with_columns(cs.starts_with("nnelement_", "nnion_", "nniso_").fill_null(0))
+    zerowhenabsent = cs.starts_with("nnelement_", "nnion_", "nniso_", "deposition_", "heating_", "cooling_")
+    pldflazy = pldflazy.with_columns((zerowhenabsent - cs.contains("/")).fill_null(0))
 
     # a back-end that read a real total number density from file keeps it. Deriving nntot there would
     # replace it with a sum over only the elements that the back-end happened to supply.
@@ -775,19 +776,22 @@ def read_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path | str, atomic_number: int, ion_stage: int, dftexc: pl.LazyFrame
+    modelpath: Path | str,
+    atomic_number: int,
+    ion_stage: int,
+    dftexc: pl.LazyFrame,
+    dfnltepops: pl.DataFrame | None = None,
 ) -> pl.LazyFrame:
     """Return the population-weighted mean level excitation energy [eV] of an ion per timestep and cell.
 
     dftexc gives the excitation temperature (columns timestep, modelgridindex, T_exc) used to spread
-    the superlevel population over the levels it stands in for.
+    the superlevel population over the levels that it replaces. dfnltepops holds the NLTE populations
+    of every ion, which a caller that asks for several ions reads one time.
     """
-    dfpops = (
-        at.nltepops
-        .read_files(modelpath)
-        .lazy()
-        .filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
-    )
+    if dfnltepops is None:
+        dfnltepops = at.nltepops.read_files(modelpath)
+
+    dfpops = dfnltepops.lazy().filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
 
     adata = at.atomic.get_levels(modelpath)
     dfionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()

@@ -382,14 +382,21 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # only the last rank's file is checked, on the assumption that a run writes all of its ranks together. An
-        # individually-updated earlier file will not invalidate the cached parquet
-        if text_filepath := at.firstexisting_or_none(
-            text_filenames[-1], folder=modelpath, tryzipped=True, search_subfolders=True
-        ):
-            last_textfile_mtime = text_filepath.stat().st_mtime
+        # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
+        # restart rewrote then makes the whole batch cache stale
+        text_filepaths_found = [
+            text_filepath
+            for filename in text_filenames
+            if (
+                text_filepath := at.firstexisting_or_none(
+                    filename, folder=modelpath, tryzipped=True, search_subfolders=True
+                )
+            )
+        ]
+        if text_filepaths_found:
+            textsource_mtime = max(text_filepath.stat().st_mtime for text_filepath in text_filepaths_found)
 
-            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, last_textfile_mtime)
+            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
             if stalereason is None:
                 conversion_needed = False
             else:
@@ -401,11 +408,12 @@ def get_packets_rankbatch_parquetfile(
                 # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
                 # it missing or half-swapped
                 print(
-                    f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of"
-                    f" {text_filepath.relative_to(modelpath)}, because {stalereason}."
+                    f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of the text files of"
+                    f" ranks {batch_mpiranks[0]} to {batch_mpiranks[-1]}, because {stalereason}."
                     " File will be regenerated..."
                 )
         else:
+            # no text file of the batch remains, thus the cache is the only source
             conversion_needed = False
 
     if conversion_needed:
@@ -417,8 +425,8 @@ def get_packets_rankbatch_parquetfile(
             for filename in text_filenames
         ]
 
-        # the stamp uses the same file that the freshness check reads: the text file of the last rank
-        textsource_mtime = text_file_paths[-1].stat().st_mtime
+        # the stamp uses the same rule as the freshness check: the newest text file of the batch
+        textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)
 
         column_names = (
             get_vpackets_text_columns(text_file_paths[0])

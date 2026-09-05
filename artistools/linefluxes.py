@@ -134,28 +134,27 @@ def get_line_luminosities_from_packets(
 
     dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures))
 
-    dictlcdata = {
+    # one collect_all reads the packets one time for every feature
+    dfluminosities = pl.collect_all([
+        at.packets
+        .bin_and_sum(
+            dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices)),
+            bincol="t_arrive_d",
+            bins=timearrayplusend,
+            sumcols=["e_rf"],
+        )
+        .with_columns(pl.Series("timedelta_days", arr_timedelta))
+        .select(pl.col("e_rf_sum") / nprocs_read / (day_to_s * pl.col("timedelta_days")))
+        for feature in emfeatures
+    ])
+
+    return pl.DataFrame({
         "time": arr_tmid,
         **{
-            feature.colname: (
-                at.packets
-                .bin_and_sum(
-                    dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices)),
-                    bincol="t_arrive_d",
-                    bins=timearrayplusend,
-                    sumcols=["e_rf"],
-                )
-                .with_columns(pl.Series("timedelta_days", arr_timedelta))
-                .select(pl.col("e_rf_sum") / nprocs_read / (day_to_s * pl.col("timedelta_days")))
-                .collect()
-                .to_series()
-                .to_numpy()
-            )
-            for feature in emfeatures
+            feature.colname: dfluminosity.to_series().to_numpy()
+            for feature, dfluminosity in zip(emfeatures, dfluminosities, strict=True)
         },
-    }
-
-    return pl.DataFrame(dictlcdata)
+    })
 
 
 def get_line_luminosities_from_pops(

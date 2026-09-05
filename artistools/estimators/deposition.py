@@ -63,8 +63,8 @@ def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] |
         msg = f"This model gives no deposition rate of {' and '.join(unknown)}. It holds {', '.join(available)}"
         raise ValueError(msg)
 
-    # ignore_nulls=False keeps a null, thus a channel that one rank left out gives no partial total
-    return pl.sum_horizontal((pl.col(f"{DEPOSITIONPREFIX}{channel}") for channel in channels), ignore_nulls=False)
+    # a cell that reports no channel deposited nothing in it, thus the sum reads a null as zero
+    return pl.sum_horizontal(pl.col(f"{DEPOSITIONPREFIX}{channel}") for channel in channels)
 
 
 def parse_ye_range(text: str) -> tuple[float, float]:
@@ -189,7 +189,7 @@ def aggregate_deposition_rates(
             ioncount=pl.col("ioncount").sum(),
             volume=pl.col("volume").sum(),
             mass_g=pl.col("mass_g").sum(),
-            # the sum leaves a null out, thus the count of the cells that gave no rate goes beside it
+            # a NaN rate makes the sum a NaN, thus the count of the cells with a NaN rate goes beside it
             cellswithnorate=pl.col("dep_erg_per_s").is_finite().fill_null(value=False).not_().sum(),
         )
         .with_columns(
@@ -327,7 +327,7 @@ def warn_about_gaps(
         print_warning(f"{modelname}: no deposition rate for {missingtext}.{reason}")
 
     if cellswithnorate := int(dftable["cellswithnorate"].sum()):
-        print_warning(f"{modelname}: {cellswithnorate} cells gave no deposition rate, thus a row can hold a NaN")
+        print_warning(f"{modelname}: {cellswithnorate} cells gave no finite deposition rate, thus a row holds a NaN")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

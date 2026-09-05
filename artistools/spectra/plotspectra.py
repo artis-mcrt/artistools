@@ -47,6 +47,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import get_dirbin_definitions
+from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
@@ -70,6 +71,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
+from artistools.packets import get_packets
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import label_dirbin_series
@@ -464,9 +466,30 @@ def plot_artis_spectrum(
     if yvariable == "packetcount":
         from_packets = True
 
+    clamp_to_timesteps = not args.notimeclamp
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None
+    if from_packets and args.multispecplot and use_time == "arrival" and args.plotvspecpol is None:
+        # every panel reads the packets, thus one read of the union of the time windows serves them all. Each
+        # panel then applies its own arrival window to the frame in memory
+        timeranges = [
+            get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
+            for timedays in args.timedayslist
+        ]
+        nprocs_read, dfpackets = get_packets(
+            modelpath,
+            maxpacketfiles=maxpacketfiles,
+            packet_type="TYPE_ESCAPE",
+            escape_type="TYPE_GAMMA" if args.gamma else "TYPE_RPKT",
+        )
+        timelow = min(timerange[2] for timerange in timeranges)
+        timehigh = max(timerange[3] for timerange in timeranges)
+        nprocs_read_dfpackets = (
+            nprocs_read,
+            dfpackets.filter(pl.col("t_arrive_d").is_between(timelow, timehigh)).collect(),
+        )
+
     for axindex, axis in enumerate(axes):
         assert isinstance(axis, mplax.Axes)
-        clamp_to_timesteps = not args.notimeclamp
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
@@ -532,6 +555,7 @@ def plot_artis_spectrum(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
+                nprocs_read_dfpackets=nprocs_read_dfpackets,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
                 gamma=args.gamma,
             )
@@ -564,6 +588,13 @@ def plot_artis_spectrum(
                 gamma=args.gamma,
             )
 
+        if args.plotvspecpol is None and (average_over_phi or average_over_theta):
+            # an averaged bin is the first bin of its group, thus a different bin has no label and no packets
+            validbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+            if invalidbins := [dirbin for dirbin in directionbins if dirbin >= 0 and dirbin not in validbins]:
+                msg = f"Direction bin {invalidbins} is not the first bin of an average group. Valid bins: {validbins}"
+                raise ValueError(msg)
+
         dirbin_definitions = get_dirbin_definitions(
             modelpath,
             directionbins,
@@ -581,6 +612,7 @@ def plot_artis_spectrum(
                 directionbins = founddirectionbins
             elif -1 in viewinganglespectra:
                 directionbins = [-1]
+                dirbin_definitions = get_dirbin_definitions(modelpath, directionbins, usedegrees=usedegrees)
                 print("Showing spherically-averaged spectrum instead")
             else:
                 print("No data to plot")
@@ -1643,8 +1675,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.output_spectra:
+        # -o that names a folder takes the files, and no -o keeps them in the spectra folder of the model
+        outdirectory = Path(args.outputfile) if args.outputfile and Path(args.outputfile).is_dir() else None
         for modelpath in args.specpath:
-            write_flambda_spectra(modelpath)
+            write_flambda_spectra(modelpath, outdirectory=outdirectory)
 
     else:
         if args.emissionabsorption:

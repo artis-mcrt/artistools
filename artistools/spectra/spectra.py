@@ -200,6 +200,10 @@ def get_lambda_bin_edges(
         if not deltalogx > 0:
             msg = f"deltalogx must be positive, got {deltalogx}"
             raise ValueError(msg)
+        if not xmin_plot > 0:
+            # a bin edge of zero stays at zero after each multiplication, thus the loop below does not stop
+            msg = f"deltalogx needs a positive lower x limit, got {xmin_plot}"
+            raise ValueError(msg)
         # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
         xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
         xmax = xmax_plot * (1 + deltalogx) ** 0.5
@@ -219,11 +223,11 @@ def get_lambda_bin_edges(
         if not deltalambda > 0:
             msg = f"deltalambda must be positive, got {deltalambda}"
             raise ValueError(msg)
-        # the plotted x limits are bin centres, not bin edges, so shift them by half a bin width
-        deltax = convert_angstroms_to_unit(deltalambda, xunit)
-        xmin = xmin_plot - deltax * 0.5
-        xmax = xmax_plot + deltax * 0.5
-        lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
+        # the plotted x limits are bin centres and not bin edges, thus shift them by half a bin width. The shift
+        # is in angstroms, because convert_angstroms_to_unit converts a wavelength and not a wavelength interval
+        lambda_min_centre, lambda_max_centre = convert_xlimits_to_lambda_range(xmin_plot, xmax_plot, xunit)
+        lambda_min = lambda_min_centre - deltalambda * 0.5
+        lambda_max = lambda_max_centre + deltalambda * 0.5
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
         lambda_min_plot, lambda_max_plot = convert_xlimits_to_lambda_range(xmin_plot, xmax_plot, xunit)
@@ -783,6 +787,10 @@ def get_spectra(
     except FileNotFoundError as e:
         if gamma:
             msg = "ERROR: No spherically averaged gamma spectrum found."
+            raise FileNotFoundError(msg) from e
+        if not specdata_alltimesteps:
+            # a run with specpol.out alone has no spec.out, thus only a run with no spectrum file fails here
+            msg = f"{modelpath} holds no spec.out and no spec_res.out"
             raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")

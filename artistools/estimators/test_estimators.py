@@ -1659,7 +1659,8 @@ def test_deposition_rates_read_the_next_timestep() -> None:
     """The rate of timestep n comes from the rows of n + 1, weighted by the volume of n.
 
     Every column of one row must cover one set of cells: a cell with no matter enters neither the
-    rate nor the volume, the ion count, or the mass. A cell that gives no rate is counted.
+    rate nor the volume, the ion count, or the mass. A cell with no value for a channel received no
+    energy in that channel. Its other channels enter the rate, and its volume stays in the denominators.
     """
     dfestim = pl.LazyFrame({
         "timestep": [0, 0, 0, 0, 1, 1, 1, 1],
@@ -1675,15 +1676,14 @@ def test_deposition_rates_read_the_next_timestep() -> None:
 
     dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim)
 
-    # cell 2 holds no matter and cell 3 gives no rate, thus the rate covers cells 0 and 1 alone
-    rate_erg_per_s = 1.1e-9 * 2.0 + 2.0e-9 * 4.0
+    # cell 2 holds no matter, and cell 3 has no gamma value, thus only its alpha channel enters the rate
+    rate_erg_per_s = 1.1e-9 * 2.0 + 2.0e-9 * 4.0 + 1.0e-9 * 1.0
     assert dftable["timestep"].to_list() == [0]
     assert np.isclose(dftable["tmid_days"].item(), 10.0)
-    # cell 3 still holds matter, thus its volume, its ions, and its mass stay in the denominators
     assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 7.0, rtol=1e-12)
     assert np.isclose(dftable["dep_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 105.0, rtol=1e-12)
     assert np.isclose(dftable["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / 10.0, rtol=1e-12)
-    assert dftable["cellswithnorate"].item() == 1
+    assert dftable["cellswithnorate"].item() == 0
 
     # one channel gives its own rate, and the ion count and the mass do not change
     dfgamma = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
@@ -1903,3 +1903,20 @@ def test_deposition_lists_the_channels(tmp_path: Path) -> None:
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, listchannels=True, outputfile=outfile)
 
     assert outfile.read_text(encoding="utf-8").strip().endswith("holds alpha, electron, gamma, positron")
+
+
+def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
+    """A null value shows that the cell reported no value, thus its weight must not decrease the average."""
+    import argparse
+
+    from artistools.estimators.plotestimators import get_line_points
+
+    dfseries = pl.LazyFrame({
+        "xvalue_binned": [1.0, 1.0, 1.0],
+        "yvalue": [10.0, None, 10.0],
+        "celltsweight": [1.0, 8.0, 1.0],
+    })
+
+    dflinepoints = get_line_points(dfseries, argparse.Namespace()).collect()
+
+    assert np.isclose(dflinepoints["yvalue_binned"].item(), 10.0)

@@ -31,9 +31,9 @@ from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc import stripallsuffixes
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
 
 def read_modelfile_text(
@@ -391,7 +391,13 @@ def get_text_source_cached(
     that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
     textsource_mtime = textfilepath.stat().st_mtime
-    parquetfilepath = stripallsuffixes(textfilepath).with_suffix(".txt.parquet.tmp")
+    # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
+    textname = (
+        textfilepath.name.removesuffix(textfilepath.suffix)
+        if textfilepath.suffix in COMPRESSED_EXTENSIONS
+        else textfilepath.name
+    )
+    parquetfilepath = textfilepath.with_name(f"{textname}.parquet.tmp")
     # the identity of the cache that a rewrite replaces, from the same moment as the existence check
     outdatedparquet = get_file_identity(parquetfilepath)
     hadcachefile = outdatedparquet is not None

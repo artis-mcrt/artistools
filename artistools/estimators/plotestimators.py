@@ -181,6 +181,8 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
         dfseries
+        # a null value is a cell that reported none, thus its weight must not pull the average to zero
+        .filter(pl.col("yvalue").is_not_null())
         .group_by("xvalue_binned")
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
@@ -395,6 +397,9 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
+    # read_files has no cache, thus one read of the NLTE output of every rank serves every ion
+    dfnltepops_allions = at.nltepops.read_files(modelpath)
+
     plans = []
     for paramvalue in params:
         print(f"  plotting averageexcitation {paramvalue}")
@@ -404,7 +409,9 @@ def plot_average_excitation(
             raise TypeError(msg)
         atomic_number, ion_stage = iontuple
 
-        dfavgexc = at.estimators.get_averageexcitation(modelpath, atomic_number, ion_stage, dftexc)
+        dfavgexc = at.estimators.get_averageexcitation(
+            modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions
+        )
 
         # weight the average by the ion population where it is available, as plot_average_ionisation
         # weights by the element population
@@ -457,7 +464,7 @@ def plot_levelpop(
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
-    # read_files is uncached, so read every rank's nlte output once rather than once per param
+    # read_files has no cache, thus one read of the NLTE output of every rank serves every param
     dfnltepops_allions = at.nltepops.read_files(modelpath)
 
     plans = []
@@ -1572,6 +1579,9 @@ def write_snapshot_figures(
         args.format = "png"
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+    if len(frames) > 1:
+        # each frame collects the estimators several times, thus many frames read the parquet files one time
+        estimators = estimators.collect().lazy()
 
     # a gif or a merged pdf holds every frame, thus one product comes out of many figures
     firstts, lastts = timesteps_included[0], timesteps_included[-1]

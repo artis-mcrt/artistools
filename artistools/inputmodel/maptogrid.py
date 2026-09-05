@@ -72,8 +72,8 @@ def maptogrid(
 ) -> None:
     """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt."""
     if not ejectasnapshotpath.is_file():
-        print(f"{ejectasnapshotpath} not found")
-        raise FileNotFoundError
+        msg = f"{ejectasnapshotpath} does not exist"
+        raise FileNotFoundError(msg)
 
     outputfolderpath = Path(outputfolderpath)
     if not outputfolderpath.exists():

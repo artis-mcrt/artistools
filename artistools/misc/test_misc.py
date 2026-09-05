@@ -1623,11 +1623,11 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
     timestep 70. The command took such a value for -t, thus "-ts70 -t 300" named the time range two
     times and ran without a word, on a command whose -timestep holds that value as its default.
     """
-    import artistools.transitions
 
     def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
         parser = at.commands.SuggestingArgumentParser()
-        artistools.transitions.addargs(parser)
+        at.addarg_timedays(parser, kind="str")
+        at.addarg_timestep(parser, default=70)
         return parser, parser.parse_args(argsraw)
 
     # each spelling of the timestep names the range beside -t, and the value is the default here
@@ -1717,10 +1717,11 @@ def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
         progressbar.close()
 
         assert mp.get_start_method() == "fork", "a bar starts no process, thus it sets no start method"
-        assert tqdm.tqdm.get_lock() is not None, "the bar must hold the lock that get_progress_class gave"
+        # a SemLock records the context that made it, thus a lock of the fork default fails here
+        assert getattr(tqdm.tqdm.get_lock(), "_is_fork_ctx", None) is False, "the bar must hold a spawn lock"
     finally:
-        if original is not None:
-            mp.set_start_method(original, force=True)
+        # None with force=True clears the default again, thus this test leaves no fork default in the worker
+        mp.set_start_method(original, force=True)
 
 
 def test_resolve_frameset_paths(tmp_path: Path) -> None:
@@ -1856,3 +1857,12 @@ def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
     # the product carries the name of a frame, and the caller gives it as an absolute path
     product = at.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
     assert Path(product).is_file(), "the merge must keep the file that it wrote"
+
+
+def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps() -> None:
+    """A classic-mode estimator file has no timestep header line, thus the code must not index the empty result."""
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    runfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
+
+    assert get_runfolder_timesteps(runfolder) == ()

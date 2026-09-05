@@ -63,8 +63,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     input_files = list(Path(args.modelpath).glob("**/macroatom_????.out*"))
 
     if not input_files:
-        print("No macroatom files found")
-        raise FileNotFoundError
+        msg = f"{args.modelpath} holds no macroatom_????.out file"
+        raise FileNotFoundError(msg)
 
     # the template took {0}, {1}, and {2} before it took names, thus a script holds those fields
     outputfile = str(args.outputfile).format(

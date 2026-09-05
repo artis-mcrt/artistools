@@ -2305,3 +2305,37 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
 
     assert modelmeta == modelmeta_expected
     pltest.assert_frame_equal(dfmodel.collect(), dfmodel_expected.collect())
+
+
+def test_get_coarse_velocity_bins_of_a_3d_model_names_each_projection() -> None:
+    """A select with three expressions of one column needs three output names, or polars raises DuplicateError."""
+    from artistools.inputmodel.plotdensity import get_coarse_velocity_bins
+
+    dfmodel = pl.DataFrame({"vel_r_mid": [1.0e9, 2.0e9, 4.0e9, 5.0e9]})
+
+    binedges = get_coarse_velocity_bins(dfmodel, nbins=None)
+
+    assert binedges == pytest.approx([3.0e9, 5.0e9])
+
+
+def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixture[str]) -> None:
+    """The -cell option must print the row of the cell, and not the plan of the query."""
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], cell=0)
+
+    output = capsys.readouterr().out
+    assert "Selected single cell mgi 0:" in output
+    assert "naive plan" not in output
+    # a collected frame prints its shape, and the one cell gives one row
+    assert "shape: (1," in output
+
+
+def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None:
+    """A floor value of zero is a value, thus the colour scale must start there and not at the default."""
+    import matplotlib.axes as mplax
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["-modelpath", str(modelpath_3d), "-o", str(tmp_path), "-floorval", "0", "rho"]
+        )
+
+    assert mockimshow.call_args.kwargs["vmin"] == 0.0
