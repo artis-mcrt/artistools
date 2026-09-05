@@ -57,6 +57,7 @@ from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_vpkt_config
 from artistools.misc import KeepGivenPaths
+from artistools.misc import make_output_folder
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -1675,8 +1676,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.output_spectra:
-        # -o that names a folder takes the files, and no -o keeps them in the spectra folder of the model
-        outdirectory = Path(args.outputfile) if args.outputfile and Path(args.outputfile).is_dir() else None
+        # -o that names a folder takes the files, and no -o keeps them in the spectra folder of the model. As
+        # everywhere, a path with no suffix names a folder, and the command makes it
+        outputfile = Path(args.outputfile) if args.outputfile else None
+        outdirectory = (
+            make_output_folder(outputfile, "writes")
+            if outputfile is not None and (outputfile.is_dir() or not outputfile.suffixes)
+            else None
+        )
         for modelpath in args.specpath:
             write_flambda_spectra(modelpath, outdirectory=outdirectory)
 

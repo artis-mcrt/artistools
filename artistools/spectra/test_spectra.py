@@ -58,9 +58,11 @@ def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
 
 
 def test_spectra_outputtext(tmp_path: Path) -> None:
-    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True, outputfile=tmp_path)
+    """-o names the folder of the spectrum files, and the command makes a folder that does not exist yet."""
+    newfolder = tmp_path / "newfolder"
+    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True, outputfile=newfolder)
 
-    assert list(tmp_path.glob("spectrum_ts*.txt"))
+    assert list(newfolder.glob("spectrum_ts*.txt"))
 
 
 @pytest.mark.benchmark
