@@ -205,7 +205,8 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
     assert dfpackets["mpirank"].to_list() == [0, 0, 0]
 
 
-def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unrelated_filename", [None, "packets00_note.out"])
+def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unrelated_filename: str | None) -> None:
     """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
     import os
     import shutil
@@ -218,6 +219,9 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
+
+    if unrelated_filename is not None:
+        (tmp_path / unrelated_filename).touch()
 
     # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"

@@ -1,6 +1,5 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
-import contextlib
 import datetime
 import math
 import time
@@ -361,27 +360,6 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 CACHEVERSION = 1
 
 
-def get_packets_textsource_mtimes(modelpath: Path, virtual: bool) -> dict[int, float]:
-    """Return the change time of the packets text file of each rank, keyed by MPI rank.
-
-    One glob of the model folder and of each subfolder finds every rank, thus the check of a batch
-    does not walk the tree for each rank. The model folder wins over a subfolder, and the plain name
-    wins over a compressed one, as firstexisting decides.
-    """
-    prefix = "vpackets" if virtual else "packets00"
-    mtimes: dict[int, float] = {}
-    for folder in (modelpath, *sorted(child for child in modelpath.iterdir() if child.is_dir())):
-        ranks = {
-            int(textfile.name[len(prefix) + 1 : len(prefix) + 5]) for textfile in folder.glob(f"{prefix}_????.out*")
-        }
-        for rank in sorted(ranks - mtimes.keys()):
-            for suffix in ("", ".zst", ".gz", ".xz"):
-                with contextlib.suppress(FileNotFoundError):
-                    mtimes[rank] = (folder / f"{prefix}_{rank:04d}.out{suffix}").stat().st_mtime
-                    break
-    return mtimes
-
-
 def get_packets_rankbatch_parquetfile(
     modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
@@ -406,9 +384,13 @@ def get_packets_rankbatch_parquetfile(
         parquetstat = parquetfilepath.stat()
         # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
         # restart rewrote then makes the whole batch cache stale
-        textsource_mtimes = get_packets_textsource_mtimes(modelpath, virtual)
-        if all(rank in textsource_mtimes for rank in batch_mpiranks):
-            textsource_mtime = max(textsource_mtimes[rank] for rank in batch_mpiranks)
+        textsource_mtimes = [
+            textpath.stat().st_mtime
+            for filename in text_filenames
+            if (textpath := at.firstexisting_or_none(filename, folder=modelpath)) is not None
+        ]
+        if len(textsource_mtimes) == len(batch_mpiranks):
+            textsource_mtime = max(textsource_mtimes)
 
             _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
             if stalereason is None:

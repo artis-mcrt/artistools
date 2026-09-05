@@ -776,11 +776,7 @@ def read_estimators(
 
 
 def get_averageexcitation(
-    modelpath: Path | str,
-    atomic_number: int,
-    ion_stage: int,
-    dftexc: pl.LazyFrame,
-    dfnltepops: pl.DataFrame | None = None,
+    modelpath: Path | str, atomic_number: int, ion_stage: int, dftexc: pl.LazyFrame, dfnltepops: pl.LazyFrame
 ) -> pl.LazyFrame:
     """Return the population-weighted mean level excitation energy [eV] of an ion per timestep and cell.
 
@@ -788,10 +784,7 @@ def get_averageexcitation(
     the superlevel population over the levels that it replaces. dfnltepops holds the NLTE populations
     of every ion, which a caller that asks for several ions reads one time.
     """
-    if dfnltepops is None:
-        dfnltepops = at.nltepops.read_files(modelpath)
-
-    dfpops = dfnltepops.lazy().filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
+    dfpops = dfnltepops.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
 
     adata = at.atomic.get_levels(modelpath)
     dfionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
