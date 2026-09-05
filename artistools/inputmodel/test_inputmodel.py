@@ -2341,6 +2341,33 @@ def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None
     assert mockimshow.call_args.kwargs["vmin"] == 0.0
 
 
+def test_plotinitialcomposition_log_scale_takes_a_linear_floor_value(tmp_path: Path) -> None:
+    """With --logcolorscale, the floor is a linear density, and the colour scale starts at its logarithm."""
+    import matplotlib.axes as mplax
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=[
+                "-modelpath",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "-floorval",
+                "1e-12",
+                "--logcolorscale",
+                "rho",
+            ]
+        )
+
+    assert mockimshow.call_args.kwargs["vmin"] == pytest.approx(-12.0)
+
+    # a floor of zero has no logarithm, thus it is an error and not a colour scale with vmin above vmax
+    with pytest.raises(ValueError, match="must be positive"):
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["-modelpath", str(modelpath_3d), "-o", str(tmp_path), "-floorval", "0", "--logcolorscale", "rho"]
+        )
+
+
 def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) -> None:
     """An old model.txt names the electron fraction cellYe, and get_modeldata returns the column as Ye."""
     dfmodel = pl.DataFrame({

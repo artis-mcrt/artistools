@@ -67,6 +67,10 @@ def plot_slice_modelcolumn(
     if args.logcolorscale:
         # logscale for colormap
         if args.floorval is not None:
+            if not args.floorval > 0:
+                # the floor is a linear value that the clamp below applies before the logarithm
+                msg = f"-floorval must be positive with --logcolorscale, got {args.floorval}"
+                raise ValueError(msg)
             colorscale = np.array([
                 args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale
             ])
@@ -94,7 +98,8 @@ def plot_slice_modelcolumn(
     vmax_ax2 = posmax_ax2 / t_model_s * unitfactor
     if colname == "rho":
         if args.logcolorscale:
-            vmin = -15 if args.floorval is None else args.floorval
+            # the colour scale holds log10 of the density, thus the linear floor moves to log units here
+            vmin = -15 if args.floorval is None else math.log10(args.floorval)
             vmax = -7
         else:
             vmin = 1e-15 if args.floorval is None else args.floorval
