@@ -449,7 +449,8 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
     assert np.isclose(integrated_flux, expected_flux)
 
 
-def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("beta", [0.0, 0.3, 0.6])
+def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, beta: float) -> None:
     """Contribution spectra must use the same escape-time packet set and energy as the total spectrum."""
     nu_rf = at.constants.c_ang_per_s / 5000.0
     dfpackets = pl.DataFrame({
@@ -466,7 +467,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch) 
         return 1, dfpackets.lazy()
 
     def get_escape_surface_gamma(_modelpath: Path | str) -> float:
-        return 1.0
+        return math.sqrt(1.0 - beta**2)
 
     def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
@@ -498,6 +499,10 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch) 
     assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
     assert np.array_equal(array_lambda, dfspectrum["lambda_angstroms"].to_numpy())
     assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())
+
+    integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
+    expected_flux = 20.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
+    assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
 def test_spectra_escape_time_with_3d_model() -> None:

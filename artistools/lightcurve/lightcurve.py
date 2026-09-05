@@ -211,7 +211,6 @@ def get_from_packets(
                     luminosity_cmf_Lsun=pl.col("e_cmf_sum")
                     / nprocs_read
                     * inverse_solidangle_fraction
-                    / escapesurfacegamma
                     / (pl.col("twidth_days") * day_to_s)
                     / Lsun_to_erg_per_s
                 )

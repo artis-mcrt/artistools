@@ -598,14 +598,8 @@ def get_from_packets(
         lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
-        escapesurfacegamma: float | None = None
-        if packets_are_time_filtered:
-            if use_time == "escape":
-                escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        else:
-            dfpackets, escapesurfacegamma = filter_packets_by_time(
-                dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
-            )
+        if not packets_are_time_filtered:
+            dfpackets, _ = filter_packets_by_time(dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
@@ -621,9 +615,6 @@ def get_from_packets(
                 / (4 * math.pi * const.megaparsec_to_cm**2)
                 / nprocs_read
             )
-            if use_time == "escape":
-                assert escapesurfacegamma is not None
-                fluxexpr = fluxexpr.mul(1.0 / escapesurfacegamma)
 
             dirbin_fluxes[dirbin] = bin_packet_flux(
                 pldfpackets_dirbin_lazy, lambda_column, lambda_bin_edges, energy_column, fluxexpr
