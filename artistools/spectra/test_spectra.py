@@ -57,8 +57,12 @@ def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
     assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
 
 
-def test_spectra_outputtext() -> None:
-    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
+def test_spectra_outputtext(tmp_path: Path) -> None:
+    """-o names the folder of the spectrum files, and the command makes a folder that does not exist yet."""
+    newfolder = tmp_path / "newfolder"
+    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True, outputfile=newfolder)
+
+    assert list(newfolder.glob("spectrum_ts*.txt"))
 
 
 @pytest.mark.benchmark
@@ -577,8 +581,10 @@ def test_spectraplot_custom_title(mocksettitle: mock.MagicMock) -> None:
     assert all(isinstance(title, str) for title in titles)
 
 
-def test_writespectra() -> None:
-    at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)
+def test_writespectra(tmp_path: Path) -> None:
+    at.spectra.writespectra.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
+
+    assert list(tmp_path.glob("spectrum_ts*.txt"))
 
 
 def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
@@ -806,3 +812,55 @@ def test_spectraemissionplot_draws_a_reference_named_out(mockplot: mock.MagicMoc
 
     labels = {callargs.kwargs.get("label") for callargs in mockplot.call_args_list}
     assert any(label and "2003du" in str(label) for label in labels), labels
+
+
+def test_lambda_bin_edges_with_deltalambda_and_a_frequency_axis_stay_positive() -> None:
+    """The unit conversion applies to a wavelength value, thus the code must not apply it to a wavelength interval."""
+    lambda_bin_edges = atspectra.get_lambda_bin_edges(
+        xmin_plot=atspectra.convert_angstroms_to_unit(19000.0, "hz"),
+        xmax_plot=atspectra.convert_angstroms_to_unit(2500.0, "hz"),
+        deltax=None,
+        deltalogx=None,
+        deltalambda=10.0,
+        xunit="hz",
+        modelpath=modelpath,
+    )
+
+    assert lambda_bin_edges[0] == pytest.approx(2495.0)
+    assert lambda_bin_edges[-1] == pytest.approx(19005.0)
+    assert np.all(np.diff(lambda_bin_edges) == pytest.approx(10.0))
+
+
+def test_lambda_bin_edges_reject_a_zero_lower_limit_with_deltalogx() -> None:
+    """A lower limit of zero made the multiplicative bin loop run without end."""
+    with pytest.raises(ValueError, match="positive lower x limit"):
+        atspectra.get_lambda_bin_edges(
+            xmin_plot=0.0,
+            xmax_plot=19000.0,
+            deltax=None,
+            deltalogx=0.05,
+            deltalambda=None,
+            xunit="angstroms",
+            modelpath=modelpath,
+        )
+
+
+def test_spectraplot_falls_back_to_the_angle_averaged_spectrum(tmp_path: Path) -> None:
+    """A model with no spec_res.out shows direction bin -1 in place of the requested bin, and that bin needs a label."""
+    at.spectra.plot(argsraw=[], specpath=[modelpath], plotviewingangle=[5], timedays=290, outputfile=tmp_path)
+
+    assert list(tmp_path.glob("*.pdf"))
+
+
+def test_spectraplot_rejects_a_direction_bin_inside_an_average_group() -> None:
+    """With --average_over_phi_angle, a bin that is not the first of its group has no label and no packets."""
+    with pytest.raises(ValueError, match="first bin of an average group"):
+        at.spectra.plot(
+            argsraw=[], specpath=[modelpath], plotviewingangle=[5], average_over_phi_angle=True, timedays=290
+        )
+
+
+def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> None:
+    """--output_spectra writes a folder of files, thus -o with a file suffix is an error and not a fallback."""
+    with pytest.raises(ValueError, match="must name a folder"):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], output_spectra=True, outputfile=tmp_path / "spectra.txt")

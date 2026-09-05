@@ -8,6 +8,7 @@ from pathlib import Path
 import polars as pl
 
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -27,13 +28,15 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
     print_saved(outfilepath)
 
 
-def write_flambda_spectra(modelpath: Path) -> None:
+def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> None:
     """Write out spectra to text files.
 
     Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
-    a text file containing the time in days for each timestep.
+    a text file that holds the time in days of each timestep. The files go to
+    outdirectory, or to the spectra folder of the model when the caller gives none.
     """
-    outdirectory = Path(modelpath, "spectra")
+    if outdirectory is None:
+        outdirectory = Path(modelpath, "spectra")
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 
@@ -45,10 +48,15 @@ def write_flambda_spectra(modelpath: Path) -> None:
     assert tmax_d_valid is not None
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
+    lzspectra_of_timestep = [
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
+    ]
+    if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
+        msg = f"{modelpath} holds no spec.out, thus there is no angle-averaged spectrum to write"
+        raise FileNotFoundError(msg)
+
     # one collect_all call evaluates the queries of all the timesteps together
-    dfspectra_alltimesteps = pl.collect_all([
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1] for timestep in timesteps
-    ])
+    dfspectra_alltimesteps = pl.collect_all([lzspectra[-1] for lzspectra in lzspectra_of_timestep])
     for timestep, dfspectrum in zip(timesteps, dfspectra_alltimesteps, strict=True):
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
@@ -67,13 +75,16 @@ def write_flambda_spectra(modelpath: Path) -> None:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
+    addarg_output(
+        parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS spectra for each timestep to individual text files."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    write_flambda_spectra(args.modelpath)
+    write_flambda_spectra(args.modelpath, outdirectory=args.outputfile)
 
 
 if __name__ == "__main__":

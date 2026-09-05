@@ -19,7 +19,8 @@ from artistools.misc import print_warning
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    spec_data = np.loadtxt(at.zopen(at.firstexisting("spec.out", folder=modelpath, tryzipped=True)))
+    with at.zopen(at.firstexisting("spec.out", folder=modelpath, tryzipped=True)) as specfile:
+        spec_data = np.loadtxt(specfile)
 
     times = spec_data[0, 1:]
     freqs = spec_data[1:, 0]
@@ -217,6 +218,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps
+    if not selected_timesteps:
+        # for an empty list, the loop below writes a valid file with no rows. Raise an error before the loop
+        msg = "Give at least one timestep with -selected_timesteps"
+        raise ValueError(msg)
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
 

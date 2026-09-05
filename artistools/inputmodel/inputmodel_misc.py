@@ -31,9 +31,9 @@ from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc import stripallsuffixes
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
 
 def read_modelfile_text(
@@ -182,6 +182,7 @@ def read_modelfile_text(
 
         dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
+    # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
     if modelmeta["dimensions"] == 1:
@@ -391,7 +392,13 @@ def get_text_source_cached(
     that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
     textsource_mtime = textfilepath.stat().st_mtime
-    parquetfilepath = stripallsuffixes(textfilepath).with_suffix(".txt.parquet.tmp")
+    # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
+    textname = (
+        textfilepath.name.removesuffix(textfilepath.suffix)
+        if textfilepath.suffix in COMPRESSED_EXTENSIONS
+        else textfilepath.name
+    )
+    parquetfilepath = textfilepath.with_name(f"{textname}.parquet.tmp")
     # the identity of the cache that a rewrite replaces, from the same moment as the existence check
     outdatedparquet = get_file_identity(parquetfilepath)
     hadcachefile = outdatedparquet is not None
@@ -500,9 +507,6 @@ def get_modeldata(
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
-
-    if "cellYe" in dfmodel.collect_schema().names() and "Ye" not in dfmodel.collect_schema().names():
-        dfmodel = dfmodel.rename({"cellYe": "Ye"}, strict=False)
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
@@ -1224,7 +1228,7 @@ def dimension_reduce_model(
             pl
             .when(pl.col("mass_g").sum() > 0)
             .then(
-                (cs.starts_with("X_") | cs.by_name(["Ye", "cellYe"], require_all=False)).dot(pl.col("mass_g"))
+                (cs.starts_with("X_") | cs.by_name("Ye", require_all=False)).dot(pl.col("mass_g"))
                 / pl.col("mass_g").sum()
             )
             .otherwise(0.0),
@@ -1238,10 +1242,7 @@ def dimension_reduce_model(
             pl.col("mass_g").implode().alias("mass_g_list"),
             (
                 ~(
-                    cs.by_name(
-                        ["mass_g", "inputcellid", "modelgridindex", "Ye", "cellYe", "q", "tracercount"],
-                        require_all=False,
-                    )
+                    cs.by_name(["mass_g", "inputcellid", "modelgridindex", "Ye", "q", "tracercount"], require_all=False)
                     | cs.starts_with("X_")
                     | cs.starts_with("pos_")
                     | cs.starts_with("vel_")
@@ -1262,8 +1263,7 @@ def dimension_reduce_model(
             out_n_z=((pl.col("inputcellid") - 1) // ncoordgridr).cast(pl.Int32),
         )
         .with_columns(
-            cs.starts_with("X_").fill_null(0.0),
-            cs.by_name("Ye", "cellYe", "q", "tracercount", require_all=False).fill_null(0.0),
+            cs.starts_with("X_").fill_null(0.0), cs.by_name("Ye", "q", "tracercount", require_all=False).fill_null(0.0)
         )
         .sort("inputcellid")
     )

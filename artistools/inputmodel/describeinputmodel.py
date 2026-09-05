@@ -105,7 +105,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             print(f"Selected single cell mgi {mgi}:")
             dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
 
-            print(dfmodel)
+            print(dfmodel.collect())
 
     try:
         assoc_cells, mgi_of_propcells, direct_model_propgrid_map = at.get_grid_mapping(modelpath)

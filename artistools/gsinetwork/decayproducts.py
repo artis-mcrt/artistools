@@ -142,7 +142,10 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
             if dfnuc.height > 0:
                 dfnuc = dfnuc.filter(pl.col("p_energy") == 0)
                 if dfnuc.is_empty():
-                    print(f"No beta decay found for Z={atomic_number} A={A}")
+                    # a nuclide with no row must stay in the table, because the inner join in
+                    # process_trajectory gives no decay power to a nuclide that the table does not hold
+                    print(f"ENSDF gives no ground-state beta decay for Z={atomic_number} A={A}")
+                    rows.append(hrow | {"source": "Hotokezaka"})
                     continue
                 # a missing value poisons the derived quantities to NaN (visible in the written file)
                 # instead of crashing on None or being silently skipped by the sums

@@ -334,6 +334,10 @@ def make_ionsubplot(
     if not args.hide_lte_tr:
         lte_columns.append(("n_LTE_T_R", T_R))
 
+    # add_lte_pops moves the superlevel (level -1) above every resolved level. Thus a level number above the
+    # largest resolved level in the file identifies a superlevel row
+    maxresolvedlevel = dfpopthision["level"].max()
+    assert isinstance(maxresolvedlevel, int)
     dfpopthision = at.nltepops.add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
@@ -349,14 +353,15 @@ def make_ionsubplot(
     configlist = levelnames[: maxlevel_ion + 1]
     configtexlist = get_config_labels(configlist)
 
+    # a superlevel has no entry in the atomic data, thus its level number must not index the level names
+    levels: list[int] = dfpopthision["level"].to_list()
     dfpopthision = dfpopthision.with_columns(
         # a level name that ends in "o" in front of the term is a level of odd parity
         parity=pl.Series([
-            1 if (level != -1 and levelnames[int(level)].split("[")[0][-1] == "o") else 0
-            for level in dfpopthision["level"]
+            1 if (level <= maxresolvedlevel and levelnames[level].split("[")[0][-1] == "o") else 0 for level in levels
         ]),
-        config=pl.Series([configlist[level] for level in dfpopthision["level"]]),
-        texname=pl.Series([configtexlist[level] for level in dfpopthision["level"]]),
+        config=pl.Series(["superlevel" if level > maxresolvedlevel else configlist[level] for level in levels]),
+        texname=pl.Series(["superlevel" if level > maxresolvedlevel else configtexlist[level] for level in levels]),
     )
 
     set_level_xticks(

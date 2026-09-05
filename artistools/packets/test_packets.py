@@ -203,3 +203,27 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
 
     assert dfpackets.columns == [*columns, "mpirank"]
     assert dfpackets["mpirank"].to_list() == [0, 0, 0]
+
+
+def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
+    """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
+    import os
+    import shutil
+
+    from artistools.packets.packets import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    firstwrite = parquetpath.stat().st_mtime_ns
+
+    # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
+    firstrankfile = tmp_path / "packets00_0000.out.zst"
+    newtime = firstrankfile.stat().st_mtime + 100.0
+    os.utime(firstrankfile, (newtime, newtime))
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    assert parquetpath.stat().st_mtime_ns > firstwrite

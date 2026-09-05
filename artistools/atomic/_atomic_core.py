@@ -821,7 +821,8 @@ def read_linestatfile(
 
     print(f"Reading {filepath}")
 
-    data = np.loadtxt(zopen(filepath))
+    with zopen(filepath) as linestatfile:
+        data = np.loadtxt(linestatfile)
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 

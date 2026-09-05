@@ -34,6 +34,7 @@ from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex
 from artistools.misc.cliutils import get_template_fields as get_template_fields
 from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
+from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args

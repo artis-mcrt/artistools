@@ -112,7 +112,9 @@ def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None) -> list[f
 
     # a 2D or 3D model has a variable spacing in the radial velocity, thus the largest step sets the bin size
     xmin, xmax, xdeltamax = dfmodel.select(
-        pl.col("vel_r_mid").min(), pl.col("vel_r_mid").max(), pl.col("vel_r_mid").sort().diff().max()
+        pl.col("vel_r_mid").min().alias("xmin"),
+        pl.col("vel_r_mid").max().alias("xmax"),
+        pl.col("vel_r_mid").sort().diff().max().alias("xdeltamax"),
     ).row(0)
     ncoarsevelbins = int((xmax - xmin) / xdeltamax)
     print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")

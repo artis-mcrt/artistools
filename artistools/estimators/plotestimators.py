@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import math
 import string
+import tempfile
 import typing as t
 from collections.abc import Callable
 from collections.abc import Collection
@@ -181,6 +182,8 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
         dfseries
+        # a null value is a cell that reported none, thus its weight must not pull the average to zero
+        .filter(pl.col("yvalue").is_not_null())
         .group_by("xvalue_binned")
         .agg(
             yvalue_binned=(pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum(),
@@ -395,6 +398,9 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
+    # read_files has no cache, thus one read of the NLTE output of every rank serves every ion
+    dfnltepops_allions = at.nltepops.read_files(modelpath)
+
     plans = []
     for paramvalue in params:
         print(f"  plotting averageexcitation {paramvalue}")
@@ -404,7 +410,9 @@ def plot_average_excitation(
             raise TypeError(msg)
         atomic_number, ion_stage = iontuple
 
-        dfavgexc = at.estimators.get_averageexcitation(modelpath, atomic_number, ion_stage, dftexc)
+        dfavgexc = at.estimators.get_averageexcitation(
+            modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions
+        )
 
         # weight the average by the ion population where it is available, as plot_average_ionisation
         # weights by the element population
@@ -457,7 +465,7 @@ def plot_levelpop(
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
-    # read_files is uncached, so read every rank's nlte output once rather than once per param
+    # read_files has no cache, thus one read of the NLTE output of every rank serves every param
     dfnltepops_allions = at.nltepops.read_files(modelpath)
 
     plans = []
@@ -1573,31 +1581,39 @@ def write_snapshot_figures(
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
 
-    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
-    firstts, lastts = timesteps_included[0], timesteps_included[-1]
-    frameset = at.resolve_frameset_paths(
-        args.outputfile,
-        framecount=len(frames),
-        framename=SNAPSHOTFRAMENAME,
-        productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
-        combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
-        gifduration=1000.0 if args.makegif else None,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if len(frames) > 1:
+            # each frame collects a few columns of the estimators several times. A streamed copy of the selected
+            # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
+            estimatorsfile = Path(tmpdir, "estimators.parquet")
+            estimators.sink_parquet(estimatorsfile)
+            estimators = pl.scan_parquet(estimatorsfile)
 
-    outputfiles = [
-        make_figure(
-            frameset=frameset,
-            modelpath=modelpath,
-            timestepslist=frame,
-            estimators=estimators,
-            xvariable=args.x,
-            plotlist=plotlist,
-            args=args,
+        # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+        firstts, lastts = timesteps_included[0], timesteps_included[-1]
+        frameset = at.resolve_frameset_paths(
+            args.outputfile,
+            framecount=len(frames),
+            framename=SNAPSHOTFRAMENAME,
+            productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+            combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
+            gifduration=1000.0 if args.makegif else None,
         )
-        for frame in frames
-    ]
 
-    frameset.finish(outputfiles, args)
+        outputfiles = [
+            make_figure(
+                frameset=frameset,
+                modelpath=modelpath,
+                timestepslist=frame,
+                estimators=estimators,
+                xvariable=args.x,
+                plotlist=plotlist,
+                args=args,
+            )
+            for frame in frames
+        ]
+
+        frameset.finish(outputfiles, args)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

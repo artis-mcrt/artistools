@@ -36,7 +36,9 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
-def read_files(modelpath: Path | str, timestep: int | None = None, modelgridindex: int | None = None) -> pl.DataFrame:
+def read_files(
+    modelpath: Path | str, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
+) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
     return at.read_rank_outputfiles(
         modelpath, "radfield_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
@@ -429,10 +431,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         combines=len(modelgridindexlist) * len(timesteplist) > 1,
     )
 
+    # read_files parses a rank file on each call, thus one read of all the cells serves each cell and timestep
+    radfielddata_allcells = read_files(modelpath, modelgridindex=modelgridindexlist)
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
-        # read_files parses the rank file on each call, thus one read of the cell serves every timestep
-        radfielddata_cell = read_files(modelpath, modelgridindex=modelgridindex)
+        radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)
         for timestep in timesteplist:
             outputfile = at.format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(

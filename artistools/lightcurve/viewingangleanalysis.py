@@ -89,7 +89,8 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
             comments="",
         )
 
-    elif wants_angle_averaged_data(args):
+    elif wants_angle_averaged_data(args) and band_name == (args.filter[0] if args.filter else "lightcurve"):
+        # the angle-averaged writers index these lists by model, thus the first band alone gives one entry
         args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
         args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
         args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
@@ -169,15 +170,17 @@ def calculate_peak_time_mag_deltam15(
     mag_after15days_polyfit = fxfit[index_after_15_days]
 
     print(f"{key}_max polyfit = {peakmag_polyfit} at time = {tmax_polyfit}")
-    print(f"deltam15 polyfit = {peakmag_polyfit - mag_after15days_polyfit}")
+    # a decline rate is the magnitude after the peak minus the peak magnitude, thus it is positive for a fainter source
+    deltam15_polyfit = mag_after15days_polyfit - peakmag_polyfit
+    print(f"deltam15 polyfit = {deltam15_polyfit}")
 
     args.band_risetime_polyfit.append(tmax_polyfit)
     args.band_peakmag_polyfit.append(peakmag_polyfit)
-    args.band_deltam15_polyfit.append((peakmag_polyfit - mag_after15days_polyfit) * -1)
+    args.band_deltam15_polyfit.append(deltam15_polyfit)
     if args.include_delta_m40:
-        mag_after40days_polyfit = fxfit[index_of_days_after_peak(40)]
-        print(f"deltam40 polyfit = {peakmag_polyfit - mag_after40days_polyfit}")
-        args.band_deltam40_polyfit.append((peakmag_polyfit - mag_after40days_polyfit) * -1)
+        deltam40_polyfit = fxfit[index_of_days_after_peak(40)] - peakmag_polyfit
+        print(f"deltam40 polyfit = {deltam40_polyfit}")
+        args.band_deltam40_polyfit.append(deltam40_polyfit)
 
     # Plotting the lightcurves for all viewing angles specified in the command line along with the
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the
@@ -559,17 +562,25 @@ def peakmag_risetime_declinerate_init(
             lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=directionresolved)
             lcdataframes = at.lightcurve.readfile(lcpath)
 
-        for dirbin in dirbins:
-            if args.verbose:
-                print(f"Reading spectra: {modelname}")
-            if args.filter:
-                lightcurve_data_filters = at.lightcurve.generate_band_lightcurve_data(
-                    modelpath, args, dirbin, modelnumber=modelnumber
-                )
+        if args.verbose:
+            print(f"Reading spectra: {modelname}")
+        # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
+        lightcurve_data_filters_of_dirbin = (
+            {
+                dirbin: at.lightcurve.generate_band_lightcurve_data(modelpath, args, dirbin, modelnumber=modelnumber)
+                for dirbin in dirbins
+            }
+            if args.filter
+            else {}
+        )
 
-            for band_name in plottinglist:
+        # the fit results of one band fill the shared lists, and the save function then empties them for the next band
+        for band_name in plottinglist:
+            for dirbin in dirbins:
                 if args.filter:
-                    time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data_filters, band_name, args)
+                    time, brightness = at.lightcurve.get_band_lightcurve(
+                        lightcurve_data_filters_of_dirbin[dirbin], band_name, args
+                    )
                 else:
                     lightcurve_data = (
                         lcdataframes[dirbin]
@@ -587,9 +598,8 @@ def peakmag_risetime_declinerate_init(
                 # Calculating band peak time, peak magnitude and delta m15
                 calculate_peak_time_mag_deltam15(time, brightness, modelname, dirbin, band_name, args)
 
-        # Saving viewing angle data so it can be read in and plotted later on without re-running the script
-        #    as it is quite time consuming
-        save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
+            # write the data of this band to a file. A later plot then reads the file in place of the slow fit
+            save_viewing_angle_data_for_plotting(band_name, modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
