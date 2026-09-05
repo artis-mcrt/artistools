@@ -1,7 +1,5 @@
 ---
 name: Benchmark with CodSpeed
-permissions:
-    contents: read
 on:
     push:
         branches:
@@ -25,6 +23,9 @@ jobs:
             != 'dependabot[bot]')
         timeout-minutes: 180
         runs-on: ubuntu-24.04
+        permissions:
+            contents: read # required for actions/checkout
+            id-token: write # required for OIDC authentication with CodSpeed
         env:
             PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
             UV_FROZEN: 1
