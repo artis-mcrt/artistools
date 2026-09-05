@@ -411,7 +411,7 @@ def plot_average_excitation(
         atomic_number, ion_stage = iontuple
 
         dfavgexc = at.estimators.get_averageexcitation(
-            modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions
+            modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions.lazy()
         )
 
         # weight the average by the ion population where it is available, as plot_average_ionisation

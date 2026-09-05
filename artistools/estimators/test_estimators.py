@@ -649,7 +649,7 @@ def test_get_averageexcitation() -> None:
     timestep = min(dfpops["timestep"].to_list())
     dftexc = pl.LazyFrame({"timestep": [timestep], "modelgridindex": [0], "T_exc": [6000.0]})
 
-    dfavgexc = at.estimators.get_averageexcitation(modelpath, 26, 2, dftexc).collect()
+    dfavgexc = at.estimators.get_averageexcitation(modelpath, 26, 2, dftexc, dfnltepops=dfpops.lazy()).collect()
     assert len(dfavgexc) == 1
 
     avgexc = dfavgexc["averageexcitation"].item()
