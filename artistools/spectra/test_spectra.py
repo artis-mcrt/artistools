@@ -858,3 +858,9 @@ def test_spectraplot_rejects_a_direction_bin_inside_an_average_group() -> None:
         at.spectra.plot(
             argsraw=[], specpath=[modelpath], plotviewingangle=[5], average_over_phi_angle=True, timedays=290
         )
+
+
+def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> None:
+    """--output_spectra writes a folder of files, thus -o with a file suffix is an error and not a fallback."""
+    with pytest.raises(ValueError, match="must name a folder"):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], output_spectra=True, outputfile=tmp_path / "spectra.txt")

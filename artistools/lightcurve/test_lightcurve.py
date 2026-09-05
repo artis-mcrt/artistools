@@ -1670,3 +1670,23 @@ def test_band_peakmag_export_writes_one_file_for_each_band(tmp_path: Path) -> No
         data = np.loadtxt(datafile, skiprows=1, ndmin=2)
         assert data.shape == (1, 3)
         assert data[0, 2] > 0.0
+
+
+def test_angle_averaged_export_with_two_bands_gives_one_row_for_each_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The angle-averaged writers index their lists by model, thus two bands must not give two rows for one model."""
+    monkeypatch.chdir(tmp_path)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        filter=["bol", "B"],
+        timemin=250,
+        timemax=300,
+        save_angle_averaged_peakmag_risetime_delta_m15_to_file=True,
+        outputfile=tmp_path,
+    )
+
+    (datafile,) = tmp_path.glob("*angle_averaged_all_models_data.txt")
+    # a header line and one line for the one model
+    assert len(datafile.read_text(encoding="utf-8").splitlines()) == 2

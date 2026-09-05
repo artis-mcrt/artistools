@@ -1920,3 +1920,26 @@ def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
     dflinepoints = get_line_points(dfseries, argparse.Namespace()).collect()
 
     assert np.isclose(dflinepoints["yvalue_binned"].item(), 10.0)
+
+
+def test_add_derived_estimator_columns_fills_absent_channels_with_zero() -> None:
+    """A deposition, heating, or cooling channel that a rank omitted is zero, and a heating ratio keeps its null."""
+    pldf = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 1],
+        "deposition_gamma": [1.0, None],
+        "heating_gamma": [1.0, 2.0],
+        "heating_dep": [None, 2.0],
+        "cooling_ff": [None, 1.0],
+        "heating_gamma/gamma_dep": [0.5, None],
+        "Te": [5000.0, None],
+    })
+
+    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
+
+    assert dfout["deposition_gamma"].to_list() == [1.0, 0.0]
+    assert dfout["heating_dep"].to_list() == [0.0, 2.0]
+    assert dfout["cooling_ff"].to_list() == [0.0, 1.0]
+    # a ratio of zero makes gamma_dep a division by zero, thus a ratio keeps its null
+    assert dfout["heating_gamma/gamma_dep"].to_list() == [0.5, None]
+    assert dfout["Te"].to_list() == [5000.0, None]

@@ -2376,3 +2376,30 @@ def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:
 
     assert "Ye" in griddata.columns
     assert "cellYe" not in griddata.columns
+
+
+def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> None:
+    """model_a.1.txt and model_a.2.txt must not share one parquet cache."""
+    for variant, logrho in (("1", -10.0), ("2", -12.0)):
+        dfmodel = pl.DataFrame({
+            "inputcellid": [1, 2],
+            "vel_r_max_kmps": [1000.0, 2000.0],
+            "logrho": [logrho, logrho],
+            "X_Fegroup": [1.0, 1.0],
+            "X_Ni56": [0.5, 0.4],
+            "X_Co56": [0.0, 0.0],
+            "X_Fe52": [0.0, 0.0],
+            "X_Cr48": [0.0, 0.0],
+        })
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
+        (tmp_path / "model.txt").rename(tmp_path / f"model_a.{variant}.txt")
+        # a cache file that exists makes the reader write a new cache, whatever the size of the model
+        (tmp_path / f"model_a.{variant}.txt.parquet.tmp").touch()
+
+    lzdfmodel1, _meta1 = at.inputmodel.get_modeldata(tmp_path / "model_a.1.txt")
+    lzdfmodel2, _meta2 = at.inputmodel.get_modeldata(tmp_path / "model_a.2.txt")
+
+    assert lzdfmodel1.select("logrho").collect().to_series().to_list() == pytest.approx([-10.0, -10.0])
+    assert lzdfmodel2.select("logrho").collect().to_series().to_list() == pytest.approx([-12.0, -12.0])
+    assert (tmp_path / "model_a.1.txt.parquet.tmp").stat().st_size > 0
+    assert (tmp_path / "model_a.2.txt.parquet.tmp").stat().st_size > 0

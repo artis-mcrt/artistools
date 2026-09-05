@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import math
 import string
+import tempfile
 import typing as t
 from collections.abc import Callable
 from collections.abc import Collection
@@ -1579,35 +1580,40 @@ def write_snapshot_figures(
         args.format = "png"
 
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
-    if len(frames) > 1:
-        # each frame collects the estimators several times, thus many frames read the parquet files one time
-        estimators = estimators.collect().lazy()
 
-    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
-    firstts, lastts = timesteps_included[0], timesteps_included[-1]
-    frameset = at.resolve_frameset_paths(
-        args.outputfile,
-        framecount=len(frames),
-        framename=SNAPSHOTFRAMENAME,
-        productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
-        combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
-        gifduration=1000.0 if args.makegif else None,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if len(frames) > 1:
+            # each frame collects a few columns of the estimators several times. A streamed copy of the selected
+            # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
+            estimatorsfile = Path(tmpdir, "estimators.parquet")
+            estimators.sink_parquet(estimatorsfile)
+            estimators = pl.scan_parquet(estimatorsfile)
 
-    outputfiles = [
-        make_figure(
-            frameset=frameset,
-            modelpath=modelpath,
-            timestepslist=frame,
-            estimators=estimators,
-            xvariable=args.x,
-            plotlist=plotlist,
-            args=args,
+        # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+        firstts, lastts = timesteps_included[0], timesteps_included[-1]
+        frameset = at.resolve_frameset_paths(
+            args.outputfile,
+            framecount=len(frames),
+            framename=SNAPSHOTFRAMENAME,
+            productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+            combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
+            gifduration=1000.0 if args.makegif else None,
         )
-        for frame in frames
-    ]
 
-    frameset.finish(outputfiles, args)
+        outputfiles = [
+            make_figure(
+                frameset=frameset,
+                modelpath=modelpath,
+                timestepslist=frame,
+                estimators=estimators,
+                xvariable=args.x,
+                plotlist=plotlist,
+                args=args,
+            )
+            for frame in frames
+        ]
+
+        frameset.finish(outputfiles, args)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

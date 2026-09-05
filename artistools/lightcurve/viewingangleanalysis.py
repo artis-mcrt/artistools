@@ -89,7 +89,8 @@ def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: a
             comments="",
         )
 
-    elif wants_angle_averaged_data(args):
+    elif wants_angle_averaged_data(args) and band_name == (args.filter[0] if args.filter else "lightcurve"):
+        # the angle-averaged writers index these lists by model, thus the first band alone gives one entry
         args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
         args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
         args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)

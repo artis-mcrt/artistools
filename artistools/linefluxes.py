@@ -132,9 +132,10 @@ def get_line_luminosities_from_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures))
+    # the lines of the features hold a small part of the packets, thus one collect keeps them in memory and
+    # each feature bins the frame there. A lazy plan for each feature would scan the parquet files again
+    dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures)).collect().lazy()
 
-    # one collect_all reads the packets one time for every feature
     dfluminosities = pl.collect_all([
         at.packets
         .bin_and_sum(

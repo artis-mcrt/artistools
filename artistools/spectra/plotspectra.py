@@ -1676,16 +1676,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.output_spectra:
-        # -o that names a folder takes the files, and no -o keeps them in the spectra folder of the model. As
-        # everywhere, a path with no suffix names a folder, and the command makes it
+        # -o names the folder of the files, and no -o keeps them in the spectra folder of the model
         outputfile = Path(args.outputfile) if args.outputfile else None
-        outdirectory = (
-            make_output_folder(outputfile, "writes")
-            if outputfile is not None and (outputfile.is_dir() or not outputfile.suffixes)
-            else None
-        )
+        if outputfile is not None and outputfile.suffixes and not outputfile.is_dir():
+            msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
+            raise ValueError(msg)
+        outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
         for modelpath in args.specpath:
-            write_flambda_spectra(modelpath, outdirectory=outdirectory)
+            # the file names hold no model name, thus several models get a subfolder each
+            modeloutdirectory = (
+                outdirectory / get_model_name(modelpath)
+                if outdirectory is not None and len(args.specpath) > 1
+                else outdirectory
+            )
+            write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
 
     else:
         if args.emissionabsorption:
