@@ -82,8 +82,6 @@ Examine the prose against each rule.
    added lines only.
 2. Read enough of each file to see the context. Rule 2 needs the full file,
    because a synonym pair can be far apart.
-3. Apply each rule above.
-4. Discard each report that the exemption list covers.
 
 ## Output
 

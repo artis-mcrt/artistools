@@ -17,9 +17,12 @@ Write all English in ASD-STE100 (Simplified Technical English). This applies to 
 - Use the simple tenses. Do not use the -ing form as a noun or as an adjective if a simple form is possible.
 - Use one term for one thing. Do not change between "cell" and "grid cell", or between "time step" and "timestep".
 - Write short sentences. Use a maximum of 20 words in an instruction and a maximum of 25 words in descriptive text.
+- Give one instruction in one sentence. Write the reason in a different sentence.
+- Keep the articles "a", "an", and "the".
 - Use a maximum of three words in a noun cluster. Write "the checksums of the output files" and not "output file checksum comparison".
 - Write positive statements. Do not use slang, idioms, or jokes. Do not use an abbreviation that the text does not define.
 - Use a vertical list for more than three related items or conditions.
+- Write a maximum of 6 sentences in a descriptive paragraph.
 
 Use the British spellings that this repository uses, e.g. "normalise", "parallelise", "colour", and "centre". Use an American spelling only when an external interface makes it necessary, e.g. the matplotlib keywords `color=` and `center=`, and the named colour `"gray"`. STE controls the choice of words and the structure of the sentences. It does not control the spelling variant.
 
@@ -29,6 +32,8 @@ These rules do not apply to:
 - The names of the columns and the keys in the ARTIS files that artistools reads and writes.
 - A log string that a script reads. Do not change such a string.
 - Quoted text from an external source, e.g. a compiler message or a title of a publication.
+- A technical name or a technical verb, e.g. `sn3d`, `MPI_shared_array`, "packet",
+  "opacity", "estimator", and "to sample".
 
 ## Setup
 
