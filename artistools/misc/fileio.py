@@ -808,6 +808,29 @@ def format_mtime(mtime: float | str | None) -> str:
     return f"{localtime.isoformat(sep=' ', timespec='seconds')} ({mtime})"
 
 
+# the largest difference between a stamped modification time and the time of the text source that
+# still counts as the same time. A Google Drive mount moved the times of the 960 packets files of one
+# run by up to 6 seconds with no write, and every batch cache of that run became stale. The value
+# keeps a margin above that, because the drift grows with the time that the ranks take to write
+MTIME_TOLERANCE_S = 30.0
+
+
+def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool:
+    """Return True when a stamped modification time counts as the time of the text source.
+
+    A cache that holds no stamp does not match. A stamp that no writer of this repository can
+    produce, e.g. a hand-edited one, matches only the same text. The size of the text source cannot
+    decide this question: zstd keeps the time of a packets file and changes the size.
+    """
+    if foundmtime is None:
+        return False
+
+    try:
+        return abs(float(foundmtime) - textsource_mtime) <= MTIME_TOLERANCE_S
+    except ValueError:
+        return foundmtime == str(textsource_mtime)
+
+
 def read_parquet_cache_metadata(
     parquetfilepath: Path, cacheversion: int, textsource_mtime: float
 ) -> tuple[dict[str, str] | None, str | None]:
@@ -815,9 +838,10 @@ def read_parquet_cache_metadata(
 
     The writer of a cache stamps the cache format version and the modification time of its text source
     into the parquet metadata. A cache from a different artistools version, or from different text
-    files, fails the comparison. A new modification time of the cache does not make it current.
-    read_parquet_metadata is eager, thus a damaged file gives a reason here and not an error at a distant
-    collect().
+    files, fails the comparison. The comparison of the times has the tolerance MTIME_TOLERANCE_S,
+    because a file system can move the time of a file that no write changed. A new modification time
+    of the cache does not make it current. read_parquet_metadata is eager, thus a damaged file gives a
+    reason here and not an error at a distant collect().
 
     A current cache gives its metadata and no reason. A stale cache gives no metadata and the reason
     for the rejection, because a regeneration of a large cache costs minutes and the user must see
@@ -839,7 +863,7 @@ def read_parquet_cache_metadata(
         )
 
     foundmtime = pqmetadata.get("textsource_mtime")
-    if foundmtime != str(textsource_mtime):
+    if not mtime_matches_stamp(foundmtime, textsource_mtime):
         return None, (
             f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
             f" but the text file now has {format_mtime(textsource_mtime)}"
