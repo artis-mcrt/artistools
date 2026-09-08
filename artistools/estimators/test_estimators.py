@@ -2082,3 +2082,45 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     assert "after the cache stamp" in str(
         rankbatch_parquet_staleness(parquetfilepath, mtime_rewritten, textsource_complete=complete_rewritten)
     )
+
+
+def test_plot_argument_takes_a_grouped_series_type() -> None:
+    """-plot must take a type of series followed by the names it covers, as the plotlist keyword does.
+
+    Only the keyword API took the grouped form. Thus "-plot populations Fe II" gave the error that
+    'populations' is not an estimator variable, and the CLI reached no such plot.
+    """
+    from artistools.estimators.plotestimators import normalise_plotitems
+
+    estimatorcolumns = ["Te", "TR", "nne", "nnion_Fe_II", "nnelement_Fe", "gammaestimator_Fe_II"]
+
+    # a type with its own plot function
+    assert normalise_plotitems(["populations", "Fe I", "Fe II"], estimatorcolumns) == [
+        ["populations", ["Fe I", "Fe II"]]
+    ]
+    assert normalise_plotitems(["averageionisation", "Fe", "Ni"], estimatorcolumns) == [
+        ["averageionisation", ["Fe", "Ni"]]
+    ]
+
+    # an estimator that names an ion gives its own type of series
+    assert normalise_plotitems(["gammaestimator", "Fe II"], estimatorcolumns) == [["gammaestimator", ["Fe II"]]]
+
+    # a directive stays at the end, outside the group
+    assert normalise_plotitems(["populations", "Fe II", "yscale=log"], estimatorcolumns) == [
+        ["populations", ["Fe II"]],
+        ["_yscale", "log"],
+    ]
+
+    # a plain estimator variable keeps its own shape
+    assert normalise_plotitems(["Te", "TR"], estimatorcolumns) == ["Te", "TR"]
+
+    # a bare list of ions still becomes a populations plot
+    assert normalise_plotitems(["Fe I", "Fe II"], estimatorcolumns) == [["populations", ["Fe I", "Fe II"]]]
+
+
+def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
+    """A type of series covers the names after it, thus it must not stand alone."""
+    from artistools.estimators.plotestimators import normalise_plotitems
+
+    with pytest.raises(SystemExit):
+        normalise_plotitems(["populations"], ["Te", "nnion_Fe_II"])
