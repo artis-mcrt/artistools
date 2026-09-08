@@ -52,6 +52,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import item_names_a_folder
+from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import resolve_positional_modelpath
@@ -1405,15 +1406,14 @@ def filter_listed_columns(columns: Sequence[str], searchterms: Sequence[str]) ->
     return [column for column in columns if any(term in column.lower() for term in lowerterms)]
 
 
-def describe_model(modelpath: Path | str) -> str:
-    """Return the name of the model and the folder that holds it, for a message of the progress.
+def print_modelpath(modelpath: Path | str) -> None:
+    """Print the folder of the model below a heading, as the other plot commands do.
 
-    A user runs a command over many folders, thus the name alone leaves the folder in question. The
-    full path answers it, because "." says nothing when the user runs the command in the model.
+    The name of a model says nothing about the folder that holds it, and a user runs a command over
+    many folders. The full path answers that, because "." says nothing on a run inside the model.
     """
     folder = Path(modelpath) if at.path_is_codecomparison(modelpath) else Path(modelpath).resolve()
-
-    return f"'{at.get_model_name(modelpath)}' ({folder})"
+    print_detail(f"modelpath: {folder}")
 
 
 def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:
@@ -1429,8 +1429,12 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
             suggest_names(searchterms[0], estimatorcolumns) or "Give no name to list every variable",
         )
 
-    if searchterms:
-        print_product(args, f"The variables of {describe_model(args.modelpath)} that hold {' or '.join(searchterms)}:")
+    # the heading and the folder are progress, thus --quiet leaves the listing alone
+    print(
+        f"Estimator variables of '{at.get_model_name(args.modelpath)}'"
+        + (f" that hold {' or '.join(searchterms)}" if searchterms else "")
+    )
+    print_modelpath(args.modelpath)
 
     print_product(args, summarise_columns(listedcolumns, fullnuclides=args.listnuclides))
     print_product(args, 'Plot a variable with e.g. "artistools plotestimators Te rho -t 300"')
@@ -1651,7 +1655,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
 
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
-    print(f"No data was found for the requested timesteps/cells of {describe_model(modelpath)}.")
+    print("No data was found for the requested timesteps/cells.")
     cells, timesteps = (
         at.estimators
         .scan_estimators(modelpath=modelpath, classicartis=classicartis)
@@ -1852,9 +1856,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not wantslisting:
         print(
-            f"Plotting estimators for {describe_model(modelpath)} timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.1f} to {args.timemax:.1f}d)"
+            f"Plotting estimators for '{at.get_model_name(modelpath)}' timesteps {timestepmin} to "
+            f"{timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)"
         )
+        print_modelpath(modelpath)
 
     if args.readonlymgi:
         select_cells_along_axis(args)

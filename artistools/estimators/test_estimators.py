@@ -2434,6 +2434,7 @@ def test_the_listing_names_the_search_terms(capsys: pytest.CaptureFixture[str]) 
 
     out = capsys.readouterr().out
     assert "that hold heating" in out
+    assert f"modelpath: {modelpath.resolve()}" in out
 
     # an empty term matches every column, thus this function ignores it
     at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=[""])
@@ -2446,5 +2447,5 @@ def test_the_progress_message_names_the_model_folder(capsys: pytest.CaptureFixtu
     at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timedays=300, outputfile=tmp_path)
 
     out = capsys.readouterr().out
-    assert str(modelpath.resolve()) in out
+    assert f"modelpath: {modelpath.resolve()}" in out
     assert at.get_model_name(modelpath) in out
