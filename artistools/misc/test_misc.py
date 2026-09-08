@@ -474,6 +474,62 @@ def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatc
     assert not mockrun.called, "Windows must not run a command that it does not have"
 
 
+def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Every command that takes positional items reads the ARTIS folder as the last one."""
+    (tmp_path / "mymodel").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    def parse(argsraw: list[str]) -> argparse.Namespace:
+        parser = argparse.ArgumentParser()
+        at.addarg_positional_items(parser, dest="items", metavar="item", helptext="items")
+        at.addarg_modelpath(parser)  # the default of None shows that the user named no folder
+        args = parser.parse_args(argsraw)
+        at.resolve_positional_modelpath(args, "items")
+
+        return args
+
+    args = parse(["Te", "TR", "mymodel"])
+    assert args.modelpath == Path("mymodel")
+    assert args.items == ["Te", "TR"]
+
+    # no folder at the end leaves every item, and the working folder stays the default
+    args = parse(["Te", "TR"])
+    assert args.modelpath == Path()
+    assert args.items == ["Te", "TR"]
+
+    # a path before the last item names a folder in the wrong place
+    (tmp_path / "runs").mkdir()
+    with pytest.raises(SystemExit):
+        parse(["runs/mymodel", "Te"])
+
+    # a name that has a separator but no parent folder is an item, e.g. heating_dep/total_dep
+    args = parse(["heating_dep/total_dep"])
+    assert args.items == ["heating_dep/total_dep"]
+
+    # a bare name that holds an ARTIS run is a folder that the user wrote too early
+    (tmp_path / "mymodel" / "input.txt").write_text("", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        parse(["mymodel", "Te"])
+
+    # a folder that holds no run keeps the meaning of the item, e.g. a folder of the name of a variable
+    (tmp_path / "Te").mkdir()
+    args = parse(["Te", "TR"])
+    assert args.items == ["Te", "TR"]
+
+
+def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
+    """A folder that holds input.txt is an ARTIS run, thus an error can name the runs that are near."""
+    for name in ("run1", "run2"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "input.txt").write_text("", encoding="utf-8")
+    (tmp_path / "notarun").mkdir()
+
+    assert at.artis_subfolders(tmp_path) == ["run1", "run2"]
+    assert at.artis_subfolders(tmp_path / "absent") == []
+    assert at.folder_is_artis_run(tmp_path / "run1")
+    assert not at.folder_is_artis_run(tmp_path / "notarun")
+
+
 # --- modelinfo.py ------------------------------------------------------------------------------
 
 

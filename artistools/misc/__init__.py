@@ -13,6 +13,7 @@ from artistools.misc.cliutils import addarg_nolegend as addarg_nolegend
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
+from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
@@ -23,6 +24,7 @@ from artistools.misc.cliutils import addarg_unsupported as addarg_unsupported
 from artistools.misc.cliutils import addarg_verbose as addarg_verbose
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
+from artistools.misc.cliutils import artis_subfolders as artis_subfolders
 from artistools.misc.cliutils import check_time_selection as check_time_selection
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import exit_with_error as exit_with_error
@@ -33,6 +35,8 @@ from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex
 from artistools.misc.cliutils import get_template_fields as get_template_fields
+from artistools.misc.cliutils import item_names_a_folder as item_names_a_folder
+from artistools.misc.cliutils import item_names_a_path as item_names_a_path
 from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
@@ -50,6 +54,7 @@ from artistools.misc.cliutils import require_action as require_action
 from artistools.misc.cliutils import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc.cliutils import resolve_output_argument as resolve_output_argument
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
+from artistools.misc.cliutils import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
@@ -78,6 +83,7 @@ from artistools.misc.fileio import extra_csv_columns_ignored as extra_csv_column
 from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
+from artistools.misc.fileio import folder_is_artis_run as folder_is_artis_run
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder

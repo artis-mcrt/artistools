@@ -1,3 +1,4 @@
+import argparse
 import os
 import re
 import shutil
@@ -1973,8 +1974,6 @@ def test_deposition_lists_the_channels(tmp_path: Path) -> None:
 
 def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
     """A null value shows that the cell reported no value, thus its weight must not decrease the average."""
-    import argparse
-
     from artistools.estimators.plotestimators import get_line_points
 
     dfseries = pl.LazyFrame({
@@ -2233,3 +2232,232 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     # a damaged cache is no source at all, thus it answers nothing
     parquetfilepath.write_bytes(b"not parquet")
     assert not rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)
+
+
+def parse_estimator_args(argsraw: list[str]) -> argparse.Namespace:
+    """Parse a plotestimators command line and resolve its positional arguments."""
+    args = at.parse_cli_args(at.estimators.plotestimators.addargs, None, None, argsraw)
+    at.estimators.plotestimators.resolve_positional_args(args)
+
+    return args
+
+
+def test_positional_variables_need_no_plot_flag() -> None:
+    """The positional variables need no -plot, and they share one subplot."""
+    args = parse_estimator_args(["T_e", "TR", str(modelpath), "-t", "300"])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["T_e", "TR"]]
+    assert args.timedays == "300"
+
+
+def test_a_positional_list_comes_before_the_plot_lists() -> None:
+    """Each -plot gives a separate subplot, and the positional variables give the first subplot."""
+    args = parse_estimator_args(["Te", str(modelpath), "-p", "nne", "-p", "rho"])
+
+    assert args.plotlist == [["Te"], ["nne"], ["rho"]]
+
+
+def test_the_last_argument_gives_the_model_even_with_a_variable_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The last argument names the model when a folder of that name exists, even when a variable has that name."""
+    (tmp_path / "T_e").mkdir()
+    monkeypatch.chdir(tmp_path)
+    args = parse_estimator_args(["Te", "T_e"])
+
+    assert args.modelpath == Path("T_e")
+    assert args.plotlist == [["Te"]]
+
+    # the same name before the last argument is a variable, thus the working folder gives the model
+    args = parse_estimator_args(["T_e", "Te"])
+
+    assert args.modelpath == Path()
+    assert args.plotlist == [["T_e", "Te"]]
+
+
+def test_a_folder_before_the_variables_gives_an_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """The ARTIS folder comes last, thus a folder before the variables gives a message about the order."""
+    with pytest.raises(SystemExit):
+        parse_estimator_args([str(modelpath), "Te"])
+
+    stderr = capsys.readouterr().err
+    assert "comes after the other arguments" in stderr
+    assert "Write the folder last" in stderr
+
+
+def test_a_working_folder_that_is_not_artis_gives_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A command with no folder reads the working folder.
+
+    It gives an error when that folder is not an ARTIS folder.
+    """
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["Te", "-t", "1"])
+
+    assert "no ARTIS folder was given" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])
+
+    stderr = capsys.readouterr().err
+    assert "notamodel" in stderr
+    assert "is not an ARTIS folder" in stderr
+
+
+def test_a_folder_and_modelpath_together_give_an_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """A positional folder and -modelpath can name two models, thus the command stops with an error."""
+    with pytest.raises(SystemExit):
+        parse_estimator_args(["Te", str(modelpath), "-modelpath", str(modelpath_classic_3d)])
+
+    assert "two different models" in capsys.readouterr().err
+
+
+def test_a_positional_variable_plots_the_model_of_the_working_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A command in the folder of a model needs no -modelpath and no -plot."""
+    outputfile = tmp_path / "estimators.pdf"
+    monkeypatch.chdir(modelpath)
+    at.estimators.plotestimators.main(argsraw=["-t", "300", "T_e", "-o", str(outputfile)])
+
+    assert "Subplot: ['Te']" in capsys.readouterr().out
+    assert outputfile.is_file()
+
+
+def test_a_flag_between_the_positional_arguments_keeps_them_all() -> None:
+    """The parser reads the positional arguments that a flag separates.
+
+    "plotestimators Te -t 300 mymodel" gave "unrecognized arguments: mymodel" before this change.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    args = parser.parse_args(["plotestimators", "Te", "-t", "300", str(modelpath)])
+
+    assert args.plotitems == ["Te", str(modelpath)]
+    assert args.timedays == "300"
+
+
+def test_the_listing_takes_a_search_term(capsys: pytest.CaptureFixture[str]) -> None:
+    """A name before the folder searches the listing, thus a model of many variables gives a short answer."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=["heating"])
+
+    out = capsys.readouterr().out
+    assert "heating_<name>" in out
+    assert "cooling_<name>" not in out
+
+    # a term that no variable holds gives an error and a suggestion, and not an empty listing
+    with pytest.raises(SystemExit):
+        at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=["heatng"])
+
+    assert "heating" in capsys.readouterr().err
+
+
+def test_an_error_names_the_artis_subfolders_that_are_near(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A user often runs the command one level above the runs, thus the error names the folders that are near."""
+    monkeypatch.chdir(modelpath.parent)
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["Te", "-t", "300"])
+
+    assert modelpath.name in capsys.readouterr().err
+
+
+def test_the_completer_names_the_variables_and_the_folders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tab key must offer the estimator variables, the types of series, and the folders."""
+    (tmp_path / "mymodel").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert at.estimators.plotestimators.complete_plotitem("T") == ["TJ", "TR", "T_J", "T_R", "T_e", "Te"]
+    assert "populations" in at.estimators.plotestimators.complete_plotitem("pop")
+    assert "yscale=" in at.estimators.plotestimators.complete_plotitem("ys")
+    assert any(name.startswith("mymodel") for name in at.estimators.plotestimators.complete_plotitem("mym"))
+
+
+def test_the_option_form_still_beats_the_positional_folder() -> None:
+    """An intermixed parse applies a positional argument last, thus the other commands must not use it.
+
+    "deposition modelA -modelpath modelB" read modelB. The intermixed parse gave modelA and no message.
+    """
+    import artistools.__main__
+
+    for command, option in (("deposition", "-modelpath"), ("plotspectra", "-specpath")):
+        parser = artistools.__main__.build_parser()
+        args = parser.parse_args([command, "modelA", option, "modelB"])
+        paths = getattr(args, "specpath", None) or args.modelpath
+
+        assert paths == [Path("modelB")], command
+
+
+def test_a_variable_that_holds_a_separator_is_no_folder() -> None:
+    """The estimator variable heating_dep/total_dep holds a separator, thus a separator names no folder."""
+    args = parse_estimator_args(["heating_heating_dep/total_dep", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["heating_heating_dep/total_dep"]]
+
+
+def test_a_folder_after_plot_gives_the_model() -> None:
+    """-plot takes every name that follows it, thus the last -plot group can hold the folder of the user."""
+    args = parse_estimator_args(["-p", "Te", "-p", "rho", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te"], ["rho"]]
+
+    # the positional list can hold a variable of its own, and the folder still comes last
+    args = parse_estimator_args(["Te", "-p", "rho", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te"], ["rho"]]
+
+    # -plot can hold the folder alone, and that subplot then has no variable of its own
+    args = parse_estimator_args(["-p", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert not args.plotlist
+
+
+def test_one_model_in_two_forms_gives_no_error() -> None:
+    """The folder and -modelpath can name one model, thus only two different models give an error."""
+    args = parse_estimator_args(["Te", str(modelpath), "-modelpath", str(modelpath)])
+
+    assert args.modelpath == modelpath
+
+    # an explicit "-modelpath ." is a value that the user gave, thus a second folder gives a conflict
+    with pytest.raises(SystemExit):
+        parse_estimator_args(["Te", str(modelpath), "-modelpath", "."])
+
+
+def test_an_empty_positional_argument_names_no_folder() -> None:
+    """An unset shell variable gives an empty argument, and Path("") is the working folder."""
+    args = parse_estimator_args(["Te", "", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te", ""]]
+
+
+def test_the_listing_names_the_search_terms(capsys: pytest.CaptureFixture[str]) -> None:
+    """A search shows fewer variables than the full list, thus the heading must name the search terms."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=["heating"])
+
+    out = capsys.readouterr().out
+    assert "that hold heating" in out
+    assert f"modelpath: {modelpath.resolve()}" in out
+
+    # an empty term matches every column, thus this function ignores it
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=[""])
+
+    assert "that hold" not in capsys.readouterr().out
+
+
+def test_the_progress_message_names_the_model_folder(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A user runs a command over many folders, thus each message names the folder and not the name alone."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timedays=300, outputfile=tmp_path)
+
+    out = capsys.readouterr().out
+    assert f"modelpath: {modelpath.resolve()}" in out
+    assert at.get_model_name(modelpath) in out

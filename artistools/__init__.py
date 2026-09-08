@@ -91,6 +91,7 @@ from artistools.misc import addarg_modelpath as addarg_modelpath
 from artistools.misc import addarg_nolegend as addarg_nolegend
 from artistools.misc import addarg_notitle as addarg_notitle
 from artistools.misc import addarg_output as addarg_output
+from artistools.misc import addarg_positional_items as addarg_positional_items
 from artistools.misc import addarg_quiet as addarg_quiet
 from artistools.misc import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc import addarg_show as addarg_show
@@ -99,6 +100,7 @@ from artistools.misc import addarg_timeminmax as addarg_timeminmax
 from artistools.misc import addarg_timestep as addarg_timestep
 from artistools.misc import addarg_viewingangle as addarg_viewingangle
 from artistools.misc import addarg_yscale as addarg_yscale
+from artistools.misc import artis_subfolders as artis_subfolders
 from artistools.misc import average_direction_bins as average_direction_bins
 from artistools.misc import check_averaging_angles as check_averaging_angles
 from artistools.misc import drop_trailing_null_column as drop_trailing_null_column
@@ -108,6 +110,7 @@ from artistools.misc import find_reference_data_file as find_reference_data_file
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
+from artistools.misc import folder_is_artis_run as folder_is_artis_run
 from artistools.misc import format_frame_path as format_frame_path
 from artistools.misc import FrameSet as FrameSet
 from artistools.misc import gaussian_filter_wrap as gaussian_filter_wrap
@@ -148,6 +151,8 @@ from artistools.misc import get_vpkt_config as get_vpkt_config
 from artistools.misc import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc import get_wid_init_at_tmodel as get_wid_init_at_tmodel
 from artistools.misc import import_optional as import_optional
+from artistools.misc import item_names_a_folder as item_names_a_folder
+from artistools.misc import item_names_a_path as item_names_a_path
 from artistools.misc import makelist as makelist
 from artistools.misc import match_closest_time as match_closest_time
 from artistools.misc import merge_pdf_files as merge_pdf_files
@@ -171,6 +176,7 @@ from artistools.misc import readnoncommentline as readnoncommentline
 from artistools.misc import require_action as require_action
 from artistools.misc import resolve_frameset_paths as resolve_frameset_paths
 from artistools.misc import resolve_outputfile as resolve_outputfile
+from artistools.misc import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc import resolve_series_styles as resolve_series_styles
 from artistools.misc import resolve_yscale as resolve_yscale
 from artistools.misc import savgol_filter as savgol_filter

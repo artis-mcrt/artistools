@@ -233,8 +233,8 @@ subcommandtree: CommandTree = {
         script="plotartisestimators",
         helptext="Plot ARTIS estimators.",
         examples=(
-            ("-modelpath . -p Te TR -t 300", "two estimator variables against velocity"),
-            ("-modelpath . --listvariables", "every variable that a model holds"),
+            ("Te TR . -t 300", "two estimator variables against velocity"),
+            (". --listvariables", "every variable that a model holds"),
         ),
         aliases=("estimators",),
     ),
@@ -559,6 +559,11 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
 
+    # addarg_positional_items sets this flag on the one parser that reads a positional argument after a
+    # flag. A parser that does not set it keeps the argparse order, in which an option has priority
+    # over a positional argument.
+    wantsintermixed: bool = False
+
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
         """Refuse a value outside the choices with a message that names the closest choice.
@@ -647,10 +652,21 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
     ) -> tuple[argparse.Namespace | None, list[str]]:
-        """Split a joined flag and value, then parse. A subparser reads its own arguments here."""
+        """Split a joined flag and value, then parse. A subparser reads its own arguments here.
+
+        argparse fills a positional argument from one unbroken group of arguments. A flag between two
+        positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
+        parse_known_intermixed_args reads both groups. It also applies every positional argument after
+        every option. This order is the opposite of the order that KeepGivenPaths needs, thus each
+        parser must set wantsintermixed.
+        """
         import sys
 
-        return super().parse_known_args(self.split_joined_flags(sys.argv[1:] if args is None else args), namespace)
+        argstrings = self.split_joined_flags(sys.argv[1:] if args is None else args)
+        if self.wantsintermixed:
+            return self.parse_known_intermixed_args(argstrings, namespace)
+
+        return super().parse_known_args(argstrings, namespace)
 
     @t.override
     def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
