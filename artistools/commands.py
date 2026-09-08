@@ -559,10 +559,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
 
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Build the parser with the intermixed parse of the positional arguments off."""
-        super().__init__(*args, **kwargs)
-        self.parsingintermixed = False
+    # addarg_positional_items sets this flag on the one parser that reads a positional argument after a
+    # flag. A parser that does not set it keeps the argparse order, in which an option has priority
+    # over a positional argument.
+    wantsintermixed: bool = False
 
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
@@ -648,47 +648,25 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         return [argstring]
 
-    def wants_intermixed_parse(self) -> bool:
-        """Return whether this parser can read the positional arguments that a flag separates.
-
-        argparse fills a positional argument from one unbroken group of arguments. A flag between two
-        positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
-        parse_known_intermixed_args reads both groups. It refuses a positional argument that takes the
-        rest of the command line, e.g. the subcommand of the dispatcher. It also refuses a positional
-        argument of an exclusive group.
-        """
-        # parse_known_intermixed_args calls parse_known_args two times, thus this flag stops a loop
-        if self.parsingintermixed:
-            return False
-
-        positionals = [action for action in self._actions if not action.option_strings]
-        if not positionals or any(action.nargs in {argparse.PARSER, argparse.REMAINDER} for action in positionals):
-            return False
-
-        exclusive = {
-            id(action)
-            for group in self._mutually_exclusive_groups
-            for action in group._group_actions  # ruff:ignore[private-member-access]
-        }
-
-        return not any(id(action) in exclusive for action in positionals)
-
     @t.override
     def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
     ) -> tuple[argparse.Namespace | None, list[str]]:
-        """Split a joined flag and value, then parse. A subparser reads its own arguments here."""
+        """Split a joined flag and value, then parse. A subparser reads its own arguments here.
+
+        argparse fills a positional argument from one unbroken group of arguments. A flag between two
+        positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
+        parse_known_intermixed_args reads both groups. It also applies every positional argument after
+        every option. This order is the opposite of the order that KeepGivenPaths needs, thus each
+        parser must set wantsintermixed.
+        """
         import sys
 
         argstrings = self.split_joined_flags(sys.argv[1:] if args is None else args)
-        if not self.wants_intermixed_parse():
-            return super().parse_known_args(argstrings, namespace)
-
-        self.parsingintermixed = True
-        try:
+        if self.wantsintermixed:
             return self.parse_known_intermixed_args(argstrings, namespace)
-        finally:
-            self.parsingintermixed = False
+
+        return super().parse_known_args(argstrings, namespace)
 
     @t.override
     def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]

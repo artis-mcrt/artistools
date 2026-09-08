@@ -110,6 +110,7 @@ from artistools.misc import find_reference_data_file as find_reference_data_file
 from artistools.misc import firstexisting as firstexisting
 from artistools.misc import firstexisting_or_none as firstexisting_or_none
 from artistools.misc import flatten_list as flatten_list
+from artistools.misc import folder_is_artis_run as folder_is_artis_run
 from artistools.misc import format_frame_path as format_frame_path
 from artistools.misc import FrameSet as FrameSet
 from artistools.misc import gaussian_filter_wrap as gaussian_filter_wrap

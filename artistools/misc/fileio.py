@@ -557,6 +557,17 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     return filepath.is_dir() or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
 
 
+def folder_is_artis_run(folder: Path | str) -> bool:
+    """Return whether this folder holds the input of an ARTIS run.
+
+    An ARTIS run holds input.txt beside its output files. Every reader of a run needs that file, thus
+    this function tests for it.
+    """
+    folder = Path(folder)
+
+    return folder.is_dir() and (folder / "input.txt").is_file()
+
+
 def path_is_codecomparison(filepath: Path | str) -> bool:
     """Return whether the path is a virtual codecomparison path and not a real folder on disk.
 

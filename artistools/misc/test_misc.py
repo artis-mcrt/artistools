@@ -476,15 +476,13 @@ def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatc
 
 def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Every command that takes positional items reads the ARTIS folder as the last one."""
-    import argparse
-
     (tmp_path / "mymodel").mkdir()
     monkeypatch.chdir(tmp_path)
 
     def parse(argsraw: list[str]) -> argparse.Namespace:
         parser = argparse.ArgumentParser()
         at.addarg_positional_items(parser, dest="items", metavar="item", helptext="items")
-        at.addarg_modelpath(parser, default=Path())
+        at.addarg_modelpath(parser)  # the default of None shows that the user named no folder
         args = parser.parse_args(argsraw)
         at.resolve_positional_modelpath(args, "items")
 
@@ -500,8 +498,13 @@ def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPat
     assert args.items == ["Te", "TR"]
 
     # a path before the last item names a folder in the wrong place
+    (tmp_path / "runs").mkdir()
     with pytest.raises(SystemExit):
-        parse(["some/path", "Te"])
+        parse(["runs/mymodel", "Te"])
+
+    # a name that has a separator but no parent folder is an item, e.g. heating_dep/total_dep
+    args = parse(["heating_dep/total_dep"])
+    assert args.items == ["heating_dep/total_dep"]
 
 
 def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
@@ -512,8 +515,9 @@ def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
     (tmp_path / "notarun").mkdir()
 
     assert at.artis_subfolders(tmp_path) == ["run1", "run2"]
-    assert at.artis_subfolders(tmp_path, maxnames=1) == ["run1"]
     assert at.artis_subfolders(tmp_path / "absent") == []
+    assert at.folder_is_artis_run(tmp_path / "run1")
+    assert not at.folder_is_artis_run(tmp_path / "notarun")
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------

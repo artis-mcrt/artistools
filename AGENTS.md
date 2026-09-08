@@ -146,7 +146,7 @@ A `main` function can already contain the data code, the physics code, and the p
 Use the shared functions to build a parser and to find a path. Do not write this code again:
 
 - `at.addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
-- `at.addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `at.resolve_positional_modelpath(args, dest)` then removes the ARTIS folder from the end.
+- `at.addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `at.resolve_positional_modelpath(args, dest)` then removes the ARTIS folder from the end. Such a command adds `-modelpath` with the default of `at.addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
 - `at.normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
 - `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
 - `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports only `set_mpl_style`. Read that module before you write new plot code.

@@ -3,7 +3,6 @@
 import argparse
 import dataclasses as dc
 import itertools
-import os
 import re
 import sys
 import typing as t
@@ -25,6 +24,10 @@ if t.TYPE_CHECKING:
 
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
+
+# an error message names the ARTIS folders that are near. A folder of runs can hold many,
+# thus this constant gives the maximum number of names
+MAXNEARBYFOLDERS = 6
 
 
 class CommaJoinAction(argparse.Action):
@@ -171,23 +174,29 @@ def addarg_modelpath(
 
 
 def item_names_a_path(item: str) -> bool:
-    """Return whether a positional argument names a path and not a name of the command.
+    """Return whether a positional argument names a path in any position.
 
-    The name of a variable has no path separator, e.g. Te. Thus a name that has one always names a
-    folder, even when no folder of that name exists. A mistake in such a path then gives a message
-    about the folder and not a message about an unknown name.
+    A path that a user writes has a parent folder that exists, e.g. "runs/mymodel", or it names a
+    virtual codecomparison data set. A separator alone does not make a path, because an estimator
+    variable can have one, e.g. heating_dep/total_dep.
     """
     from artistools.misc.fileio import path_is_codecomparison
 
-    return os.sep in item or "/" in item or path_is_codecomparison(item)
+    if not item:
+        return False
+
+    parent = Path(item).parent
+
+    return (parent != Path() and parent.is_dir()) or path_is_codecomparison(item)
 
 
 def item_names_a_folder(item: str) -> bool:
     """Return whether the last positional argument names the ARTIS folder and not a name of the command.
 
-    A folder that exists names the model, even when the command has an item of the same name.
+    A folder that exists names the model, even when the command has an item of the same name. A name
+    that is not last stays an item. A variable thus keeps its meaning when a folder has the same name.
     """
-    return Path(item).is_dir() or item_names_a_path(item)
+    return bool(item) and (Path(item).is_dir() or item_names_a_path(item))
 
 
 def addarg_positional_items(
@@ -200,6 +209,10 @@ def addarg_positional_items(
     folder from the end. The caller can put an argcomplete completer on the action that this function
     returns.
     """
+    # a user can write a flag between two items, thus this parser reads the positional arguments intermixed
+    if isinstance(parser, SuggestingArgumentParser):
+        parser.wantsintermixed = True
+
     return parser.add_argument(dest, nargs="*", default=[], metavar=metavar, help=helptext)
 
 
@@ -209,42 +222,55 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     The ARTIS folder comes last, thus only the last argument can name a folder. A folder in an earlier
     place gives an error, because a name in that place is a name of the command. This one rule serves
     every command that takes positional items. Thus every such command has the same order.
+
+    The command adds -modelpath with the default of addarg_modelpath, which is None. A value that is
+    not None then shows that the user gave -modelpath. The working folder applies at the end.
     """
     items: list[str] = list(getattr(args, dest))
 
     if items and item_names_a_folder(items[-1]):
-        givenpath = items.pop()
-        if Path(args.modelpath) != Path():
+        givenpath = Path(items.pop())
+        # the default of such a command is None, thus a different value is one that the user wrote.
+        # A command can also take many paths, and then only the positional argument names the model
+        given_modelpath = getattr(args, "modelpath", None)
+        if isinstance(given_modelpath, str | Path) and Path(given_modelpath) != givenpath:
             exit_with_error(
-                f"the folder '{givenpath}' and -modelpath '{args.modelpath}' name two different models",
+                f"the folder '{givenpath}' and -modelpath '{given_modelpath}' name two different models",
                 "Give the folder one time",
             )
-        args.modelpath = Path(givenpath)
+        args.modelpath = givenpath
 
     if misplaced := [item for item in items if item_names_a_path(item)]:
-        kept = [item for item in items if item not in misplaced]
+        kept = [item for item in items if not item_names_a_path(item)]
+        example = " ".join([*kept, *misplaced, str(getattr(args, "modelpath", "") or "")]).strip()
         exit_with_error(
             f"'{misplaced[0]}' names a folder, and the ARTIS folder comes after the other arguments",
-            f"Write the folder last, e.g. {' '.join([*kept, misplaced[0]])}",
+            f"Write the folder last, e.g. {example}",
         )
+
+    if getattr(args, "modelpath", "") is None:
+        args.modelpath = Path()
 
     setattr(args, dest, items)
 
     return items
 
 
-def artis_subfolders(folder: Path, *, maxnames: int = 6) -> list[str]:
+def artis_subfolders(folder: Path) -> list[str]:
     """Return the names of the subfolders of this folder that hold an ARTIS run.
 
     A user often runs a command one level above the model, e.g. in the folder that holds every run.
     An error message can then name the folders that are near. The user does not have to list the folder.
     """
-    if not folder.is_dir():
+    from artistools.misc.fileio import folder_is_artis_run
+
+    try:
+        children = sorted(child.name for child in folder.iterdir() if folder_is_artis_run(child))
+    except OSError:
+        # the folder can give a permission error. A message about the model helps more than that error
         return []
 
-    names = sorted(child.name for child in folder.iterdir() if child.is_dir() and (child / "input.txt").is_file())
-
-    return names[:maxnames]
+    return children[:MAXNEARBYFOLDERS]
 
 
 def make_output_folder(folder: Path | str, verb: str) -> Path:

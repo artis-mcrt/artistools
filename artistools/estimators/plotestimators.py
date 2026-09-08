@@ -51,6 +51,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
+from artistools.misc import item_names_a_folder
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import resolve_positional_modelpath
@@ -1394,14 +1395,45 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
 def filter_listed_columns(columns: Sequence[str], searchterms: Sequence[str]) -> list[str]:
     """Return the columns that hold one of the search terms, or every column when there is no term.
 
-    A model holds many variables, thus "--listvariables heating" searches the listing.
+    A model holds many variables, thus "--listvariables heating" searches the list. An empty term
+    matches every column, thus this function ignores it.
     """
-    if not searchterms:
+    lowerterms = [term.lower() for term in searchterms if term]
+    if not lowerterms:
         return list(columns)
 
-    lowerterms = [term.lower() for term in searchterms]
-
     return [column for column in columns if any(term in column.lower() for term in lowerterms)]
+
+
+def describe_model(modelpath: Path | str) -> str:
+    """Return the name of the model and the folder that holds it, for a message of the progress.
+
+    A user runs a command over many folders, thus the name alone leaves the folder in question. The
+    full path answers it, because "." says nothing when the user runs the command in the model.
+    """
+    folder = Path(modelpath) if at.path_is_codecomparison(modelpath) else Path(modelpath).resolve()
+
+    return f"'{at.get_model_name(modelpath)}' ({folder})"
+
+
+def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:
+    """Print the estimator variables of the model, or the variables that hold a search term.
+
+    A search shows fewer variables than the full list. Thus the heading names the search terms.
+    """
+    searchterms = [term for term in args.plotitems if term]
+    listedcolumns = filter_listed_columns(estimatorcolumns, searchterms)
+    if searchterms and not listedcolumns:
+        exit_with_error(
+            f"no estimator variable of this model holds {' or '.join(searchterms)}",
+            suggest_names(searchterms[0], estimatorcolumns) or "Give no name to list every variable",
+        )
+
+    if searchterms:
+        print_product(args, f"The variables of {describe_model(args.modelpath)} that hold {' or '.join(searchterms)}:")
+
+    print_product(args, summarise_columns(listedcolumns, fullnuclides=args.listnuclides))
+    print_product(args, 'Plot a variable with e.g. "artistools plotestimators Te rho -t 300"')
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -1420,9 +1452,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # argcomplete reads this attribute, which argparse does not declare
     itemsarg.completer = complete_plotitem  # ty:ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
 
-    addarg_modelpath(
-        parser, default=Path(), helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
-    )
+    # the default is None and not Path(), thus resolve_positional_modelpath sees an explicit value
+    addarg_modelpath(parser, helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)")
 
     addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
 
@@ -1620,7 +1651,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
 
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
-    print("No data was found for the requested timesteps/cells.")
+    print(f"No data was found for the requested timesteps/cells of {describe_model(modelpath)}.")
     cells, timesteps = (
         at.estimators
         .scan_estimators(modelpath=modelpath, classicartis=classicartis)
@@ -1771,6 +1802,12 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
     comes after them. The positional variables share one subplot. The names after one -plot also share
     one subplot.
     """
+    # -plot takes every name that follows it, thus the last -plot group can hold the folder of the user.
+    # The code moves that folder to the positional list, because one rule then sets the order of both forms
+    lastgroup = args.plotlist[-1] if args.plotlist else None
+    if not args.plotitems and lastgroup and len(lastgroup) > 1 and item_names_a_folder(str(lastgroup[-1])):
+        args.plotitems = [lastgroup.pop()]
+
     if plotvars := resolve_positional_modelpath(args, "plotitems"):
         args.plotlist = [plotvars, *(args.plotlist or [])]
 
@@ -1781,7 +1818,7 @@ def require_artis_folder(modelpath: Path) -> None:
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
     """
-    if at.path_is_codecomparison(modelpath) or (modelpath / "input.txt").is_file():
+    if at.path_is_codecomparison(modelpath) or at.folder_is_artis_run(modelpath):
         return
 
     # a user often runs the command one level above the runs, thus name the folders that are near
@@ -1815,7 +1852,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not wantslisting:
         print(
-            f"Plotting estimators for '{at.get_model_name(modelpath)}' timesteps {timestepmin} to {timestepmax} "
+            f"Plotting estimators for {describe_model(modelpath)} timesteps {timestepmin} to {timestepmax} "
             f"({args.timemin:.1f} to {args.timemax:.1f}d)"
         )
 
@@ -1847,14 +1884,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     estimatorcolumns = estimators.collect_schema().names()
 
     if wantslisting:
-        listedcolumns = filter_listed_columns(estimatorcolumns, args.plotitems)
-        if not listedcolumns:
-            exit_with_error(
-                f"no estimator variable of this model holds {' or '.join(args.plotitems)}",
-                suggest_names(args.plotitems[0], estimatorcolumns) or "Give no name to list every variable",
-            )
-        print_product(args, summarise_columns(listedcolumns, fullnuclides=args.listnuclides))
-        print_product(args, 'Plot a variable with e.g. "artistools plotestimators Te rho -t 300"')
+        print_listing(args, estimatorcolumns)
         return
 
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)

@@ -83,6 +83,7 @@ from artistools.misc.fileio import extra_csv_columns_ignored as extra_csv_column
 from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
+from artistools.misc.fileio import folder_is_artis_run as folder_is_artis_run
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder

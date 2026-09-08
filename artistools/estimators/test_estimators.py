@@ -1974,8 +1974,6 @@ def test_deposition_lists_the_channels(tmp_path: Path) -> None:
 
 def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
     """A null value shows that the cell reported no value, thus its weight must not decrease the average."""
-    import argparse
-
     from artistools.estimators.plotestimators import get_line_points
 
     dfseries = pl.LazyFrame({
@@ -2378,3 +2376,75 @@ def test_the_completer_names_the_variables_and_the_folders(tmp_path: Path, monke
     assert "populations" in at.estimators.plotestimators.complete_plotitem("pop")
     assert "yscale=" in at.estimators.plotestimators.complete_plotitem("ys")
     assert any(name.startswith("mymodel") for name in at.estimators.plotestimators.complete_plotitem("mym"))
+
+
+def test_the_option_form_still_beats_the_positional_folder() -> None:
+    """An intermixed parse applies a positional argument last, thus the other commands must not use it.
+
+    "deposition modelA -modelpath modelB" read modelB. The intermixed parse gave modelA and no message.
+    """
+    import artistools.__main__
+
+    for command, option in (("deposition", "-modelpath"), ("plotspectra", "-specpath")):
+        parser = artistools.__main__.build_parser()
+        args = parser.parse_args([command, "modelA", option, "modelB"])
+        paths = getattr(args, "specpath", None) or args.modelpath
+
+        assert paths == [Path("modelB")], command
+
+
+def test_a_variable_that_holds_a_separator_is_no_folder() -> None:
+    """The estimator variable heating_dep/total_dep holds a separator, thus a separator names no folder."""
+    args = parse_estimator_args(["heating_heating_dep/total_dep", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["heating_heating_dep/total_dep"]]
+
+
+def test_a_folder_after_plot_gives_the_model() -> None:
+    """-plot takes every name that follows it, thus the last -plot group can hold the folder of the user."""
+    args = parse_estimator_args(["-p", "Te", "-p", "rho", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te"], ["rho"]]
+
+
+def test_one_model_in_two_forms_gives_no_error() -> None:
+    """The folder and -modelpath can name one model, thus only two different models give an error."""
+    args = parse_estimator_args(["Te", str(modelpath), "-modelpath", str(modelpath)])
+
+    assert args.modelpath == modelpath
+
+    # an explicit "-modelpath ." is a value that the user gave, thus a second folder gives a conflict
+    with pytest.raises(SystemExit):
+        parse_estimator_args(["Te", str(modelpath), "-modelpath", "."])
+
+
+def test_an_empty_positional_argument_names_no_folder() -> None:
+    """An unset shell variable gives an empty argument, and Path("") is the working folder."""
+    args = parse_estimator_args(["Te", "", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te", ""]]
+
+
+def test_the_listing_names_the_search_terms(capsys: pytest.CaptureFixture[str]) -> None:
+    """A search shows fewer variables than the full list, thus the heading must name the search terms."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=["heating"])
+
+    out = capsys.readouterr().out
+    assert "that hold heating" in out
+
+    # an empty term matches every column, thus this function ignores it
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=[""])
+
+    assert "that hold" not in capsys.readouterr().out
+
+
+def test_the_progress_message_names_the_model_folder(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A user runs a command over many folders, thus each message names the folder and not the name alone."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=[["Te"]], timedays=300, outputfile=tmp_path)
+
+    out = capsys.readouterr().out
+    assert str(modelpath.resolve()) in out
+    assert at.get_model_name(modelpath) in out
