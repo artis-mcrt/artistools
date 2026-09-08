@@ -226,6 +226,8 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     The command adds -modelpath with the default of addarg_modelpath, which is None. A value that is
     not None then shows that the user gave -modelpath. The working folder applies at the end.
     """
+    from artistools.misc.fileio import folder_is_artis_run
+
     items: list[str] = list(getattr(args, dest))
 
     if items and item_names_a_folder(items[-1]):
@@ -240,8 +242,13 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
             )
         args.modelpath = givenpath
 
-    if misplaced := [item for item in items if item_names_a_path(item)]:
-        kept = [item for item in items if not item_names_a_path(item)]
+    # a bare name that holds an ARTIS run is a folder that the user wrote too early. A name that only
+    # matches a folder stays an item, thus a variable keeps its meaning when a folder has that name
+    def item_is_misplaced(item: str) -> bool:
+        return item_names_a_path(item) or folder_is_artis_run(item)
+
+    if misplaced := [item for item in items if item_is_misplaced(item)]:
+        kept = [item for item in items if not item_is_misplaced(item)]
         example = " ".join([*kept, *misplaced, str(getattr(args, "modelpath", "") or "")]).strip()
         exit_with_error(
             f"'{misplaced[0]}' names a folder, and the ARTIS folder comes after the other arguments",

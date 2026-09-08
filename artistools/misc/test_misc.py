@@ -506,6 +506,16 @@ def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPat
     args = parse(["heating_dep/total_dep"])
     assert args.items == ["heating_dep/total_dep"]
 
+    # a bare name that holds an ARTIS run is a folder that the user wrote too early
+    (tmp_path / "mymodel" / "input.txt").write_text("", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        parse(["mymodel", "Te"])
+
+    # a folder that holds no run keeps the meaning of the item, e.g. a folder of the name of a variable
+    (tmp_path / "Te").mkdir()
+    args = parse(["Te", "TR"])
+    assert args.items == ["Te", "TR"]
+
 
 def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
     """A folder that holds input.txt is an ARTIS run, thus an error can name the runs that are near."""
