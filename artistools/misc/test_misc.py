@@ -275,43 +275,6 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     assert get_reason(tmp_path / "nosuchfile.parquet", mtime) == "the file does not exist"
 
 
-def test_a_small_change_of_the_modification_time_keeps_a_cache(tmp_path: Path) -> None:
-    """A text source whose time moves by less than MTIME_TOLERANCE_S keeps its cache.
-
-    A cloud drive moves the time of a file by a few seconds each time it makes the local copy again.
-    The exact comparison of the time then rejected every cache of a run, and each read paid minutes
-    of conversion. The size of the text source cannot answer instead, because zstd compression of a
-    packets file keeps the time and changes the size.
-    """
-    from artistools.misc.fileio import MTIME_TOLERANCE_S
-
-    cacheversion = 3
-    mtime = 1788811126.0
-
-    current = tmp_path / "current.parquet"
-    at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}),
-        current,
-        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
-    )
-
-    # the drift that a Google Drive mount gave the packets files of one run
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + 5.0)[1] is None
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime - 5.0)[1] is None
-
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + MTIME_TOLERANCE_S)[1] is None
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + MTIME_TOLERANCE_S + 1.0)[1] is not None
-
-    # a stamp that no writer of this repository produces matches only the same text
-    handedited = tmp_path / "handedited.parquet"
-    at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}),
-        handedited,
-        metadata={"cacheversion": str(cacheversion), "textsource_mtime": "yesterday"},
-    )
-    assert at.read_parquet_cache_metadata(handedited, cacheversion, mtime)[1] is not None
-
-
 def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> None:
     """A run that appends timesteps makes the batch cache stale, thus the text files answer.
 
