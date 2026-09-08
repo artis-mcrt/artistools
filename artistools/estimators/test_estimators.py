@@ -757,6 +757,7 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     from artistools.estimators.estimators import get_rankbatch_parquetpath
     from artistools.estimators.estimators import rankbatch_parquet_is_current
     from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.misc.fileio import MTIME_TOLERANCE_S
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
@@ -775,8 +776,8 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     assert rankbatch_parquet_is_current(parquetfilepath, None)
     assert rankbatch_parquet_is_current(parquetfilepath, mtime)
 
-    # a text source time other than the stamped one needs the conversion again
-    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + 10.0)
+    # a text source time outside the tolerance of the stamp needs the conversion again
+    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0)
 
 
 def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:

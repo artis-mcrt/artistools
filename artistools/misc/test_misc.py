@@ -230,6 +230,8 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     The message said only that the cache was not current. Thus a user could not see whether a new
     cache format version, a rewritten text file, or a damaged file caused the conversion.
     """
+    from artistools.misc.fileio import MTIME_TOLERANCE_S
+
     cacheversion = 3
     mtime = 1000.0
 
@@ -250,10 +252,11 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
         return stalereason
 
     # the text file changed after the run wrote the cache, thus the reason names both times
-    changedsource = get_reason(current, mtime + 10.0)
+    changedmtime = mtime + MTIME_TOLERANCE_S + 10.0
+    changedsource = get_reason(current, changedmtime)
     assert "the text source changed" in changedsource
     assert str(mtime) in changedsource
-    assert str(mtime + 10.0) in changedsource
+    assert str(changedmtime) in changedsource
 
     unstamped = tmp_path / "unstamped.parquet"
     at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
