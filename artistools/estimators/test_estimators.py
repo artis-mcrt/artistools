@@ -1734,17 +1734,17 @@ def test_deposition_reads_a_ye_range() -> None:
     assert at.estimators.deposition.parse_ye_range("0.35-1e-3") == pytest.approx((0.001, 0.35))
 
     for text in ("0.2", "0-0.1-0.2", "low-high"):
-        with pytest.raises(ValueError, match="as a Ye range"):
+        with pytest.raises(ValueError, match="as an init_Ye range"):
             at.estimators.deposition.parse_ye_range(text)
 
-    # a Ye is 0 to 1, thus a value outside that range, a nan, and an infinity each give an error
+    # an init_Ye is 0 to 1, thus a value outside that range, a nan, and an infinity each give an error
     for text in ("0-2", "0--1", "0-nan", "0.5-nan", "0-inf"):
-        with pytest.raises(ValueError, match="names a Ye outside 0 to 1"):
+        with pytest.raises(ValueError, match="names an init_Ye outside 0 to 1"):
             at.estimators.deposition.parse_ye_range(text)
 
 
 def test_deposition_selects_the_cells_of_a_ye_range() -> None:
-    """A Ye range keeps the cells inside it. The rate, the ions, the volume, and the mass follow it."""
+    """An init_Ye range keeps the cells inside it. The rate, the ions, the volume, and the mass follow it."""
     dfestim = pl.LazyFrame({
         "timestep": [0, 0, 1, 1],
         "modelgridindex": [0, 1, 0, 1],
@@ -1771,14 +1771,14 @@ def test_deposition_selects_the_cells_of_a_ye_range() -> None:
         dfbothcells["dep_per_mass"].item(), (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 8.0, rtol=1e-12
     )
 
-    # a frame of a run that gives no Ye must give a message, and not the error of the query engine
-    with pytest.raises(ValueError, match="gives no Ye of a cell"):
+    # a frame of a run that gives no init_Ye must give a message, and not the error of the query engine
+    with pytest.raises(ValueError, match="gives no init_Ye of a cell"):
         at.estimators.deposition.aggregate_deposition_rates(dfestim.drop("init_Ye"), yerange=(0.0, 0.2))
 
 
 def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A Ye range that no cell holds must stop the command, and the message must name the Ye of the model."""
-    with pytest.raises(ValueError, match="gives no Ye of a cell"):
+    """An init_Ye range that no cell holds must stop the command. The message must name the range of the model."""
+    with pytest.raises(ValueError, match="gives no init_Ye of a cell"):
         at.estimators.deposition.check_ye_range(modelpath, (0.0, 0.2))
 
     modeldir = make_model_with_deposition(tmp_path, cellye=[0.3])
@@ -1787,24 +1787,25 @@ def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytes
 
     # the one cell of the model is inside the range, thus the table gives the rate of that cell
     lines = outfile.read_text(encoding="utf-8").splitlines()
-    assert lines[0].endswith("in 1 of 1 cells with matter, with a Ye of 0.25 to 0.35")
+    assert lines[0].endswith("in 1 of 1 cells with matter, with an init_Ye of 0.25 to 0.35")
     assert float(lines[3].split()[3]) == pytest.approx(
         at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rel=1e-3
     )
-    assert "1 of 1 cells with matter (100.0%) have a Ye of 0.25 to 0.35" in capsys.readouterr().out
+    assert "1 of 1 cells with matter (100.0%) have an init_Ye of 0.25 to 0.35" in capsys.readouterr().out
 
-    # the one cell of the model holds matter and a Ye of 0.3, thus a range below that gets no cell
+    # the one cell of the model holds matter and an init_Ye of 0.3, thus a range below that gets no cell
     with pytest.raises(
-        ValueError, match=re.escape("has no cell with matter and a Ye of 0 to 0.2. Its cells with matter have a Ye")
+        ValueError,
+        match=re.escape("has no cell with matter and an init_Ye of 0 to 0.2. Its cells with matter have an init_Ye"),
     ):
         at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0-0.2")
 
 
 def test_deposition_ye_range_drops_a_cell_of_a_model(tmp_path: Path) -> None:
-    """A Ye range must divide the cells of a model that the reader of the estimators gives.
+    """An init_Ye range must divide the cells of a model that the reader of the estimators gives.
 
-    The model holds two cells of a different Ye, thus a range that takes one of them must give a rate
-    that is different from the rate of both cells.
+    The model holds two cells of a different init_Ye. Thus a range that takes one of them must give
+    a rate that is different from the rate of both cells.
     """
     modeldir = make_model_with_deposition(tmp_path, cellye=[0.15, 0.35])
 

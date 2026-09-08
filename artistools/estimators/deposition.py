@@ -68,27 +68,27 @@ def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] |
 
 
 def parse_ye_range(text: str) -> tuple[float, float]:
-    """Return the lower end and the upper end of a Ye range such as 0-0.2.
+    """Return the lower end and the upper end of an init_Ye range such as 0-0.2.
 
-    A Ye is the number of electrons per nucleon, thus each end must be 0 to 1. That comparison also
-    refuses a nan and an infinity, because each comparison with a nan gives false.
+    An init_Ye is the number of electrons per nucleon, thus each end must be 0 to 1. That comparison
+    also refuses a nan and an infinity, because each comparison with a nan gives false.
     """
-    yemin, yemax = sorted(parse_float_range(text, "a Ye range, such as 0-0.2"))
+    yemin, yemax = sorted(parse_float_range(text, "an init_Ye range, such as 0-0.2"))
     if not 0.0 <= yemin <= yemax <= 1.0:
-        msg = f"{text!r} names a Ye outside 0 to 1"
+        msg = f"{text!r} names an init_Ye outside 0 to 1"
         raise ValueError(msg)
 
     return yemin, yemax
 
 
 def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose: bool = False) -> tuple[int, int]:
-    """Return how many cells a Ye range selects and how many hold matter, and print those counts.
+    """Return how many cells an init_Ye range selects and how many hold matter, and print the counts.
 
     A range that selects no cell gives an error.
 
-    A cell with no matter gives no deposition rate, and artistools writes a Ye of 0 for such a cell.
-    Thus the count covers the cells that hold matter, and a range of a low Ye gets the number of
-    cells that the table sums.
+    A cell with no matter gives no deposition rate, and artistools writes an init_Ye of 0 for such a
+    cell. Thus the count covers the cells that hold matter, and a range of a low init_Ye gets the
+    number of cells that the table sums.
 
     The read asks for the density and for no other derived column, and it reads no abundance. Thus a
     range that selects no cell stops the command before the much slower read of the estimator files,
@@ -97,7 +97,7 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     modelname = get_model_name(modelpath)
     dfmodel, _ = get_modeldata(modelpath, derived_cols=["rho"], printwarningsonly=not verbose)
     if "Ye" not in dfmodel.collect_schema().names():
-        msg = f"{modelname} gives no Ye of a cell. The model file must hold a Ye column"
+        msg = f"{modelname} gives no init_Ye of a cell. The model file must hold a Ye column"
         raise ValueError(msg)
 
     yemin, yemax = yerange
@@ -116,16 +116,16 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     if not cellsinrange:
         # a model with no cell of matter, and a model of null Ye values, both give no minimum
         yeofmodel = (
-            "It gives no Ye of a cell that holds matter"
+            "It gives no init_Ye of a cell that holds matter"
             if modelyemin is None
-            else f"Its cells with matter have a Ye of {modelyemin:g} to {modelyemax:g}"
+            else f"Its cells with matter have an init_Ye of {modelyemin:g} to {modelyemax:g}"
         )
-        msg = f"{modelname} has no cell with matter and a Ye of {yemin:g} to {yemax:g}. {yeofmodel}"
+        msg = f"{modelname} has no cell with matter and an init_Ye of {yemin:g} to {yemax:g}. {yeofmodel}"
         raise ValueError(msg)
 
     print(
         f"{modelname}: {cellsinrange} of {cellswithmatter} cells with matter "
-        f"({cellsinrange / cellswithmatter:.1%}) have a Ye of {yemin:g} to {yemax:g}"
+        f"({cellsinrange / cellswithmatter:.1%}) have an init_Ye of {yemin:g} to {yemax:g}"
     )
 
     return cellsinrange, cellswithmatter
@@ -147,7 +147,7 @@ def aggregate_deposition_rates(
     The join on the cell gives one row of one timestep to each cell. Thus the rate, the ion count,
     the volume, and the mass of a row cover one set of cells.
 
-    A Ye range keeps the cells of the model whose Ye is inside it. Both ends of the range count.
+    An init_Ye range keeps the cells whose init_Ye is inside it. Both ends of the range count.
     """
     colnames = dfestim.collect_schema().names()
     if "nntot" not in colnames:
@@ -160,7 +160,7 @@ def aggregate_deposition_rates(
     if yerange is not None:
         # join_cell_modeldata puts an init_ prefix on each column of the model snapshot
         if "init_Ye" not in colnames:
-            msg = "The model of this run gives no Ye of a cell, thus a Ye range selects nothing"
+            msg = "The model of this run gives no init_Ye of a cell, thus an init_Ye range selects nothing"
             raise ValueError(msg)
 
         dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
@@ -275,11 +275,11 @@ def format_deposition_table(
     """Return the deposition rates of one model as a table of one row for each timestep.
 
     The counts that check_ye_range gives go in the title. Thus the file that -o writes says how many
-    cells the Ye range selected, and --quiet takes no part of that away.
+    cells the init_Ye range selected, and --quiet takes no part of that away.
     """
     channeltext = ", ".join(channels) if channels else "every channel"
     yetext = (
-        f" in {yecells[0]} of {yecells[1]} cells with matter, with a Ye of {yerange[0]:g} to {yerange[1]:g}"
+        f" in {yecells[0]} of {yecells[1]} cells with matter, with an init_Ye of {yerange[0]:g} to {yerange[1]:g}"
         if yerange is not None and yecells is not None
         else ""
     )
@@ -347,14 +347,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Default: every channel of the model. Give --listchannels to show the channels"
         ),
     )
-    # --listchannels stops before it reads a cell, thus a Ye range with it selects nothing
+    # --listchannels stops before it reads a cell, thus an init_Ye range with it selects nothing
     listgroup = parser.add_mutually_exclusive_group()
     listgroup.add_argument(
         "-ye",
         help=(
-            "Select the cells whose Ye (electrons per nucleon) of the model file is in a range, "
-            "e.g. 0-0.2. Both ends of the range count. Default: every cell. "
-            "The model file must hold a Ye column"
+            "Select the cells whose init_Ye is in a range, e.g. 0-0.2. Both ends of the range count. "
+            "init_Ye is the electrons per nucleon of the Ye column of the model file, thus the model "
+            "file must hold that column. The estimator variable Ye is different, because the decay "
+            "chains change the electrons per nucleon of a cell. Default: every cell"
         ),
     )
     listgroup.add_argument(
