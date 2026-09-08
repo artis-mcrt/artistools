@@ -1807,10 +1807,15 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
     one subplot.
     """
     # -plot takes every name that follows it, thus the last -plot group can hold the folder of the user.
-    # The code moves that folder to the positional list, because one rule then sets the order of both forms
+    # The code moves that folder to the end of the positional list, because one rule then sets the order
+    # of both forms. The positional list can hold a variable of its own, e.g. "Te -p rho mymodel"
+    endswithfolder = bool(args.plotitems) and item_names_a_folder(str(args.plotitems[-1]))
     lastgroup = args.plotlist[-1] if args.plotlist else None
-    if not args.plotitems and lastgroup and len(lastgroup) > 1 and item_names_a_folder(str(lastgroup[-1])):
-        args.plotitems = [lastgroup.pop()]
+    if not endswithfolder and isinstance(lastgroup, list) and lastgroup and item_names_a_folder(str(lastgroup[-1])):
+        args.plotitems = [*args.plotitems, lastgroup.pop()]
+        if not lastgroup:
+            # -plot held the folder alone, thus that subplot has no variable of its own
+            args.plotlist.pop()
 
     if plotvars := resolve_positional_modelpath(args, "plotitems"):
         args.plotlist = [plotvars, *(args.plotlist or [])]

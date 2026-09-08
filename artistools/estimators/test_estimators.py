@@ -2408,6 +2408,18 @@ def test_a_folder_after_plot_gives_the_model() -> None:
     assert args.modelpath == modelpath
     assert args.plotlist == [["Te"], ["rho"]]
 
+    # the positional list can hold a variable of its own, and the folder still comes last
+    args = parse_estimator_args(["Te", "-p", "rho", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert args.plotlist == [["Te"], ["rho"]]
+
+    # -plot can hold the folder alone, and that subplot then has no variable of its own
+    args = parse_estimator_args(["-p", str(modelpath)])
+
+    assert args.modelpath == modelpath
+    assert not args.plotlist
+
 
 def test_one_model_in_two_forms_gives_no_error() -> None:
     """The folder and -modelpath can name one model, thus only two different models give an error."""
