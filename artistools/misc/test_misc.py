@@ -258,9 +258,12 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     assert str(mtime) in changedsource
     assert str(changedmtime) in changedsource
 
+    # a cache that holds no version stamp counts as version 1, which the artistools versions before
+    # the stamp wrote. Thus a reader of format 1 keeps it, and only a later format rejects it
     unstamped = tmp_path / "unstamped.parquet"
-    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
-    assert "no cacheversion stamp" in get_reason(unstamped, mtime)
+    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
+    assert f"version is 1, but this artistools version writes {cacheversion}" in get_reason(unstamped, mtime)
+    assert at.read_parquet_cache_metadata(unstamped, 1, mtime)[1] is None
 
     oldversion = tmp_path / "oldversion.parquet"
     at.write_parquet_atomic(

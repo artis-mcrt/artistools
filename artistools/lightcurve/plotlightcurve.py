@@ -1281,6 +1281,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make light curve from R-packets (default unless --gamma is passed)",
     )
 
+    # the old spelling of the same choice, which a script can still hold
+    parser.add_argument("-escape_type", choices=("TYPE_RPKT", "TYPE_GAMMA"), default=None, help=argparse.SUPPRESS)
+
     addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
     parser.add_argument("--plotcmf", action="store_true", help="Plot comoving frame light curve")
@@ -1585,6 +1588,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.refspecmarkers = [
         marker or defaultmarkers[i % len(defaultmarkers)] for i, marker in enumerate(args.refspecmarkers)
     ]
+
+    if args.escape_type is not None:
+        # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus
+        # -escape_type TYPE_GAMMA gave an R-packet light curve
+        if args.escape_type == "TYPE_GAMMA":
+            args.gamma = True
+        else:
+            args.rpkt = True
 
     if args.rpkt is False and not args.gamma:
         # if we're not plotting gamma, then we want to plot the r-packets by default

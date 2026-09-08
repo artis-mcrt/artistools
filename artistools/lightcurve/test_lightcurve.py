@@ -1690,3 +1690,44 @@ def test_angle_averaged_export_with_two_bands_gives_one_row_for_each_model(
     (datafile,) = tmp_path.glob("*angle_averaged_all_models_data.txt")
     # a header line and one line for the one model
     assert len(datafile.read_text(encoding="utf-8").splitlines()) == 2
+
+
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_escape_type_selects_the_packet_type(mockylabel: mock.MagicMock) -> None:
+    """-escape_type is the old spelling of --rpkt and --gamma, and it must select the packet type.
+
+    The argument reached no reader, thus -escape_type TYPE_GAMMA gave an R-packet light curve. A
+    script that holds the old spelling must still run, thus the argument stays as a hidden alias.
+    """
+    # parse_cli_args takes argsraw only when it gets no keyword argument, thus every option goes here
+    at.lightcurve.plot(
+        argsraw=[
+            "-modelpath",
+            str(modelpath_classic_3d),
+            "-escape_type",
+            "TYPE_GAMMA",
+            "--magnitude",
+            "-o",
+            str(outputpath / "lc_escapetype_gamma.pdf"),
+        ]
+    )
+
+    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
+    assert ylabels == [r"Absolute $\gamma$-ray Magnitude"]
+
+    mockylabel.reset_mock()
+
+    at.lightcurve.plot(
+        argsraw=[
+            "-modelpath",
+            str(modelpath_classic_3d),
+            "-escape_type",
+            "TYPE_RPKT",
+            "--magnitude",
+            "-o",
+            str(outputpath / "lc_escapetype_rpkt.pdf"),
+        ]
+    )
+
+    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
+    assert ylabels == ["Absolute Bolometric Magnitude"]

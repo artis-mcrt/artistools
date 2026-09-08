@@ -2430,3 +2430,31 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
     assert lzdfmodel2.select("logrho").collect().to_series().to_list() == pytest.approx([-12.0, -12.0])
     assert (tmp_path / "model_a.1.txt.parquet.tmp").stat().st_size > 0
     assert (tmp_path / "model_a.2.txt.parquet.tmp").stat().st_size > 0
+
+
+def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_path: Path) -> None:
+    """--hideemptycells must still hide an empty cell when -floorval also applies.
+
+    The clamp of the floor gave a plain array. Thus every cell that the mask hid came back on the
+    plot at the floor value, and only this combination of the options showed it.
+    """
+    import matplotlib.axes as mplax
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=[
+                "-modelpath",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "-floorval",
+                "1e-12",
+                "--logcolorscale",
+                "--hideemptycells",
+                "rho",
+            ]
+        )
+
+    colorscale = mockimshow.call_args.args[1]
+    assert np.ma.isMaskedArray(colorscale), "the mask of --hideemptycells must survive the floor clamp"
+    assert np.ma.getmaskarray(colorscale).any(), "the 3D test model holds an empty cell to hide"

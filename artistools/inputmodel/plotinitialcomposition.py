@@ -71,10 +71,10 @@ def plot_slice_modelcolumn(
                 # the floor is a linear value that the clamp below applies before the logarithm
                 msg = f"-floorval must be positive with --logcolorscale, got {args.floorval}"
                 raise ValueError(msg)
-            # np.where keeps a masked array masked. A comprehension gives a plain array, thus it puts
-            # every cell that --hideemptycells masked back on the plot at the floor value
+            # np.ma.where keeps a masked array masked. np.where and a comprehension both give a
+            # plain array, thus they put every cell that --hideemptycells masked back on the plot
             with np.errstate(invalid="ignore"):
-                colorscale = np.where(
+                colorscale = np.ma.where(
                     np.isfinite(colorscale) & (colorscale >= args.floorval), colorscale, args.floorval
                 )
         with np.errstate(divide="ignore"):

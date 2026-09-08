@@ -763,7 +763,7 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
 
     # a cache that no run wrote yet needs the conversion
-    assert rankbatch_parquet_staleness(parquetfilepath, None) == "the file does not exist"
+    assert rankbatch_parquet_staleness(parquetfilepath, None, textsource_complete=False) == "the file does not exist"
 
     mtime = 1000.0
     at.write_parquet_atomic(
@@ -773,11 +773,11 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     )
 
     # a folder with no text files keeps the cache, and a matching stamp also keeps it
-    assert rankbatch_parquet_is_current(parquetfilepath, None)
-    assert rankbatch_parquet_is_current(parquetfilepath, mtime)
+    assert rankbatch_parquet_is_current(parquetfilepath, None, textsource_complete=False)
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime, textsource_complete=True)
 
     # a text source time outside the tolerance of the stamp needs the conversion again
-    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0)
+    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0, textsource_complete=True)
 
 
 def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
@@ -791,22 +791,22 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
 
     mtime = 1000.0
 
-    # no metadata stamp, e.g. a cache from before the stamp existed
+    # a cache that holds no version stamp counts as version 1, thus a matching time keeps it
     unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
-    assert not rankbatch_parquet_is_current(unstamped, mtime)
+    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
+    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
 
     # a matching text source time but a different cache version
     oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
-    assert not rankbatch_parquet_is_current(oldversion, mtime)
+    assert not rankbatch_parquet_is_current(oldversion, mtime, textsource_complete=True)
 
     # a file that is not parquet
     unreadable = tmp_path / "estimbatch02_0006_0008.out.parquet.tmp"
     unreadable.write_bytes(b"not parquet")
-    assert not rankbatch_parquet_is_current(unreadable, mtime)
+    assert not rankbatch_parquet_is_current(unreadable, mtime, textsource_complete=True)
 
 
 def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
@@ -815,7 +815,7 @@ def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
     One file, in the unspecified order of a glob, decided for the whole folder. Thus a restart that
     rewrote the file of a later rank kept the stale caches current.
     """
-    from artistools.estimators.estimators import get_batch_textsource_mtime
+    from artistools.estimators.estimators import get_batch_textsource_state
     from artistools.estimators.estimators import get_textsource_mtimes
 
     for rank in range(3):
@@ -828,11 +828,13 @@ def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
     os.utime(tmp_path / "estimators_0002.out", (newest + 100.0, newest + 100.0))
     mtimes = get_textsource_mtimes(tmp_path)
 
-    assert get_batch_textsource_mtime(mtimes, 0, 2) == newest + 100.0
+    assert get_batch_textsource_state(mtimes, 0, 2) == (newest + 100.0, True)
     # a batch that does not hold the rewritten rank keeps its own time
-    assert get_batch_textsource_mtime(mtimes, 0, 1) == max(mtimes[0], mtimes[1])
-    # a batch with no text file gives None
-    assert get_batch_textsource_mtime(mtimes, 5, 9) is None
+    assert get_batch_textsource_state(mtimes, 0, 1) == (max(mtimes[0], mtimes[1]), True)
+    # a batch with no text file gives no time, and it is incomplete
+    assert get_batch_textsource_state(mtimes, 5, 9) == (None, False)
+    # a batch that holds only some of its ranks is incomplete
+    assert get_batch_textsource_state(mtimes, 0, 3) == (newest + 100.0, False)
 
 
 def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
@@ -1986,3 +1988,97 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
     at.estimators.plotestimators.plot_average_ionisation(ax, ["Fe", "Ni"], estimators)
     assert ax.get_ylim()[1] > 5.0
     plt.close()
+
+
+def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
+    """A run folder that holds no text file must keep its cache, whatever the cache format version.
+
+    No conversion can replace such a cache. A rejection made get_runfolder_timesteps() find no
+    timesteps, thus get_runfolders() dropped the folder and the reader saw a run that holds no data.
+    """
+    from artistools.estimators.estimators import rankbatch_cache_cannot_be_rebuilt
+    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.estimators import rankbatch_parquet_staleness
+
+    oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": "1000.0"}
+    )
+
+    # the reason still names the fault, so that the reader can give a warning
+    assert "cache format version" in str(rankbatch_parquet_staleness(oldversion, None, textsource_complete=False))
+    # but the cache stays readable, because no conversion can replace it
+    assert rankbatch_cache_cannot_be_rebuilt(oldversion, textsource_complete=False)
+    assert rankbatch_parquet_is_current(oldversion, None, textsource_complete=False)
+
+    # a damaged file is no source at all
+    unreadable = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
+    unreadable.write_bytes(b"not parquet")
+    assert not rankbatch_cache_cannot_be_rebuilt(unreadable, textsource_complete=False)
+    assert not rankbatch_parquet_is_current(unreadable, None, textsource_complete=False)
+
+    # a batch that still holds every text file keeps the strict rule
+    assert not rankbatch_cache_cannot_be_rebuilt(oldversion, textsource_complete=True)
+    assert not rankbatch_parquet_is_current(oldversion, 1000.0, textsource_complete=True)
+
+
+def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
+    """get_runfolder_timesteps() must read the cache of a run folder that holds no estimator text file."""
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    runfolder = tmp_path / "job1.slurm"
+    runfolder.mkdir()
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
+        runfolder / "estimbatch00_0000_0000.out.parquet.tmp",
+        metadata={"cacheversion": "0", "textsource_mtime": "1000.0"},
+    )
+
+    assert get_runfolder_timesteps(runfolder) == (0, 1, 2)
+
+
+def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> None:
+    """A user drops every estimator text file except the one of rank 0 and keeps the parquet cache.
+
+    The newest text file decided the freshness of the batch. The file of rank 0 is not the newest,
+    thus its time did not match the stamp, the cache became stale, and no conversion could replace it
+    because the other rank files were gone.
+    """
+    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.estimators.estimators import get_batch_textsource_state
+    from artistools.estimators.estimators import get_rankbatch_parquetpath
+    from artistools.estimators.estimators import get_textsource_mtimes
+    from artistools.estimators.estimators import rankbatch_parquet_is_current
+
+    # rank 2 holds the newest file, thus the stamp of the cache holds its time
+    for rank, mtime in ((0, 1000.0), (1, 1100.0), (2, 1200.0)):
+        textfile = tmp_path / f"estimators_{rank:04d}.out"
+        textfile.write_text("timestep 0\n")
+        os.utime(textfile, (mtime, mtime))
+
+    parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
+    stamp, complete = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
+    assert complete
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        parquetfilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(stamp)},
+    )
+    assert rankbatch_parquet_is_current(parquetfilepath, stamp, textsource_complete=complete)
+
+    # the user keeps the file of rank 0 alone
+    (tmp_path / "estimators_0001.out").unlink()
+    (tmp_path / "estimators_0002.out").unlink()
+
+    mtime_partial, complete_partial = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
+    assert (mtime_partial, complete_partial) == (1000.0, False)
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime_partial, textsource_complete=complete_partial)
+
+    # a rewrite of the file that remains still proves that the cache is stale
+    os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
+    mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
+    from artistools.estimators.estimators import rankbatch_parquet_staleness
+
+    assert "after the cache stamp" in str(
+        rankbatch_parquet_staleness(parquetfilepath, mtime_rewritten, textsource_complete=complete_rewritten)
+    )
