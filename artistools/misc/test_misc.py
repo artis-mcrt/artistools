@@ -1943,3 +1943,31 @@ def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: 
     # a text source that changed still makes the cache stale
     assert at.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
     assert "text source changed" in str(at.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])
+
+
+def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
+    """A cache that an artistools version before the stamps wrote must stay current.
+
+    Such a cache holds no cacheversion and no textsource_mtime. A rejection rebuilds every cache of
+    an archived run, which costs hours and reads text files that the run may no longer hold.
+    """
+    from artistools.misc.fileio import mtime_matches_stamp
+
+    # nothing can date the text source of a cache that holds no stamp, thus every time matches
+    assert mtime_matches_stamp(None, 1000.0)
+    assert mtime_matches_stamp(None, 2.0e9)
+
+    # a real cache of this kind holds only the arrow schema
+    legacy = tmp_path / "legacy.parquet"
+    at.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
+    assert "cacheversion" not in pl.read_parquet_metadata(legacy)
+    assert "textsource_mtime" not in pl.read_parquet_metadata(legacy)
+    assert at.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1] is None
+
+    # a cache that holds a stamp keeps the strict comparison
+    stamped = tmp_path / "stamped.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"number": [0]}), stamped, metadata={"cacheversion": "1", "textsource_mtime": "1000.0"}
+    )
+    assert at.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
+    assert "text source changed" in str(at.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])

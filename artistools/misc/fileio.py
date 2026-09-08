@@ -818,12 +818,15 @@ MTIME_TOLERANCE_S = 30.0
 def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool:
     """Return True when a stamped modification time counts as the time of the text source.
 
-    A cache that holds no stamp does not match. A stamp that no writer of this repository can
-    produce, e.g. a hand-edited one, matches only the same text. The size of the text source cannot
-    decide this question: zstd keeps the time of a packets file and changes the size.
+    A cache that holds no stamp comes from an artistools version before the stamp existed. Nothing
+    can date the text source of such a cache, thus it matches. A rebuild of every cache of an
+    archived run costs hours, and the version stamp follows the same rule. A stamp that no writer of
+    this repository can produce, e.g. a hand-edited one, matches only the same text. The size of the
+    text source cannot decide this question: zstd keeps the time of a packets file and changes the
+    size.
     """
     if foundmtime is None:
-        return False
+        return True
 
     try:
         return abs(float(foundmtime) - textsource_mtime) <= MTIME_TOLERANCE_S
