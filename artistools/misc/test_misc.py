@@ -258,9 +258,12 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     assert str(mtime) in changedsource
     assert str(changedmtime) in changedsource
 
+    # a cache that holds no stamp is stale by default, because a rebuild of a cheap cache costs less
+    # than a wrong number. Only a reader that gives accept_unstamped keeps it
     unstamped = tmp_path / "unstamped.parquet"
     at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
     assert "no cacheversion stamp" in get_reason(unstamped, mtime)
+    assert at.read_parquet_cache_metadata(unstamped, cacheversion, mtime, accept_unstamped=True)[1] is None
 
     oldversion = tmp_path / "oldversion.parquet"
     at.write_parquet_atomic(
@@ -1869,3 +1872,110 @@ def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps(
     runfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
 
     assert get_runfolder_timesteps(runfolder) == ()
+
+
+def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
+    """A NaN element holds no data, thus the filter must keep it in its own element and give it no weight.
+
+    A direction bin that received no packet holds a NaN. The old filter made every bin within four
+    standard deviations of it a NaN too.
+    """
+    data = np.outer(np.sin(np.linspace(0.0, np.pi, 4)), np.cos(np.linspace(0.0, 2 * np.pi, 6, endpoint=False)))
+    withnan = data.copy()
+    withnan[1, 2] = np.nan
+
+    smoothed = at.gaussian_filter_wrap(withnan, sigma=1.2)
+    assert np.isfinite(smoothed).all()
+
+    # an element that holds data keeps a value close to the smoothing of the array without the NaN
+    assert np.allclose(smoothed[0, 0], at.gaussian_filter_wrap(data, sigma=1.2)[0, 0], rtol=0.2)
+
+    # an infinite element holds no data either, thus it takes the mean of its neighbours
+    withinf = data.copy()
+    withinf[1, 2] = np.inf
+    assert np.isfinite(at.gaussian_filter_wrap(withinf, sigma=1.2)).all()
+
+    # an element that has no neighbour with data stays a NaN
+    allnan = np.full_like(data, np.nan)
+    assert np.isnan(at.gaussian_filter_wrap(allnan, sigma=1.2)).all()
+
+
+def test_get_model_name_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The name of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus every plot after a change of the working folder kept
+    the name of the first model.
+    """
+    for foldername in ("modelA", "modelB"):
+        (tmp_path / foldername).mkdir()
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.get_model_name(Path()) == "modelA"
+
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.get_model_name(Path()) == "modelB"
+
+
+def test_phibin_rank_ascends_with_phi() -> None:
+    """The rank of a phi bin must ascend with phi, because the ARTIS bin index does not.
+
+    A colour bar that ascends with phi gave every series the label of the mirrored phi bin.
+    """
+    nphibins = at.get_viewingdirection_phibincount()
+    ranks = [at.get_phibin_rank_ascending(phibin) for phibin in range(nphibins)]
+    assert sorted(ranks) == list(range(nphibins))
+
+    phi_lower, _, _ = at.get_phi_bins(usedegrees=False)
+    binsbyrank = sorted(range(nphibins), key=at.get_phibin_rank_ascending)
+    assert [phi_lower[phibin] for phibin in binsbyrank] == sorted(phi_lower)
+
+
+def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: Path) -> None:
+    """A cache that has no text source must still match the cache format version.
+
+    The estimator reader skipped every check for such a cache. Thus it gave a cache of an old schema,
+    and the columns that the schema lacked became zero without a warning.
+    """
+    parquetfilepath = tmp_path / "cache.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"a": [1]}), parquetfilepath, metadata={"cacheversion": "1", "textsource_mtime": "100.0"}
+    )
+
+    # no text source: the modification time gives no comparison, but the version still applies
+    assert at.read_parquet_cache_metadata(parquetfilepath, 1, None)[1] is None
+    assert "cache format version" in str(at.read_parquet_cache_metadata(parquetfilepath, 2, None)[1])
+
+    # a text source that changed still makes the cache stale
+    assert at.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
+    assert "text source changed" in str(at.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])
+
+
+def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
+    """A reader that gives accept_unstamped must keep a cache that the versions before the stamps wrote.
+
+    Such a cache holds no cacheversion and no textsource_mtime. A rejection rebuilds every cache of
+    an archived run of estimators or packets, which costs hours and reads text files that the run may
+    no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
+    cache that a few seconds rebuild gives a wrong number for no gain.
+    """
+    from artistools.misc.fileio import mtime_matches_stamp
+
+    # a cache that holds no stamp dates its text source in no way, thus the stamp matches no time
+    assert not mtime_matches_stamp(None, 1000.0)
+
+    # a real cache of this kind holds only the arrow schema
+    legacy = tmp_path / "legacy.parquet"
+    at.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
+    assert "cacheversion" not in pl.read_parquet_metadata(legacy)
+    assert "textsource_mtime" not in pl.read_parquet_metadata(legacy)
+
+    assert at.read_parquet_cache_metadata(legacy, 1, 1760711077.0, accept_unstamped=True)[1] is None
+    assert "no cacheversion stamp" in str(at.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1])
+
+    # a cache that holds a stamp keeps the strict comparison
+    stamped = tmp_path / "stamped.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"number": [0]}), stamped, metadata={"cacheversion": "1", "textsource_mtime": "1000.0"}
+    )
+    assert at.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
+    assert "text source changed" in str(at.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])

@@ -574,7 +574,15 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: atspectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc)
+                dirbin: atspectra.get_vspecpol_spectrum(
+                    modelpath,
+                    timeavg,
+                    dirbin,
+                    args,
+                    fluxfilterfunc=filterfunc,
+                    timemin=args.timemin,
+                    timemax=args.timemax,
+                )
                 for dirbin in directionbins
                 if dirbin >= 0
             }

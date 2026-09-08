@@ -17,8 +17,12 @@ import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import format_mtime
+from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import parquet_is_readable
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -406,28 +410,57 @@ def get_packets_rankbatch_parquetfile(
         # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
         # restart rewrote then makes the whole batch cache stale
         textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
-        if len(textsource_mtimes) == len(batch_mpiranks):
-            textsource_mtime = max(textsource_mtimes)
+        allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
+        # a text file of the batch is absent, thus artistools cannot do a new conversion. The
+        # modification times give no full comparison, but the cache format version still applies
+        textsource_mtime = max(textsource_mtimes) if allranksfound else None
 
-            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
-            if stalereason is None:
-                conversion_needed = False
-            else:
-                # the identity comes from the stat that showed the file is outdated, so only that exact
-                # file can be replaced by this rank's rewrite
-                outdatedparquet = at.get_file_identity(parquetstat)
-                # leave the outdated file in place: write_parquet_atomic() puts the new one at the path in
-                # one step, so the path always resolves to a complete parquet. Deleting it first opens a
-                # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
-                # it missing or half-swapped
-                print(
-                    f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of the text files of"
-                    f" ranks {batch_mpiranks[0]} to {batch_mpiranks[-1]}, because {stalereason}."
-                    " File will be regenerated..."
+        # an archived run of packets costs hours to convert again, thus a cache from before the stamps
+        # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
+        pqmetadata, stalereason = read_parquet_cache_metadata(
+            parquetfilepath, CACHEVERSION, textsource_mtime, accept_unstamped=True
+        )
+
+        if stalereason is None and not allranksfound and textsource_mtimes:
+            # a text file that is newer than the stamp proves that a restart rewrote the source after
+            # the cache. An absent text file gives no proof, thus only this one test applies
+            stampedmtime = (pqmetadata or {}).get("textsource_mtime")
+            try:
+                # a stamp that no writer of this repository can produce dates no text file
+                stampedvalue = float(stampedmtime) if stampedmtime is not None else None
+            except ValueError:
+                stampedvalue = None
+
+            if stampedvalue is not None and max(textsource_mtimes) > stampedvalue + MTIME_TOLERANCE_S:
+                stalereason = (
+                    f"a text file of the batch changed at {format_mtime(max(textsource_mtimes))},"
+                    f" after the cache stamp of {format_mtime(stampedmtime)}"
                 )
-        else:
-            # a text file of the batch is absent, thus the cache is the only complete source
+
+        if stalereason is None:
             conversion_needed = False
+        elif allranksfound:
+            # the identity comes from the stat that showed the file is outdated, so only that exact
+            # file can be replaced by this rank's rewrite
+            outdatedparquet = at.get_file_identity(parquetstat)
+            # leave the outdated file in place: write_parquet_atomic() puts the new one at the path in
+            # one step, so the path always resolves to a complete parquet. Deleting it first opens a
+            # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
+            # it missing or half-swapped
+            print(
+                f"  {parquetfilepath.relative_to(modelpath)} is not a current cache of the text files of"
+                f" ranks {batch_mpiranks[0]} to {batch_mpiranks[-1]}, because {stalereason}."
+                " File will be regenerated..."
+            )
+        elif pqmetadata is not None or parquet_is_readable(parquetfilepath):
+            # the text files are incomplete, thus no conversion can replace this cache. The data can
+            # be older than the text files that remain, thus the user needs a warning
+            conversion_needed = False
+            print_warning(
+                f"{parquetfilepath.relative_to(modelpath)} is not a current cache of the text files of"
+                f" ranks {batch_mpiranks[0]} to {batch_mpiranks[-1]}, because {stalereason}."
+                " The text files of the batch are incomplete, thus artistools uses the cache as it is."
+            )
 
     if conversion_needed:
         time_start_load = time.perf_counter()

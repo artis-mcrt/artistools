@@ -10,6 +10,7 @@ import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.commands import run_subcommand
@@ -113,26 +114,27 @@ def bin_packets_by_direction(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
 
+    def energyweightedmean(var: str) -> pl.Expr:
+        """Return the mean of a column over a direction bin, with the packet energy as the weight.
+
+        A packet that matched no estimator row holds a null value. The numerator passes over such a
+        row, thus the denominator holds only the weights of the rows that have a value.
+        """
+        weight = pl.col("e_rf").filter(pl.col(var).is_not_null())
+        return (pl.col(var) * pl.col("e_rf")).sum() / weight.sum()
+
     aggs = []
     if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
-        aggs += [((pl.col(var) * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias(var) for var in nnelement_vars]
+        aggs += [energyweightedmean(var).alias(var) for var in nnelement_vars]
 
     if "emvelocityoverc" in plotvars:
-        aggs.append(
-            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / C_cm_per_s).alias(
-                "emvelocityoverc"
-            )
-        )
+        aggs.append((energyweightedmean("emission_velocity") / C_cm_per_s).alias("emvelocityoverc"))
 
     if "emvelocityoverc_sigma" in plotvars:
         aggs.append(((pl.col("emission_velocity") / C_cm_per_s).std()).alias("emvelocityoverc_sigma"))
 
     if "emlosvelocityoverc" in plotvars:
-        aggs.append(
-            (
-                (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / C_cm_per_s
-            ).alias("emlosvelocityoverc")
-        )
+        aggs.append((energyweightedmean("emission_velocity_lineofsight") / C_cm_per_s).alias("emlosvelocityoverc"))
 
     if "luminosity" in plotvars:
         inverse_solidangle_fraction = nphibins * ncosthetabins
@@ -152,7 +154,7 @@ def bin_packets_by_direction(
         )
 
     if "temperature" in plotvars:
-        aggs.append(((pl.col("TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
+        aggs.append(energyweightedmean("TR").alias("temperature"))
 
     if "temperature_sigma" in plotvars:
         aggs.append((pl.col("TR").std()).alias("temperature_sigma"))
@@ -214,7 +216,10 @@ def bin_packets_by_direction(
         )
         .join(dfdirbins, how="left", on=["rangebin", "costhetabin", "phibinmonotonicasc"], maintain_order="left")
         .drop("rangebin")
-        .fill_null(0)
+        # a bin that received no packet has a count of zero and, for a sum over the packets, a
+        # luminosity of zero. Every other variable is a mean over the packets, thus it stays null.
+        # The plot then leaves such a bin blank, unless -gaussian_sigma smooths the neighbours in
+        .with_columns(cs.by_name("count", "luminosity", require_all=False).fill_null(0))
         .sort(["timebin", "costhetabin", "phibinmonotonicasc"])
     ).collect()
 

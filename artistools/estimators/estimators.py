@@ -15,7 +15,6 @@ from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
 from itertools import batched
-from itertools import starmap
 from pathlib import Path
 from types import MappingProxyType
 
@@ -27,6 +26,9 @@ from artistools.constants import K_B_ev_per_K
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
+from artistools.misc.fileio import format_mtime
+from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import parquet_is_readable
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -405,33 +407,85 @@ def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
     return mtimes
 
 
-def get_batch_textsource_mtime(textsource_mtimes: Mapping[int, float], rankmin: int, rankmax: int) -> float | None:
-    """Return the newest change time of the text files of the ranks in the batch, or None when it has none.
+def get_batch_textsource_state(
+    textsource_mtimes: Mapping[int, float], rankmin: int, rankmax: int
+) -> tuple[float | None, bool]:
+    """Return the newest change time of the text files of a batch, and whether the batch holds them all.
 
     Every file of the batch counts. One rank file that a restart rewrote makes the whole batch cache
-    stale, thus no single file can decide for the others.
+    stale, thus no single file can decide for the others. A user keeps the cache of a run and drops
+    the text files, sometimes every file except the one of rank 0. Such a batch is incomplete: the
+    files that remain say nothing about the files that are gone, and no conversion can take place.
     """
-    return max((mtime for rank, mtime in textsource_mtimes.items() if rankmin <= rank <= rankmax), default=None)
+    batchmtimes = [mtime for rank, mtime in textsource_mtimes.items() if rankmin <= rank <= rankmax]
+    return max(batchmtimes, default=None), len(batchmtimes) == rankmax - rankmin + 1
 
 
-def rankbatch_parquet_staleness(parquetfilepath: Path, textsource_mtime: float | None) -> str | None:
+def rankbatch_parquet_staleness(
+    parquetfilepath: Path, textsource_mtime: float | None, *, textsource_complete: bool
+) -> str | None:
     """Return the reason why the parquet cache is stale, or None when the cache is current.
 
     The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
     conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
     e.g. a cache that is absent, damaged, or written for a different cache format version.
+
+    A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
+    compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
+    absent text file proves nothing. The cache format version applies to a batch of either kind.
     """
-    if textsource_mtime is None:
-        # a cache in a folder that holds no text file stays current, because no source remains for a
-        # new conversion. Only a cache that does not exist then needs one
-        return None if parquetfilepath.is_file() else "the file does not exist"
+    # an archived run of estimators costs hours to convert again, thus a cache from before the stamps
+    # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
+    pqmetadata, stalereason = read_parquet_cache_metadata(
+        parquetfilepath, CACHEVERSION, textsource_mtime if textsource_complete else None, accept_unstamped=True
+    )
+    if stalereason is not None or textsource_complete or textsource_mtime is None:
+        return stalereason
 
-    return read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)[1]
+    stampedmtime = (pqmetadata or {}).get("textsource_mtime")
+    if stampedmtime is None:
+        return None
+
+    try:
+        stampedvalue = float(stampedmtime)
+    except ValueError:
+        # a stamp that no writer of this repository can produce cannot date the text files
+        return None
+
+    if textsource_mtime > stampedvalue + MTIME_TOLERANCE_S:
+        return (
+            f"a text file of the batch changed at {format_mtime(textsource_mtime)},"
+            f" after the cache stamp of {format_mtime(stampedmtime)}"
+        )
+
+    return None
 
 
-def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
-    """Return True when the parquet cache matches the cache format version and the text files."""
-    return rankbatch_parquet_staleness(parquetfilepath, textsource_mtime) is None
+def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_complete: bool) -> bool:
+    """Return True when the cache is readable and the estimator text files cannot replace it.
+
+    A conversion needs the text file of every rank of the batch. An archived run drops those files,
+    sometimes every file except the one of rank 0, thus no conversion can take place. A damaged cache
+    is no source at all, thus only a readable parquet counts.
+    """
+    return not textsource_complete and parquet_is_readable(parquetfilepath)
+
+
+def rankbatch_parquet_is_current(
+    parquetfilepath: Path, textsource_mtime: float | None, *, textsource_complete: bool
+) -> bool:
+    """Return True when the reader takes the data of a batch from the parquet cache.
+
+    get_runfolder_timesteps() must name the timesteps that a scan of the run then gives it. A batch
+    that holds no full set of text files keeps its cache, because no conversion can replace it, thus
+    a readable cache of such a batch answers here even when it is stale. A complete batch converts
+    its text files again, thus only a current cache answers there.
+    """
+    if rankbatch_parquet_staleness(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete) is None:
+        return True
+
+    # the same rule that get_estimators_rankbatch_parquetfile() applies, so that the two agree
+    return rankbatch_cache_cannot_be_rebuilt(parquetfilepath, textsource_complete=textsource_complete)
 
 
 def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str) -> bool:
@@ -442,8 +496,10 @@ def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str)
     """
     nameparts = parquetfilepath.name.split("_")
     rankmin, rankmax = int(nameparts[1]), int(nameparts[2].split(".")[0])
-    textsource_mtime = get_batch_textsource_mtime(get_textsource_mtimes(folderpath), rankmin, rankmax)
-    return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime)
+    textsource_mtime, textsource_complete = get_batch_textsource_state(
+        get_textsource_mtimes(folderpath), rankmin, rankmax
+    )
+    return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete)
 
 
 def get_estimators_rankbatch_parquetfile(
@@ -452,6 +508,7 @@ def get_estimators_rankbatch_parquetfile(
     batch_mpiranks: Sequence[int],
     batchindex: int,
     textsource_mtime: float | None,
+    textsource_complete: bool,
     stalereason: str | None,
     outdatedparquet: tuple[int, int] | None,
     verbose: bool = False,
@@ -473,6 +530,18 @@ def get_estimators_rankbatch_parquetfile(
         "batch_mpiranks must be a contiguous range of ranks"
     )
     assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
+
+    if stalereason is not None and rankbatch_cache_cannot_be_rebuilt(
+        parquetfilepath, textsource_complete=textsource_complete
+    ):
+        # the batch holds no full set of estimator text files, thus no conversion can correct the
+        # fault. Keep the cache, because the alternative is a run folder that shows no data at all
+        print_warning(
+            f"{parquetfilepath.relative_to(modelpath.parent)} is not a current cache of the estimator text"
+            f" files, because {stalereason}. The text files of the batch are incomplete, thus artistools"
+            " uses the cache as it is."
+        )
+        stalereason = None
 
     if stalereason is not None:
         # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
@@ -569,6 +638,9 @@ def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> p
     return pl.LazyFrame(
         [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
         orient="row",
+        # a back-end writes a key only for the ions that a cell holds, thus a column can first appear
+        # in a late row. Read every row for the schema. The default of 100 rows drops such a column
+        infer_schema_length=None,
     ).with_columns(pl.col("timestep").cast(pl.Int32), pl.col("modelgridindex").cast(pl.Int32))
 
 
@@ -690,10 +762,12 @@ def scan_artis_estimators(
         # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
         # its freshness to the progress bar and to the conversion
         mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
-        batchmtimes = [
-            get_batch_textsource_mtime(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
+        batchstates = [
+            get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
             for runfolder, _batchindex, mpiranks in pairs
         ]
+        batchmtimes = [mtime for mtime, _complete in batchstates]
+        batchcomplete = [complete for _mtime, complete in batchstates]
         cachepaths = [
             get_rankbatch_parquetpath(runfolder, mpiranks, batchindex) for runfolder, batchindex, mpiranks in pairs
         ]
@@ -701,14 +775,22 @@ def scan_artis_estimators(
         # process installs after that check then keeps its place, because a rewrite replaces only the
         # file that the check saw
         outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
-        stalereasons = list(starmap(rankbatch_parquet_staleness, zip(cachepaths, batchmtimes, strict=True)))
+        stalereasons = [
+            rankbatch_parquet_staleness(cachepath, mtime, textsource_complete=complete)
+            for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
+        ]
+        # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
+        rebuilds = [
+            reason is not None and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete)
+            for reason, cachepath, complete in zip(stalereasons, cachepaths, batchcomplete, strict=True)
+        ]
 
         # a bar is worth its place only when a batch converts text files, which takes minutes. Current
         # parquet caches read no text, and their scan is lazy, thus a bar would show no work
-        batches: Iterable[tuple[tuple[Path, int, Sequence[int]], float | None, str | None, tuple[int, int] | None]] = (
-            list(zip(pairs, batchmtimes, stalereasons, outdatedparquets, strict=True))
-        )
-        if any(reason is not None for reason in stalereasons) and len(pairs) > 1:
+        batches: Iterable[
+            tuple[tuple[Path, int, Sequence[int]], float | None, bool, str | None, tuple[int, int] | None]
+        ] = list(zip(pairs, batchmtimes, batchcomplete, stalereasons, outdatedparquets, strict=True))
+        if any(rebuilds) and len(pairs) > 1:
             from artistools.misc.general import get_progress_class
 
             batches = get_progress_class()(batches, desc="Converting estimator files", unit="batch")
@@ -720,11 +802,18 @@ def scan_artis_estimators(
                 batch_mpiranks=mpiranks,
                 batchindex=batchindex,
                 textsource_mtime=textsource_mtime,
+                textsource_complete=textsource_complete,
                 stalereason=stalereason,
                 outdatedparquet=outdatedparquet,
                 verbose=verbose,
             )
-            for (runfolder, batchindex, mpiranks), textsource_mtime, stalereason, outdatedparquet in batches
+            for (
+                (runfolder, batchindex, mpiranks),
+                textsource_mtime,
+                textsource_complete,
+                stalereason,
+                outdatedparquet,
+            ) in batches
         ]
 
         assert bool(parquetfiles)
@@ -738,6 +827,15 @@ def scan_artis_estimators(
             ["timestep", "modelgridindex"], maintain_order=True, keep="first"
         )
     else:
+        # get_runfolders() gives no folder for two different reasons. Name the one that applies.
+        # A run that stopped early gives a plot of a timestep that the run never reached
+        if match_timestep is not None and at.get_runfolders(modelpath):
+            msg = (
+                f"The run folders of {modelpath} hold none of the timesteps"
+                f" {min(match_timestep)} to {max(match_timestep)}."
+            )
+            raise ValueError(msg)
+
         print_warning(
             f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )

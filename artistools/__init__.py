@@ -131,6 +131,7 @@ from artistools.misc import get_mpirankofcell as get_mpirankofcell
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_nu_grid as get_nu_grid
 from artistools.misc import get_phi_bins as get_phi_bins
+from artistools.misc import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc import get_runfolders as get_runfolders
 from artistools.misc import get_series_label as get_series_label
 from artistools.misc import get_single_modelgridindex as get_single_modelgridindex

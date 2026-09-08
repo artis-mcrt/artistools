@@ -863,9 +863,8 @@ def get_viewinganglecolor_for_colorbar(
     nphibins = at.get_viewingdirection_phibincount()
     costheta_index, phi_index = divmod(angle, nphibins)
     if args.colorbarphi:
-        assert nphibins == 10
-        reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
-        colorindex = reorderphibins.get(phi_index, phi_index)
+        # the colour bar ticks ascend with phi, thus the colour index must be the rank and not the bin
+        colorindex = at.get_phibin_rank_ascending(phi_index)
     elif args.colorbarcostheta:
         colorindex = costheta_index
     else:
@@ -1282,7 +1281,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Make light curve from R-packets (default unless --gamma is passed)",
     )
 
-    parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
+    # the old spelling of the same choice, which a script can still hold
+    parser.add_argument("-escape_type", choices=("TYPE_RPKT", "TYPE_GAMMA"), default=None, help=argparse.SUPPRESS)
 
     addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
@@ -1588,6 +1588,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.refspecmarkers = [
         marker or defaultmarkers[i % len(defaultmarkers)] for i, marker in enumerate(args.refspecmarkers)
     ]
+
+    if args.escape_type is not None:
+        # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus
+        # -escape_type TYPE_GAMMA gave an R-packet light curve. It names one type, thus it sets one
+        args.gamma = args.escape_type == "TYPE_GAMMA"
+        args.rpkt = not args.gamma
 
     if args.rpkt is False and not args.gamma:
         # if we're not plotting gamma, then we want to plot the r-packets by default

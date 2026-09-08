@@ -219,12 +219,15 @@ def plot_qdot(
 
         print("Calculating global heating rates from the individual particle heating rates")
         assert arr_time_gsi_days is not None
+        # a particle that has no network data drops out of the join, thus the weights of the particles
+        # that remain do not sum to one. Divide by that sum. The rate then stays a rate for each gram
+        expr_weight = pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")
         dfgsiglobalheating = (
             dfcontribsparticledata
             .select([
                 pl
                 .concat_arr(
-                    (pl.col(col).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")).sum()
+                    (pl.col(col).arr.get(n) * expr_weight).sum() / expr_weight.sum()
                     for n in range(len(arr_time_gsi_days))
                 )
                 .explode(empty_as_null=False)

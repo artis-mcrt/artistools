@@ -136,7 +136,6 @@ def shorten_middle(text: str, maxlen: int | None) -> str:
     return f"{text[:head]}...{text[len(text) - (keep - head) :]}"
 
 
-@lru_cache(maxsize=8)
 def get_model_name(path: Path | str) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
@@ -146,8 +145,14 @@ def get_model_name(path: Path | str) -> str:
     if path_is_codecomparison(path):
         return str(path)
 
-    abspath = path.resolve()
+    # resolve the path before the cache. The default model path is the relative Path(".").
+    # A cache that holds the relative path keeps the first answer after the user changes the working folder
+    return get_model_name_cached(path.resolve())
 
+
+@lru_cache(maxsize=8)
+def get_model_name_cached(abspath: Path) -> str:
+    """Return the name of the ARTIS model at an absolute path."""
     modelpath = abspath if abspath.is_dir() else abspath.parent
 
     try:

@@ -962,8 +962,15 @@ def get_vspecpol_spectrum(
     angle: int,
     args: argparse.Namespace,
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> pl.LazyFrame:
-    """Return the virtual packet spectrum of one observer, averaged over the timesteps around timeavg."""
+    """Return the virtual packet spectrum of one observer, as a mean over the timesteps around timeavg.
+
+    timemin and timemax give a mean over a range of times in place of the single time timeavg. A
+    caller that needs the spectrum at one time must leave them out. One point of a light curve is
+    such a case.
+    """
     stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
@@ -972,10 +979,9 @@ def get_vspecpol_spectrum(
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
-    if "timemin" in args and "timemax" in args and args.timemin is not None and args.timemax is not None:
-        # how timemin, timemax are used changed at some point. to average over multiple timesteps needs to fix this
-        timestepmin = arr_tmid.index(match_closest_time(args.timemin, arr_tmid))
-        timestepmax = arr_tmid.index(match_closest_time(args.timemax, arr_tmid))
+    if timemin is not None and timemax is not None:
+        timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
+        timestepmax = arr_tmid.index(match_closest_time(timemax, arr_tmid))
     else:
         timestepmin = arr_tmid.index(match_closest_time(timeavg, arr_tmid))
         timestepmax = timestepmin

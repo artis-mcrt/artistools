@@ -65,6 +65,7 @@ from artistools.misc.dirbins import get_dirbin_labels as get_dirbin_labels
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
+from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
 from artistools.misc.dirbins import get_viewingdirection_phibincount as get_viewingdirection_phibincount
 from artistools.misc.dirbins import get_viewingdirectionbincount as get_viewingdirectionbincount
@@ -82,6 +83,7 @@ from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
+from artistools.misc.fileio import parquet_is_readable as parquet_is_readable
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
 from artistools.misc.fileio import path_is_reference_data as path_is_reference_data
