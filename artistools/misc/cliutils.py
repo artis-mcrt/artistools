@@ -3,6 +3,7 @@
 import argparse
 import dataclasses as dc
 import itertools
+import os
 import re
 import sys
 import typing as t
@@ -167,6 +168,83 @@ def addarg_modelpath(
         if required:
             kwargs["required"] = True
         parser.add_argument("-modelpath", **kwargs)
+
+
+def item_names_a_path(item: str) -> bool:
+    """Return whether a positional argument names a path and not a name of the command.
+
+    The name of a variable has no path separator, e.g. Te. Thus a name that has one always names a
+    folder, even when no folder of that name exists. A mistake in such a path then gives a message
+    about the folder and not a message about an unknown name.
+    """
+    from artistools.misc.fileio import path_is_codecomparison
+
+    return os.sep in item or "/" in item or path_is_codecomparison(item)
+
+
+def item_names_a_folder(item: str) -> bool:
+    """Return whether the last positional argument names the ARTIS folder and not a name of the command.
+
+    A folder that exists names the model, even when the command has an item of the same name.
+    """
+    return Path(item).is_dir() or item_names_a_path(item)
+
+
+def addarg_positional_items(
+    parser: argparse.ArgumentParser, *, dest: str, metavar: str, helptext: str
+) -> argparse.Action:
+    """Add the positional arguments of a command that reads the ARTIS folder as the last one.
+
+    A command that names its items on the command line, e.g. the estimator variables of
+    plotestimators, adds them with this function. resolve_positional_modelpath then removes the ARTIS
+    folder from the end. The caller can put an argcomplete completer on the action that this function
+    returns.
+    """
+    return parser.add_argument(dest, nargs="*", default=[], metavar=metavar, help=helptext)
+
+
+def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[str]:
+    """Remove the ARTIS folder from the end of the positional arguments, and return the other items.
+
+    The ARTIS folder comes last, thus only the last argument can name a folder. A folder in an earlier
+    place gives an error, because a name in that place is a name of the command. This one rule serves
+    every command that takes positional items. Thus every such command has the same order.
+    """
+    items: list[str] = list(getattr(args, dest))
+
+    if items and item_names_a_folder(items[-1]):
+        givenpath = items.pop()
+        if Path(args.modelpath) != Path():
+            exit_with_error(
+                f"the folder '{givenpath}' and -modelpath '{args.modelpath}' name two different models",
+                "Give the folder one time",
+            )
+        args.modelpath = Path(givenpath)
+
+    if misplaced := [item for item in items if item_names_a_path(item)]:
+        kept = [item for item in items if item not in misplaced]
+        exit_with_error(
+            f"'{misplaced[0]}' names a folder, and the ARTIS folder comes after the other arguments",
+            f"Write the folder last, e.g. {' '.join([*kept, misplaced[0]])}",
+        )
+
+    setattr(args, dest, items)
+
+    return items
+
+
+def artis_subfolders(folder: Path, *, maxnames: int = 6) -> list[str]:
+    """Return the names of the subfolders of this folder that hold an ARTIS run.
+
+    A user often runs a command one level above the model, e.g. in the folder that holds every run.
+    An error message can then name the folders that are near. The user does not have to list the folder.
+    """
+    if not folder.is_dir():
+        return []
+
+    names = sorted(child.name for child in folder.iterdir() if child.is_dir() and (child / "input.txt").is_file())
+
+    return names[:maxnames]
 
 
 def make_output_folder(folder: Path | str, verb: str) -> Path:

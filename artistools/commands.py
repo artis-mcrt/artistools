@@ -233,8 +233,8 @@ subcommandtree: CommandTree = {
         script="plotartisestimators",
         helptext="Plot ARTIS estimators.",
         examples=(
-            ("-modelpath . -p Te TR -t 300", "two estimator variables against velocity"),
-            ("-modelpath . --listvariables", "every variable that a model holds"),
+            ("Te TR . -t 300", "two estimator variables against velocity"),
+            (". --listvariables", "every variable that a model holds"),
         ),
         aliases=("estimators",),
     ),
@@ -559,6 +559,11 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
 
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        """Build the parser with the intermixed parse of the positional arguments off."""
+        super().__init__(*args, **kwargs)
+        self.parsingintermixed = False
+
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
         """Refuse a value outside the choices with a message that names the closest choice.
@@ -643,6 +648,31 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         return [argstring]
 
+    def wants_intermixed_parse(self) -> bool:
+        """Return whether this parser can read the positional arguments that a flag separates.
+
+        argparse fills a positional argument from one unbroken group of arguments. A flag between two
+        positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
+        parse_known_intermixed_args reads both groups. It refuses a positional argument that takes the
+        rest of the command line, e.g. the subcommand of the dispatcher. It also refuses a positional
+        argument of an exclusive group.
+        """
+        # parse_known_intermixed_args calls parse_known_args two times, thus this flag stops a loop
+        if self.parsingintermixed:
+            return False
+
+        positionals = [action for action in self._actions if not action.option_strings]
+        if not positionals or any(action.nargs in {argparse.PARSER, argparse.REMAINDER} for action in positionals):
+            return False
+
+        exclusive = {
+            id(action)
+            for group in self._mutually_exclusive_groups
+            for action in group._group_actions  # ruff:ignore[private-member-access]
+        }
+
+        return not any(id(action) in exclusive for action in positionals)
+
     @t.override
     def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
@@ -650,7 +680,15 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Split a joined flag and value, then parse. A subparser reads its own arguments here."""
         import sys
 
-        return super().parse_known_args(self.split_joined_flags(sys.argv[1:] if args is None else args), namespace)
+        argstrings = self.split_joined_flags(sys.argv[1:] if args is None else args)
+        if not self.wants_intermixed_parse():
+            return super().parse_known_args(argstrings, namespace)
+
+        self.parsingintermixed = True
+        try:
+            return self.parse_known_intermixed_args(argstrings, namespace)
+        finally:
+            self.parsingintermixed = False
 
     @t.override
     def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]

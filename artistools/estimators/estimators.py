@@ -306,12 +306,14 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
     def wrap(text: str) -> str:
         return textwrap.fill(text, width=110, initial_indent="    ", subsequent_indent="    ")
 
-    lines = [
-        f"{len(columns)} estimator variables:",
-        "",
-        f"  ({len(plain)}): one value for each cell and timestep",
-        wrap(", ".join(f"{name}{format_units(name)}" for name in sorted(plain))),
-    ]
+    lines = [f"{len(columns)} estimator variables:"]
+    # a search of the listing can remove every plain column, thus write this section only when one stays
+    if plain:
+        lines.extend([
+            "",
+            f"  ({len(plain)}): one value for each cell and timestep",
+            wrap(", ".join(f"{name}{format_units(name)}" for name in sorted(plain))),
+        ])
 
     for prefix in sorted(groups):
         members = sorted(groups[prefix])
