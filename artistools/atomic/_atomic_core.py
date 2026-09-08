@@ -860,14 +860,12 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     )
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
-    textsourcestat = textfile.stat()
+    textsource_mtime = textfile.stat().st_mtime
     # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step. The
     # identity comes from before the check below, thus a fresh file that a rival process installs after
     # the check keeps its place and only the file that the check saw is replaced
     outdatedparquet = get_file_identity(parquetfile)
-    _, stalereason = read_parquet_cache_metadata(
-        parquetfile, LINELIST_CACHEVERSION, textsourcestat.st_mtime, textsourcestat.st_size
-    )
+    _, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
@@ -889,11 +887,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         write_parquet_atomic(
             pldf,
             parquetfile,
-            metadata={
-                "cacheversion": str(LINELIST_CACHEVERSION),
-                "textsource_mtime": str(textsourcestat.st_mtime),
-                "textsource_size": str(textsourcestat.st_size),
-            },
+            metadata={"cacheversion": str(LINELIST_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
             replaces=outdatedparquet,
         )
         print(f"Wrote {parquetfile}")

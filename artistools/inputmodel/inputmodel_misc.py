@@ -342,11 +342,7 @@ CACHEVERSION = 1
 
 
 def read_parquet_cache(
-    parquetfilepath: Path,
-    textsource_mtime: float,
-    textsource_size: int,
-    metadatakeys: Sequence[str] = (),
-    printwarningsonly: bool = False,
+    parquetfilepath: Path, textsource_mtime: float, metadatakeys: Sequence[str] = (), printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, str]] | None:
     """Return the cached table and its metadata, or None if the cache is absent, stale, or unreadable.
 
@@ -357,9 +353,7 @@ def read_parquet_cache(
     if not parquetfilepath.is_file():
         return None
 
-    pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, CACHEVERSION, textsource_mtime, textsource_size
-    )
+    pqmetadata, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
     if pqmetadata is not None and (missingkey := next((key for key in metadatakeys if key not in pqmetadata), None)):
         pqmetadata, stalereason = None, f"the file has no {missingkey} stamp"
 
@@ -397,7 +391,7 @@ def get_text_source_cached(
     validate_metadata reads the stored metadata strings of a cache. It raises ValueError for a value
     that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
-    textsourcestat = textfilepath.stat()
+    textsource_mtime = textfilepath.stat().st_mtime
     # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
     textname = (
         textfilepath.name.removesuffix(textfilepath.suffix)
@@ -410,11 +404,7 @@ def get_text_source_cached(
     hadcachefile = outdatedparquet is not None
 
     cached = read_parquet_cache(
-        parquetfilepath,
-        textsourcestat.st_mtime,
-        textsourcestat.st_size,
-        metadatakeys=metadatakeys,
-        printwarningsonly=printwarningsonly,
+        parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
     )
     if cached is not None:
         if validate_metadata is None:
@@ -430,7 +420,7 @@ def get_text_source_cached(
     df, extrametadata = read_text_source()
 
     mebibyte = 1024 * 1024
-    if hadcachefile or textsourcestat.st_size > 2 * mebibyte:
+    if hadcachefile or textfilepath.stat().st_size > 2 * mebibyte:
         print(f"Saving {parquetfilepath}")
         write_parquet_atomic(
             df,
@@ -439,8 +429,7 @@ def get_text_source_cached(
             metadata={
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "cacheversion": str(CACHEVERSION),
-                "textsource_mtime": str(textsourcestat.st_mtime),
-                "textsource_size": str(textsourcestat.st_size),
+                "textsource_mtime": str(textsource_mtime),
             }
             | extrametadata,
         )

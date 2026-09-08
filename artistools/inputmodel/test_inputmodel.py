@@ -2219,7 +2219,7 @@ def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     parquetfilepath = tmp_path / "model.txt.parquet.tmp"
     parquetfilepath.write_bytes(b"not parquet")
 
-    assert read_parquet_cache(parquetfilepath, textsource_mtime=1.0, textsource_size=500) is None
+    assert read_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
     assert parquetfilepath.is_file(), "the unreadable cache must stay for the identity-checked rewrite"
 
 

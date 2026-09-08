@@ -756,6 +756,7 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     from artistools.estimators.estimators import get_rankbatch_parquetpath
     from artistools.estimators.estimators import rankbatch_parquet_is_current
     from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.misc.fileio import MTIME_TOLERANCE_S
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
@@ -763,23 +764,19 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     # a cache that no run wrote yet needs the conversion
     assert rankbatch_parquet_staleness(parquetfilepath, None) == "the file does not exist"
 
-    stamp = (1000.0, 500)
+    mtime = 1000.0
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         parquetfilepath,
-        metadata={
-            "cacheversion": str(CACHEVERSION),
-            "textsource_mtime": str(stamp[0]),
-            "textsource_size": str(stamp[1]),
-        },
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(mtime)},
     )
 
     # a folder with no text files keeps the cache, and a matching stamp also keeps it
     assert rankbatch_parquet_is_current(parquetfilepath, None)
-    assert rankbatch_parquet_is_current(parquetfilepath, stamp)
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime)
 
-    # a text source size other than the stamped one needs the conversion again
-    assert not rankbatch_parquet_is_current(parquetfilepath, (stamp[0], stamp[1] + 10))
+    # a text source time outside the tolerance of the stamp needs the conversion again
+    assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0)
 
 
 def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
@@ -791,77 +788,72 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
     """
     from artistools.estimators.estimators import rankbatch_parquet_is_current
 
-    stamp = (1000.0, 500)
+    mtime = 1000.0
 
     # no metadata stamp, e.g. a cache from before the stamp existed
     unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
-    assert not rankbatch_parquet_is_current(unstamped, stamp)
+    assert not rankbatch_parquet_is_current(unstamped, mtime)
 
-    # a matching text source stamp but a different cache version
+    # a matching text source time but a different cache version
     oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
     at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}),
-        oldversion,
-        metadata={"cacheversion": "0", "textsource_mtime": str(stamp[0]), "textsource_size": str(stamp[1])},
+        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
-    assert not rankbatch_parquet_is_current(oldversion, stamp)
+    assert not rankbatch_parquet_is_current(oldversion, mtime)
 
     # a file that is not parquet
     unreadable = tmp_path / "estimbatch02_0006_0008.out.parquet.tmp"
     unreadable.write_bytes(b"not parquet")
-    assert not rankbatch_parquet_is_current(unreadable, stamp)
+    assert not rankbatch_parquet_is_current(unreadable, mtime)
 
 
 def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
-    """Every text file of the batch counts for its freshness, and no other file hides one of them.
+    """The newest text file of the batch decides its freshness, and no other file hides it.
 
     One file, in the unspecified order of a glob, decided for the whole folder. Thus a restart that
     rewrote the file of a later rank kept the stale caches current.
     """
-    from artistools.estimators.estimators import get_batch_textsource_stamp
-    from artistools.estimators.estimators import get_textsource_stats
+    from artistools.estimators.estimators import get_batch_textsource_mtime
+    from artistools.estimators.estimators import get_textsource_mtimes
 
     for rank in range(3):
         (tmp_path / f"estimators_{rank:04d}.out").write_text("timestep 0\n")
 
-    stats = get_textsource_stats(tmp_path)
-    assert sorted(stats.keys()) == [0, 1, 2]
+    mtimes = get_textsource_mtimes(tmp_path)
+    assert sorted(mtimes.keys()) == [0, 1, 2]
 
-    newest = max(mtime for mtime, _ in stats.values())
-    (tmp_path / "estimators_0002.out").write_text("timestep 0\ntimestep 1\n")
+    newest = max(mtimes.values())
     os.utime(tmp_path / "estimators_0002.out", (newest + 100.0, newest + 100.0))
-    stats = get_textsource_stats(tmp_path)
+    mtimes = get_textsource_mtimes(tmp_path)
 
-    batchstamp = get_batch_textsource_stamp(stats, 0, 2)
-    assert batchstamp == (newest + 100.0, sum(size for _, size in stats.values()))
-    # a batch that does not hold the rewritten rank keeps its own stamp
-    assert get_batch_textsource_stamp(stats, 0, 1) == (max(stats[0][0], stats[1][0]), stats[0][1] + stats[1][1])
+    assert get_batch_textsource_mtime(mtimes, 0, 2) == newest + 100.0
+    # a batch that does not hold the rewritten rank keeps its own time
+    assert get_batch_textsource_mtime(mtimes, 0, 1) == max(mtimes[0], mtimes[1])
     # a batch with no text file gives None
-    assert get_batch_textsource_stamp(stats, 5, 9) is None
+    assert get_batch_textsource_mtime(mtimes, 5, 9) is None
 
 
 def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
-    """The stamp of a rank comes from the file that the Rust parser selects, and no sibling decides.
+    """The mtime of a rank comes from the file that the Rust parser selects, and no sibling decides.
 
     The glob kept an arbitrary candidate of each rank. Thus a leftover sibling such as
     estimators_0000.out.bak could give the stamp while the parser read estimators_0000.out.
     """
-    from artistools.estimators.estimators import get_textsource_stats
+    from artistools.estimators.estimators import get_textsource_mtimes
 
     outfile = tmp_path / "estimators_0000.out"
     outfile.write_text("timestep 0\n")
     bakfile = tmp_path / "estimators_0000.out.bak"
-    bakfile.write_text("timestep 0 with more text\n")
+    bakfile.write_text("timestep 0\n")
     os.utime(bakfile, (outfile.stat().st_mtime + 100.0, outfile.stat().st_mtime + 100.0))
 
-    outstat = outfile.stat()
-    assert get_textsource_stats(tmp_path) == {0: (outstat.st_mtime, outstat.st_size)}
+    assert get_textsource_mtimes(tmp_path) == {0: outfile.stat().st_mtime}
 
     # a compressed file counts only when the plain name is absent, in the order of the parser
     gzfile = tmp_path / "estimators_0001.out.gz"
     gzfile.write_bytes(b"")
-    assert get_textsource_stats(tmp_path)[1] == (gzfile.stat().st_mtime, gzfile.stat().st_size)
+    assert get_textsource_mtimes(tmp_path)[1] == gzfile.stat().st_mtime
 
 
 def test_a_cached_scan_asks_for_no_progress_class() -> None:

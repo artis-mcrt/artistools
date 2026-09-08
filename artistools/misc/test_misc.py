@@ -230,100 +230,86 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     The message said only that the cache was not current. Thus a user could not see whether a new
     cache format version, a rewritten text file, or a damaged file caused the conversion.
     """
+    from artistools.misc.fileio import MTIME_TOLERANCE_S
+
     cacheversion = 3
     mtime = 1000.0
-    size = 500
 
     current = tmp_path / "current.parquet"
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current,
-        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime), "textsource_size": str(size)},
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
     )
-    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime, size)
+    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime)
     assert stalereason is None
     assert pqmetadata is not None
 
-    def get_reason(parquetfilepath: Path, textsource_mtime: float, textsource_size: int) -> str:
-        pqmetadata, stalereason = at.read_parquet_cache_metadata(
-            parquetfilepath, cacheversion, textsource_mtime, textsource_size
-        )
+    def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
+        pqmetadata, stalereason = at.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
         assert pqmetadata is None
         assert stalereason is not None
         return stalereason
 
-    # the text file changed after the run wrote the cache, thus the reason names both sizes
-    changedsource = get_reason(current, mtime, size + 10)
+    # the text file changed after the run wrote the cache, thus the reason names both times
+    changedmtime = mtime + MTIME_TOLERANCE_S + 10.0
+    changedsource = get_reason(current, changedmtime)
     assert "the text source changed" in changedsource
-    assert str(size) in changedsource
-    assert str(size + 10) in changedsource
+    assert str(mtime) in changedsource
+    assert str(changedmtime) in changedsource
 
     unstamped = tmp_path / "unstamped.parquet"
     at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
-    assert "no cacheversion stamp" in get_reason(unstamped, mtime, size)
+    assert "no cacheversion stamp" in get_reason(unstamped, mtime)
 
     oldversion = tmp_path / "oldversion.parquet"
     at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}),
-        oldversion,
-        metadata={"cacheversion": "0", "textsource_mtime": str(mtime), "textsource_size": str(size)},
+        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
-    assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime, size)
+    assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime)
 
     unreadable = tmp_path / "unreadable.parquet"
     unreadable.write_bytes(b"not parquet")
-    assert "not a readable parquet file" in get_reason(unreadable, mtime, size)
+    assert "not a readable parquet file" in get_reason(unreadable, mtime)
 
-    assert get_reason(tmp_path / "nosuchfile.parquet", mtime, size) == "the file does not exist"
+    assert get_reason(tmp_path / "nosuchfile.parquet", mtime) == "the file does not exist"
 
 
-def test_a_new_modification_time_alone_keeps_a_cache(tmp_path: Path) -> None:
-    """A text source that keeps its size keeps its cache, because a file system can change the time.
+def test_a_small_change_of_the_modification_time_keeps_a_cache(tmp_path: Path) -> None:
+    """A text source whose time moves by less than MTIME_TOLERANCE_S keeps its cache.
 
-    A cloud drive gives a file a new modification time each time it makes the local copy again. A
-    copy between two machines can do the same. The exact comparison of the time then rejected every
-    cache of a run, and each read paid minutes of conversion.
+    A cloud drive moves the time of a file by a few seconds each time it makes the local copy again.
+    The exact comparison of the time then rejected every cache of a run, and each read paid minutes
+    of conversion. The size of the text source cannot answer instead, because zstd compression of a
+    packets file keeps the time and changes the size.
     """
+    from artistools.misc.fileio import MTIME_TOLERANCE_S
+
     cacheversion = 3
-    mtime = 1000.0
-    size = 500
+    mtime = 1788811126.0
 
     current = tmp_path / "current.parquet"
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current,
-        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime), "textsource_size": str(size)},
-    )
-
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + 10.0, size)[1] is None
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime - 10.0, size)[1] is None
-
-    # a size other than the stamped one still rejects the cache
-    assert at.read_parquet_cache_metadata(current, cacheversion, mtime, size + 1)[1] is not None
-
-
-def test_a_cache_without_a_size_stamp_keeps_the_time_rule(tmp_path: Path) -> None:
-    """A cache from a version before the size stamp stays current while its modification time holds.
-
-    A user of a local disk thus reads the caches of every earlier run. No run converts its text
-    files again for the new stamp alone.
-    """
-    cacheversion = 3
-    mtime = 1000.0
-    size = 500
-
-    onlytime = tmp_path / "onlytime.parquet"
-    at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}),
-        onlytime,
         metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
     )
 
-    assert at.read_parquet_cache_metadata(onlytime, cacheversion, mtime, size)[1] is None
+    # the drift that a Google Drive mount gave the packets files of one run
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + 5.0)[1] is None
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime - 5.0)[1] is None
 
-    stalereason = at.read_parquet_cache_metadata(onlytime, cacheversion, mtime + 10.0, size)[1]
-    assert stalereason is not None
-    assert "the text source changed" in stalereason
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + MTIME_TOLERANCE_S)[1] is None
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + MTIME_TOLERANCE_S + 1.0)[1] is not None
+
+    # a stamp that no writer of this repository produces matches only the same text
+    handedited = tmp_path / "handedited.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        handedited,
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": "yesterday"},
+    )
+    assert at.read_parquet_cache_metadata(handedited, cacheversion, mtime)[1] is not None
 
 
 def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> None:
@@ -341,7 +327,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         stale_folder / "estimbatch00_0000_0000.out.parquet.tmp",
-        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0", "textsource_size": "1"},
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0"},
     )
     assert get_runfolder_timesteps(stale_folder) == (0, 1)
 
@@ -352,11 +338,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current_folder / "estimbatch00_0000_0000.out.parquet.tmp",
-        metadata={
-            "cacheversion": str(CACHEVERSION),
-            "textsource_mtime": str(textfile.stat().st_mtime),
-            "textsource_size": str(textfile.stat().st_size),
-        },
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfile.stat().st_mtime)},
     )
     # the current cache answers, thus the extra timestep of the text file stays unread
     assert get_runfolder_timesteps(current_folder) == (0,)
