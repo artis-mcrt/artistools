@@ -26,7 +26,8 @@ PLOTLIST_FULL: t.Final = (
     ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
     ["Te"],
     [["averageionisation", ["Fe", "Ni"]]],
-    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    # one figure holds two ion population types, because the directive applies to one subplot only
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]], ["ionpoptype", "elpop"]],
     [["populations", ["Co II", "Co III", "Co IV"]]],
     [["gamma_NT", ["Fe I", "Fe II", "Fe III", "Fe IV"]]],
     ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
@@ -40,7 +41,7 @@ PLOTLIST_IONS: t.Final = (
     ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
     ["Te"],
     [["averageionisation", ["Fe"]]],
-    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]],
+    [["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]], ["ionpoptype", "elpop"]],
     [["populations", ["Co II", "Co III", "Co IV"]]],
     ["heating_dep", "heating_coll", "heating_bf", "heating_ff", ["_yscale", "linear"]],
     ["cooling_adiabatic", "cooling_coll", "cooling_fb", "cooling_ff", ["_yscale", "linear"]],
@@ -141,9 +142,10 @@ def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
         "populations_FeIII": 0.3951266859004141,
         "populations_FeIV": 0.21184950941623004,
         "populations_FeV": 0.042194644079016,
-        "populations_CoII": 0.10471832570699871,
-        "populations_CoIII": 0.476333358337709,
-        "populations_CoIV": 0.41894831595529214,
+        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+        "populations_CoII": 2792.0,
+        "populations_CoIII": 12700.0,
+        "populations_CoIV": 11170.0,
         "gamma_NT_FeI": 7.571e-06,
         "gamma_NT_FeII": 3.711e-06,
         "gamma_NT_FeIII": 2.762e-06,
@@ -205,9 +207,10 @@ def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
         "populations_FeIII": 0.39508678896764393,
         "populations_FeIV": 0.21220745115264195,
         "populations_FeV": 0.042389615364484115,
-        "populations_CoII": 0.1044248111887582,
-        "populations_CoIII": 0.4759472294613869,
-        "populations_CoIV": 0.419627959349855,
+        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+        "populations_CoII": 2891.245944314228,
+        "populations_CoIII": 13177.379472537568,
+        "populations_CoIV": 11617.863948679813,
         "gamma_NT_FeI": 7.741022037400234e-06,
         "gamma_NT_FeII": 3.7947153292832773e-06,
         "gamma_NT_FeIII": 2.824587987164586e-06,
@@ -261,9 +264,10 @@ def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
         "populations_FeIII": 0.06814975291490555,
         "populations_FeIV": 0.8073020577430725,
         "populations_FeV": 0.12433895468711853,
-        "populations_CoII": 0.16990603506565094,
-        "populations_CoIII": 0.2491680532693863,
-        "populations_CoIV": 0.5809222459793091,
+        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+        "populations_CoII": 258420.234375,
+        "populations_CoIII": 3356819.75,
+        "populations_CoIV": 1119509120.0,
         "heating_dep": 2.559114818723174e-06,
         "heating_coll": 0.0002118289703503251,
         "heating_bf": 2.1746404854638968e-06,
@@ -287,9 +291,9 @@ def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
         "populations_FeIII": 0.2204248011112213,
         "populations_FeIV": 0.31659460067749023,
         "populations_FeV": 0.261174738407135,
-        "populations_CoII": 0.36840304732322693,
-        "populations_CoIII": 0.38466954231262207,
-        "populations_CoIV": 0.457830548286438,
+        "populations_CoII": 2369084.0,
+        "populations_CoIII": 19128034.0,
+        "populations_CoIV": 4299308032.0,
         "heating_dep": 2.440772732370533e-05,
         "heating_coll": 0.004782144911587238,
         "heating_bf": 4.8423054977320135e-05,
@@ -421,9 +425,10 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
         "populations_FeIII": 7.15164795263741e-05,
         "populations_FeIV": 0.47807180327557336,
         "populations_FeV": 0.5218229725433048,
-        "populations_CoII": 0.166666736471993,
-        "populations_CoIII": 0.015291374246013826,
-        "populations_CoIV": 0.8180049657821655,
+        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+        "populations_CoII": 5.306875965916498,
+        "populations_CoIII": 387430.00000003097,
+        "populations_CoIV": 12652086816.000006,
         "heating_dep": 2.2832464959235988e-14,
         "heating_coll": 0.0,
         "heating_bf": 7.490066713015075e-16,
@@ -1024,6 +1029,62 @@ def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.
     # exit_with_error writes to the standard error and then raises SystemExit, thus a rejected directive
     # would already have ended this test. Read the scale that the directive asked for instead
     assert not capsys.readouterr().err
+
+
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock) -> None:
+    """Each subplot carries its own ion population type, thus one figure holds more than one of them."""
+    from artistools.estimators.plotestimators import POPTYPE_YLABELS
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[
+            [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "absolute"]],
+            [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "elpop"]],
+        ],
+    )
+
+    labels = {call.args[1] for call in mockylabel.call_args_list if len(call.args) >= 2}
+    assert POPTYPE_YLABELS["absolute"] in labels
+    assert POPTYPE_YLABELS["elpop"] in labels
+
+
+@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
+def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock) -> None:
+    """A population series with no directive gives an absolute number density."""
+    from artistools.estimators.plotestimators import POPTYPE_YLABELS
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        timedays=260,
+        plotlist=[[["populations", ["Fe II", "Fe III"]]]],
+    )
+
+    labels = {call.args[1] for call in mockylabel.call_args_list if len(call.args) >= 2}
+    assert POPTYPE_YLABELS["absolute"] in labels
+    assert POPTYPE_YLABELS["elpop"] not in labels
+
+
+def test_estimator_unknown_ionpoptype_names_the_valid_ones(capsys: pytest.CaptureFixture[str]) -> None:
+    """An unknown ion population type must stop the command. The message must name the valid types."""
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            outputfile=outputpath,
+            timedays=260,
+            plotlist=[[["populations", ["Fe II"]], ["ionpoptype", "elpops"]]],
+        )
+
+    assert excinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "elpops" in message
+    assert "elpop" in message
 
 
 def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.CaptureFixture[str]) -> None:
