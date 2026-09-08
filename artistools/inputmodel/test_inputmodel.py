@@ -1610,7 +1610,9 @@ def test_save_load_3d_model() -> None:
     )
     dfmodel = lzdfmodel.collect()
 
-    rng = np.random.default_rng()
+    # CodSpeed runs a benchmark test more than one time in one process, and each run writes to the
+    # same folder. A seed gives the same model each time, thus a cache of an earlier run still matches
+    rng = np.random.default_rng(seed=6021)
 
     # give a random rho to half of the cells
     dfmodel[rng.integers(0, dfmodel.height, dfmodel.height // 2), "rho"] = 10.0 * rng.random(
