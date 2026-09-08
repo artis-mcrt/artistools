@@ -224,14 +224,44 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unr
     if unrelated_filename is not None:
         (tmp_path / unrelated_filename).touch()
 
-    # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
+    # only the file of the first rank changes, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
+    shutil.copy(sourcedir / "packets00_0001.out.zst", firstrankfile)
     newtime = firstrankfile.stat().st_mtime + 100.0
     os.utime(firstrankfile, (newtime, newtime))
 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
 
     assert parquetpath.stat().st_mtime_ns > firstwrite
+
+
+def test_packets_cache_survives_a_new_modification_time(tmp_path: Path) -> None:
+    """A batch cache stays current when its text files keep their size but get a new time.
+
+    A cloud drive gives a file a new modification time each time it makes the local copy again. The
+    exact comparison of the time then converted every batch of a large run again. Each read of that
+    run thus cost minutes.
+    """
+    import shutil
+
+    from artistools.packets.packets import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    firstwrite = parquetpath.stat().st_mtime_ns
+    assert "textsource_size" in pl.read_parquet_metadata(parquetpath)
+
+    for rank in (0, 1):
+        rankfile = tmp_path / f"packets00_{rank:04d}.out.zst"
+        newtime = rankfile.stat().st_mtime + 100.0
+        os.utime(rankfile, (newtime, newtime))
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    assert parquetpath.stat().st_mtime_ns == firstwrite
 
 
 @pytest.mark.parametrize("virtual", [False, True])
@@ -285,6 +315,9 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
         path.touch()
         os.utime(path, (1000 + index, 1000 + index))
 
-    mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
-    expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
-    assert sorted(mtimes) == pytest.approx(sorted(expected))
+    stats = at.packets.get_packets_textsource_stats(tmp_path, [*filenames, "packets00_0002.out"])
+    expected = [
+        (sourcestat.st_mtime, sourcestat.st_size)
+        for sourcestat in (at.firstexisting(filename, folder=tmp_path).stat() for filename in filenames)
+    ]
+    assert sorted(stats) == pytest.approx(sorted(expected))

@@ -809,15 +809,20 @@ def format_mtime(mtime: float | str | None) -> str:
 
 
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float
+    parquetfilepath: Path, cacheversion: int, textsource_mtime: float, textsource_size: int
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
-    The writer of a cache stamps the cache format version and the modification time of its text source
-    into the parquet metadata. A cache from a different artistools version, or from different text
-    files, fails the comparison. A new modification time of the cache does not make it current.
-    read_parquet_metadata is eager, thus a damaged file gives a reason here and not an error at a distant
-    collect().
+    The writer of a cache stamps the cache format version, the size of its text source, and the
+    modification time of that source into the parquet metadata. The size decides the freshness. A
+    file system can give a text file a new modification time that no write caused. A cloud drive
+    does this each time it makes the local copy of a file again. A copy between two machines can
+    also do it. The byte count of the text source survives both.
+
+    A cache that holds no size stamp keeps the modification time rule. A cache of an older
+    artistools version thus stays current on a file system that holds the time.
+    read_parquet_metadata is eager, thus a damaged file gives a reason here and not an error at a
+    distant collect().
 
     A current cache gives its metadata and no reason. A stale cache gives no metadata and the reason
     for the rejection, because a regeneration of a large cache costs minutes and the user must see
@@ -838,11 +843,18 @@ def read_parquet_cache_metadata(
             else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
         )
 
-    foundmtime = pqmetadata.get("textsource_mtime")
-    if foundmtime != str(textsource_mtime):
+    foundsize = pqmetadata.get("textsource_size")
+    if foundsize is None:
+        foundmtime = pqmetadata.get("textsource_mtime")
+        if foundmtime != str(textsource_mtime):
+            return None, (
+                f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
+                f" but the text file now has {format_mtime(textsource_mtime)}"
+            )
+    elif foundsize != str(textsource_size):
         return None, (
-            f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
-            f" but the text file now has {format_mtime(textsource_mtime)}"
+            f"the text source changed: the cache holds {foundsize} bytes of text,"
+            f" but the text source now has {textsource_size} bytes"
         )
 
     return pqmetadata, None

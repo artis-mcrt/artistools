@@ -232,44 +232,98 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     """
     cacheversion = 3
     mtime = 1000.0
+    size = 500
 
     current = tmp_path / "current.parquet"
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current,
-        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime), "textsource_size": str(size)},
     )
-    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime)
+    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime, size)
     assert stalereason is None
     assert pqmetadata is not None
 
-    def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
-        pqmetadata, stalereason = at.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
+    def get_reason(parquetfilepath: Path, textsource_mtime: float, textsource_size: int) -> str:
+        pqmetadata, stalereason = at.read_parquet_cache_metadata(
+            parquetfilepath, cacheversion, textsource_mtime, textsource_size
+        )
         assert pqmetadata is None
         assert stalereason is not None
         return stalereason
 
-    # the text file changed after the run wrote the cache, thus the reason names both times
-    changedsource = get_reason(current, mtime + 10.0)
+    # the text file changed after the run wrote the cache, thus the reason names both sizes
+    changedsource = get_reason(current, mtime, size + 10)
     assert "the text source changed" in changedsource
-    assert str(mtime) in changedsource
-    assert str(mtime + 10.0) in changedsource
+    assert str(size) in changedsource
+    assert str(size + 10) in changedsource
 
     unstamped = tmp_path / "unstamped.parquet"
     at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
-    assert "no cacheversion stamp" in get_reason(unstamped, mtime)
+    assert "no cacheversion stamp" in get_reason(unstamped, mtime, size)
 
     oldversion = tmp_path / "oldversion.parquet"
     at.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
+        pl.DataFrame({"timestep": [0]}),
+        oldversion,
+        metadata={"cacheversion": "0", "textsource_mtime": str(mtime), "textsource_size": str(size)},
     )
-    assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime)
+    assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime, size)
 
     unreadable = tmp_path / "unreadable.parquet"
     unreadable.write_bytes(b"not parquet")
-    assert "not a readable parquet file" in get_reason(unreadable, mtime)
+    assert "not a readable parquet file" in get_reason(unreadable, mtime, size)
 
-    assert get_reason(tmp_path / "nosuchfile.parquet", mtime) == "the file does not exist"
+    assert get_reason(tmp_path / "nosuchfile.parquet", mtime, size) == "the file does not exist"
+
+
+def test_a_new_modification_time_alone_keeps_a_cache(tmp_path: Path) -> None:
+    """A text source that keeps its size keeps its cache, because a file system can change the time.
+
+    A cloud drive gives a file a new modification time each time it makes the local copy again. A
+    copy between two machines can do the same. The exact comparison of the time then rejected every
+    cache of a run, and each read paid minutes of conversion.
+    """
+    cacheversion = 3
+    mtime = 1000.0
+    size = 500
+
+    current = tmp_path / "current.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        current,
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime), "textsource_size": str(size)},
+    )
+
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime + 10.0, size)[1] is None
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime - 10.0, size)[1] is None
+
+    # a size other than the stamped one still rejects the cache
+    assert at.read_parquet_cache_metadata(current, cacheversion, mtime, size + 1)[1] is not None
+
+
+def test_a_cache_without_a_size_stamp_keeps_the_time_rule(tmp_path: Path) -> None:
+    """A cache from a version before the size stamp stays current while its modification time holds.
+
+    A user of a local disk thus reads the caches of every earlier run. No run converts its text
+    files again for the new stamp alone.
+    """
+    cacheversion = 3
+    mtime = 1000.0
+    size = 500
+
+    onlytime = tmp_path / "onlytime.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0]}),
+        onlytime,
+        metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
+    )
+
+    assert at.read_parquet_cache_metadata(onlytime, cacheversion, mtime, size)[1] is None
+
+    stalereason = at.read_parquet_cache_metadata(onlytime, cacheversion, mtime + 10.0, size)[1]
+    assert stalereason is not None
+    assert "the text source changed" in stalereason
 
 
 def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> None:
@@ -287,7 +341,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         stale_folder / "estimbatch00_0000_0000.out.parquet.tmp",
-        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0"},
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0", "textsource_size": "1"},
     )
     assert get_runfolder_timesteps(stale_folder) == (0, 1)
 
@@ -298,7 +352,11 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current_folder / "estimbatch00_0000_0000.out.parquet.tmp",
-        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfile.stat().st_mtime)},
+        metadata={
+            "cacheversion": str(CACHEVERSION),
+            "textsource_mtime": str(textfile.stat().st_mtime),
+            "textsource_size": str(textfile.stat().st_size),
+        },
     )
     # the current cache answers, thus the extra timestep of the text file stays unread
     assert get_runfolder_timesteps(current_folder) == (0,)

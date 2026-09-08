@@ -387,8 +387,8 @@ def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[i
 CACHEVERSION = 1
 
 
-def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
-    """Return the time of the last change of each rank's estimator file, keyed by MPI rank.
+def get_textsource_stats(folderpath: Path | str) -> dict[int, tuple[float, int]]:
+    """Return the time of the last change and the size of each rank's estimator file, keyed by MPI rank.
 
     The glob finds the ranks, and the suffix order then selects one file for each rank: the same
     file that find_estimator_file() in rust/src/estimators.rs reads. A leftover sibling, e.g.
@@ -396,42 +396,49 @@ def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
     """
     folderpath = Path(folderpath)
     ranks = {int(textfile.name.split("_")[1].split(".")[0]) for textfile in folderpath.glob("estimators_????.out*")}
-    mtimes: dict[int, float] = {}
+    stats: dict[int, tuple[float, int]] = {}
     for rank in sorted(ranks):
         for suffix in ("", ".zst", ".gz", ".xz"):
             with contextlib.suppress(FileNotFoundError):
-                mtimes[rank] = (folderpath / f"estimators_{rank:04d}.out{suffix}").stat().st_mtime
+                filestat = (folderpath / f"estimators_{rank:04d}.out{suffix}").stat()
+                stats[rank] = (filestat.st_mtime, filestat.st_size)
                 break
-    return mtimes
+    return stats
 
 
-def get_batch_textsource_mtime(textsource_mtimes: Mapping[int, float], rankmin: int, rankmax: int) -> float | None:
-    """Return the newest change time of the text files of the ranks in the batch, or None when it has none.
+def get_batch_textsource_stamp(
+    textsource_stats: Mapping[int, tuple[float, int]], rankmin: int, rankmax: int
+) -> tuple[float, int] | None:
+    """Return the newest change time and the total size of the text files of the batch, or None when it has none.
 
     Every file of the batch counts. One rank file that a restart rewrote makes the whole batch cache
     stale, thus no single file can decide for the others.
     """
-    return max((mtime for rank, mtime in textsource_mtimes.items() if rankmin <= rank <= rankmax), default=None)
+    batchstats = [filestat for rank, filestat in textsource_stats.items() if rankmin <= rank <= rankmax]
+    if not batchstats:
+        return None
+
+    return max(mtime for mtime, _ in batchstats), sum(size for _, size in batchstats)
 
 
-def rankbatch_parquet_staleness(parquetfilepath: Path, textsource_mtime: float | None) -> str | None:
+def rankbatch_parquet_staleness(parquetfilepath: Path, textsource_stamp: tuple[float, int] | None) -> str | None:
     """Return the reason why the parquet cache is stale, or None when the cache is current.
 
     The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
     conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
     e.g. a cache that is absent, damaged, or written for a different cache format version.
     """
-    if textsource_mtime is None:
+    if textsource_stamp is None:
         # a cache in a folder that holds no text file stays current, because no source remains for a
         # new conversion. Only a cache that does not exist then needs one
         return None if parquetfilepath.is_file() else "the file does not exist"
 
-    return read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)[1]
+    return read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, *textsource_stamp)[1]
 
 
-def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
+def rankbatch_parquet_is_current(parquetfilepath: Path, textsource_stamp: tuple[float, int] | None) -> bool:
     """Return True when the parquet cache matches the cache format version and the text files."""
-    return rankbatch_parquet_staleness(parquetfilepath, textsource_mtime) is None
+    return rankbatch_parquet_staleness(parquetfilepath, textsource_stamp) is None
 
 
 def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str) -> bool:
@@ -442,8 +449,8 @@ def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str)
     """
     nameparts = parquetfilepath.name.split("_")
     rankmin, rankmax = int(nameparts[1]), int(nameparts[2].split(".")[0])
-    textsource_mtime = get_batch_textsource_mtime(get_textsource_mtimes(folderpath), rankmin, rankmax)
-    return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime)
+    textsource_stamp = get_batch_textsource_stamp(get_textsource_stats(folderpath), rankmin, rankmax)
+    return rankbatch_parquet_is_current(parquetfilepath, textsource_stamp)
 
 
 def get_estimators_rankbatch_parquetfile(
@@ -451,7 +458,7 @@ def get_estimators_rankbatch_parquetfile(
     folderpath: Path,
     batch_mpiranks: Sequence[int],
     batchindex: int,
-    textsource_mtime: float | None,
+    textsource_stamp: tuple[float, int] | None,
     stalereason: str | None,
     outdatedparquet: tuple[int, int] | None,
     verbose: bool = False,
@@ -502,6 +509,7 @@ def get_estimators_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
+        textsource_mtime, textsource_size = textsource_stamp if textsource_stamp is not None else (None, None)
         at.write_parquet_atomic(
             pldf_batch,
             parquetfilepath,
@@ -509,6 +517,7 @@ def get_estimators_rankbatch_parquetfile(
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
+                "textsource_size": str(textsource_size),
                 "batch_rank_min": str(min(batch_mpiranks)),
                 "batch_rank_max": str(max(batch_mpiranks)),
                 "batchindex": str(batchindex),
@@ -686,12 +695,12 @@ def scan_artis_estimators(
             (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
         ]
 
-        # one glob of each folder gives the text file mtimes of every batch, because a glob of a folder
+        # one glob of each folder gives the text file stamps of every batch, because a glob of a folder
         # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
         # its freshness to the progress bar and to the conversion
-        mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
-        batchmtimes = [
-            get_batch_textsource_mtime(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
+        statsoffolder = {runfolder: get_textsource_stats(runfolder) for runfolder in runfolders}
+        batchstamps = [
+            get_batch_textsource_stamp(statsoffolder[runfolder], min(mpiranks), max(mpiranks))
             for runfolder, _batchindex, mpiranks in pairs
         ]
         cachepaths = [
@@ -701,13 +710,13 @@ def scan_artis_estimators(
         # process installs after that check then keeps its place, because a rewrite replaces only the
         # file that the check saw
         outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
-        stalereasons = list(starmap(rankbatch_parquet_staleness, zip(cachepaths, batchmtimes, strict=True)))
+        stalereasons = list(starmap(rankbatch_parquet_staleness, zip(cachepaths, batchstamps, strict=True)))
 
         # a bar is worth its place only when a batch converts text files, which takes minutes. Current
         # parquet caches read no text, and their scan is lazy, thus a bar would show no work
-        batches: Iterable[tuple[tuple[Path, int, Sequence[int]], float | None, str | None, tuple[int, int] | None]] = (
-            list(zip(pairs, batchmtimes, stalereasons, outdatedparquets, strict=True))
-        )
+        batches: Iterable[
+            tuple[tuple[Path, int, Sequence[int]], tuple[float, int] | None, str | None, tuple[int, int] | None]
+        ] = list(zip(pairs, batchstamps, stalereasons, outdatedparquets, strict=True))
         if any(reason is not None for reason in stalereasons) and len(pairs) > 1:
             from artistools.misc.general import get_progress_class
 
@@ -719,12 +728,12 @@ def scan_artis_estimators(
                 folderpath=runfolder,
                 batch_mpiranks=mpiranks,
                 batchindex=batchindex,
-                textsource_mtime=textsource_mtime,
+                textsource_stamp=textsource_stamp,
                 stalereason=stalereason,
                 outdatedparquet=outdatedparquet,
                 verbose=verbose,
             )
-            for (runfolder, batchindex, mpiranks), textsource_mtime, stalereason, outdatedparquet in batches
+            for (runfolder, batchindex, mpiranks), textsource_stamp, stalereason, outdatedparquet in batches
         ]
 
         assert bool(parquetfiles)

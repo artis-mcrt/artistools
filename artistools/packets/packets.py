@@ -361,24 +361,25 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 CACHEVERSION = 1
 
 
-def get_packets_textsource_mtimes(modelpath: Path, filenames: Sequence[str]) -> list[float]:
-    """Return source modification times with at most one scan of each folder."""
+def get_packets_textsource_stats(modelpath: Path, filenames: Sequence[str]) -> list[tuple[float, int]]:
+    """Return the modification time and the size of each source file, with at most one scan of each folder."""
     rootentries = list(modelpath.iterdir())
-    mtimes: dict[str, float] = {}
+    stats: dict[str, tuple[float, int]] = {}
     for folder in (modelpath, *(entry for entry in rootentries if entry.is_dir())):
         entries = rootentries if folder == modelpath else folder.iterdir()
         paths = {entry.name: entry for entry in entries}
         for filename in filenames:
-            if filename in mtimes:
+            if filename in stats:
                 continue
             # Use the same folder and compression order as the source reader.
             for suffix in ("", *COMPRESSED_EXTENSIONS):
                 if (path := paths.get(f"{filename}{suffix}")) is not None and path.exists():
-                    mtimes[filename] = path.stat().st_mtime
+                    filestat = path.stat()
+                    stats[filename] = (filestat.st_mtime, filestat.st_size)
                     break
-        if len(mtimes) == len(filenames):
+        if len(stats) == len(filenames):
             break
-    return list(mtimes.values())
+    return list(stats.values())
 
 
 def get_packets_rankbatch_parquetfile(
@@ -403,13 +404,16 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
+        # every file of the batch counts, thus the total size decides the freshness. One rank file that a
         # restart rewrote then makes the whole batch cache stale
-        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
-        if len(textsource_mtimes) == len(batch_mpiranks):
-            textsource_mtime = max(textsource_mtimes)
+        textsource_stats = get_packets_textsource_stats(modelpath, text_filenames)
+        if len(textsource_stats) == len(batch_mpiranks):
+            textsource_mtime = max(mtime for mtime, _ in textsource_stats)
+            textsource_size = sum(size for _, size in textsource_stats)
 
-            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+            _, stalereason = read_parquet_cache_metadata(
+                parquetfilepath, CACHEVERSION, textsource_mtime, textsource_size
+            )
             if stalereason is None:
                 conversion_needed = False
             else:
@@ -438,8 +442,10 @@ def get_packets_rankbatch_parquetfile(
             for filename in text_filenames
         ]
 
-        # the stamp uses the same rule as the freshness check: the newest text file of the batch
-        textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)
+        # the stamp uses the same rule as the freshness check: the newest time and the total size
+        textsource_filestats = [text_file_path.stat() for text_file_path in text_file_paths]
+        textsource_mtime = max(filestat.st_mtime for filestat in textsource_filestats)
+        textsource_size = sum(filestat.st_size for filestat in textsource_filestats)
 
         column_names = (
             get_vpackets_text_columns(text_file_paths[0])
@@ -501,6 +507,7 @@ def get_packets_rankbatch_parquetfile(
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
+                "textsource_size": str(textsource_size),
             },
             replaces=outdatedparquet,
         )
