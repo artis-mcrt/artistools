@@ -534,7 +534,7 @@ def plot_levelpop(
 
 # The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name
 # is optional.
-DIRECTIVES = ("ymin", "ymax", "yscale")
+DIRECTIVES = ("ionpoptype", "ymin", "ymax", "yscale")
 
 # a series type groups the names that follow it, e.g. -plot averageionisation Fe Ni. Each one has its
 # own plot function in plot_subplot. An ion series needs no entry here, because the estimator columns
@@ -756,10 +756,15 @@ def plot_multi_ion_series(
     ionlist: Sequence[str],
     estimators: pl.LazyFrame,
     modelpath: str | Path,
+    poptype: str,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> SubplotItem:
-    """Return the series of an ion-specific property, e.g. populations."""
+    """Return the series of an ion-specific property, e.g. populations.
+
+    The poptype parameter sets the normalisation of a population series. Each subplot carries its own
+    value, thus one figure can show an absolute density in one subplot and an ion fraction in another.
+    """
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
     iontuplelist.sort()
     print(f"Subplot with ions: {iontuplelist}")
@@ -798,29 +803,29 @@ def plot_multi_ion_series(
         expr_yvals = pl.col(colname)
         print(f"  plotting {seriestype} {ionstr.replace('_', ' ')}")
 
-        if seriestype != "populations" or args.poptype == "absolute":
+        if seriestype != "populations" or poptype == "absolute":
             expr_normfactor = pl.lit(1)
-        elif args.poptype == "elpop":
+        elif poptype == "elpop":
             elsymbol = at.get_elsymbol(atomic_number)
             expr_normfactor = pl.col(f"nnelement_{elsymbol}")
-        elif args.poptype == "totalpop":
+        elif poptype == "totalpop":
             expr_normfactor = pl.col("nntot")
-        elif args.poptype in {"radialdensity", "cylradialdensity"}:
+        elif poptype in {"radialdensity", "cylradialdensity"}:
             # get the volumetric number density to later be multiplied by the surface area of a sphere or cylinder
             expr_normfactor = pl.lit(1)
-        elif args.poptype == "cumulative":
+        elif poptype == "cumulative":
             expr_normfactor = pl.lit(1)
         else:
             raise AssertionError
 
         # convert the volumetric number density [cm^-3] to a radial density [cm^-1] with the radius of each cell
         expr_tmid_s = pl.col("tmid_days") * day_to_s
-        if args.poptype == "radialdensity":
+        if poptype == "radialdensity":
             expr_yvals *= 4 * math.pi * (pl.col("vel_r_mid") * expr_tmid_s).pow(2)
-        elif args.poptype == "cylradialdensity":
+        elif poptype == "cylradialdensity":
             expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid") * expr_tmid_s
 
-        if args.poptype == "cumulative":
+        if poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
             # the sum is over the cells of one timestep, thus it must restart at each timestep
             expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
@@ -877,9 +882,9 @@ def plot_multi_ion_series(
         )
 
     if seriestype == "populations":
-        ylabel = POPTYPE_YLABELS.get(args.poptype)
+        ylabel = POPTYPE_YLABELS.get(poptype)
         if ylabel is None:
-            msg = f"Unknown poptype: {args.poptype}"
+            msg = f"Unknown poptype: {poptype}"
             raise ValueError(msg)
         ax.set_ylabel(ylabel)
     else:
@@ -1103,6 +1108,8 @@ def plot_subplot(
     remaining_plotitems: list[t.Any] = []
     ymin, ymax = None, None
     yscalegiven = False
+    # the -ionpoptype argument gives the type for the whole figure. A directive of a subplot replaces it
+    poptype = args.poptype
     for plotitem in plotitems:
         if isinstance(plotitem, str | pl.Expr):
             remaining_plotitems.append(plotitem)
@@ -1133,6 +1140,15 @@ def plot_subplot(
 
         elif seriestype == "ymax":
             ymax = float(params)
+
+        elif seriestype == "ionpoptype":
+            poptype = str(params)
+            if poptype not in POPTYPE_YLABELS:
+                suggestion = suggest_names(poptype, POPTYPE_YLABELS)
+                exit_with_error(
+                    f"'{poptype}' is not an ion population type",
+                    f"{suggestion + ' ' if suggestion else ''}The types are {', '.join(POPTYPE_YLABELS)}",
+                )
 
         elif seriestype == "yscale":
             # the scale must be set before the data, so that the axis autoscales in the right space.
@@ -1201,6 +1217,7 @@ def plot_subplot(
                         ionlist=ionlist,
                         estimators=estimators,
                         modelpath=modelpath,
+                        poptype=poptype,
                         args=args,
                         **plotkwargs,
                     )
@@ -1406,18 +1423,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             f"after it, e.g. -plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
             "an estimator that names an ion, e.g. -plot gamma_NT 'Fe II'. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
-            "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17. The subplots share one horizontal "
-            "axis, thus -xmin and -xmax set that axis for the whole figure"
+            "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17 -plot 'Fe II' 'Fe III' ionpoptype=elpop. "
+            "The directive ionpoptype= sets the normalisation of an ion population series to one of "
+            f"{', '.join(POPTYPE_YLABELS)}. The subplots share one horizontal axis, thus -xmin and -xmax set "
+            "that axis for the whole figure"
         ),
     )
 
+    # the ionpoptype= directive of a plot item replaces this argument, because each subplot holds its
+    # own type. The argument gives the type for the whole figure, thus an older script still runs
     parser.add_argument(
         "-ionpoptype",
         "-poptype",
         dest="poptype",
-        default="elpop",
+        default="absolute",
         choices=list(POPTYPE_YLABELS),
-        help="Plot absolute ion populations, or ion populations as a fraction of total or element population",
+        help=argparse.SUPPRESS,
     )
 
     addarg_nolegend(parser)
