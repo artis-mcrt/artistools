@@ -421,11 +421,8 @@ def rankbatch_parquet_staleness(parquetfilepath: Path, textsource_mtime: float |
     conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
     e.g. a cache that is absent, damaged, or written for a different cache format version.
     """
-    if textsource_mtime is None:
-        # a cache in a folder that holds no text file stays current, because no source remains for a
-        # new conversion. Only a cache that does not exist then needs one
-        return None if parquetfilepath.is_file() else "the file does not exist"
-
+    # a cache in a folder that holds no text file has no source for a new conversion. The cache
+    # format version and the state of the file must still match, but no modification time applies
     return read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)[1]
 
 
@@ -569,6 +566,9 @@ def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> p
     return pl.LazyFrame(
         [{"timestep": ts, "modelgridindex": mgi, **estimvals} for (ts, mgi), estimvals in estimators.items()],
         orient="row",
+        # a back-end writes a key only for the ions that a cell holds, thus a column can first appear
+        # in a late row. Read every row for the schema. The default of 100 rows drops such a column
+        infer_schema_length=None,
     ).with_columns(pl.col("timestep").cast(pl.Int32), pl.col("modelgridindex").cast(pl.Int32))
 
 
@@ -738,6 +738,15 @@ def scan_artis_estimators(
             ["timestep", "modelgridindex"], maintain_order=True, keep="first"
         )
     else:
+        # get_runfolders() gives no folder for two different reasons. Name the one that applies.
+        # A run that stopped early gives a plot of a timestep that the run never reached
+        if match_timestep is not None and at.get_runfolders(modelpath):
+            msg = (
+                f"The run folders of {modelpath} hold none of the timesteps"
+                f" {min(match_timestep)} to {max(match_timestep)}."
+            )
+            raise ValueError(msg)
+
         print_warning(
             f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )

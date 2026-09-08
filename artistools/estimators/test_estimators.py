@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -1943,3 +1944,44 @@ def test_add_derived_estimator_columns_fills_absent_channels_with_zero() -> None
     # a ratio of zero makes gamma_dep a division by zero, thus a ratio keeps its null
     assert dfout["heating_gamma/gamma_dep"].to_list() == [0.5, None]
     assert dfout["Te"].to_list() == [5000.0, None]
+
+
+def test_estimator_dict_keeps_a_column_that_a_late_row_adds() -> None:
+    """Every key of the dict must become a column, even when the first rows hold none of it.
+
+    A back-end writes a key only for the ions that a cell holds. polars reads 100 rows for the schema
+    by default. An ion that first appeared in a later cell lost its column, and no error told the user.
+    """
+    nrows = 250
+    firstrow_late = 120
+    estimators: dict[tuple[int, int], dict[str, float]] = {
+        (0, mgi): {"Te": 5000.0} | ({"nnion_Fe_III": 1.0} if mgi >= firstrow_late else {}) for mgi in range(nrows)
+    }
+
+    dfout = at.estimators.estimators.lazyframe_from_estimator_dict(estimators).collect()
+
+    assert "nnion_Fe_III" in dfout.columns
+    assert dfout["nnion_Fe_III"].null_count() == firstrow_late
+    assert dfout.height == nrows
+
+
+def test_average_ionisation_ylim_covers_every_element() -> None:
+    """The y limit must cover the element of the highest ion charge, whatever the order of the elements.
+
+    The old code set the limit inside the loop over the elements. Thus the last element clipped the
+    curve of every element before it.
+    """
+    estimators = pl.LazyFrame({
+        "deltavol_deltat": [1.0, 1.0],
+        "nnelement_Fe": [1.0, 1.0],
+        "nnion_Fe_I": [0.0, 0.0],
+        "nnion_Fe_VI": [1.0, 1.0],
+        "nnelement_Ni": [1.0, 1.0],
+        "nnion_Ni_I": [1.0, 1.0],
+    })
+
+    _, ax = plt.subplots()
+    # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
+    at.estimators.plotestimators.plot_average_ionisation(ax, ["Fe", "Ni"], estimators)
+    assert ax.get_ylim()[1] > 5.0
+    plt.close()

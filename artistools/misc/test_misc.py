@@ -1866,3 +1866,74 @@ def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps(
     runfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
 
     assert get_runfolder_timesteps(runfolder) == ()
+
+
+def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
+    """A NaN element holds no data, thus the filter must keep it in its own element and give it no weight.
+
+    A direction bin that received no packet holds a NaN. The old filter made every bin within four
+    standard deviations of it a NaN too.
+    """
+    data = np.outer(np.sin(np.linspace(0.0, np.pi, 4)), np.cos(np.linspace(0.0, 2 * np.pi, 6, endpoint=False)))
+    withnan = data.copy()
+    withnan[1, 2] = np.nan
+
+    smoothed = at.gaussian_filter_wrap(withnan, sigma=1.2)
+    assert np.isfinite(smoothed).all()
+
+    # the smoothing of an array that holds no NaN must not change
+    assert np.allclose(at.gaussian_filter_wrap(data, sigma=1.2), at.gaussian_filter_wrap(data, sigma=1.2))
+
+    # an element that has no neighbour with data stays a NaN
+    allnan = np.full_like(data, np.nan)
+    assert np.isnan(at.gaussian_filter_wrap(allnan, sigma=1.2)).all()
+
+
+def test_get_model_name_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The name of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus every plot after a change of the working folder kept
+    the name of the first model.
+    """
+    for foldername in ("modelA", "modelB"):
+        (tmp_path / foldername).mkdir()
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.get_model_name(Path()) == "modelA"
+
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.get_model_name(Path()) == "modelB"
+
+
+def test_phibin_rank_ascends_with_phi() -> None:
+    """The rank of a phi bin must ascend with phi, because the ARTIS bin index does not.
+
+    A colour bar that ascends with phi gave every series the label of the mirrored phi bin.
+    """
+    nphibins = at.get_viewingdirection_phibincount()
+    ranks = [at.get_phibin_rank_ascending(phibin) for phibin in range(nphibins)]
+    assert sorted(ranks) == list(range(nphibins))
+
+    phi_lower, _, _ = at.get_phi_bins(usedegrees=False)
+    binsbyrank = sorted(range(nphibins), key=at.get_phibin_rank_ascending)
+    assert [phi_lower[phibin] for phibin in binsbyrank] == sorted(phi_lower)
+
+
+def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: Path) -> None:
+    """A cache that has no text source must still match the cache format version.
+
+    The estimator reader skipped every check for such a cache. Thus it gave a cache of an old schema,
+    and the columns that the schema lacked became zero without a warning.
+    """
+    parquetfilepath = tmp_path / "cache.parquet"
+    at.write_parquet_atomic(
+        pl.DataFrame({"a": [1]}), parquetfilepath, metadata={"cacheversion": "1", "textsource_mtime": "100.0"}
+    )
+
+    # no text source: the modification time gives no comparison, but the version still applies
+    assert at.read_parquet_cache_metadata(parquetfilepath, 1, None)[1] is None
+    assert "cache format version" in str(at.read_parquet_cache_metadata(parquetfilepath, 2, None)[1])
+
+    # a text source that changed still makes the cache stale
+    assert at.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
+    assert "text source changed" in str(at.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])

@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import C_cm_per_s
@@ -25,6 +26,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -494,8 +496,14 @@ def get_ion_spectra(
         )
 
         if not args.include_permitted and not pldftransitions.is_empty():
-            pldftransitions = pldftransitions.filter(pl.col("forbidden") != 0)
-            print(f"  ({pldftransitions.height:6d} forbidden)")
+            if "forbidden" in pldftransitions.columns:
+                pldftransitions = pldftransitions.filter(pl.col("forbidden") != 0)
+                print(f"  ({pldftransitions.height:6d} forbidden)")
+            else:
+                # only the ARTIS line list marks a forbidden line
+                print_warning(
+                    f"the {args.atomicdatabase} line list has no forbidden flag, thus every line stays in the plot"
+                )
 
         if pldftransitions.is_empty():
             continue
@@ -552,7 +560,12 @@ def get_ion_spectra(
 
         if args.print_lines:
             print(dftransitions.columns)
-            print(dftransitions.select("lower", "upper", "forbidden", "A", "lambda_angstroms"))
+            # only the ARTIS line list has level indices and a forbidden flag
+            print(
+                dftransitions.select(
+                    cs.by_name("lower", "upper", "forbidden", "A", "lambda_angstroms", require_all=False)
+                )
+            )
 
     print()
 

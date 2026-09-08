@@ -90,6 +90,9 @@ def gaussian_filter_wrap(data: npt.NDArray[np.floating], sigma: float) -> npt.ND
 
     Matches scipy.ndimage.gaussian_filter with mode="wrap" and the default truncation of four
     standard deviations, but only for a 2D array and a scalar sigma greater than zero.
+
+    A NaN element holds no data. The filter gives the mean of the elements that hold data, thus one
+    NaN does not spread over the neighbourhood. An element that has no neighbour with data stays NaN.
     """
     out = np.asarray(data, dtype=np.float64)
     if out.ndim != 2:
@@ -107,11 +110,22 @@ def gaussian_filter_wrap(data: npt.NDArray[np.floating], sigma: float) -> npt.ND
     def convolve_valid(arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
         return np.asarray(np.convolve(arr, kernel, mode="valid"), dtype=np.float64)
 
-    for axis in (0, 1):
-        padwidth = [(0, 0), (0, 0)]
-        padwidth[axis] = (radius, radius)
-        out = np.apply_along_axis(convolve_valid, axis, np.pad(out, padwidth, mode="wrap"))
-    return out
+    def smooth(arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        for axis in (0, 1):
+            padwidth = [(0, 0), (0, 0)]
+            padwidth[axis] = (radius, radius)
+            arr = np.apply_along_axis(convolve_valid, axis, np.pad(arr, padwidth, mode="wrap"))
+        return arr
+
+    hasdata = np.isfinite(out)
+    if hasdata.all():
+        return smooth(out)
+
+    # normalise by the weight of the elements that hold data. A NaN then stays in its own element,
+    # and the neighbours of that element keep their own values
+    weight = smooth(hasdata.astype(np.float64))
+    smoothed = smooth(np.where(hasdata, out, 0.0))
+    return np.where(weight > 0.0, smoothed / np.where(weight > 0.0, weight, 1.0), np.nan)
 
 
 def import_optional(modulename: str) -> "ModuleType":

@@ -809,7 +809,7 @@ def format_mtime(mtime: float | str | None) -> str:
 
 
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float
+    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -822,6 +822,9 @@ def read_parquet_cache_metadata(
     A current cache gives its metadata and no reason. A stale cache gives no metadata and the reason
     for the rejection, because a regeneration of a large cache costs minutes and the user must see
     what caused it. Each reason reads as a lower-case clause after the word "because".
+
+    A textsource_mtime of None shows that the text source is absent. The function then compares no
+    modification times, but the cache format version and the state of the file still apply.
     """
     try:
         pqmetadata = pl.read_parquet_metadata(parquetfilepath)
@@ -839,7 +842,7 @@ def read_parquet_cache_metadata(
         )
 
     foundmtime = pqmetadata.get("textsource_mtime")
-    if foundmtime != str(textsource_mtime):
+    if textsource_mtime is not None and foundmtime != str(textsource_mtime):
         return None, (
             f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
             f" but the text file now has {format_mtime(textsource_mtime)}"

@@ -71,9 +71,12 @@ def plot_slice_modelcolumn(
                 # the floor is a linear value that the clamp below applies before the logarithm
                 msg = f"-floorval must be positive with --logcolorscale, got {args.floorval}"
                 raise ValueError(msg)
-            colorscale = np.array([
-                args.floorval if x < args.floorval or not math.isfinite(x) else x for x in colorscale
-            ])
+            # np.where keeps a masked array masked. A comprehension gives a plain array, thus it puts
+            # every cell that --hideemptycells masked back on the plot at the floor value
+            with np.errstate(invalid="ignore"):
+                colorscale = np.where(
+                    np.isfinite(colorscale) & (colorscale >= args.floorval), colorscale, args.floorval
+                )
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
 

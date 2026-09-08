@@ -362,6 +362,7 @@ def plot_average_ionisation(
     colnames = estimators.collect_schema().names()
 
     plans = []
+    maxioncharge = 0
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
         atomic_number = at.get_atomic_number(paramvalue)
@@ -374,7 +375,7 @@ def plot_average_ionisation(
 
         ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
         ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
-        ax.set_ylim(0.0, max(ioncharges) + 0.1)
+        maxioncharge = max(maxioncharge, *ioncharges)
         expr_charge_per_nuc = pl.sum_horizontal([
             ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
         ]) / pl.col(f"nnelement_{elsymb}")
@@ -384,6 +385,9 @@ def plot_average_ionisation(
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
         plans.append(SeriesPlan(label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs))
+
+    # the limit must cover every element, thus set it after the loop over the elements
+    ax.set_ylim(0.0, maxioncharge + 0.1)
 
     return plans
 
@@ -765,12 +769,15 @@ def plot_multi_ion_series(
 
         if args.poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
-            expr_yvals = (expr_yvals * pl.col("volume")).cum_sum()
+            # the sum is over the cells of one timestep, thus it must restart at each timestep
+            expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
 
         lazyframes.append(
             estimators.select(
                 pl.col("deltavol_deltat").alias("celltsweight"),
-                (expr_yvals / expr_normfactor).fill_nan(0.0).alias("yvalue"),
+                # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
+                # mean in get_line_points then drops the cell and does not count it as zero.
+                (expr_yvals / expr_normfactor).fill_nan(None).alias("yvalue"),
                 cs.starts_with("xvalue"),
             )
         )

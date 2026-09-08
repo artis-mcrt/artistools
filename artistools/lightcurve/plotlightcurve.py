@@ -863,9 +863,8 @@ def get_viewinganglecolor_for_colorbar(
     nphibins = at.get_viewingdirection_phibincount()
     costheta_index, phi_index = divmod(angle, nphibins)
     if args.colorbarphi:
-        assert nphibins == 10
-        reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
-        colorindex = reorderphibins.get(phi_index, phi_index)
+        # the colour bar ticks ascend with phi, thus the colour index must be the rank and not the bin
+        colorindex = at.get_phibin_rank_ascending(phi_index)
     elif args.colorbarcostheta:
         colorindex = costheta_index
     else:
@@ -1281,8 +1280,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Make light curve from R-packets (default unless --gamma is passed)",
     )
-
-    parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 
     addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
