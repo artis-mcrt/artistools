@@ -474,16 +474,18 @@ def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_compl
 def rankbatch_parquet_is_current(
     parquetfilepath: Path, textsource_mtime: float | None, *, textsource_complete: bool
 ) -> bool:
-    """Return True when the reader can take the data of a batch from the parquet cache.
+    """Return True when the reader takes the data of a batch from the parquet cache.
 
-    A stale cache answers no question that a text file can answer, thus get_runfolder_timesteps()
-    reads the text files instead. A batch that holds no text file at all has no other source, thus a
-    readable cache still answers there and the run folder keeps its data.
+    get_runfolder_timesteps() must name the timesteps that a scan of the run then gives it. A batch
+    that holds no full set of text files keeps its cache, because no conversion can replace it, thus
+    a readable cache of such a batch answers here even when it is stale. A complete batch converts
+    its text files again, thus only a current cache answers there.
     """
     if rankbatch_parquet_staleness(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete) is None:
         return True
 
-    return textsource_mtime is None and not textsource_complete and parquet_is_readable(parquetfilepath)
+    # the same rule that get_estimators_rankbatch_parquetfile() applies, so that the two agree
+    return rankbatch_cache_cannot_be_rebuilt(parquetfilepath, textsource_complete=textsource_complete)
 
 
 def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str) -> bool:

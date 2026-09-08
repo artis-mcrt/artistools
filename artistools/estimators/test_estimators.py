@@ -2133,3 +2133,41 @@ def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
 
     with pytest.raises(SystemExit):
         normalise_plotitems(["populations"], ["Te", "nnion_Fe_II"])
+
+
+def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
+    """A batch that keeps some text files must still answer from a cache that no conversion can replace.
+
+    get_runfolder_timesteps() must name the timesteps that a scan then gives it. A rejection made it
+    read the one text file that remains, thus it lost the timesteps that only the cache holds and it
+    named a set that the scan cannot deliver.
+    """
+    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    runfolder = tmp_path / "job1.slurm"
+    runfolder.mkdir()
+    # the file of rank 0 remains, thus the batch is incomplete and no conversion can take place
+    textfile = runfolder / "estimators_0000.out"
+    textfile.write_text("timestep 0\n")
+    os.utime(textfile, (1000.0, 1000.0))
+
+    parquetfilepath = runfolder / "estimbatch00_0000_0002.out.parquet.tmp"
+    at.write_parquet_atomic(
+        pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
+        parquetfilepath,
+        metadata={"cacheversion": "0", "textsource_mtime": "1000.0"},
+    )
+
+    # the reason still names the fault, so that the reader can give a warning
+    assert "cache format version" in str(
+        rankbatch_parquet_staleness(parquetfilepath, 1000.0, textsource_complete=False)
+    )
+    # but the cache answers, because the scan of the run keeps it for the same reason
+    assert rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)
+    assert get_runfolder_timesteps(runfolder) == (0, 1, 2)
+
+    # a damaged cache is no source at all, thus it answers nothing
+    parquetfilepath.write_bytes(b"not parquet")
+    assert not rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)
