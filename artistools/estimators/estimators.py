@@ -28,6 +28,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc.fileio import format_mtime
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import parquet_is_readable
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -433,8 +434,10 @@ def rankbatch_parquet_staleness(
     compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
     absent text file proves nothing. The cache format version applies to a batch of either kind.
     """
+    # an archived run of estimators costs hours to convert again, thus a cache from before the stamps
+    # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
     pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, CACHEVERSION, textsource_mtime if textsource_complete else None
+        parquetfilepath, CACHEVERSION, textsource_mtime if textsource_complete else None, accept_unstamped=True
     )
     if stalereason is not None or textsource_complete or textsource_mtime is None:
         return stalereason
@@ -465,15 +468,7 @@ def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_compl
     sometimes every file except the one of rank 0, thus no conversion can take place. A damaged cache
     is no source at all, thus only a readable parquet counts.
     """
-    if textsource_complete:
-        return False
-
-    try:
-        pl.read_parquet_metadata(parquetfilepath)
-    except (FileNotFoundError, pl.exceptions.PolarsError, OSError):
-        return False
-
-    return True
+    return not textsource_complete and parquet_is_readable(parquetfilepath)
 
 
 def rankbatch_parquet_is_current(
@@ -481,13 +476,14 @@ def rankbatch_parquet_is_current(
 ) -> bool:
     """Return True when the reader can take the data of a batch from the parquet cache.
 
-    A cache that no conversion can replace stays in use even when it is stale, because the reader
-    would otherwise see a run folder that holds no data at all.
-    get_estimators_rankbatch_parquetfile() gives the warning in that case.
+    A stale cache answers no question that a text file can answer, thus get_runfolder_timesteps()
+    reads the text files instead. A batch that holds no text file at all has no other source, thus a
+    readable cache still answers there and the run folder keeps its data.
     """
-    return rankbatch_parquet_staleness(
-        parquetfilepath, textsource_mtime, textsource_complete=textsource_complete
-    ) is None or rankbatch_cache_cannot_be_rebuilt(parquetfilepath, textsource_complete=textsource_complete)
+    if rankbatch_parquet_staleness(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete) is None:
+        return True
+
+    return textsource_mtime is None and not textsource_complete and parquet_is_readable(parquetfilepath)
 
 
 def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str) -> bool:

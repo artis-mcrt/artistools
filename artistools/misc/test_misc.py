@@ -258,12 +258,12 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     assert str(mtime) in changedsource
     assert str(changedmtime) in changedsource
 
-    # a cache that holds no version stamp counts as version 1, which the artistools versions before
-    # the stamp wrote. Thus a reader of format 1 keeps it, and only a later format rejects it
+    # a cache that holds no stamp is stale by default, because a rebuild of a cheap cache costs less
+    # than a wrong number. Only a reader that gives accept_unstamped keeps it
     unstamped = tmp_path / "unstamped.parquet"
-    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
-    assert f"version is 1, but this artistools version writes {cacheversion}" in get_reason(unstamped, mtime)
-    assert at.read_parquet_cache_metadata(unstamped, 1, mtime)[1] is None
+    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
+    assert "no cacheversion stamp" in get_reason(unstamped, mtime)
+    assert at.read_parquet_cache_metadata(unstamped, cacheversion, mtime, accept_unstamped=True)[1] is None
 
     oldversion = tmp_path / "oldversion.parquet"
     at.write_parquet_atomic(
@@ -1887,8 +1887,13 @@ def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
     smoothed = at.gaussian_filter_wrap(withnan, sigma=1.2)
     assert np.isfinite(smoothed).all()
 
-    # the smoothing of an array that holds no NaN must not change
-    assert np.allclose(at.gaussian_filter_wrap(data, sigma=1.2), at.gaussian_filter_wrap(data, sigma=1.2))
+    # an element that holds data keeps a value close to the smoothing of the array without the NaN
+    assert np.allclose(smoothed[0, 0], at.gaussian_filter_wrap(data, sigma=1.2)[0, 0], rtol=0.2)
+
+    # an infinite element holds no data either, thus it takes the mean of its neighbours
+    withinf = data.copy()
+    withinf[1, 2] = np.inf
+    assert np.isfinite(at.gaussian_filter_wrap(withinf, sigma=1.2)).all()
 
     # an element that has no neighbour with data stays a NaN
     allnan = np.full_like(data, np.nan)
@@ -1946,23 +1951,26 @@ def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: 
 
 
 def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
-    """A cache that an artistools version before the stamps wrote must stay current.
+    """A reader that gives accept_unstamped must keep a cache that the versions before the stamps wrote.
 
     Such a cache holds no cacheversion and no textsource_mtime. A rejection rebuilds every cache of
-    an archived run, which costs hours and reads text files that the run may no longer hold.
+    an archived run of estimators or packets, which costs hours and reads text files that the run may
+    no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
+    cache that a few seconds rebuild gives a wrong number for no gain.
     """
     from artistools.misc.fileio import mtime_matches_stamp
 
-    # nothing can date the text source of a cache that holds no stamp, thus every time matches
-    assert mtime_matches_stamp(None, 1000.0)
-    assert mtime_matches_stamp(None, 2.0e9)
+    # a cache that holds no stamp dates its text source in no way, thus the stamp matches no time
+    assert not mtime_matches_stamp(None, 1000.0)
 
     # a real cache of this kind holds only the arrow schema
     legacy = tmp_path / "legacy.parquet"
     at.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
     assert "cacheversion" not in pl.read_parquet_metadata(legacy)
     assert "textsource_mtime" not in pl.read_parquet_metadata(legacy)
-    assert at.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1] is None
+
+    assert at.read_parquet_cache_metadata(legacy, 1, 1760711077.0, accept_unstamped=True)[1] is None
+    assert "no cacheversion stamp" in str(at.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1])
 
     # a cache that holds a stamp keeps the strict comparison
     stamped = tmp_path / "stamped.parquet"

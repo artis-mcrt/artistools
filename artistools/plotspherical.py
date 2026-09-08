@@ -117,8 +117,8 @@ def bin_packets_by_direction(
     def energyweightedmean(var: str) -> pl.Expr:
         """Return the mean of a column over a direction bin, with the packet energy as the weight.
 
-        A packet that matched no estimator row holds a null value. mean() passes over such a row, thus
-        the denominator holds only the weights of the rows that have a value.
+        A packet that matched no estimator row holds a null value. The numerator passes over such a
+        row, thus the denominator holds only the weights of the rows that have a value.
         """
         weight = pl.col("e_rf").filter(pl.col(var).is_not_null())
         return (pl.col(var) * pl.col("e_rf")).sum() / weight.sum()
@@ -218,7 +218,7 @@ def bin_packets_by_direction(
         .drop("rangebin")
         # a bin that received no packet has a count of zero and, for a sum over the packets, a
         # luminosity of zero. Every other variable is a mean over the packets, thus it stays null.
-        # The plot then leaves such a bin blank and keeps it out of the range of the colour bar
+        # The plot then leaves such a bin blank, unless -gaussian_sigma smooths the neighbours in
         .with_columns(cs.by_name("count", "luminosity", require_all=False).fill_null(0))
         .sort(["timebin", "costhetabin", "phibinmonotonicasc"])
     ).collect()

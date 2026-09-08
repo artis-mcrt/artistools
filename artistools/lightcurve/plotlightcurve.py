@@ -1591,11 +1591,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.escape_type is not None:
         # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus
-        # -escape_type TYPE_GAMMA gave an R-packet light curve
-        if args.escape_type == "TYPE_GAMMA":
-            args.gamma = True
-        else:
-            args.rpkt = True
+        # -escape_type TYPE_GAMMA gave an R-packet light curve. It names one type, thus it sets one
+        args.gamma = args.escape_type == "TYPE_GAMMA"
+        args.rpkt = not args.gamma
 
     if args.rpkt is False and not args.gamma:
         # if we're not plotting gamma, then we want to plot the r-packets by default

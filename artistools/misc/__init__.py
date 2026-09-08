@@ -83,6 +83,7 @@ from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
+from artistools.misc.fileio import parquet_is_readable as parquet_is_readable
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
 from artistools.misc.fileio import path_is_reference_data as path_is_reference_data

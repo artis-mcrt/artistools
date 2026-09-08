@@ -2023,17 +2023,26 @@ def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
 
 
 def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
-    """get_runfolder_timesteps() must read the cache of a run folder that holds no estimator text file."""
+    """get_runfolder_timesteps() must read the cache of a run folder whose text files are incomplete.
+
+    A batch of three ranks keeps the file of rank 0 alone, thus no conversion can replace the cache.
+    A rejection made get_runfolder_timesteps() find no timesteps, and the folder then held no data.
+    """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()
+    textfile = runfolder / "estimators_0000.out"
+    textfile.write_text("timestep 0\n")
+    os.utime(textfile, (1000.0, 1000.0))
+
+    # the cache of an archived run holds neither stamp, because a version before the stamps wrote it
     at.write_parquet_atomic(
         pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
-        runfolder / "estimbatch00_0000_0000.out.parquet.tmp",
-        metadata={"cacheversion": "0", "textsource_mtime": "1000.0"},
+        runfolder / "estimbatch00_0000_0002.out.parquet.tmp",
     )
 
+    # the text file of rank 0 holds timestep 0 alone, thus a fall back to it would lose two timesteps
     assert get_runfolder_timesteps(runfolder) == (0, 1, 2)
 
 

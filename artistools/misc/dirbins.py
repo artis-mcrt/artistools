@@ -158,9 +158,10 @@ def print_theta_phi_definitions() -> None:
 def get_phibin_rank_ascending(phibin: int) -> int:
     """Return the rank of an ARTIS phi bin in the order that phi increases.
 
-    The ARTIS phi bins do not ascend with phi. The first half covers phi from 0 upward, and the second
-    half follows it, thus bin 0 holds the highest phi. A colour scale or an axis that ascends with phi
-    needs this rank and not the bin index. See get_phi_bins for the range of each bin.
+    The ARTIS phi bins do not ascend with phi. The second half covers phi from 0 upward, and the
+    first half holds the phi above pi in descending order, thus bin 0 holds the highest phi. A colour
+    scale or an axis that ascends with phi needs this rank and not the bin index. See get_phi_bins
+    for the range of each bin.
     """
     nphibins = get_viewingdirection_phibincount()
     halfbins = nphibins // 2

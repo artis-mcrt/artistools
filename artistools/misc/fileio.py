@@ -818,15 +818,14 @@ MTIME_TOLERANCE_S = 30.0
 def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool:
     """Return True when a stamped modification time counts as the time of the text source.
 
-    A cache that holds no stamp comes from an artistools version before the stamp existed. Nothing
-    can date the text source of such a cache, thus it matches. A rebuild of every cache of an
-    archived run costs hours, and the version stamp follows the same rule. A stamp that no writer of
-    this repository can produce, e.g. a hand-edited one, matches only the same text. The size of the
-    text source cannot decide this question: zstd keeps the time of a packets file and changes the
-    size.
+    A cache that holds no stamp dates its text source in no way, thus it matches no time. The caller
+    decides what to do with such a cache, see the accept_unstamped argument of
+    read_parquet_cache_metadata. A stamp that no writer of this repository can produce, e.g. a
+    hand-edited one, matches only the same text. The size of the text source cannot decide this
+    question: zstd keeps the time of a packets file and changes the size.
     """
     if foundmtime is None:
-        return True
+        return False
 
     try:
         return abs(float(foundmtime) - textsource_mtime) <= MTIME_TOLERANCE_S
@@ -834,22 +833,42 @@ def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool
         return foundmtime == str(textsource_mtime)
 
 
+def parquet_is_readable(parquetfilepath: Path) -> bool:
+    """Return True when polars can read the metadata of a parquet file.
+
+    A damaged cache is no source of data at all. A reader that keeps a stale cache, because no text
+    file remains to rebuild it, still needs this test.
+    """
+    try:
+        pl.read_parquet_metadata(parquetfilepath)
+    except (FileNotFoundError, pl.exceptions.PolarsError, OSError):
+        return False
+
+    return True
+
+
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None
+    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, accept_unstamped: bool = False
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
-    The writer of a cache stamps the cache format version and the modification time of its text source
-    into the parquet metadata. A cache from a different artistools version, or from different text
-    files, fails the comparison. A cache that holds no version stamp counts as version 1, which is the
-    format that the artistools versions before the stamp wrote. The comparison of the times has the tolerance MTIME_TOLERANCE_S,
-    because a file system can move the time of a file that no write changed. A new modification time
-    of the cache does not make it current. read_parquet_metadata is eager, thus a damaged file gives a
-    reason here and not an error at a distant collect().
+    The writer of a cache stamps the cache format version and the modification time of its text
+    source into the parquet metadata. A cache from a different artistools version, or from different
+    text files, fails the comparison. The comparison of the times has the tolerance
+    MTIME_TOLERANCE_S, because a file system can move the time of a file that no write changed. A new
+    modification time of the cache does not make it current. read_parquet_metadata is eager, thus a
+    damaged file gives a reason here and not an error at a distant collect().
 
     A current cache gives its metadata and no reason. A stale cache gives no metadata and the reason
     for the rejection, because a regeneration of a large cache costs minutes and the user must see
     what caused it. Each reason reads as a lower-case clause after the word "because".
+
+    An artistools version before the stamps wrote a cache that holds neither stamp.
+    accept_unstamped keeps such a cache: the version counts as the version of the reader, and the
+    absent time matches. Only a reader whose text files cost hours to convert takes that option, e.g.
+    the estimators and the packets of an archived run. A cache that a few seconds rebuild, e.g. the
+    model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
+    no gain.
 
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
@@ -861,13 +880,18 @@ def read_parquet_cache_metadata(
     except (pl.exceptions.PolarsError, OSError) as exc:
         return None, f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
 
-    # a cache that holds no stamp comes from an artistools version that wrote the format of version 1
-    # before the stamp existed. Such a cache stays valid, thus an archived run keeps its caches
-    foundversion = pqmetadata.get("cacheversion", "1")
+    foundversion = pqmetadata.get("cacheversion", str(cacheversion) if accept_unstamped else None)
     if foundversion != str(cacheversion):
-        return None, f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
+        return None, (
+            f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
+            if foundversion is not None
+            else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
+        )
 
     foundmtime = pqmetadata.get("textsource_mtime")
+    if foundmtime is None and accept_unstamped:
+        return pqmetadata, None
+
     if textsource_mtime is not None and not mtime_matches_stamp(foundmtime, textsource_mtime):
         return None, (
             f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"

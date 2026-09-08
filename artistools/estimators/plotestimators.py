@@ -374,6 +374,10 @@ def plot_average_ionisation(
             raise ValueError(msg)
 
         ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
+        if not ioncols:
+            msg = f"ERROR: No ion data found for {paramvalue}"
+            raise ValueError(msg)
+
         ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
         maxioncharge = max(maxioncharge, *ioncharges)
         expr_charge_per_nuc = pl.sum_horizontal([
@@ -546,14 +550,26 @@ SERIESTYPES = (
 
 
 def is_seriestype(name: t.Any, estimatorcolumns: Collection[str]) -> bool:
-    """Return True when a name groups the plot items that follow it, e.g. "populations" in "populations Fe II"."""
+    """Return True when a name has its own plot function, e.g. "populations" in "populations Fe II"."""
     if not isinstance(name, str) or name in estimatorcolumns:
         return False
 
-    if name in SERIESTYPES or name.startswith("levelpopulation_"):
-        return True
+    return name in SERIESTYPES or name.startswith("levelpopulation_")
 
-    # an ion series takes its values from the columns that carry the name of the ion
+
+def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Sequence[t.Any]) -> bool:
+    """Return True when a name plus the ions after it give the columns of an ion series.
+
+    An estimator that names an ion, e.g. gamma_NT_Fe_II, gives the series type gamma_NT. Every name
+    after it must be an ion, because a name such as "heating" is also the prefix of heating_coll, and
+    "heating coll" must keep the message that names the column.
+    """
+    if not isinstance(name, str) or name in estimatorcolumns or not params:
+        return False
+
+    if not all(isinstance(param, str) and is_valid_ion(param) for param in params):
+        return False
+
     return any(col.startswith(f"{name}_") for col in estimatorcolumns)
 
 
@@ -692,8 +708,8 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         msg = "Empty plot item list; provide at least one plot variable after -plot (e.g. -plot Te)."
         raise ValueError(msg)
 
+    # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
     if is_seriestype(plotvars[0], estimatorcolumns):
-        # the grouped form names the series type first, e.g. -plot populations "Fe II" "Fe III"
         if len(plotvars) == 1:
             exit_with_error(
                 f"'{plotvars[0]}' names a type of series and takes at least one name after it",
@@ -701,6 +717,8 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
             )
         if all(isinstance(plotvar, str) for plotvar in plotvars[1:]):
             plotvars = [[plotvars[0], plotvars[1:]]]
+    elif is_ionseriestype(plotvars[0], estimatorcolumns, plotvars[1:]):
+        plotvars = [[plotvars[0], plotvars[1:]]]
 
     if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
         # an ion population plot is the reading of last resort, thus reject a name that is no ion at all
@@ -1386,7 +1404,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "of series with the names that it covers, or a directive of the form key=value. Examples: "
             "-plot Te TR -plot nne -plot SrI 'Sr II'. A type of series comes first and groups the names "
             f"after it, e.g. -plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
-            "an estimator that names an ion, e.g. -plot gammaestimator 'Fe II'. Quote an ion that holds "
+            "an estimator that names an ion, e.g. -plot gamma_NT 'Fe II'. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17. The subplots share one horizontal "
             "axis, thus -xmin and -xmax set that axis for the whole figure"
