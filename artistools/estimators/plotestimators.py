@@ -568,14 +568,27 @@ def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Seq
     An estimator that names an ion, e.g. gamma_NT_Fe_II, gives the series type gamma_NT. Every name
     after it must be an ion, because a name such as "heating" is also the prefix of heating_coll, and
     "heating coll" must keep the message that names the column.
+
+    A type of series can also be a variable of its own. cooling_coll holds the cooling rate of the
+    whole cell, and cooling_coll_Fe_II holds the part of one ion. A column of one of the named ions
+    then proves the reading. A subplot of the total alone takes its own -plot, e.g.
+    -plot cooling_coll -plot cooling_coll "Fe II".
     """
-    if not isinstance(name, str) or name in estimatorcolumns or not params:
+    if not isinstance(name, str) or not params:
         return False
 
     if not all(isinstance(param, str) and is_valid_ion(param) for param in params):
         return False
 
-    return any(col.startswith(f"{name}_") for col in estimatorcolumns)
+    # A column of one of the ions proves the reading, also for a name that is a variable of its own.
+    # The test takes one column and not every column. An element can lose its top ion here, e.g. a
+    # model that holds Fe I to Fe V has no gamma_NT_Fe_V.
+    if any(get_column_name(name, *get_iontuple(param))[0] in estimatorcolumns for param in params):
+        return True
+
+    # A name that gives no variable of its own keeps the older and looser test, which asks only that
+    # the model holds the family. Such a name has no other reading, thus it needs no column here.
+    return name not in estimatorcolumns and any(col.startswith(f"{name}_") for col in estimatorcolumns)
 
 
 # The subplots share one horizontal axis, thus no directive can set it for one subplot alone. The
@@ -802,6 +815,18 @@ def plot_multi_ion_series(
         print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
+
+    # An ion of the model can still have no column of this series. The top ion of an element has no
+    # gamma_NT and no bound-free cooling. Drop such an ion here, so that the plot gives the others.
+    estimatorcolumns = estimators.collect_schema().names()
+    nocolumnions = {
+        iontuple for iontuple in iontuplelist if get_column_name(seriestype, *iontuple)[0] not in estimatorcolumns
+    }
+    if nocolumnions:
+        print_warning(f"Can't plot {seriestype} for {nocolumnions} because the estimators hold no such column")
+
+    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in nocolumnions]
+
     lazyframes = []
     for atomic_number, ion_stage in iontuplelist:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
@@ -1520,7 +1545,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "of series with the names that it covers, or a directive of the form key=value. Examples: "
             "-plot Te TR -plot nne -plot SrI 'Sr II'. A type of series comes first and groups the names "
             f"after it, e.g. -plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
-            "an estimator that names an ion, e.g. -plot gamma_NT 'Fe II'. Quote an ion that holds "
+            "an estimator that names an ion, e.g. -plot gamma_NT 'Fe II' or -plot cooling_coll 'Fe II'. "
+            "A name that also gives a total of the cell, e.g. cooling_coll, gives the ions when the "
+            "model holds a column for one of them. Give the total its own subplot, e.g. -plot "
+            "cooling_coll -plot cooling_coll 'Fe II'. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17 -plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "

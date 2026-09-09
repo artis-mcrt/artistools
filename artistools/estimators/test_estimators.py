@@ -631,6 +631,30 @@ def test_estimator_default_plotlist_skips_absent_elements(mockplot: mock.MagicMo
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_ion_series_skips_an_ion_with_no_column(mockplot: mock.MagicMock) -> None:
+    """An ion of the model can have no column of a series, e.g. the top ion has no gamma_NT.
+
+    testmodel holds Fe V as an ion but writes no gamma_NT_Fe_V. The plot took the ion from
+    compositiondata.txt and then asked polars for that column, which raised ColumnNotFoundError.
+    """
+    funcoutpath = outputpath / "test_estimator_ion_series_skips_an_ion_with_no_column"
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=300,
+        outputfile=funcoutpath,
+        plotlist=[[["gamma_NT", ["Fe IV", "Fe V"]]]],
+    )
+
+    # Fe IV holds a column and Fe V does not, thus one line reaches the plot
+    assert len(mockplot.call_args_list) == 1
+    yvalues = np.array(mockplot.call_args_list[0][0][2], dtype=float)
+    assert np.all(np.isfinite(yvalues))
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_levelpopulation_dn_on_dvel(mockplot: mock.MagicMock) -> None:
     """Plotting dN/dv needs the inner shell velocity, which is a derived model column."""
     funcoutpath = outputpath / "test_estimator_levelpopulation_dn_on_dvel"
@@ -2186,6 +2210,42 @@ def test_plot_argument_takes_a_grouped_series_type() -> None:
 
     # a bare list of ions still becomes a populations plot
     assert normalise_plotitems(["Fe I", "Fe II"], estimatorcolumns) == [["populations", ["Fe I", "Fe II"]]]
+
+
+def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
+    """A name that gives a total of the cell must still take the ions after it.
+
+    The estimators file holds cooling_coll for the whole cell and cooling_coll_Fe_II for one ion.
+    "-plot cooling_coll 'Fe II'" gave the error that 'Fe II' is not an estimator variable, because
+    the test for an ion series rejected every name that is a column.
+    """
+    from artistools.estimators.plotestimators import normalise_plotitems
+
+    estimatorcolumns = [
+        "Te",
+        "nne",
+        "cooling_coll",
+        "cooling_coll_Fe_II",
+        "cooling_coll_Fe_III",
+        "nnion_Fe_II",
+        "vel_r_mid",
+        "vel_r_mid_kmps",
+    ]
+
+    assert normalise_plotitems(["cooling_coll", "Fe II", "Fe III"], estimatorcolumns) == [
+        ["cooling_coll", ["Fe II", "Fe III"]]
+    ]
+
+    # one column of the family is enough, because an element can lose its top ion here
+    assert normalise_plotitems(["cooling_coll", "Fe II", "Fe X"], estimatorcolumns) == [
+        ["cooling_coll", ["Fe II", "Fe X"]]
+    ]
+
+    # the total alone keeps its own shape
+    assert normalise_plotitems(["cooling_coll"], estimatorcolumns) == ["cooling_coll"]
+
+    # vel_r_mid starts vel_r_mid_kmps, which no ion names, thus the ions give no series here
+    assert normalise_plotitems(["vel_r_mid", "Fe II"], estimatorcolumns) == ["vel_r_mid", "Fe II"]
 
 
 def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
