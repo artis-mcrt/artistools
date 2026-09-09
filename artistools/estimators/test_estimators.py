@@ -2188,6 +2188,42 @@ def test_plot_argument_takes_a_grouped_series_type() -> None:
     assert normalise_plotitems(["Fe I", "Fe II"], estimatorcolumns) == [["populations", ["Fe I", "Fe II"]]]
 
 
+def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
+    """A name that gives a total of the cell must still take the ions after it.
+
+    The estimators file holds cooling_coll for the whole cell and cooling_coll_Fe_II for one ion.
+    "-plot cooling_coll 'Fe II'" gave the error that 'Fe II' is not an estimator variable, because
+    the test for an ion series rejected every name that is a column.
+    """
+    from artistools.estimators.plotestimators import normalise_plotitems
+
+    estimatorcolumns = [
+        "Te",
+        "nne",
+        "cooling_coll",
+        "cooling_coll_Fe_II",
+        "cooling_coll_Fe_III",
+        "nnion_Fe_II",
+        "vel_r_mid",
+        "vel_r_mid_kmps",
+    ]
+
+    assert normalise_plotitems(["cooling_coll", "Fe II", "Fe III"], estimatorcolumns) == [
+        ["cooling_coll", ["Fe II", "Fe III"]]
+    ]
+
+    # one column of the family is enough, because an element can lose its top ion here
+    assert normalise_plotitems(["cooling_coll", "Fe II", "Fe X"], estimatorcolumns) == [
+        ["cooling_coll", ["Fe II", "Fe X"]]
+    ]
+
+    # the total alone keeps its own shape
+    assert normalise_plotitems(["cooling_coll"], estimatorcolumns) == ["cooling_coll"]
+
+    # vel_r_mid starts vel_r_mid_kmps, which no ion names, thus the ions give no series here
+    assert normalise_plotitems(["vel_r_mid", "Fe II"], estimatorcolumns) == ["vel_r_mid", "Fe II"]
+
+
 def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
     """A type of series covers the names after it, thus it must not stand alone."""
     from artistools.estimators.plotestimators import normalise_plotitems
