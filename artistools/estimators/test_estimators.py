@@ -631,6 +631,30 @@ def test_estimator_default_plotlist_skips_absent_elements(mockplot: mock.MagicMo
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_ion_series_skips_an_ion_with_no_column(mockplot: mock.MagicMock) -> None:
+    """An ion of the model can have no column of a series, e.g. the top ion has no gamma_NT.
+
+    testmodel holds Fe V as an ion but writes no gamma_NT_Fe_V. The plot took the ion from
+    compositiondata.txt and then asked polars for that column, which raised ColumnNotFoundError.
+    """
+    funcoutpath = outputpath / "test_estimator_ion_series_skips_an_ion_with_no_column"
+    funcoutpath.mkdir(exist_ok=True, parents=True)
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=300,
+        outputfile=funcoutpath,
+        plotlist=[[["gamma_NT", ["Fe IV", "Fe V"]]]],
+    )
+
+    # Fe IV holds a column and Fe V does not, thus one line reaches the plot
+    assert len(mockplot.call_args_list) == 1
+    yvalues = np.array(mockplot.call_args_list[0][0][2], dtype=float)
+    assert np.all(np.isfinite(yvalues))
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_levelpopulation_dn_on_dvel(mockplot: mock.MagicMock) -> None:
     """Plotting dN/dv needs the inner shell velocity, which is a derived model column."""
     funcoutpath = outputpath / "test_estimator_levelpopulation_dn_on_dvel"

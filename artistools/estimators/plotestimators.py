@@ -581,8 +581,8 @@ def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Seq
         return False
 
     # A column of one of the ions proves the reading, also for a name that is a variable of its own.
-    # The test takes one column and not every column, because an element can lose its top ion here,
-    # e.g. gamma_NT_Fe_V of a model that holds Fe I to Fe V.
+    # The test takes one column and not every column. An element can lose its top ion here, e.g. a
+    # model that holds Fe I to Fe V has no gamma_NT_Fe_V.
     if any(get_column_name(name, *get_iontuple(param))[0] in estimatorcolumns for param in params):
         return True
 
@@ -815,6 +815,18 @@ def plot_multi_ion_series(
         print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
+
+    # An ion of the model can still have no column of this series. The top ion of an element has no
+    # gamma_NT and no bound-free cooling. Drop such an ion here, so that the plot gives the others.
+    estimatorcolumns = estimators.collect_schema().names()
+    nocolumnions = {
+        iontuple for iontuple in iontuplelist if get_column_name(seriestype, *iontuple)[0] not in estimatorcolumns
+    }
+    if nocolumnions:
+        print_warning(f"Can't plot {seriestype} for {nocolumnions} because the estimators hold no such column")
+
+    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in nocolumnions]
+
     lazyframes = []
     for atomic_number, ion_stage in iontuplelist:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
