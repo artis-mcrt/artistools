@@ -9,9 +9,12 @@ import string
 import tarfile
 import time
 import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
+from itertools import batched
+from itertools import chain
 from pathlib import Path
 
 import numpy as np
@@ -397,6 +400,56 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
     dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
 
 
+def get_dfnucabundances(
+    dfcontribs: pl.DataFrame,
+    particleids: Iterable[int],
+    list_traj_nuc_abund: Sequence[dict[tuple[int, int] | str, float]],
+) -> pl.DataFrame:
+    """Return the mass fractions of each cell, which are the particle mass fractions weighted by frac_of_cellmass.
+
+    A join of all the contributions with all the nuclide columns has 5e5 rows and 2473 columns (10 GB) for a 50^3
+    grid. Thus each query joins a batch of 64 columns. The queries read tables in memory, thus none repeats a scan.
+    """
+    colname_of_key = {
+        key: key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}"
+        for key in dict.fromkeys(chain.from_iterable(list_traj_nuc_abund))
+    }
+    # one column for each nuclide and for the "q" energy, thus each batch query can select its columns
+    dfparticlenucabund = (
+        pl
+        .DataFrame(
+            {
+                "particleid": [
+                    particleid
+                    for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund, strict=True)
+                    for _ in traj_nuc_abund
+                ],
+                "colname": [colname_of_key[key] for traj_nuc_abund in list_traj_nuc_abund for key in traj_nuc_abund],
+                "massfrac": [value for traj_nuc_abund in list_traj_nuc_abund for value in traj_nuc_abund.values()],
+            },
+            schema={"particleid": dfcontribs.schema["particleid"], "colname": pl.String, "massfrac": pl.Float64},
+        )
+        .pivot(on="colname", index="particleid", values="massfrac")
+        .with_columns(cs.float().fill_null(0.0))
+    )
+
+    dfbatches = [
+        dfcontribs
+        .lazy()
+        .select("particleid", "cellindex", "frac_of_cellmass")
+        .join(dfparticlenucabund.lazy().select("particleid", *batchcolnames), on="particleid", how="left")
+        .group_by("cellindex")
+        .agg((pl.col(batchcolnames) * pl.col("frac_of_cellmass")).sum())
+        .sort("cellindex")
+        .collect()
+        for batchcolnames in batched(colname_of_key.values(), 64, strict=False)
+    ]
+    return pl.DataFrame([
+        dfbatches[0]["cellindex"].cast(pl.Int32).alias("inputcellid"),
+        *(column for dfbatch in dfbatches for column in dfbatch.drop("cellindex").iter_columns()),
+    ])
+
+
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
     dfmodel: pl.LazyFrame | pl.DataFrame,
@@ -434,51 +487,13 @@ def add_abundancecontributions(
 
     assert len(particleids) > n_missing_particles
 
-    # a long table with one row for each particle and nuclide (or the "q" energy)
-    dfparticlenucabund = pl.DataFrame(
-        {
-            "particleid": [
-                particleid
-                for particleid, traj_nuc_abund in zip(particleids, list_traj_nuc_abund, strict=True)
-                for _ in traj_nuc_abund
-            ],
-            "colname": [
-                key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}"
-                for traj_nuc_abund in list_traj_nuc_abund
-                for key in traj_nuc_abund
-            ],
-            "massfrac": [value for traj_nuc_abund in list_traj_nuc_abund for value in traj_nuc_abund.values()],
-        },
-        schema={"particleid": pl.Int32, "colname": pl.String, "massfrac": pl.Float64},
-    )
-    allcolnames = dfparticlenucabund["colname"].unique().to_list()
-
-    del list_traj_nuc_abund
-    gc.collect()
-
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
-
-    # the mass fraction of a cell is the sum over the particles of the particle mass fraction times
-    # the fraction of the cell mass from that particle
-    dfnucabundances = (
-        dfcontribs
-        .lazy()
-        .select("particleid", "cellindex", "frac_of_cellmass")
-        .join(dfparticlenucabund.lazy(), on="particleid", how="inner", maintain_order="left")
-        .group_by("cellindex", "colname")
-        .agg((pl.col("massfrac") * pl.col("frac_of_cellmass")).sum())
-        .collect()
-        .pivot(on="colname", index="cellindex", values="massfrac")
-        .rename({"cellindex": "inputcellid"})
-        .with_columns(pl.col("inputcellid").cast(pl.Int32))
-    )
-    # a cell with no particle that has a nuclide gets a zero, and so does a nuclide that no cell got
-    dfnucabundances = dfnucabundances.with_columns(
-        pl.lit(0.0).alias(colname) for colname in allcolnames if colname not in dfnucabundances.columns
-    ).with_columns(cs.float().fill_null(0.0))
+    dfnucabundances = get_dfnucabundances(dfcontribs, particleids, list_traj_nuc_abund)
+    del list_traj_nuc_abund
+    gc.collect()
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
