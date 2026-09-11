@@ -429,7 +429,7 @@ def plot_average_excitation(
 
         # weight the average by the ion population where it is available, as plot_average_ionisation
         # weights by the element population
-        nnioncol = f"nnion_{at.get_elsymbol(atomic_number)}_{at.roman_numerals[ion_stage]}"
+        nnioncol = f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
 
         dfplotdata = (
@@ -452,12 +452,12 @@ def plot_average_excitation(
 
 def plot_levelpop(
     ax: mplax.Axes,
-    xlist: Sequence[int | float],
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[int],
     mgilist: Sequence[int | Sequence[int]],
     modelpath: str | Path,
+    estimators: pl.LazyFrame,
     **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of the population of each level in params, directly or per unit velocity."""
@@ -477,6 +477,17 @@ def plot_levelpop(
     adata = at.atomic.get_levels(modelpath)
 
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
+
+    # this series draws one point for each cell, thus the horizontal axis must give one value for
+    # each cell. A time axis gives one value for each timestep instead
+    dfxofmgi = estimators.select("modelgridindex", "xvalue").unique().collect()
+    if dfxofmgi.height != dfxofmgi["modelgridindex"].n_unique():
+        exit_with_error(
+            "a level population plot draws one point for each cell, thus the horizontal axis must"
+            " give one value for each cell",
+            "Give -x velocity or -x modelgridindex. A time axis gives one value for each timestep.",
+        )
+    xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
     # read_files has no cache, thus one read of the NLTE output of every rank serves every param
     dfnltepops_allions = at.nltepops.read_files(modelpath)
@@ -510,17 +521,25 @@ def plot_levelpop(
             levelpop_of_mgi_ts.setdefault((mgi, ts), n_nlte)
 
         ylist = []
+        xlist = []
         for modelgridindex in mgilist:
             assert isinstance(modelgridindex, int)
             valuesum = 0.0
             tdeltasum = 0.0
 
             for timestep in timestepslist:
-                levelpop = levelpop_of_mgi_ts[modelgridindex, timestep]
+                # an empty cell has no NLTE row, thus it gives no population at this timestep
+                levelpop = levelpop_of_mgi_ts.get((modelgridindex, timestep))
+                if levelpop is None:
+                    continue
 
                 valuesum += levelpop * arr_tdelta[timestep]
                 tdeltasum += arr_tdelta[timestep]
 
+            if tdeltasum == 0.0:
+                continue
+
+            xlist.append(xvalue_of_mgi[modelgridindex])
             if seriestype == "levelpopulation_dn_on_dvel":
                 assert isinstance(modelgridindex, int)
                 cell = modeldata.row(modelgridindex, named=True)
@@ -1024,6 +1043,12 @@ def get_xlist(
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
 
+    if args.xbins is not None and (args.xbins == 0 or args.xbins < -1):
+        exit_with_error(
+            f"-xbins {args.xbins} names no number of bins",
+            "Give a positive number of bins, or -1 to select the bin width automatically.",
+        )
+
     if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
@@ -1031,17 +1056,21 @@ def get_xlist(
 
     if args.xbins is not None and args.xbins < 0:
         xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
-        args.xbins = int((xmax - xmin) / xdeltamax)
-        print(
-            f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}] and largest x interval of {xdeltamax}"
-        )
-        if args.xbins <= 3:
-            print(f"  would have only {args.xbins} bins. Replacing with 25")
+        if not xdeltamax:
+            # a single row gives None, and a column that holds one x value gives 0.0
+            print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
+        else:
+            args.xbins = int((xmax - xmin) / xdeltamax)
+            print(
+                f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}]"
+                f" and largest x interval of {xdeltamax}"
+            )
+            if args.xbins <= 3:
+                print(f"  would have only {args.xbins} bins. Replacing with 25")
+                args.xbins = 25
 
-    if args.xbins is not None and args.xbins == 0:
-        estimators = estimators.with_columns(xvalue_binned=pl.lit(None).cast(pl.Float64))
-    elif args.xbins is not None:
+    if args.xbins is not None:
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
         xbinedges = np.linspace(xmin, xmax, args.xbins + 1)
@@ -1109,7 +1138,6 @@ def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
 def plot_subplot(
     ax: mplax.Axes,
     timestepslist: list[int],
-    xlist: list[float | int],
     startfromzero: bool,
     plotitems: list[t.Any],
     mgilist: list[int],
@@ -1223,7 +1251,10 @@ def plot_subplot(
                 ))
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                items.append((plot_levelpop(ax, xlist, seriestype, params, timestepslist, mgilist, modelpath), None))
+                items.append((
+                    plot_levelpop(ax, seriestype, params, timestepslist, mgilist, modelpath, estimators),
+                    None,
+                ))
 
             elif seriestype == "averageionisation":
                 items.append((plot_average_ionisation(ax, params, estimators, **plotkwargs), None))
@@ -1325,7 +1356,6 @@ def make_figure(
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
-            xlist=xlist,
             plotitems=plotitems,
             mgilist=mgilist,
             modelpath=modelpath,

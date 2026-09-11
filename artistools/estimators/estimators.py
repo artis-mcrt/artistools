@@ -3,7 +3,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-import contextlib
 import dataclasses as dc
 import datetime
 import string
@@ -26,6 +25,7 @@ from artistools.constants import K_B_ev_per_K
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
+from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import format_mtime
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
@@ -399,13 +399,19 @@ def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
     estimators_0000.out.bak beside estimators_0000.out, thus cannot decide the freshness.
     """
     folderpath = Path(folderpath)
-    ranks = {int(textfile.name.split("_")[1].split(".")[0]) for textfile in folderpath.glob("estimators_????.out*")}
+    # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
+    ranks = {
+        int(rankstr)
+        for rankstr in (textfile.name.split("_")[1].split(".")[0] for textfile in folderpath.glob("estimators_*.out*"))
+        if rankstr.isdigit()
+    }
     mtimes: dict[int, float] = {}
     for rank in sorted(ranks):
-        for suffix in ("", ".zst", ".gz", ".xz"):
-            with contextlib.suppress(FileNotFoundError):
-                mtimes[rank] = (folderpath / f"estimators_{rank:04d}.out{suffix}").stat().st_mtime
-                break
+        rankfile = firstexisting_or_none(
+            f"estimators_{rank:04d}.out", folder=folderpath, tryzipped=True, search_subfolders=False
+        )
+        if rankfile is not None:
+            mtimes[rank] = rankfile.stat().st_mtime
     return mtimes
 
 
@@ -943,6 +949,10 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
     if dfsuperlevel.is_empty():
         return pl.DataFrame(schema=schema)
 
+    # the largest number of rows that one cross join may make. The batch loop below keeps the peak
+    # memory near this value, whatever the cell count of the model
+    maxcrossrows = 2_000_000
+
     # levelnumber_sl is the same for every cell in practice, so this loops once
     contributions = []
     for levelnumber_sl in dfsuperlevel["levelnumber_sl"].unique().sort():
@@ -950,9 +960,15 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
         if dflevels_above.is_empty():
             continue
 
-        contributions.append(
-            dfsuperlevel
-            .filter(pl.col("levelnumber_sl") == levelnumber_sl)
+        dfsuperlevel_thislevel = dfsuperlevel.filter(pl.col("levelnumber_sl") == levelnumber_sl)
+
+        # the cross join makes one row for each pair of superlevel row and level above it. A 3D model
+        # with 100k NLTE cells and a few hundred levels would need tens of GB, thus each query takes
+        # a batch of the superlevel rows. Each row is one group, thus a batch never splits a group
+        batchheight = max(1, maxcrossrows // dflevels_above.height)
+        contributions.extend(
+            dfsuperlevel_thislevel
+            .slice(batchstart, batchheight)
             .join(dflevels_above, how="cross", maintain_order="left")
             .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
             .group_by(groupcols)
@@ -961,6 +977,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
                 * (pl.col("energy_ev") * pl.col("boltzfac")).sum()
                 / pl.col("boltzfac").sum()
             )
+            for batchstart in range(0, dfsuperlevel_thislevel.height, batchheight)
         )
 
     return pl.concat(contributions) if contributions else pl.DataFrame(schema=schema)
