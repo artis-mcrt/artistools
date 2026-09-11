@@ -492,7 +492,7 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
         nucname = nucname.split("_")[1]
 
     z = get_atomic_number(nucname.rstrip(string.digits))
-    assert z > 0
+    assert z >= 0, f"{nucname} does not start with an element symbol"
 
     a = int(nucname.lower().lstrip(string.ascii_lowercase))
 
@@ -579,7 +579,12 @@ def get_atomic_number(elsymbol: str) -> int:
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
 
     # a dict lookup, because this is called once per column name in some loops
-    return get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
+    atomic_number_of_elsymbol = get_atomic_number_of_elsymbol()
+    if elsymbol in atomic_number_of_elsymbol:
+        # the exact symbol comes first, because the neutron "n" and nitrogen "N" differ only in case
+        return atomic_number_of_elsymbol[elsymbol]
+
+    return atomic_number_of_elsymbol.get(elsymbol.title(), -1)
 
 
 ROMANNUMERALCHARS = frozenset("IVXLCDM")

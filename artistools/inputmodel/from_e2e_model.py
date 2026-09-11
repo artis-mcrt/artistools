@@ -705,8 +705,6 @@ def map_to_artis(
                 Z = at.get_atomic_number(isot_str)
                 interpol_X_iso = dfmodel[isot_str].to_numpy()
                 elem_str = f"X_{at.get_elsymbol(Z)}"
-                if elem_str == "X_N":
-                    elem_str = "X_n"
                 if elem_str in dictelabunds:
                     dictelabunds[elem_str] = dictelabunds[elem_str].copy()
                     dictelabunds[elem_str] += interpol_X_iso

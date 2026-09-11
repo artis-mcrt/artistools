@@ -17,7 +17,7 @@ from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import path_is_codecomparison
-from artistools.misc.fileio import polars_source
+from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_name
@@ -103,12 +103,13 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     # folder with compressed output does not silently fall back to reconstructing logarithmic timesteps
     tsfilepath = firstexisting_or_none("timesteps.out", folder=modelpath, tryzipped=True, search_subfolders=False)
     if tsfilepath is not None:
-        return (
-            pl
-            .scan_csv(polars_source(tsfilepath), has_header=True, separator=" ")
-            .rename(lambda column_name: column_name.removeprefix("#"))
-            .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
-        )
+        with polars_source_open(tsfilepath) as source:
+            return (
+                pl
+                .scan_csv(source, has_header=True, separator=" ")
+                .rename(lambda column_name: column_name.removeprefix("#"))
+                .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
+            )
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
@@ -293,6 +294,13 @@ def get_time_range(
         if timestepmin > dictvars["last"] or timestepmin < 0:
             msg = get_bad_timestep_message(modelpath, timestepmin)
             raise ValueError(msg)
+
+        if timestepmax < timestepmin:
+            msg = (
+                f"'{timestep_range_str}' names the timestep range {timestepmin} to {timestepmax},"
+                " which ends before it starts"
+            )
+            raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:
             timemin = -1.0
@@ -396,13 +404,14 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
         raise ValueError(msg)
     cornervmax = vmax * math.sqrt(dimensions)
 
-    # if the initial conditions were perfect, then t_arrive = tmin would be valid already
-    # (with a free path, light from the origin at tmin would escape sometime later, but that travel time would be subtracted to get t_arrive = tmin),
-    # but we should at least wait until light signals from the origin reach the corners
+    # perfect initial conditions make t_arrive = tmin valid already. Light from the origin at tmin
+    # escapes later, but the code subtracts that travel time, thus t_arrive stays tmin. The code
+    # still waits until light from the origin reaches the corners
     validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / C_cm_per_s)
 
     t_end = get_timestep_times(modelpath, loc="end")
-    # find the last possible escape time and subtract the largest possible travel time (observer time correction)
+    # find the last escape time, then subtract the longest travel time from the origin. This is the
+    # correction of the observer time
     try:
         depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
         # get_deposition() always provides a timestep column, adding a row index if the file has no such column
@@ -414,8 +423,9 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
     assert isinstance(nts_last, int)
     nts_last_tend = t_end[nts_last]
 
-    # last valid observer time is escape at the end of the latest computed timestep minus the longest travel time relative to origin
-    # assume we're on a 3D propagation grid for safety (1D or 2D could reduce the travel time somewhat)
+    # the last observer time is the escape at the end of the last computed timestep, minus the
+    # longest travel time from the origin. The code assumes a 3D propagation grid, which is the safe
+    # assumption. A 1D grid or a 2D grid can give a shorter travel time
     validrange_end_days: float | int = nts_last_tend * (1 - vmax * math.sqrt(3) / C_cm_per_s)
 
     if validrange_start_days > validrange_end_days:

@@ -656,6 +656,17 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
 
+    # the free neutron "n" and nitrogen "N" differ only in case, thus a title-case lookup confused them
+    assert at.get_atomic_number("n") == 0
+    assert at.get_atomic_number("N") == 7
+    assert at.get_atomic_number("X_n1") == 0
+    assert at.get_atomic_number("X_N14") == 7
+    assert at.get_z_a_nucname("X_n1") == (0, 1)
+    assert at.get_z_a_nucname("X_N14") == (7, 14)
+
+    # a symbol that the caller gave in the wrong case still resolves
+    assert at.get_atomic_number("fe") == 26
+
     assert at.get_elsymbol(26) == "Fe"
     assert at.get_elsymbol(28) == "Ni"
     assert at.get_elsymbol(1) == "H"

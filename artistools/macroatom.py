@@ -50,7 +50,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the macroatom transitions."""
     args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
 
-    atomic_number = at.get_atomic_number(args.element.lower())
+    atomic_number = at.get_atomic_number(args.element)
     if atomic_number < 1:
         at.exit_with_error(f"could not find element '{args.element}'")
 

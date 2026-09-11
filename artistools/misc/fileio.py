@@ -157,7 +157,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, e
     return filepath.open(mode=mode, encoding=encoding, errors=errors)
 
 
-def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = None) -> t.IO[bytes] | Path:
+def polars_source(filename: Path | str, mode: str = "r") -> t.IO[bytes] | Path:
     """Return the path of a file that polars reads itself, or a file object that decompresses it.
 
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
@@ -168,7 +168,23 @@ def polars_source(filename: Path | str, mode: str = "r", encoding: str | None = 
         return filepath
 
     # the default mode "r" opens a binary stream in all three backends, which is what polars reads
-    return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding)
+    return get_decompress_open(filepath.suffix)(filepath, mode=mode)
+
+
+@contextlib.contextmanager
+def polars_source_open(filename: Path | str, mode: str = "r") -> Generator[t.IO[bytes] | Path]:
+    """Yield a polars source and close it after the caller has read it.
+
+    polars reads a file object when it builds the query plan, thus the object can close as soon as
+    the scan_csv or read_csv call returns. A caller that drops the object instead leaks one file
+    descriptor for each xz file that it reads.
+    """
+    source = polars_source(filename, mode=mode)
+    if isinstance(source, Path):
+        yield source
+    else:
+        with source:
+            yield source
 
 
 def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
@@ -200,12 +216,7 @@ def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "
     The function drops the first skip_rows lines. polars_source selects the compression format. The caller
     gives a path that it has resolved, thus this function must not search for a compressed sibling.
     """
-    with contextlib.ExitStack() as stack:
-        source = polars_source(filepath, mode="rb")
-        if not isinstance(source, Path):
-            # polars reads a file object when it makes the plan, thus the file can close after that
-            stack.enter_context(source)
-
+    with polars_source_open(filepath, mode="rb") as source:
         return pl.scan_csv(
             source,
             # the ASCII unit separator, which an ARTIS text file never holds, so that each line stays
@@ -429,11 +440,6 @@ def firstexisting(
         filelist = [Path(x) for x in filelist]
 
     folder = Path(folder)
-    thispath = Path(folder, filelist[0])
-
-    if thispath.exists():
-        return thispath
-
     fullpaths = []
 
     def search_folders(filelist: list[str | Path] | list[Path]) -> Generator[Path]:
