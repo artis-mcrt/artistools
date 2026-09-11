@@ -67,7 +67,7 @@ def read_modelfile_text(
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
             if not printwarningsonly:
-                print(f"  detected 2D model file with n_r*n_z={ncoordgridr}x{ncoordgridz}={npts_model} cells")
+                print(f"  detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
         else:
             npts_model = int(line)
 
@@ -100,7 +100,9 @@ def read_modelfile_text(
                 modelmeta["ncoordgrid"] = ncoordgridx
 
                 if not printwarningsonly:
-                    print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
+                    print(
+                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz} = {npts_model} cells"
+                    )
 
             line = fmodel.readline()
 
