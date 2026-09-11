@@ -5,6 +5,7 @@ from unittest import mock
 
 import numpy as np
 import polars as pl
+import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -288,3 +289,17 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
     mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
     expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
     assert sorted(mtimes) == pytest.approx(sorted(expected))
+
+
+def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
+    """A frame that already carries phi must pass through, because the parquet cache stores it."""
+    dfpackets = pl.LazyFrame({"dirx": [0.6, 0.0], "diry": [0.0, 0.8], "dirz": [0.8, 0.6]})
+
+    dfonce = at.packets.add_packet_directions_lazypolars(dfpackets).collect()
+    assert "phi" in dfonce.columns
+    assert "vec1_x" not in dfonce.columns
+
+    # the drop named the vec1 columns whatever the input held, thus this raised ColumnNotFoundError
+    dftwice = at.packets.add_packet_directions_lazypolars(dfonce).collect()
+
+    pltest.assert_frame_equal(dfonce, dftwice)

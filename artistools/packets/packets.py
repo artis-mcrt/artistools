@@ -267,7 +267,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "stokes_i": pl.Float32,
         "stokes_q": pl.Float32,
         "stokes_u": pl.Float32,
-        "t_decay": pl.Float32,
+        "tdecay": pl.Float32,
         "true_emission_velocity": pl.Float32,
         "trueem_posx": pl.Float32,
         "trueem_posy": pl.Float32,
@@ -619,8 +619,7 @@ def get_packets(
     # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U. Such a cache is
     # accepted without a version check when the run has no packet text files any more
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"originated_from_positron": "originated_from_particlenotgamma", "stokes2": "stokes_q", "stokes3": "stokes_u"},
-        strict=False,
+        {"stokes2": "stokes_q", "stokes3": "stokes_u"}, strict=False
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
@@ -741,7 +740,9 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
             .alias("phi")
         )
 
-    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
+    # the columns above are created only when the frame does not already carry the angles, thus the
+    # drop must accept a name that this call did not add
+    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"], strict=False)
 
 
 def bin_packet_directions_polars(
