@@ -6,6 +6,7 @@ import sys
 import typing as t
 
 if t.TYPE_CHECKING:
+    from concurrent.futures import Executor
     from types import ModuleType
 from collections.abc import Callable
 from collections.abc import Iterable
@@ -174,9 +175,19 @@ def get_progress_class() -> "type[t.Any]":
 
 
 def parallel_map[IterableType, ResultType](
-    fn: Callable[[IterableType], ResultType], *iterables: Iterable[IterableType], **kwargs: t.Any
+    fn: Callable[[IterableType], ResultType],
+    *iterables: Iterable[IterableType],
+    chunksize: int = 1,
+    **progresskwargs: t.Any,
 ) -> list[ResultType]:
-    """Execute a parallel map with a progress bar, with threads on a free-threaded build and processes otherwise."""
+    """Execute a parallel map with a progress bar, with threads on a free-threaded build and processes otherwise.
+
+    The progress bar takes the keyword arguments other than chunksize, e.g. desc and unit.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor
+    from operator import length_hint
+
     progressclass = get_progress_class()
 
     use_multiprocessing = True
@@ -185,20 +196,20 @@ def parallel_map[IterableType, ResultType](
             # return a thread pool if we have no GIL (free threading)
             use_multiprocessing = False
 
+    executor: Executor
     if use_multiprocessing:
         import multiprocessing as mp
-
-        from tqdm.contrib.concurrent import process_map
 
         # the lock of the progress bar comes from a spawn context, thus the pool must live in one as
         # well. Spawn is also needed because forking a process that already has polars threads is
         # unsafe. A run that takes the thread pool changes no such default
         mp.set_start_method("spawn", force=True)
-        results = process_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
+        executor = ProcessPoolExecutor(initializer=progressclass.set_lock, initargs=(progressclass.get_lock(),))
     else:
-        from tqdm.contrib.concurrent import thread_map
+        executor = ThreadPoolExecutor()
 
-        results = thread_map(fn, *iterables, tqdm_class=progressclass, **kwargs)  # type: ignore[arg-type]
-
-    assert isinstance(results, list)
-    return results
+    progresskwargs.setdefault("total", min(length_hint(iterable) for iterable in iterables))
+    # the progress bar counts each result in this thread. The done callbacks of tqdm 4.70 process_map count a chunk
+    # as one item, and a callback after close() has no effect. Thus that progress bar stops below the total.
+    with executor:
+        return list(progressclass(executor.map(fn, *iterables, chunksize=chunksize), **progresskwargs))
