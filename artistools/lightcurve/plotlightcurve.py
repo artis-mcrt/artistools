@@ -917,8 +917,7 @@ def make_colorbar_viewingangles(
     else:
         assert axeslist is not None
         cbar = targetfig.colorbar(scaledmap, ax=axeslist)
-    if label:
-        cbar.set_label(label, rotation=0)
+    cbar.set_label(label, rotation=0)
     cbar.locator = mplticker.FixedLocator(ticklocs)
     cbar.formatter = mplticker.FixedFormatter(ticklabels)
     cbar.update_ticks()
