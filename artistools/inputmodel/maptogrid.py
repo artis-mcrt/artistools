@@ -183,7 +183,7 @@ def maptogrid(
     gye = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid))
     gparticlecounter = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid), dtype=int)
     # the particle index, the cell indices, and the density contribution of each particle-cell pair,
-    # with one array for each particle. The empty first array lets a grid with no pair concatenate
+    # with one array for each particle. The empty first array lets np.concatenate operate on a grid with no pair.
     contrib_particle: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
     contrib_celli: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
     contrib_cellj: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
@@ -272,7 +272,7 @@ def maptogrid(
         # this particle's contribution to mass density (rho) in each cell
         grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
 
-        # the cells of one particle are all different, thus a fancy-index add needs no np.add.at
+        # the cells of one particle are all different, thus an add with an index array is correct without np.add.at
         cells = (boxi + ilow, boxj + jlow, boxk + klow)
         grho[cells] += grho_contrib
 

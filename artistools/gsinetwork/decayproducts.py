@@ -260,7 +260,7 @@ def process_trajectory(
             decay_powers[f"({A},{Z})_gam"] = np.zeros(len(arr_t_day))
             decay_powers[f"({A},{Z})_nu"] = np.zeros(len(arr_t_day))
 
-    # a plot time can take the same network step as its neighbour, thus each file is read one time
+    # two plot times can use the same network step, thus the code reads each file one time
     networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
     if networksteps:
         dftrajnucabund, _networktimes = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
@@ -292,7 +292,7 @@ def process_trajectory(
             .collect()
         )
 
-        # the row of each plot time in the sums of its network step
+        # global_sums has one row for each plot time that has a network step, in the order of plottimesteps_with_network
         plottimesteps_with_network = np.flatnonzero(hasnetworkstep)
         global_sums = (
             pldf_all

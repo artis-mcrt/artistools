@@ -225,7 +225,7 @@ def get_trajectory_timestepfiles_nuc_abund(
     """Get the nuclear abundances and the time of several timestep files of one trajectory.
 
     The column "fileindex" gives the position of the file of each row in memberfilenames. One query reads
-    all the files, because the fixed cost of a query is larger than the parse of one file of 400 lines.
+    all the files, because the fixed cost of a query is larger than the time to parse one file of 400 lines.
     """
     trajpaths = [
         get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename)
@@ -269,7 +269,7 @@ def get_trajectory_timestepfiles_nuc_abund(
     badheaders = dfheaders.filter(pl.col("fieldcount") != 6)["fileindex"]
     if dfheaders.height != len(trajpaths) or not badheaders.is_empty():
         badfileindex = badheaders.item(0) if not badheaders.is_empty() else 0
-        msg = f"Problem with {memberfilenames[badfileindex]} for traj {particleid}"
+        msg = f"Cannot read the header line of {memberfilenames[badfileindex]} for trajectory {particleid}"
         print(msg)
         raise ValueError(msg)
 
