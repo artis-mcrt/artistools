@@ -869,3 +869,24 @@ def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> No
     """--output_spectra writes a folder of files, thus -o with a file suffix is an error and not a fallback."""
     with pytest.raises(ValueError, match="must name a folder"):
         at.spectra.plot(argsraw=[], specpath=[modelpath], output_spectra=True, outputfile=tmp_path / "spectra.txt")
+
+
+def test_plotspectra_refuses_two_models_whose_timestep_grids_disagree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The plot functions wrote the resolved range back onto args, thus one model's range reached the next.
+
+    get_time_range refuses a timemin that sits after the last timestep of a model, thus the second
+    model was dropped with one printed line. One -timestep that names different days on two grids is
+    now an error, as it already is for the light curve command.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+
+    with pytest.raises(SystemExit):
+        at.spectra.plotspectra.main(
+            argsraw=["-timestep", "30", str(modelpath), str(classic1dpath), "-outputfile", str(tmp_path)]
+        )
+
+    message = capsys.readouterr().err
+    assert "timestep grids differ" in message
+    assert "-timedays" in message, "the message must name the argument that works for both models"

@@ -1,10 +1,12 @@
 """Timestep definitions, time range selection, and deposition rates."""
 
+import argparse
 import contextlib
 import math
 import re
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,10 +14,13 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
+from artistools.misc.cliutils import exit_with_error
 from artistools.misc.cliutils import parse_float_range
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_model_folder
+from artistools.misc.fileio import path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
@@ -236,6 +241,50 @@ def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
     token = token.strip()
 
     return dictvars[token] if token in dictvars else int(token)
+
+
+def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:
+    """Narrow the plotted time range from -timestep or from a -timedays range.
+
+    -timemin and -timemax give the range directly. A single -timedays value names one time for
+    --brightnessattime, thus only a value that holds a range takes part here.
+    """
+    dayrange = parse_timedays_range(args.timedays) if args.timedays is not None else None
+    if args.timestep is dayrange is None:
+        return
+
+    # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
+    # command that plots reference data alone still takes a range in days
+    # a path can name a light curve file of a run, and get_time_range reads the folder of the run
+    artispaths = [get_model_folder(path) for path in modelpaths if path_is_artis_model(path)]
+    if not artispaths:
+        if dayrange is None:
+            msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
+            raise ValueError(msg)
+        rangemin, rangemax = dayrange
+    else:
+        _, _, rangemin, rangemax = get_time_range(
+            artispaths[0], timestep_range_str=args.timestep, timedays_range_str=args.timedays
+        )
+
+        # the plot holds one time axis, thus one range in days must serve every model. A timestep
+        # names different days on a different timestep grid, and applying the days of the first
+        # model would show another timestep of the second without a word
+        if args.timestep is not None:
+            for otherpath in artispaths[1:]:
+                _, _, othermin, othermax = get_time_range(otherpath, timestep_range_str=args.timestep)
+                if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
+                    exit_with_error(
+                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
+                        f"{get_model_name(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
+                        f"{get_model_name(otherpath)}, because their timestep grids differ. Give the "
+                        "range in days with -timedays, which means the same for every model"
+                    )
+
+    if args.timemin is None:
+        args.timemin = rangemin
+    if args.timemax is None:
+        args.timemax = rangemax
 
 
 def get_time_range(

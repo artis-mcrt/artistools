@@ -124,6 +124,7 @@ from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
+from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep
