@@ -8,12 +8,12 @@ import string
 import typing as t
 from collections.abc import Sequence
 from functools import partial
+from itertools import batched
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from polars import selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
@@ -23,6 +23,7 @@ from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import get_npts_model
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -138,61 +139,76 @@ def get_artis_abund_sequences(
         if all(mgi >= 0 for mgi in mgiplotlist):
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
-        estimators_lazy = estimators_lazy.select(
-            "modelgridindex",
-            "timestep",
-            "tmid_days",
-            cs.starts_with(*[f"nniso_{strspecies}" for strspecies in arr_species]),
-            "mass_g",
-            "rho",
-            cs.starts_with(*[f"init_X_{strspecies}" for strspecies in arr_species]),
-        )
-        estimators_lazy = estimators_lazy.sort(by=["timestep", "modelgridindex"])
-        allisotopes_in_df = [
-            col.removeprefix("nniso_")
-            for col in estimators_lazy.collect_schema().names()
-            if col.startswith("nniso_") and col.removeprefix("nniso_").lstrip(string.ascii_letters).isdigit()
-        ]
-        estimators_lazy = estimators_lazy.with_columns(
-            (pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)).alias(f"offset_{striso}")
-            for striso in allisotopes_in_df
-        ).with_columns([
-            (
-                (pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho"))
-                + pl.col(f"offset_{striso}")
-            ).alias(f"X_{striso}")
-            for striso in allisotopes_in_df
-        ])
-
+        estimatorcolumns = estimators_lazy.collect_schema().names()
+        isotopes_used: list[str] = []
         cellmassfrac_exprs = []
         for strspecies in arr_species:
-            if strspecies[-1].isdigit() and f"X_{strspecies}" in estimators_lazy.collect_schema().names():
-                cellmassfrac_exprs.append(pl.col(f"X_{strspecies}"))
-            elif len(estimators_lazy.select(cs.matches(rf"^X_{strspecies}\d+")).collect_schema().names()) > 0:
-                cellmassfrac_exprs.append(
-                    pl.sum_horizontal(cs.matches(rf"^X_{strspecies}\d+"))
-                )  # sum over all isotopes of this element
+            isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
+            # an element sums every isotope column of its symbol, e.g. "nniso_Y89" but not "nniso_Yb170"
+            speciesisotopes = (
+                [strspecies]
+                if isnuclide
+                else [
+                    col.removeprefix("nniso_")
+                    for col in estimatorcolumns
+                    if col.startswith(f"nniso_{strspecies}") and col.removeprefix(f"nniso_{strspecies}").isdigit()
+                ]
+            )
+            isotopemassfrac_exprs = [
+                pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho")
+                + pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
+                for striso in speciesisotopes
+            ]
+            isotopes_used.extend(speciesisotopes)
+            if isnuclide:
+                cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
+            elif isotopemassfrac_exprs:
+                cellmassfrac_exprs.append(pl.sum_horizontal(isotopemassfrac_exprs))
             else:
                 cellmassfrac_exprs.append(pl.lit(float("-inf")))
 
-        lazydfs = []
-        for mgi in mgiplotlist:
-            assert isinstance(mgi, int)
-            combinedlzdf = (
-                estimators_lazy
-                .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
-                .group_by("timestep", maintain_order=True)
-                .agg(
-                    [
-                        ((cellmassfracexpr * pl.col("mass_g")).sum() / pl.col("mass_g").sum()).alias(f"X_{strspecies}")
-                        for strspecies, cellmassfracexpr in zip(arr_species, cellmassfrac_exprs, strict=True)
-                    ]
-                    + [pl.col("tmid_days").mean()]
-                )
-            )
-            lazydfs.append((mgi, combinedlzdf))
+        # a query holds every column that it reads for all its rows. One query for all the timesteps of a 3D
+        # model of 125 000 cells held 10.6 GB. A batch of 2 GiB held 2.7 GB. A batch of 1 GiB took 50% more time.
+        nrows_per_timestep = (
+            get_npts_model(Path(modelpath)) if any(mgi < 0 for mgi in mgiplotlist) else len(mgiplotlist)
+        )
+        ncolumns_read = 2 * len(set(isotopes_used)) + 4
+        timesteps_per_batch = max(1, 2**31 // (nrows_per_timestep * ncolumns_read * 8))
 
-        arr_abund_artis = dict(zip(mgiplotlist, pl.collect_all([lzdf for _, lzdf in lazydfs]), strict=True))
+        # an empty list of timesteps still takes one query, which gives an empty frame for each cell
+        timestepbatches = list(batched(dftimesteps["timestep"].to_list(), timesteps_per_batch, strict=False)) or [()]
+        batchresults: list[list[pl.DataFrame]] = []
+        for batchtimesteps in timestepbatches:
+            lzcellmassfracs = estimators_lazy.filter(pl.col("timestep").is_in(batchtimesteps)).select(
+                "modelgridindex",
+                "timestep",
+                "tmid_days",
+                "mass_g",
+                *[
+                    cellmassfrac_expr.alias(f"X_{strspecies}")
+                    for strspecies, cellmassfrac_expr in zip(arr_species, cellmassfrac_exprs, strict=True)
+                ],
+            )
+            batchresults.append(
+                pl.collect_all([
+                    lzcellmassfracs
+                    .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
+                    .group_by("timestep")
+                    .agg(
+                        [
+                            ((pl.col(f"X_{strspecies}") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
+                            for strspecies in arr_species
+                        ]
+                        + [pl.col("tmid_days").mean()]
+                    )
+                    for mgi in mgiplotlist
+                ])
+            )
+
+        arr_abund_artis = {
+            mgi: pl.concat(dfs_of_mgi).sort("timestep")
+            for mgi, dfs_of_mgi in zip(mgiplotlist, zip(*batchresults, strict=True), strict=True)
+        }
 
     return arr_abund_artis
 
