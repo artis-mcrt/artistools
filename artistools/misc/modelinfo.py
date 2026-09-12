@@ -254,10 +254,14 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
         for name in (path.name for path in Path(folderpath).glob("estimators_*.out*"))
         if ".out" in name
     })
-    estimfilepath = (
-        firstexisting_or_none(estimstems[0], folder=folderpath, tryzipped=True, search_subfolders=False)
-        if estimstems
-        else None
+    estimfilepath = next(
+        (
+            found
+            for stem in estimstems
+            if (found := firstexisting_or_none(stem, folder=folderpath, tryzipped=True, search_subfolders=False))
+            is not None
+        ),
+        None,
     )
     if estimfilepath is not None:
         with zopen(estimfilepath) as estfile:
