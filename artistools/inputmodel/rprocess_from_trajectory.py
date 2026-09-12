@@ -26,7 +26,6 @@ import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel.inputmodel_misc import backup_existing_file
-from artistools.misc.fileio import scan_lines
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -119,6 +118,9 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
     """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
+    if extracted_file_is_complete(path_extracted_file):
+        return path_extracted_file
+
     tarfilepaths = [
         Path(traj_root, filename)
         for filename in (
@@ -129,9 +131,6 @@ def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, member
         )
     ]
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
-
-    if extracted_file_is_complete(path_extracted_file):
-        return path_extracted_file
 
     if tarfilepath is None:
         # an incomplete leftover is unusable and there is no archive to replace it from, so clear it out
@@ -220,35 +219,69 @@ def check_traj_time_matches(
         raise AssertionError(msg)
 
 
-def get_trajectory_timestepfile_nuc_abund(
-    traj_root: Path, particleid: int, memberfilename: str
-) -> tuple[pl.DataFrame, float]:
-    """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
-    trajpath = get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename)
-    with trajpath.open(encoding="utf-8") as trajfile:
-        try:
-            _, str_t_model_init_seconds, _, _, _, _ = trajfile.readline().split()
-        except ValueError as exc:
-            msg = f"Problem with {memberfilename} for traj {particleid}"
-            print(msg)
-            raise ValueError(msg) from exc
+def get_trajectory_timestepfiles_nuc_abund(
+    traj_root: Path, particleid: int, memberfilenames: Sequence[str]
+) -> tuple[pl.DataFrame, list[float]]:
+    """Get the nuclear abundances and the time of several timestep files of one trajectory.
 
-    t_model_init_seconds = float(str_t_model_init_seconds)
+    The column "fileindex" gives the position of the file of each row in memberfilenames. One query reads
+    all the files, because the fixed cost of a query is larger than the parse of one file of 400 lines.
+    """
+    trajpaths = [
+        get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename)
+        for memberfilename in memberfilenames
+    ]
+    # an extracted member is never compressed, thus polars reads the paths directly
+    lzlines = pl.scan_csv(
+        trajpaths,
+        separator="\x1f",
+        has_header=False,
+        quote_char=None,
+        new_columns=["line"],
+        infer_schema_length=0,
+        include_file_paths="path",
+    ).with_columns(
+        fileindex=pl.col("path").replace_strict(
+            [str(trajpath) for trajpath in trajpaths], range(len(trajpaths)), return_dtype=pl.UInt32
+        ),
+        linenumber=pl.int_range(pl.len()).over("path"),
+    )
 
-    # the columns of this file have a fixed width, thus each line goes to str.slice and not to a parser
-    dfnucabund = (
-        scan_lines(trajpath, skip_rows=1)
+    headerfields = pl.col("line").str.extract_all(r"\S+")
+    dfheaders, dfnucabund = pl.collect_all([
+        lzlines.filter(pl.col("linenumber") == 0).select(
+            "fileindex", fieldcount=headerfields.list.len(), timesec=headerfields.list.get(1, null_on_oob=True)
+        ),
+        # the columns of this file have a fixed width, thus each line goes to str.slice and not to a parser
+        lzlines
+        .filter(pl.col("linenumber") > 0)
         .select(
+            "fileindex",
             pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
             pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
             pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
         )
         .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
-        .drop("log10abund")
-        .collect()
-    )
+        .drop("log10abund"),
+    ])
 
-    return dfnucabund, t_model_init_seconds
+    dfheaders = dfheaders.sort("fileindex")
+    badheaders = dfheaders.filter(pl.col("fieldcount") != 6)["fileindex"]
+    if dfheaders.height != len(trajpaths) or not badheaders.is_empty():
+        badfileindex = badheaders.item(0) if not badheaders.is_empty() else 0
+        msg = f"Problem with {memberfilenames[badfileindex]} for traj {particleid}"
+        print(msg)
+        raise ValueError(msg)
+
+    return dfnucabund, dfheaders["timesec"].cast(pl.Float64).to_list()
+
+
+def get_trajectory_timestepfile_nuc_abund(
+    traj_root: Path, particleid: int, memberfilename: str
+) -> tuple[pl.DataFrame, float]:
+    """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
+    dfnucabund, timesecs = get_trajectory_timestepfiles_nuc_abund(traj_root, particleid, [memberfilename])
+    return dfnucabund.drop("fileindex"), timesecs[0]
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
