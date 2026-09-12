@@ -1635,7 +1635,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # one time axis serves every model, thus the range resolves one time and before any plot runs.
     # The plot functions used to write it back onto args as they drew. The range of one model then
     # reached the next one, and get_time_range dropped a model whose run ends earlier.
-    # A reference spectrum can carry the .out suffix of ARTIS, thus the reference predicate decides
+    # A reference spectrum can hold the .out suffix of ARTIS, thus the reference predicate decides
     # which of the paths hold ARTIS timesteps
     modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
     apply_time_range_args(args, modelspecpaths)
@@ -1663,6 +1663,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if finiteranges:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
             args.timemax = max(rangemax for _, rangemax in finiteranges)
+
+    if args.multispecplot and not args.timedayslist:
+        # every later step reads one epoch of the list for each subplot, thus an absent list gave a
+        # TypeError on len(None). -timedayslist sets --multispecplot, thus the flag alone reaches here
+        exit_with_error(
+            "--multispecplot draws one subplot for each epoch of -timedayslist, and no such list was given",
+            "Give the epochs with -timedayslist, e.g. -timedayslist 260 280 300",
+        )
+
+    if args.showtime and not args.multispecplot and (args.timemin is None or args.timemax is None):
+        # the annotation writes the middle of the range, thus a missing bound gave a TypeError here.
+        # A reference spectrum has no timesteps, thus no path can resolve a range for it
+        exit_with_error(
+            "--showtime writes the middle of the plotted time range, and no time range was given",
+            "Give -timedays (e.g. -t 300 or -t 290-320), -timestep (e.g. -ts 40), or -timemin and -timemax",
+        )
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
     args.color = resolve_series_styles(

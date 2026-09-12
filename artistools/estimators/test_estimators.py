@@ -948,6 +948,67 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert np.isclose(dfone["Te"].item(), 6200.0)
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plot_codecomparison_single_epoch(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A code comparison file of one epoch gives no timestep width, and the plot still draws its cells.
+
+    The cell weight of the average is the cell volume times the timestep width. One epoch makes every
+    weight zero. get_line_points then divided by zero, and drop_nans removed each line.
+    """
+    physdir = tmp_path / "ccdata" / "toymodel"
+    physdir.mkdir(parents=True)
+    (physdir / "phys_toymodel_toycode.txt").write_text(
+        "#NTIMES: 1\n"
+        "#TIMES[d]: 10.0\n"
+        "#TIME: 10.0\n"
+        "#NVEL: 3\n"
+        "#vel_mid Te rho nne nntot\n"
+        "1000.0 5000.0 1e-13 1e6 1e6\n"
+        "2000.0 5100.0 2e-13 2e6 2e6\n"
+        "3000.0 5200.0 3e-13 3e6 3e6\n"
+    )
+
+    artismodeldir = tmp_path / "ccmodel" / "toymodel"
+    artismodeldir.mkdir(parents=True)
+    (artismodeldir / "model.txt").write_text(
+        "3\n10.0\n1 1000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n2 2000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
+        "3 3000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
+    )
+    abundrow = " ".join(["0.0"] * 25 + ["0.1", "0.0", "0.9", "0.0", "0.0"])
+    (artismodeldir / "abundances.txt").write_text("".join(f"{cellid} {abundrow}\n" for cellid in (1, 2, 3)))
+
+    realgetpath = at.get_path
+
+    def fake_get_path(key: str) -> Path:
+        if key == "codecomparisondata1path":
+            return tmp_path / "ccdata"
+        if key == "codecomparisonmodelartismodelpath":
+            return tmp_path / "ccmodel"
+        return realgetpath(key)
+
+    import artistools.inputmodel.inputmodel_misc
+
+    # codecomparison.py calls at.get_path, and inputmodel_misc.py holds its own import of the name
+    monkeypatch.setattr(at, "get_path", fake_get_path)
+    monkeypatch.setattr(artistools.inputmodel.inputmodel_misc, "get_path", fake_get_path)
+
+    at.estimators.plot(
+        argsraw=[],
+        modelpath="codecomparison/toymodel/toycode",
+        plotlist=[["Te"]],
+        x="velocity",
+        timestep="0",
+        outputfile=tmp_path / "est.pdf",
+    )
+
+    arr_xvalue, arr_yvalue = mockplot.call_args_list[0].args[1:3]
+    # the first point repeats the innermost cell at the axis origin, thus the three cells follow it
+    assert np.allclose(arr_yvalue[-3:], [5000.0, 5100.0, 5200.0])
+    assert np.allclose(arr_xvalue[-3:], [500.0, 1500.0, 2500.0])
+
+
 def test_exportmassfractions(tmp_path: Path) -> None:
     """Every element the estimators carry should appear, weighted by its standard atomic mass."""
     outfile = tmp_path / "massfracs.txt"

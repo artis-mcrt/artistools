@@ -448,6 +448,20 @@ def get_text_source_cached(
     return df, extrametadata
 
 
+def get_model_text_folder(modelpath: Path | str) -> Path:
+    """Return the folder that holds model.txt and abundances.txt of a model path.
+
+    A code comparison path is virtual. The ARTIS input files of such a model are in a folder of the
+    data set of that project.
+    """
+    inputpath = Path(modelpath)
+    if path_is_codecomparison(inputpath):
+        _, inputmodel, _ = inputpath.parts
+        return Path(get_path("codecomparisonmodelartismodelpath"), inputmodel)
+
+    return inputpath
+
+
 def get_modeldata(
     modelpath: Path | str = ".",
     get_elemabundances: bool = False,
@@ -485,8 +499,7 @@ def get_modeldata(
         modelpath = Path(inputpath).parent
     elif path_is_codecomparison(inputpath):
         modelpath = inputpath
-        _, inputmodel, _ = modelpath.parts
-        textfilepath = Path(get_path("codecomparisonmodelartismodelpath"), inputmodel, "model.txt")
+        textfilepath = Path(get_model_text_folder(inputpath), "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
@@ -1061,7 +1074,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
 
 def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
-    textfilepath = firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
+    textfilepath = firstexisting("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True)
 
     def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         if not printwarningsonly:

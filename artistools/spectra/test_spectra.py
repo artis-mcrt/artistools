@@ -963,3 +963,31 @@ def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
     # the upper bound follows the last epoch of the list, not the first
     assert "300." in names[0]
     assert "330." in names[1]
+
+
+def test_plotspectra_showtime_needs_a_time_range(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--showtime writes the middle of the time range, thus it needs both bounds.
+
+    A reference spectrum has no timesteps, thus no path could resolve a range. The annotation then
+    added two None values and raised TypeError.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        at.spectra.plot(argsraw=["--showtime", "2003du_20031213_3219_8822_00.txt", "-outputfile", str(tmp_path)])
+
+    assert excinfo.value.code == 1
+    assert "--showtime" in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--multispecplot draws one subplot for each epoch of -timedayslist, thus it needs that list.
+
+    The row count read len(None) and raised TypeError. -timedayslist sets --multispecplot, thus only
+    the flag on its own reaches this case.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        at.spectra.plot(argsraw=["--multispecplot", "-timedays", "260", str(modelpath), "-outputfile", str(tmp_path)])
+
+    assert excinfo.value.code == 1
+    assert "-timedayslist" in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))
