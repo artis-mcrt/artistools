@@ -7,6 +7,7 @@ from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
@@ -242,7 +243,6 @@ def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace | None = None,
     dirbin: int = -1,
-    modelnumber: int | None = None,  # ruff:ignore[unused-function-argument]
     filternames: Sequence[str] | None = None,
     **kwargs: t.Any,
 ) -> dict[str, t.Any]:
@@ -393,6 +393,7 @@ def get_bolometric_luminosities(
     }
 
 
+@lru_cache(maxsize=32)
 def get_filter_data(
     filterdir: Path | str, filter_name: str
 ) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
@@ -415,6 +416,10 @@ def get_filter_data(
     sortidx = np.argsort(wavefilter)
     arr_wavefilter = np.array(wavefilter)[sortidx]
     arr_transmission = np.array(transmission)[sortidx]
+
+    # the cache shares one instance with every caller, thus a write must not reach it
+    arr_wavefilter.setflags(write=False)
+    arr_transmission.setflags(write=False)
 
     return zeropointenergyflux, arr_wavefilter, arr_transmission, float(arr_wavefilter[0]), float(arr_wavefilter[-1])
 
@@ -591,7 +596,8 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from the bundled reference data, along with its metadata."""
     filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
-    metadata = at.get_file_metadata(filepath)
+    # a copy, because get_file_metadata is cached and this function adds a derived distance below
+    metadata = dict(at.get_file_metadata(filepath))
 
     data_path = Path(at.get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
     # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
@@ -631,6 +637,13 @@ def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = Fal
     One owner of the file name, so that every command reads the same file for the same request and
     reports the same message when it is absent.
     """
+    if directionresolved and gamma:
+        msg = (
+            "ARTIS writes no direction-resolved gamma-ray light curve file."
+            " Give --frompackets to make one from the packets"
+        )
+        raise FileNotFoundError(msg)
+
     if directionresolved:
         lcfilename = "light_curve_res.out"
     elif gamma:

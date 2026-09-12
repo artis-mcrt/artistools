@@ -380,6 +380,11 @@ def plot_artis_lightcurve(
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
+        if args.plotvspecpol is not None:
+            exit_with_error(
+                "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            )
         try:
             lcpath = (
                 at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
@@ -388,8 +393,8 @@ def plot_artis_lightcurve(
                     modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
                 )
             )
-        except FileNotFoundError:
-            print_warning(f"Skipping because the light curve file of {modelpath} does not exist")
+        except FileNotFoundError as exc:
+            print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
         lcdataframes = at.lightcurve.readfile(
@@ -952,7 +957,7 @@ def make_band_lightcurves_plot(
             if args.verbose:
                 print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
+                modelpath, args, dirbin, filternames=bandnames
             )
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -1080,7 +1085,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 dirbincolor = args.color[modelnumber]
 
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin=dirbin, modelnumber=modelnumber, filternames=bandnames
+                modelpath, args, dirbin=dirbin, filternames=bandnames
             )
 
             for plotnumber, filters in enumerate(args.colour_evolution):

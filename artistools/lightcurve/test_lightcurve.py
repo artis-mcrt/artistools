@@ -1731,3 +1731,14 @@ def test_escape_type_selects_the_packet_type(mockylabel: mock.MagicMock) -> None
 
     ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
     assert ylabels == ["Absolute Bolometric Magnitude"]
+
+
+def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> None:
+    """ARTIS writes no direction-resolved gamma light curve, thus the request must not read the UVOIR file."""
+    modelpath = at.get_path("testdata")
+
+    with pytest.raises(FileNotFoundError, match="direction-resolved gamma"):
+        at.lightcurve.find_lightcurve_file(modelpath, directionresolved=True, gamma=True)
+
+    # each request on its own still names the file that holds it
+    assert at.lightcurve.find_lightcurve_file(modelpath).name.startswith("light_curve.out")
