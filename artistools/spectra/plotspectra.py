@@ -1422,6 +1422,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
     )
 
+    # no code reads this for plotspectra. It stays accepted, because a script holds the spelling,
+    # and SUPPRESS keeps it out of the help text
+    parser.add_argument("--classicartis", action="store_true", help=argparse.SUPPRESS)
+
     parser.add_argument(
         "-xunit",
         dest="xunit",
@@ -1622,16 +1626,30 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
 
+    if args.classicartis:
+        print_warning(
+            "plotspectra ignores --classicartis. A spectrum comes from spec.out or from the packets,"
+            " and not from the estimators"
+        )
+
     # one time axis serves every model, thus the range resolves one time and before any plot runs.
     # The plot functions used to write it back onto args as they drew. The range of one model then
-    # reached the next one, and get_time_range dropped a model whose run ends earlier
-    apply_time_range_args(args, args.specpath)
-    if args.timemin is None and args.timedays is not None:
-        # a single -timedays names one time, thus apply_time_range_args leaves it alone. The output
-        # file name and the time annotation still need the timestep window that holds it
-        artispaths = [get_model_folder(path) for path in args.specpath if path_is_artis_model(path)]
-        if artispaths:
-            (_, _, args.timemin, args.timemax) = get_time_range(artispaths[0], timedays_range_str=args.timedays)
+    # reached the next one, and get_time_range dropped a model whose run ends earlier.
+    # A reference spectrum can carry the .out suffix of ARTIS, thus the reference predicate decides
+    # which of the paths hold ARTIS timesteps
+    modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
+    apply_time_range_args(args, modelspecpaths)
+
+    gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
+    artispaths = [get_model_folder(path) for path in modelspecpaths if path_is_artis_model(path)]
+    if gave_a_time and artispaths and (args.timemin is None or args.timemax is None):
+        # the output file name and the time annotation need both bounds. A single -timedays names one
+        # time, and a -timemin or a -timemax on its own leaves the other side open
+        (_, _, rangemin, rangemax) = get_time_range(
+            artispaths[0], args.timestep, args.timemin, args.timemax, args.timedays
+        )
+        if math.isfinite(rangemin) and math.isfinite(rangemax):
+            args.timemin, args.timemax = rangemin, rangemax
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
     args.color = resolve_series_styles(

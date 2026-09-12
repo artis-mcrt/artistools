@@ -891,3 +891,44 @@ def test_plotspectra_refuses_two_models_whose_timestep_grids_disagree(
     message = capsys.readouterr().err
     assert "timestep grids differ" in message
     assert "-timedays" in message, "the message must name the argument that works for both models"
+
+
+def test_plotspectra_resolves_both_bounds_of_a_one_sided_time_range(tmp_path: Path) -> None:
+    """-timemin alone left timemax as None, thus the output file name raised TypeError on the format."""
+    at.spectra.plot(argsraw=["-timemin", "260", "--plotinvalidpart", str(modelpath), "-outputfile", str(tmp_path)])
+
+    pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
+    assert len(pdfnames) == 1
+    # both bounds reach the name, thus neither side formats a None
+    assert pdfnames[0].startswith("plotspectra_260.")
+    assert "None" not in pdfnames[0]
+
+
+def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) -> None:
+    """A reference spectrum can carry the .out suffix of ARTIS, thus its folder holds no timesteps.
+
+    The time range resolution asked such a folder for the timesteps of a run and raised
+    FileNotFoundError before any plot ran.
+    """
+    import shutil
+
+    source = at.get_path("artistools_dir") / "data" / "refspectra" / "2003du_20031213_3219_8822_00.txt"
+    shutil.copy(source, tmp_path / "myref.out")
+    shutil.copy(f"{source}.meta.yml", tmp_path / "myref.out.meta.yml")
+
+    outputfolder = tmp_path / "out"
+    outputfolder.mkdir()
+    at.spectra.plot(
+        argsraw=["-timedays", "260-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
+    )
+
+    assert len(list(outputfolder.glob("*.pdf"))) == 1
+
+
+def test_plotspectra_accepts_classicartis_and_says_it_does_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A script holds the spelling, thus the argument stays accepted. No code reads it for this command."""
+    at.spectra.plot(argsraw=["--classicartis", "-timedays", "260-300", str(modelpath), "-outputfile", str(tmp_path)])
+
+    assert "ignores --classicartis" in capsys.readouterr().err
