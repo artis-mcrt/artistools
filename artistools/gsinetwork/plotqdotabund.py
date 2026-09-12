@@ -8,7 +8,6 @@ import string
 import typing as t
 from collections.abc import Sequence
 from functools import partial
-from itertools import batched
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +22,6 @@ from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import get_npts_model
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -140,7 +138,6 @@ def get_artis_abund_sequences(
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimatorcolumns = estimators_lazy.collect_schema().names()
-        isotopes_used: list[str] = []
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
@@ -159,7 +156,6 @@ def get_artis_abund_sequences(
                 + pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
                 for striso in speciesisotopes
             ]
-            isotopes_used.extend(speciesisotopes)
             if isnuclide:
                 cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
             elif isotopemassfrac_exprs:
@@ -167,55 +163,68 @@ def get_artis_abund_sequences(
             else:
                 cellmassfrac_exprs.append(pl.lit(float("-inf")))
 
-        # a query holds every column that it reads for all its rows. One query for all the timesteps of a 3D
-        # model of 125 000 cells held 10.6 GB. A batch of 2 GiB held 2.7 GB. A batch of 1 GiB took 50% more time.
-        nrows_per_timestep = (
-            get_npts_model(Path(modelpath)) if any(mgi < 0 for mgi in mgiplotlist) else len(mgiplotlist)
+        lzcellmassfracs = estimators_lazy.select(
+            "modelgridindex",
+            "timestep",
+            "tmid_days",
+            "mass_g",
+            *[
+                cellmassfrac_expr.alias(f"X_{strspecies}")
+                for strspecies, cellmassfrac_expr in zip(arr_species, cellmassfrac_exprs, strict=True)
+            ],
         )
-        ncolumns_read = 2 * len(set(isotopes_used)) + 4
-        timesteps_per_batch = max(1, 2**31 // (nrows_per_timestep * ncolumns_read * 8))
-
-        # an empty list of timesteps still takes one query, which gives an empty frame for each cell
-        timestepbatches = list(batched(dftimesteps["timestep"].to_list(), timesteps_per_batch, strict=False)) or [()]
-        batchresults: list[list[pl.DataFrame]] = []
-        for batchtimesteps in timestepbatches:
-            lzcellmassfracs = estimators_lazy.filter(pl.col("timestep").is_in(batchtimesteps)).select(
-                "modelgridindex",
-                "timestep",
-                "tmid_days",
-                "mass_g",
-                *[
-                    cellmassfrac_expr.alias(f"X_{strspecies}")
-                    for strspecies, cellmassfrac_expr in zip(arr_species, cellmassfrac_exprs, strict=True)
-                ],
-            )
-            batchresults.append(
-                pl.collect_all([
-                    lzcellmassfracs
-                    .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
-                    .group_by("timestep")
-                    .agg(
-                        [
-                            ((pl.col(f"X_{strspecies}") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
-                            for strspecies in arr_species
-                        ]
-                        + [pl.col("tmid_days").mean()]
-                    )
-                    for mgi in mgiplotlist
-                ])
-            )
-
-        arr_abund_artis = {
-            mgi: pl.concat(dfs_of_mgi).sort("timestep")
-            for mgi, dfs_of_mgi in zip(mgiplotlist, zip(*batchresults, strict=True), strict=True)
-        }
+        # the in-memory engine held every column that the query reads for all the rows: 10.6 GB for a 3D model
+        # of 125 000 cells. The streaming engine held approximately 4 GB
+        dfs_of_mgi = pl.collect_all(
+            [
+                lzcellmassfracs
+                .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
+                .group_by("timestep")
+                .agg(
+                    [
+                        ((pl.col(f"X_{strspecies}") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
+                        for strspecies in arr_species
+                    ]
+                    + [pl.col("tmid_days").mean()]
+                )
+                .sort("timestep")
+                for mgi in mgiplotlist
+            ],
+            engine="streaming",
+        )
+        arr_abund_artis = dict(zip(mgiplotlist, dfs_of_mgi, strict=True))
 
     return arr_abund_artis
 
 
+def sum_weighted_particle_arrays(
+    dfpairs: pl.LazyFrame, dfparticledata: pl.DataFrame, pairweight: pl.Expr, columns: Sequence[str], ntimes: int
+) -> pl.DataFrame:
+    """Return the sum over the pairs of particle and cell of each array column, multiplied by the weight of the pair.
+
+    The query adds the weights of each particle first, thus it joins one row for each particle. A join of the pairs
+    repeats the arrays of a particle for each cell that the particle reaches.
+    """
+    return (
+        dfpairs
+        .group_by("particleid")
+        .agg(weight=pairweight.sum())
+        .join(dfparticledata.lazy().select("particleid", *columns), on="particleid", how="inner")
+        .select(
+            pl
+            .concat_arr((pl.col(col).arr.get(n) * pl.col("weight")).sum() for n in range(ntimes))
+            .explode(empty_as_null=False)
+            .alias(col)
+            for col in columns
+        )
+        .collect()
+    )
+
+
 def plot_qdot(
     modelpath: Path,
-    dfcontribsparticledata: pl.LazyFrame | None,
+    dfpairs: pl.LazyFrame | None,
+    dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
     xmax: float | None = None,
@@ -230,27 +239,18 @@ def plot_qdot(
         print("Can't do qdot plot because no deposition.out file")
         return
 
-    if dfcontribsparticledata is not None:
+    if dfpairs is not None and dfparticledata is not None:
         heatcols = ["hbeta", "halpha", "hspof"]
 
         print("Calculating global heating rates from the individual particle heating rates")
         assert arr_time_gsi_days is not None
-        # a particle that has no network data drops out of the join, thus the weights of the particles
+        # the semi join removes the pairs of a particle that has no network data, thus the weights of the pairs
         # that remain do not sum to one. Divide by that sum. The rate then stays a rate for each gram
         expr_weight = pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")
+        weightsum = dfpairs.select(expr_weight.sum()).collect().item()
         dfgsiglobalheating = (
-            dfcontribsparticledata
-            .select([
-                pl
-                .concat_arr(
-                    (pl.col(col).arr.get(n) * expr_weight).sum() / expr_weight.sum()
-                    for n in range(len(arr_time_gsi_days))
-                )
-                .explode(empty_as_null=False)
-                .alias(col)
-                for col in heatcols
-            ])
-            .collect()
+            sum_weighted_particle_arrays(dfpairs, dfparticledata, expr_weight, heatcols, len(arr_time_gsi_days))
+            .select(pl.col(heatcols) / weightsum)
             .with_columns(time_days=pl.Series(arr_time_gsi_days))
         )
     else:
@@ -338,7 +338,8 @@ def plot_qdot(
 
 def plot_cell_abund_evolution(
     modelpath: Path,
-    dfcontribsparticledata: pl.LazyFrame | None,
+    dfpairs: pl.LazyFrame | None,
+    dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
     arr_abund_artis: pl.DataFrame | None,
@@ -346,11 +347,9 @@ def plot_cell_abund_evolution(
     mgi: int,
 ) -> None:
     """Plot the abundance evolution of one model cell, comparing ARTIS to the nuclear network trajectories."""
-    if dfcontribsparticledata is not None:
+    if dfpairs is not None and dfparticledata is not None:
         print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
-        dfpartcontrib_thiscell = (
-            dfcontribsparticledata.filter(pl.col("modelgridindex") == mgi) if mgi >= 0 else dfcontribsparticledata
-        )
+        dfpartcontrib_thiscell = dfpairs.filter(pl.col("modelgridindex") == mgi) if mgi >= 0 else dfpairs
         frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
         print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
 
@@ -366,16 +365,13 @@ def plot_cell_abund_evolution(
         )
 
         assert arr_time_gsi_days is not None
-        df_gsi_abunds = dfpartcontrib_thiscell.select([
-            pl
-            .concat_arr(
-                (pl.col(strnuc).arr.get(n) * pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor).sum()
-                for n in range(len(arr_time_gsi_days))
-            )
-            .explode(empty_as_null=False)
-            .alias(strnuc)
-            for strnuc in arr_species
-        ]).collect()
+        df_gsi_abunds = sum_weighted_particle_arrays(
+            dfpartcontrib_thiscell,
+            dfparticledata,
+            pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot") / normfactor,
+            arr_species,
+            len(arr_time_gsi_days),
+        )
     else:
         df_gsi_abunds = None
 
@@ -436,7 +432,7 @@ def get_particledata(
     traj_root: Path,
     particleid: int,
     verbose: bool = False,
-) -> pl.LazyFrame:
+) -> pl.DataFrame:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
     try:  # ruff:ignore[too-many-statements-in-try-clause]
         if verbose:
@@ -445,7 +441,7 @@ def get_particledata(
                 f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
             )
 
-        particledata = pl.LazyFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
+        particledata = pl.DataFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
         heatingfilepath = get_tar_member_extracted_path(
             traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
         )
@@ -522,7 +518,7 @@ def get_particledata(
         if arr_strnuc_z_n:
             print("ERROR:", particleid, arr_strnuc_z_n)
         assert not arr_strnuc_z_n
-        return pl.LazyFrame()
+        return pl.DataFrame()
 
     return particledata
 
@@ -535,8 +531,8 @@ def get_dfcontribsparticledata(
     griddata_root: Path,
     lzdfmodel: pl.LazyFrame,
     arr_time_gsi_days: list[float],
-) -> pl.LazyFrame:
-    """Get the grid particle contributions joined with their interpolated heating rates and abundances."""
+) -> tuple[pl.LazyFrame, pl.DataFrame]:
+    """Return the pairs of particle and cell for the network particles, and the frame of the particle data."""
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
@@ -579,13 +575,16 @@ def get_dfcontribsparticledata(
     list_particledata_noabund = at.parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
     print("  done")
 
-    # one collect, because plot_qdot and every cell of plot_cell_abund_evolution read this frame.
-    # A lazy concat of one frame for each particle runs its whole plan again for each of them.
-    # The join stays lazy, thus a query for one cell reads the pairs of that cell alone, and the
-    # arrays of a particle are not repeated for each cell that the particle reaches
-    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal").collect()
+    # each particle gives an eager frame of one row. A lazy concat of 1957 such frames took most of 198.5 s on
+    # the streaming engine. The time of that engine increases with the square of the number of inputs
+    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
 
-    return dfpartcontrib.join(allparticledata.lazy(), on="particleid", how="inner", maintain_order="left")
+    # a semi join removes the pairs of a particle without network data, and it copies no arrays. The frame
+    # stays lazy, thus a query for one cell reads the pairs of that cell alone
+    dfpairs = dfpartcontrib.join(
+        allparticledata.lazy().select("particleid"), on="particleid", how="semi", maintain_order="left"
+    )
+    return dfpairs, allparticledata
 
 
 def plot_qdot_abund_modelcells(
@@ -646,7 +645,7 @@ def plot_qdot_abund_modelcells(
 
     if gsinet_available:
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
-        dfcontribsparticledata = get_dfcontribsparticledata(
+        dfpairs, dfparticledata = get_dfcontribsparticledata(
             modelpath=modelpath,
             mgiplotlist=mgiplotlist,
             arr_strnuc_z_n=arr_strnuc_z_n,
@@ -657,12 +656,14 @@ def plot_qdot_abund_modelcells(
         )
 
     else:
-        dfcontribsparticledata = None
+        dfpairs = None
+        dfparticledata = None
         arr_time_gsi_days = None
 
     plot_qdot(
         modelpath,
-        dfcontribsparticledata,
+        dfpairs,
+        dfparticledata,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
         xmax=timedaysmax,
@@ -683,7 +684,8 @@ def plot_qdot_abund_modelcells(
             strmgi = f"mgi{mgi}" if mgi >= 0 else "global"
             plot_cell_abund_evolution(
                 modelpath,
-                dfcontribsparticledata,
+                dfpairs,
+                dfparticledata,
                 arr_time_gsi_days,
                 arr_species,
                 arr_abund_artis.get(mgi),
