@@ -46,9 +46,14 @@ def get_binned_opacities_ion(
         .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
         .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
         .with_columns(
-            (pl.col("lambda_angstroms").cut(breaks=lambda_bin_edges).to_physical().cast(pl.Int32) - 1).alias(
-                "lambda_angstroms_binindex"
-            )
+            # give cut only the interior edges. A line at an outer edge then falls into the first or
+            # the last bin, not into an out-of-range category with the index -1
+            pl
+            .col("lambda_angstroms")
+            .cut(breaks=lambda_bin_edges[1:-1])
+            .to_physical()
+            .cast(pl.Int32)
+            .alias("lambda_angstroms_binindex")
         )
         .join(dfcells.select("modelgridindex", "rho"), how="cross", maintain_order="left")
         .join(

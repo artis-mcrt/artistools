@@ -6,6 +6,7 @@ from artistools.misc.cliutils import addarg_collidingflags as addarg_collidingfl
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
+from artistools.misc.cliutils import addarg_labelfontsize as addarg_labelfontsize
 from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
 from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridindex
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
@@ -69,6 +70,7 @@ from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definit
 from artistools.misc.dirbins import get_dirbin_labels as get_dirbin_labels
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
+from artistools.misc.dirbins import get_phi_bin_steps as get_phi_bin_steps
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
 from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
@@ -122,6 +124,7 @@ from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
+from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep

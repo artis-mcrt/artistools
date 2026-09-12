@@ -217,6 +217,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 
     stepcount = 9 if args.vary else 1
+    # the -ostat header names the ions one time, thus every step must hold the same list
+    ostat_ions: list[str] = []
     for step in range(stepcount):
         emin = args.emin
         emax = args.emax
@@ -258,11 +260,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
             )
 
-        if step == 0 and args.ostat:
-            strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
-            for atomic_number, ion_stage in ions:
-                strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, sep="")
-            Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
+        if args.ostat:
+            ostat_ions_thisstep = [
+                at.get_ionstring(atomic_number, ion_stage, sep="") for atomic_number, ion_stage in ions
+            ]
+            if step == 0:
+                strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
+                for ionstr in ostat_ions_thisstep:
+                    strheader += f" frac_ionization_{ionstr}"
+                Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
+                ostat_ions = ostat_ions_thisstep
+            elif ostat_ions_thisstep != ostat_ions:
+                # the file gives one column for each ion, and the header names them one time
+                msg = (
+                    f"-ostat names one column for each ion, but step {step} holds"
+                    f" {ostat_ions_thisstep} and the header names {ostat_ions}."
+                    " Give a -vary mode that keeps the ion list, or leave out -ostat"
+                )
+                raise ValueError(msg)
 
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:

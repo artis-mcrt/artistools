@@ -50,7 +50,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the macroatom transitions."""
     args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
 
-    atomic_number = at.get_atomic_number(args.element.lower())
+    atomic_number = at.get_atomic_number(args.element)
     if atomic_number < 1:
         at.exit_with_error(f"could not find element '{args.element}'")
 
@@ -59,12 +59,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     assert timestepmin is not None, "-timestep holds a default, thus it names a timestep"
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
-
-    input_files = list(Path(args.modelpath).glob("**/macroatom_????.out*"))
-
-    if not input_files:
-        msg = f"{args.modelpath} holds no macroatom_????.out file"
-        raise FileNotFoundError(msg)
 
     # the template took {0}, {1}, and {2} before it took names, thus a script holds those fields
     outputfile = str(args.outputfile).format(
@@ -76,7 +70,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_days_min = at.get_timestep_time(modelpath, timestepmin)
     time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
-    dfmacroatom = read_files(input_files, modelgridindex, timestepmin, timestepmax, atomic_number)
+    dfmacroatom = read_files(modelpath, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axesgrid = make_frame_figure(args, aspect=1.059)
@@ -112,39 +106,31 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def read_files(
-    files: Sequence[Path | str],
+    modelpath: Path | str,
     modelgridindex: int | None = None,
     timestepmin: int | None = None,
     timestepmax: int | None = None,
     atomic_number: int | None = None,
 ) -> pl.DataFrame:
-    """Return the macro atom transitions from the given files, filtered by cell, timestep range, and element."""
-    if not files:
-        print("No files")
+    """Return the macroatom transitions of a model for one cell, a timestep range, and one element.
 
-    dfs_thisfile = []
-    for filepath in files:
-        print(f"Reading {filepath}...")
+    read_rank_outputfiles reads one file for each rank, thus a run that holds a plain file and a
+    compressed file of the same rank does not read that rank twice.
+    """
+    dfmacroatom = at.read_rank_outputfiles(modelpath, "macroatom_{mpirank:04d}.out", modelgridindex=modelgridindex)
 
-        df_thisfile = at.read_wsv(filepath)
-        if modelgridindex is not None:
-            df_thisfile = df_thisfile.filter(pl.col("modelgridindex") == modelgridindex)
-        if timestepmin is not None:
-            df_thisfile = df_thisfile.filter(pl.col("timestep") >= timestepmin)
-        if timestepmax is not None:
-            df_thisfile = df_thisfile.filter(pl.col("timestep") <= timestepmax)
-        if atomic_number:
-            df_thisfile = df_thisfile.filter(pl.col("Z") == atomic_number)
+    if timestepmin is not None:
+        dfmacroatom = dfmacroatom.filter(pl.col("timestep") >= timestepmin)
+    if timestepmax is not None:
+        dfmacroatom = dfmacroatom.filter(pl.col("timestep") <= timestepmax)
+    if atomic_number:
+        dfmacroatom = dfmacroatom.filter(pl.col("Z") == atomic_number)
 
-        if df_thisfile.height > 0:
-            dfs_thisfile.append(df_thisfile)
+    if dfmacroatom.is_empty():
+        msg = f"{modelpath} holds no macroatom transition for this cell, timestep range, and element"
+        raise ValueError(msg)
 
-    if not dfs_thisfile:
-        msg = "No data found"
-        raise AssertionError(msg)
-
-    # relaxed, because a column can be inferred as integer in one rank's file and float in another's
-    return pl.concat(dfs_thisfile, how="vertical_relaxed")
+    return dfmacroatom
 
 
 if __name__ == "__main__":

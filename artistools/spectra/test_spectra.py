@@ -869,3 +869,125 @@ def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> No
     """--output_spectra writes a folder of files, thus -o with a file suffix is an error and not a fallback."""
     with pytest.raises(ValueError, match="must name a folder"):
         at.spectra.plot(argsraw=[], specpath=[modelpath], output_spectra=True, outputfile=tmp_path / "spectra.txt")
+
+
+def test_plotspectra_refuses_two_models_whose_timestep_grids_disagree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Refuse one -timestep that names different days on two timestep grids.
+
+    The plot functions wrote the resolved range back onto args, thus the range of one model reached
+    the next one. get_time_range refuses a timemin that sits after the last timestep of a model,
+    thus it dropped the second model and printed one line. This is now an error, as it already is
+    for the light curve command.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+
+    with pytest.raises(SystemExit):
+        at.spectra.plotspectra.main(
+            argsraw=["-timestep", "30", str(modelpath), str(classic1dpath), "-outputfile", str(tmp_path)]
+        )
+
+    message = capsys.readouterr().err
+    assert "timestep grids differ" in message
+    assert "-timedays" in message, "the message must name the argument that works for both models"
+
+
+def test_plotspectra_resolves_both_bounds_of_a_one_sided_time_range(tmp_path: Path) -> None:
+    """-timemin alone left timemax as None, thus the output file name raised TypeError on the format."""
+    at.spectra.plot(argsraw=["-timemin", "260", "--plotinvalidpart", str(modelpath), "-outputfile", str(tmp_path)])
+
+    pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
+    assert len(pdfnames) == 1
+    # both bounds reach the name, thus neither side formats a None
+    assert pdfnames[0].startswith("plotspectra_260.")
+    assert "None" not in pdfnames[0]
+
+
+def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) -> None:
+    """A reference spectrum can carry the .out suffix of ARTIS, thus its folder holds no timesteps.
+
+    The time range resolution asked such a folder for the timesteps of a run and raised
+    FileNotFoundError before any plot ran.
+    """
+    import shutil
+
+    source = at.get_path("artistools_dir") / "data" / "refspectra" / "2003du_20031213_3219_8822_00.txt"
+    shutil.copy(source, tmp_path / "myref.out")
+    shutil.copy(f"{source}.meta.yml", tmp_path / "myref.out.meta.yml")
+
+    outputfolder = tmp_path / "out"
+    outputfolder.mkdir()
+    at.spectra.plot(
+        argsraw=["-timedays", "260-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
+    )
+
+    assert len(list(outputfolder.glob("*.pdf"))) == 1
+
+
+def test_plotspectra_accepts_classicartis_and_says_it_does_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A script holds the spelling, thus the argument stays accepted. No code reads it for this command."""
+    at.spectra.plot(argsraw=["--classicartis", "-timedays", "260-300", str(modelpath), "-outputfile", str(tmp_path)])
+
+    assert "ignores --classicartis" in capsys.readouterr().err
+
+
+def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
+    """-timedayslist names one epoch for each subplot, thus the file name must span the whole list.
+
+    The resolution took args.timedays, which holds the first epoch alone, thus two lists that share
+    their first epoch wrote one file name and the second plot overwrote the first.
+    """
+    names = []
+    for lastday in ("300", "330"):
+        outputfolder = tmp_path / lastday
+        outputfolder.mkdir()
+        at.spectra.plot(
+            argsraw=[
+                "-timedayslist",
+                "260",
+                lastday,
+                "--plotinvalidpart",
+                str(modelpath),
+                "-outputfile",
+                str(outputfolder),
+            ]
+        )
+        pdfnames = [path.name for path in outputfolder.glob("*.pdf")]
+        assert len(pdfnames) == 1
+        names.append(pdfnames[0])
+
+    assert names[0] != names[1], "two lists that differ in the last epoch must not share one file name"
+    # the upper bound follows the last epoch of the list, not the first
+    assert "300." in names[0]
+    assert "330." in names[1]
+
+
+def test_plotspectra_showtime_needs_a_time_range(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--showtime writes the middle of the time range, thus it needs both bounds.
+
+    A reference spectrum has no timesteps, thus no path could resolve a range. The annotation then
+    added two None values and raised TypeError.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        at.spectra.plot(argsraw=["--showtime", "2003du_20031213_3219_8822_00.txt", "-outputfile", str(tmp_path)])
+
+    assert excinfo.value.code == 1
+    assert "--showtime" in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--multispecplot draws one subplot for each epoch of -timedayslist, thus it needs that list.
+
+    The row count read len(None) and raised TypeError. -timedayslist sets --multispecplot, thus only
+    the flag on its own reaches this case.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        at.spectra.plot(argsraw=["--multispecplot", "-timedays", "260", str(modelpath), "-outputfile", str(tmp_path)])
+
+    assert excinfo.value.code == 1
+    assert "-timedayslist" in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))

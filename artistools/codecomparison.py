@@ -7,7 +7,6 @@ e.g., codecomparison/DDC10/artisnebular
 
 import math
 import typing as t
-from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -47,12 +46,17 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
         tmids = read_header_times(fphys)
 
     tstarts = np.zeros_like(tmids)
-    tstarts[1:] = (tmids[1:] + tmids[:-1]) / 2.0
-    tstarts[0] = tmids[0] - (tstarts[1] - tmids[0])
-
     tends = np.zeros_like(tmids)
-    tends[:-1] = (tmids[:-1] + tmids[1:]) / 2.0
-    tends[-1] = tmids[-1] + (tmids[-1] - tstarts[-1])
+    if len(tmids) == 1:
+        # one epoch gives no neighbour to halve the gap with, thus the epoch alone sets the bounds
+        tstarts[0] = tmids[0]
+        tends[0] = tmids[0]
+    else:
+        tstarts[1:] = (tmids[1:] + tmids[:-1]) / 2.0
+        tstarts[0] = tmids[0] - (tstarts[1] - tmids[0])
+
+        tends[:-1] = (tmids[:-1] + tmids[1:]) / 2.0
+        tends[-1] = tmids[-1] + (tmids[-1] - tstarts[-1])
 
     if loc == "mid":
         return list(tmids)
@@ -67,12 +71,11 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
     raise ValueError(msg)
 
 
-def read_reference_estimators(
-    modelpath: str | Path,
-    modelgridindex: int | Sequence[int] | None = None,  # ruff:ignore[unused-function-argument]
-    timestep: int | Sequence[int] | None = None,  # ruff:ignore[unused-function-argument]
-) -> dict[tuple[int, int], t.Any]:
-    """Read estimators from code comparison workshop file."""
+def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.Any]:
+    """Read every cell and timestep of a file from the code comparison workshop.
+
+    The caller filters the result. This function always parses the whole phys file.
+    """
     inputmodelfolder, inputmodel, codename = split_codecomparison_path(modelpath)
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
@@ -139,9 +142,12 @@ def read_reference_estimators(
                     _nvel = int(row[1])
 
                 elif row[0] == "#vel_mid[km/s]":
-                    row = [
-                        s for s in line.split("  ") if s
-                    ]  # need a double space because some ion columns have a space
+                    # a column name of some codes holds a space, e.g. "Fe 2", thus a double space
+                    # separates the columns. A header whose names hold no space uses single spaces,
+                    # which is what write_ionfracts gives
+                    row = [s for s in line.split("  ") if s]
+                    if len(row) == 1:
+                        row = line.split()
                     iontuples = []
                     ion_startnumber = None
                     for ionstr in row[1:]:

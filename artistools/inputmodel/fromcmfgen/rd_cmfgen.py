@@ -162,9 +162,12 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
             sumisofrac += isofrac[:, idx[iiso]]
         # compare to corresponding species mass fraction
         absdiff = np.abs(specfrac[:, spec.index(s)] - sumisofrac)
-        relabsdiff = absdiff / sumisofrac
+        # a zone that holds no isotope of this species gives 0/0, which is NaN. np.max returns NaN
+        # then, and "NaN > MAX_POP_DIFF" is False, thus the check passed whatever the columns held.
+        # Such a zone compares the absolute difference, because a relative one has no meaning there
+        relabsdiff = np.divide(absdiff, sumisofrac, out=absdiff.copy(), where=sumisofrac > 0)
         if np.max(relabsdiff) > MAX_POP_DIFF:
-            sys.exit(f"ERROR - Maximum absolute difference > MAX_POP_DIFF for species {s:s}")
+            sys.exit(f"ERROR - Maximum relative difference > MAX_POP_DIFF for species {s:s}")
 
     # reversed vectors if reverse=True
     if reverse:

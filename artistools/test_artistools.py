@@ -656,6 +656,17 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
 
+    # the free neutron "n" and nitrogen "N" differ only in case, thus a title-case lookup confused them
+    assert at.get_atomic_number("n") == 0
+    assert at.get_atomic_number("N") == 7
+    assert at.get_atomic_number("X_n1") == 0
+    assert at.get_atomic_number("X_N14") == 7
+    assert at.get_z_a_nucname("X_n1") == (0, 1)
+    assert at.get_z_a_nucname("X_N14") == (7, 14)
+
+    # a symbol that the caller gave in the wrong case still resolves
+    assert at.get_atomic_number("fe") == 26
+
     assert at.get_elsymbol(26) == "Fe"
     assert at.get_elsymbol(28) == "Ni"
     assert at.get_elsymbol(1) == "H"
@@ -1134,7 +1145,7 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     dftransitions, ionlist = at.transitions.get_kurucz_transitions()
 
-    assert ionlist == [at.transitions.IonTuple(44, 1)]
+    assert ionlist == [(44, 1)]
     assert len(dftransitions) == 1
     transition = dftransitions.row(0, named=True)
     assert transition["lambda_angstroms"] == pytest.approx(7155.170)
@@ -2574,3 +2585,26 @@ def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> N
     """An empty timestep list wrote files that hold a header and no data."""
     with pytest.raises(ValueError, match="selected_timesteps"):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
+
+
+def test_ionfrac_header_names_the_ion_stage(tmp_path: Path) -> None:
+    """The header numbered the columns from zero, thus every column carried the stage below its own."""
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=list(range(10))
+    )
+
+    ionfracfiles = sorted(tmp_path.glob("ionfrac_*_artisnebular.txt"))
+    assert ionfracfiles, "the run wrote no ion fraction file"
+
+    elementlist = at.get_composition_data(modelpath)
+    lowermost_of_elsymbol = {
+        at.get_elsymbol(row["Z"]).lower(): row["lowermost_ion_stage"] for row in elementlist.iter_rows(named=True)
+    }
+
+    for ionfracfile in ionfracfiles:
+        elsymbol = ionfracfile.name.split("_")[1]
+        headers = [line for line in ionfracfile.read_text(encoding="utf-8").splitlines() if "#vel_mid" in line]
+        assert headers
+        for header in headers:
+            firstioncolumn = header.split()[1]
+            assert firstioncolumn == f"{elsymbol}{lowermost_of_elsymbol[elsymbol]}"

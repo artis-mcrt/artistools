@@ -283,11 +283,10 @@ def make_plot_test_viewing_angle_fit(
     axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
+    # set the limits before the inversion: set_ylim re-sorts the pair that the caller gives,
+    # thus it loses an earlier inversion
+    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
     axis.invert_yaxis()
-    axis.set_xlim(args.timemin / 1.05, args.timemax * 1.05)
-    axis.minorticks_on()
-    axis.tick_params(axis="both", which="minor", top=True, right=True, length=5, width=2, labelsize=12)
-    axis.tick_params(axis="both", which="major", top=True, right=True, length=8, width=2, labelsize=12)
     axis.axhline(y=min(fxfit), color="black", linestyle="--")
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
@@ -338,14 +337,10 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
-    if args.ymin is not None or args.ymax is not None:
-        axis.set_ylim(args.ymin, args.ymax)
+    at.plottools.set_axis_properties(axis, args, xlimits=(None, None, "-xmin"))
     if not args.colouratpeak:
         # after the limits: set_ylim re-sorts the pair it is given, so an inversion applied first is lost
         at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
-    axis.minorticks_on()
-    axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
-    axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
@@ -447,9 +442,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             print(f"All 100 angles are not in file {datafilename}. Quitting")
             sys.exit(1)
 
-        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(
-            data, bands, modelpath, modelnumber, args
-        )
+        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(data, bands, modelpath, args)
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
@@ -486,18 +479,12 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
 
 def second_band_brightness_at_peak_first_band(
-    data: dict[str, npt.NDArray[np.float64]],
-    bands: Sequence[str],
-    modelpath: Path,
-    modelnumber: int,
-    args: argparse.Namespace,
+    data: dict[str, npt.NDArray[np.float64]], bands: Sequence[str], modelpath: Path, args: argparse.Namespace
 ) -> list[float]:
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-            modelpath, args, anglenumber, modelnumber=modelnumber
-        )
+        lightcurve_data = at.lightcurve.generate_band_lightcurve_data(modelpath, args, anglenumber)
         time, brightness_in_mag = at.lightcurve.get_band_lightcurve(lightcurve_data, bands[1], args)
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
@@ -542,7 +529,7 @@ def peakmag_risetime_declinerate_init(
     # a band light curve comes from the spectra, and the bolometric light curve from light_curve.out
     plottinglist: list[str] = list(args.filter) if args.filter else ["lightcurve"]
 
-    for modelnumber, modelpath in enumerate(modelpaths):
+    for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)
         # one entry per model, matching the per-model style lists and the one data file written per model
         modelnames.append(modelname)
@@ -555,21 +542,42 @@ def peakmag_risetime_declinerate_init(
             # alone. The per-direction-bin export keeps the parsed direction bins
             dirbins = [-1]
 
+        dfbolo_of_dirbin: dict[int, pl.DataFrame] = {}
         if not args.filter:
             # dirbin -1 is the angle-averaged light curve, which only light_curve.out holds. The
             # direction-resolved bins come from light_curve_res.out
             directionresolved = list(dirbins) != [-1]
             lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=directionresolved)
-            lcdataframes = at.lightcurve.readfile(lcpath)
+            # a mode that averages over the angles groups several direction bins, and dirbins then
+            # names the first bin of each group. Thus the reader must average in the same way
+            lcdataframes = (
+                at.lightcurve.readfile(
+                    lcpath,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
+                )
+                if directionresolved
+                else at.lightcurve.readfile(lcpath)
+            )
+            # readfile slices one scan of the file. Thus one collect_all parses it one time for
+            # every direction bin, in place of one parse for each bin
+            lazyplans = [
+                lcdataframes[dirbin]
+                .filter(pl.col("time_days").is_between(args.timemin, args.timemax))
+                .fill_nan(0.0)
+                # a time with no luminosity has no magnitude, thus drop the zero and the
+                # non-finite values before the fit
+                .filter(pl.col("mag").is_finite() & (pl.col("mag") != 0.0))
+                .select("time_days", "mag")
+                for dirbin in dirbins
+            ]
+            dfbolo_of_dirbin = dict(zip(dirbins, pl.collect_all(lazyplans), strict=True))
 
         if args.verbose:
             print(f"Reading spectra: {modelname}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {
-                dirbin: at.lightcurve.generate_band_lightcurve_data(modelpath, args, dirbin, modelnumber=modelnumber)
-                for dirbin in dirbins
-            }
+            {dirbin: at.lightcurve.generate_band_lightcurve_data(modelpath, args, dirbin) for dirbin in dirbins}
             if args.filter
             else {}
         )
@@ -582,16 +590,7 @@ def peakmag_risetime_declinerate_init(
                         lightcurve_data_filters_of_dirbin[dirbin], band_name, args
                     )
                 else:
-                    lightcurve_data = (
-                        lcdataframes[dirbin]
-                        .filter(pl.col("time_days").is_between(args.timemin, args.timemax))
-                        .fill_nan(0.0)
-                        # a time with no luminosity has no magnitude, thus drop the zero and the
-                        # non-finite values before the fit
-                        .filter(pl.col("mag").is_finite() & (pl.col("mag") != 0.0))
-                        .select("time_days", "mag")
-                        .collect()
-                    )
+                    lightcurve_data = dfbolo_of_dirbin[dirbin]
                     brightness = lightcurve_data["mag"].to_numpy()
                     time = lightcurve_data["time_days"].to_list()
 

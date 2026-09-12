@@ -32,6 +32,7 @@ from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
@@ -43,12 +44,12 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import addarg_yscale
+from artistools.misc import apply_time_range_args
 from artistools.misc import color_arg
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_folder
 from artistools.misc import get_series_label
 from artistools.misc import makelist
-from artistools.misc import path_is_artis_model
 from artistools.misc import print_product
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
@@ -380,6 +381,11 @@ def plot_artis_lightcurve(
     else:
         assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
         assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
+        if args.plotvspecpol is not None:
+            exit_with_error(
+                "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            )
         try:
             lcpath = (
                 at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
@@ -388,8 +394,8 @@ def plot_artis_lightcurve(
                     modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
                 )
             )
-        except FileNotFoundError:
-            print_warning(f"Skipping because the light curve file of {modelpath} does not exist")
+        except FileNotFoundError as exc:
+            print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
         lcdataframes = at.lightcurve.readfile(
@@ -952,7 +958,7 @@ def make_band_lightcurves_plot(
             if args.verbose:
                 print(f"Reading spectra: {modelname} (angle {dirbin})")
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin, modelnumber=modelnumber, filternames=bandnames
+                modelpath, args, dirbin, filternames=bandnames
             )
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -1080,7 +1086,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 dirbincolor = args.color[modelnumber]
 
             band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin=dirbin, modelnumber=modelnumber, filternames=bandnames
+                modelpath, args, dirbin=dirbin, filternames=bandnames
             )
 
             for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1499,53 +1505,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
-    parser.add_argument(
-        "-labelfontsize", type=float, default=None, help="Font size of the tick labels and the axis labels"
-    )
-
-
-def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:
-    """Narrow the plotted time range from -timestep or from a -timedays range.
-
-    -timemin and -timemax give the range directly. A single -timedays value names one time for
-    --brightnessattime, thus only a value that holds a range takes part here.
-    """
-    dayrange = at.misc.parse_timedays_range(args.timedays) if args.timedays is not None else None
-    if args.timestep is dayrange is None:
-        return
-
-    # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
-    # command that plots reference data alone still takes a range in days
-    # a path can name a light curve file of a run, and get_time_range reads the folder of the run
-    artispaths = [get_model_folder(path) for path in modelpaths if path_is_artis_model(path)]
-    if not artispaths:
-        if dayrange is None:
-            msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
-            raise ValueError(msg)
-        rangemin, rangemax = dayrange
-    else:
-        _, _, rangemin, rangemax = at.get_time_range(
-            artispaths[0], timestep_range_str=args.timestep, timedays_range_str=args.timedays
-        )
-
-        # the plot holds one time axis, thus one range in days must serve every model. A timestep
-        # names different days on a different timestep grid, and applying the days of the first
-        # model would show another timestep of the second without a word
-        if args.timestep is not None:
-            for otherpath in artispaths[1:]:
-                _, _, othermin, othermax = at.get_time_range(otherpath, timestep_range_str=args.timestep)
-                if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
-                    exit_with_error(
-                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
-                        f"{at.get_model_name(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
-                        f"{at.get_model_name(otherpath)}, because their timestep grids differ. Give the "
-                        "range in days with -timedays, which means the same for every model"
-                    )
-
-    if args.timemin is None:
-        args.timemin = rangemin
-    if args.timemax is None:
-        args.timemax = rangemax
+    addarg_labelfontsize(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

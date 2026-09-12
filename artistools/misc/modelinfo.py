@@ -21,7 +21,7 @@ from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import path_is_codecomparison
-from artistools.misc.fileio import polars_source
+from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
@@ -58,13 +58,14 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     """
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
-    dfgrid = pl.read_csv(
-        polars_source(filename),
-        separator=" ",
-        has_header=False,
-        comment_prefix="#",
-        schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
-    )
+    with polars_source_open(filename) as source:
+        dfgrid = pl.read_csv(
+            source,
+            separator=" ",
+            has_header=False,
+            comment_prefix="#",
+            schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
+        )
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
@@ -107,15 +108,17 @@ def get_wid_init_at_tmodel(
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
     """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    specdata = pl.read_csv(
-        polars_source(firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)),
-        separator=" ",
-        has_header=False,
-        skip_rows=1,
-        columns=[0],
-        new_columns=["nu"],
-        **extra_csv_columns_ignored(),
-    )
+    specfile = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
+    with polars_source_open(specfile) as source:
+        specdata = pl.read_csv(
+            source,
+            separator=" ",
+            has_header=False,
+            skip_rows=1,
+            columns=[0],
+            new_columns=["nu"],
+            **extra_csv_columns_ignored(),
+        )
     return specdata["nu"].to_numpy()
 
 
@@ -244,8 +247,24 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
             # the first timestep of a restarted run is duplicate and should be ignored
             restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
             return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
-    if estimfiles := sorted(Path(folderpath).glob("estimators_*.out*")):
-        with zopen(estimfiles[0]) as estfile:
+    # a leftover sibling such as estimators_0000.out.bak sorts before estimators_0000.out.zst, thus
+    # the glob alone cannot pick the file. firstexisting_or_none applies the precedence that zopen reads
+    estimstems = sorted({
+        name[: name.index(".out") + len(".out")]
+        for name in (path.name for path in Path(folderpath).glob("estimators_*.out*"))
+        if ".out" in name
+    })
+    estimfilepath = next(
+        (
+            found
+            for stem in estimstems
+            if (found := firstexisting_or_none(stem, folder=folderpath, tryzipped=True, search_subfolders=False))
+            is not None
+        ),
+        None,
+    )
+    if estimfilepath is not None:
+        with zopen(estimfilepath) as estfile:
             timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
             # the first timestep of a restarted run is duplicate and should be ignored
             restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
@@ -402,9 +421,10 @@ def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
         "modelgridrankassignments.out", folder=modelpath, tryzipped=True, search_subfolders=False
     )
     if filerankassignments is not None:
-        return pl.scan_csv(polars_source(filerankassignments), has_header=True, separator=" ").rename(
-            lambda column_name: column_name.removeprefix("#")
-        )
+        with polars_source_open(filerankassignments) as source:
+            return pl.scan_csv(source, has_header=True, separator=" ").rename(
+                lambda column_name: column_name.removeprefix("#")
+            )
     return None
 
 

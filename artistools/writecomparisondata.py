@@ -60,32 +60,27 @@ def get_nonempty_cells(
     modelpath: str | Path, allnonemptymgilist: Sequence[int]
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
-    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid"])
+    # write_phys reads logrho, which a 3D model.txt does not carry. The reader derives it from rho
+    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_mid", "logrho"])
     return lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect(), modelmeta
 
 
-def write_single_estimator(
+def write_edep(
     modelpath: str | Path,
     selected_timesteps: Sequence[int],
     estimators: dict[tuple[int, int], dict[str, t.Any]],
     allnonemptymgilist: Sequence[int],
     outfile: Path,
-    keyname: str,
 ) -> None:
-    """Write one estimator's value in every cell at the selected timesteps, in code comparison workshop format."""
+    """Write the deposition of every cell at the selected timesteps, in the format of the workshop."""
     modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
-        if keyname == "total_dep":
-            f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
-        elif keyname == "nne":
-            f.write("#vel_mid[km/s] ne_t0[/cm^3] ne_t1[/cm^3] … ne_tn[/cm^3]\n")
-        elif keyname == "Te":
-            f.write("#vel_mid[km/s] Tgas_t0[K] Tgas_t1[K] ... Tgas_tn[K]\n")
+        f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
         for modelgridindex, vel_r_mid in modeldata.select("modelgridindex", "vel_r_mid").iter_rows():
             f.write(f"{vel_r_mid / km_to_cm:.2f}")
             for timestep in selected_timesteps:
-                cellvalue = estimators[timestep, modelgridindex][keyname]
+                cellvalue = estimators[timestep, modelgridindex]["total_dep"]
                 f.write(f" {cellvalue:.4e}")
             f.write("\n")
 
@@ -108,6 +103,11 @@ def write_ionfracts(
         atomic_number = elementlist["Z"].item(elementindex)
         elsymb = at.get_elsymbol(atomic_number)
         nions = elementlist["nions"].item(elementindex)
+        lowermost_ion_stage = elementlist["lowermost_ion_stage"].item(elementindex)
+        # the header must name the ion stage that each column holds. A count from zero made every
+        # reader, this repository included, attribute each column to the stage below it
+        ion_stages = [lowermost_ion_stage + ion for ion in range(nions)]
+        ionstrs = [at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral") for ion_stage in ion_stages]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w", encoding="utf-8") as f:
@@ -118,13 +118,11 @@ def write_ionfracts(
             for timestep in selected_timesteps:
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
-                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion}' for ion in range(nions)])}\n")
+                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion_stage}' for ion_stage in ion_stages])}\n")
                 for modelgridindex, vel_r_mid in cellrows:
                     f.write(f"{vel_r_mid / km_to_cm:.2f}")
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
-                    for ion in range(nions):
-                        ion_stage = ion + elementlist["lowermost_ion_stage"].item(elementindex)
-                        ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+                    for ionstr in ionstrs:
                         ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
@@ -241,13 +239,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
-        write_single_estimator(
+        write_edep(
             modelpath,
             selected_timesteps,
             estimators,
             allnonemptymgilist,
             Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
-            keyname="total_dep",
         )
 
         write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)

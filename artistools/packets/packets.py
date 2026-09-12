@@ -18,11 +18,9 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import print_warning
-from artistools.misc import read_parquet_cache_metadata
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import format_mtime
-from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
+from artistools.misc.fileio import rankbatch_parquet_staleness
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -267,7 +265,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "stokes_i": pl.Float32,
         "stokes_q": pl.Float32,
         "stokes_u": pl.Float32,
-        "t_decay": pl.Float32,
+        "tdecay": pl.Float32,
         "true_emission_velocity": pl.Float32,
         "trueem_posx": pl.Float32,
         "trueem_posy": pl.Float32,
@@ -411,31 +409,16 @@ def get_packets_rankbatch_parquetfile(
         # restart rewrote then makes the whole batch cache stale
         textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
         allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
-        # a text file of the batch is absent, thus artistools cannot do a new conversion. The
-        # modification times give no full comparison, but the cache format version still applies
-        textsource_mtime = max(textsource_mtimes) if allranksfound else None
 
-        # an archived run of packets costs hours to convert again, thus a cache from before the stamps
-        # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
-        pqmetadata, stalereason = read_parquet_cache_metadata(
-            parquetfilepath, CACHEVERSION, textsource_mtime, accept_unstamped=True
+        # one rule decides the freshness of every batch cache of this repository. A text file of the
+        # batch that is absent gives no full comparison of the modification times, but the cache
+        # format version still applies
+        stalereason = rankbatch_parquet_staleness(
+            parquetfilepath,
+            CACHEVERSION,
+            max(textsource_mtimes) if textsource_mtimes else None,
+            textsource_complete=allranksfound,
         )
-
-        if stalereason is None and not allranksfound and textsource_mtimes:
-            # a text file that is newer than the stamp proves that a restart rewrote the source after
-            # the cache. An absent text file gives no proof, thus only this one test applies
-            stampedmtime = (pqmetadata or {}).get("textsource_mtime")
-            try:
-                # a stamp that no writer of this repository can produce dates no text file
-                stampedvalue = float(stampedmtime) if stampedmtime is not None else None
-            except ValueError:
-                stampedvalue = None
-
-            if stampedvalue is not None and max(textsource_mtimes) > stampedvalue + MTIME_TOLERANCE_S:
-                stalereason = (
-                    f"a text file of the batch changed at {format_mtime(max(textsource_mtimes))},"
-                    f" after the cache stamp of {format_mtime(stampedmtime)}"
-                )
 
         if stalereason is None:
             conversion_needed = False
@@ -452,7 +435,7 @@ def get_packets_rankbatch_parquetfile(
                 f" ranks {batch_mpiranks[0]} to {batch_mpiranks[-1]}, because {stalereason}."
                 " File will be regenerated..."
             )
-        elif pqmetadata is not None or parquet_is_readable(parquetfilepath):
+        elif parquet_is_readable(parquetfilepath):
             # the text files are incomplete, thus no conversion can replace this cache. The data can
             # be older than the text files that remain, thus the user needs a warning
             conversion_needed = False
@@ -619,8 +602,7 @@ def get_packets(
     # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U. Such a cache is
     # accepted without a version check when the run has no packet text files any more
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"originated_from_positron": "originated_from_particlenotgamma", "stokes2": "stokes_q", "stokes3": "stokes_u"},
-        strict=False,
+        {"stokes2": "stokes_q", "stokes3": "stokes_u"}, strict=False
     )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
@@ -741,7 +723,9 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
             .alias("phi")
         )
 
-    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
+    # the code above creates these columns only for a frame that carries no angles. Thus the drop
+    # must accept a name that this call did not add
+    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"], strict=False)
 
 
 def bin_packet_directions_polars(

@@ -168,8 +168,9 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
         nu_centre_min = dfspec.item(0, 0)
         nu_centre_max = dfspec.item(dfspec.height - 1, 0)
 
-        # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-        # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+        # this is not the exact dlognu, because it assumes that the spacing of the bin centres
+        # matches the spacing of the bin edges. The difference is small, and the exact solution
+        # needs much more algebra
         dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
         nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
         nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
@@ -204,7 +205,7 @@ def get_lambda_bin_edges(
             # a bin edge of zero stays at zero after each multiplication, thus the loop below does not stop
             msg = f"deltalogx needs a positive lower x limit, got {xmin_plot}"
             raise ValueError(msg)
-        # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
+        # xmin_plot is the centre of the first bin. Subtract half a bin width to get its lower edge
         xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
         xmax = xmax_plot * (1 + deltalogx) ** 0.5
         list_x_bin_edges = [xbin_lower]
@@ -387,11 +388,15 @@ def weighted_average_spectra(
     return np.average(spectra, axis=0, weights=factors)
 
 
-def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycol: str) -> pl.DataFrame:
-    """Return the mean x and the mean y of each group of nbins consecutive rows. The last group can be smaller."""
+def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycols: str | Sequence[str]) -> pl.DataFrame:
+    """Return the mean x and the mean of each y column, for each group of nbins consecutive rows.
+
+    The last group can be smaller than nbins.
+    """
+    ycollist = [ycols] if isinstance(ycols, str) else list(ycols)
     return (
         dfspectrum
-        .select(xcol, ycol)
+        .select(xcol, *ycollist)
         .with_row_index("bin")
         .group_by(pl.col("bin") // nbins, maintain_order=True)
         .mean()
@@ -485,29 +490,23 @@ def filter_packets_by_time(
     timehighdays: float,
     use_time: t.Literal["arrival", "emission", "escape"],
     gamma: bool,
-) -> tuple[pl.LazyFrame, float | None]:
-    """Filter packets with the selected time and return the escape correction when applicable."""
+) -> pl.LazyFrame:
+    """Return the packets that the selected time keeps."""
     if use_time == "arrival":
-        return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays)), None
+        return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     if use_time == "escape":
         escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        return (
-            dfpackets.filter(
-                (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
-            ),
-            escapesurfacegamma,
+        return dfpackets.filter(
+            (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
         )
 
     col_emit_time = "tdecay" if gamma else "em_time"
     mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * const.day_to_s).mean()
-    return (
-        dfpackets.filter(
-            pl.col(col_emit_time).is_between(
-                timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
-            )
-        ),
-        None,
+    return dfpackets.filter(
+        pl.col(col_emit_time).is_between(
+            timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
+        )
     )
 
 
@@ -599,7 +598,7 @@ def get_from_packets(
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
 
         if not packets_are_time_filtered:
-            dfpackets, _ = filter_packets_by_time(dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+            dfpackets = filter_packets_by_time(dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
@@ -1332,7 +1331,7 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
-        lzdfpackets, _ = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         lzdfpackets, _ = atpackets.filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta

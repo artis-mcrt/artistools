@@ -245,45 +245,39 @@ def process_trajectory(
             "abundweighted_Qdot",
         )
     }
+    arr_networktimestepindex = np.array(networktimestepindices)
+    hasnetworkstep = arr_networktimestepindex >= 1
     decay_powers |= {
-        col: (
-            np.array([
-                dfheatingthermo[col][networktimestepindex - 1] if networktimestepindex >= 1 else 0.0
-                for networktimestepindex in networktimestepindices
-            ])
-            * traj_mass_grams
-        )
+        col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_networktimestepindex - 1], 0.0)
+        * traj_mass_grams
         for col in ("hbeta", "htot", "Qdot")
     }
     decay_powers |= {"timedays": np.array(arr_t_day)}
 
-    A_arr = nuc_data["A"].to_numpy()
-    Z_arr = nuc_data["Z"].to_numpy()
-
     if nuclide_contrib:
-        for AZ_tuple in zip(A_arr, Z_arr, strict=False):
-            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_elec"] = np.zeros(len(arr_t_day))
-            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_gam"] = np.zeros(len(arr_t_day))
-            decay_powers[f"({int(AZ_tuple[0])},{int(AZ_tuple[1])})_nu"] = np.zeros(len(arr_t_day))
+        for A, Z in nuc_data.select("A", "Z").iter_rows():
+            decay_powers[f"({A},{Z})_elec"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({A},{Z})_gam"] = np.zeros(len(arr_t_day))
+            decay_powers[f"({A},{Z})_nu"] = np.zeros(len(arr_t_day))
 
-    # now get abundances from single timestep files
-    for plottimestep, networktimestepindex in enumerate(networktimestepindices):
-        if networktimestepindex < 1:
-            continue
-
-        dftrajnucabund, _networktime = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-            traj_root=traj_root, particleid=traj_ID, memberfilename=f"./Run_rprocess/nz-plane{networktimestepindex:05d}"
+    # two plot times can use the same network step, thus the code reads each file one time
+    networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
+    if networksteps:
+        dftrajnucabund, _networktimes = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+            traj_root=traj_root,
+            particleid=traj_ID,
+            memberfilenames=[f"./Run_rprocess/nz-plane{nts:05d}" for nts in networksteps],
         )
 
-        assert dftrajnucabund.height > 100, dftrajnucabund.height
+        assert np.bincount(dftrajnucabund["fileindex"].to_numpy(), minlength=len(networksteps)).min() > 100
 
         pldf_all = (
             dftrajnucabund
             .lazy()
             .filter(pl.col("massfrac") > 0.0)
             .with_columns([
+                pl.col("fileindex").replace_strict(range(len(networksteps)), networksteps).alias("nstep"),
                 pl.col(pl.Int32).cast(pl.Int64),
-                pl.col(pl.Float32).cast(pl.Float64),
                 (pl.col("Z") + pl.col("N")).alias("A"),
                 (pl.col("massfrac") * traj_mass_grams / ((pl.col("Z") + pl.col("N")) * amu_g)).alias("num_nuc"),
             ])
@@ -298,26 +292,45 @@ def process_trajectory(
             .collect()
         )
 
-        global_sums = pldf_all.select(
-            abundweighted_nu=pl.sum("eps_nu"),
-            abundweighted_elec=pl.sum("eps_elec"),
-            abundweighted_gamma=pl.sum("eps_gamma"),
-            abundweighted_Qdot=pl.sum("eps_tot"),
+        # global_sums has one row for each plot time that has a network step, in the order of plottimesteps_with_network
+        plottimesteps_with_network = np.flatnonzero(hasnetworkstep)
+        global_sums = (
+            pldf_all
+            .group_by("nstep")
+            .agg(
+                abundweighted_nu=pl.sum("eps_nu"),
+                abundweighted_elec=pl.sum("eps_elec"),
+                abundweighted_gamma=pl.sum("eps_gamma"),
+                abundweighted_Qdot=pl.sum("eps_tot"),
+            )
+            .join(
+                pl.DataFrame({"nstep": arr_networktimestepindex[hasnetworkstep]}, schema={"nstep": pl.Int64}),
+                on="nstep",
+                how="right",
+                maintain_order="right",
+            )
+            .fill_null(0.0)
         )
-        for col in global_sums.columns:
-            decay_powers[col][plottimestep] = float(global_sums.get_column(col).item())
+        for col in ("abundweighted_nu", "abundweighted_elec", "abundweighted_gamma", "abundweighted_Qdot"):
+            decay_powers[col][plottimesteps_with_network] = global_sums[col].to_numpy()
 
         if nuclide_contrib:
             # store all nuclide contributions in detail
-            grouped = pldf_all.group_by(["A", "Z"]).agg([
+            plottimesteps_of_nstep: dict[int, list[int]] = {}
+            for plottimestep in plottimesteps_with_network.tolist():
+                plottimesteps_of_nstep.setdefault(networktimestepindices[plottimestep], []).append(plottimestep)
+            grouped = pldf_all.group_by("nstep", "A", "Z").agg(
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),
                 pl.sum("eps_nu").alias("eps_nu"),
-            ])
-            for A, Z, Qe, Qg, Qn in grouped.select("A", "Z", "eps_elec", "eps_gamma", "eps_nu").iter_rows():
-                decay_powers[f"({A},{Z})_elec"][plottimestep] = Qe
-                decay_powers[f"({A},{Z})_gam"][plottimestep] = Qg
-                decay_powers[f"({A},{Z})_nu"][plottimestep] = Qn
+            )
+            for nstep, A, Z, Qe, Qg, Qn in grouped.select(
+                "nstep", "A", "Z", "eps_elec", "eps_gamma", "eps_nu"
+            ).iter_rows():
+                plottimesteps = plottimesteps_of_nstep[nstep]
+                decay_powers[f"({A},{Z})_elec"][plottimesteps] = Qe
+                decay_powers[f"({A},{Z})_gam"][plottimesteps] = Qg
+                decay_powers[f"({A},{Z})_nu"][plottimesteps] = Qn
 
     # dump to parquet
     if traj_parquet_dir is not None:

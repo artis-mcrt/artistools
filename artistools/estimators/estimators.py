@@ -3,7 +3,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-import contextlib
 import dataclasses as dc
 import datetime
 import string
@@ -25,10 +24,9 @@ import artistools as at
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
-from artistools.misc import read_parquet_cache_metadata
-from artistools.misc.fileio import format_mtime
-from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import parquet_is_readable
+from artistools.misc.fileio import rankbatch_parquet_staleness
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -399,13 +397,19 @@ def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
     estimators_0000.out.bak beside estimators_0000.out, thus cannot decide the freshness.
     """
     folderpath = Path(folderpath)
-    ranks = {int(textfile.name.split("_")[1].split(".")[0]) for textfile in folderpath.glob("estimators_????.out*")}
+    # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
+    ranks = {
+        int(rankstr)
+        for rankstr in (textfile.name.split("_")[1].split(".")[0] for textfile in folderpath.glob("estimators_*.out*"))
+        if rankstr.isdigit()
+    }
     mtimes: dict[int, float] = {}
     for rank in sorted(ranks):
-        for suffix in ("", ".zst", ".gz", ".xz"):
-            with contextlib.suppress(FileNotFoundError):
-                mtimes[rank] = (folderpath / f"estimators_{rank:04d}.out{suffix}").stat().st_mtime
-                break
+        rankfile = firstexisting_or_none(
+            f"estimators_{rank:04d}.out", folder=folderpath, tryzipped=True, search_subfolders=False
+        )
+        if rankfile is not None:
+            mtimes[rank] = rankfile.stat().st_mtime
     return mtimes
 
 
@@ -421,46 +425,6 @@ def get_batch_textsource_state(
     """
     batchmtimes = [mtime for rank, mtime in textsource_mtimes.items() if rankmin <= rank <= rankmax]
     return max(batchmtimes, default=None), len(batchmtimes) == rankmax - rankmin + 1
-
-
-def rankbatch_parquet_staleness(
-    parquetfilepath: Path, textsource_mtime: float | None, *, textsource_complete: bool
-) -> str | None:
-    """Return the reason why the parquet cache is stale, or None when the cache is current.
-
-    The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
-    conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
-    e.g. a cache that is absent, damaged, or written for a different cache format version.
-
-    A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
-    compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
-    absent text file proves nothing. The cache format version applies to a batch of either kind.
-    """
-    # an archived run of estimators costs hours to convert again, thus a cache from before the stamps
-    # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
-    pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, CACHEVERSION, textsource_mtime if textsource_complete else None, accept_unstamped=True
-    )
-    if stalereason is not None or textsource_complete or textsource_mtime is None:
-        return stalereason
-
-    stampedmtime = (pqmetadata or {}).get("textsource_mtime")
-    if stampedmtime is None:
-        return None
-
-    try:
-        stampedvalue = float(stampedmtime)
-    except ValueError:
-        # a stamp that no writer of this repository can produce cannot date the text files
-        return None
-
-    if textsource_mtime > stampedvalue + MTIME_TOLERANCE_S:
-        return (
-            f"a text file of the batch changed at {format_mtime(textsource_mtime)},"
-            f" after the cache stamp of {format_mtime(stampedmtime)}"
-        )
-
-    return None
 
 
 def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_complete: bool) -> bool:
@@ -483,7 +447,10 @@ def rankbatch_parquet_is_current(
     a readable cache of such a batch answers here even when it is stale. A complete batch converts
     its text files again, thus only a current cache answers there.
     """
-    if rankbatch_parquet_staleness(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete) is None:
+    staleness = rankbatch_parquet_staleness(
+        parquetfilepath, CACHEVERSION, textsource_mtime, textsource_complete=textsource_complete
+    )
+    if staleness is None:
         return True
 
     # the same rule that get_estimators_rankbatch_parquetfile() applies, so that the two agree
@@ -710,9 +677,7 @@ def scan_estimators(
     is_codecomparison = path_is_codecomparison(modelpath)
 
     if is_codecomparison:
-        pldflazy = lazyframe_from_estimator_dict(
-            at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-        )
+        pldflazy = lazyframe_from_estimator_dict(at.codecomparison.read_reference_estimators(modelpath))
     elif classicartis:
         from artistools.estimators.estimators_classic import read_classic_estimators
 
@@ -778,7 +743,7 @@ def scan_artis_estimators(
         # file that the check saw
         outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
         stalereasons = [
-            rankbatch_parquet_staleness(cachepath, mtime, textsource_complete=complete)
+            rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
             for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
         ]
         # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
@@ -825,9 +790,28 @@ def scan_artis_estimators(
             print(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
-        pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
-            ["timestep", "modelgridindex"], maintain_order=True, keep="first"
+        # the first timestep of a restarted run repeats the last timestep of the run before it, thus the first
+        # row of each key stays. A unique() keeps every column of every row in memory until the query ends.
+        # This used 14 GB for a 3D model on the streaming engine. The group_by reads only the key columns and
+        # the row position
+        indexedrows = pl.concat(
+            [
+                pl.scan_parquet(pfile, row_index_name="sourcerow").with_columns(
+                    sourcerow=pl.lit(fileindex << 32, dtype=pl.UInt64) + pl.col("sourcerow").cast(pl.UInt64)
+                )
+                for fileindex, pfile in enumerate(parquetfiles)
+            ],
+            how="diagonal_relaxed",
         )
+        firstrows = (
+            indexedrows
+            .select("timestep", "modelgridindex", "sourcerow")
+            .group_by("timestep", "modelgridindex")
+            .agg(pl.col("sourcerow").min())
+        )
+        pldflazy = indexedrows.join(
+            firstrows, on=["timestep", "modelgridindex", "sourcerow"], how="semi", maintain_order="left"
+        ).drop("sourcerow")
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached
@@ -943,6 +927,10 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
     if dfsuperlevel.is_empty():
         return pl.DataFrame(schema=schema)
 
+    # the largest number of rows that one cross join may make. The batch loop below keeps the peak
+    # memory near this value, whatever the cell count of the model
+    maxcrossrows = 2_000_000
+
     # levelnumber_sl is the same for every cell in practice, so this loops once
     contributions = []
     for levelnumber_sl in dfsuperlevel["levelnumber_sl"].unique().sort():
@@ -950,9 +938,16 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
         if dflevels_above.is_empty():
             continue
 
-        contributions.append(
-            dfsuperlevel
-            .filter(pl.col("levelnumber_sl") == levelnumber_sl)
+        dfsuperlevel_thislevel = dfsuperlevel.filter(pl.col("levelnumber_sl") == levelnumber_sl)
+
+        # the cross join makes one row for each pair of superlevel row and level above it. A 3D
+        # model with 100k NLTE cells and a few hundred levels would need tens of GB. Thus each
+        # query takes a batch of the superlevel rows. Each row is one group, thus a batch never
+        # splits a group
+        batchheight = max(1, maxcrossrows // dflevels_above.height)
+        contributions.extend(
+            dfsuperlevel_thislevel
+            .slice(batchstart, batchheight)
             .join(dflevels_above, how="cross", maintain_order="left")
             .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
             .group_by(groupcols)
@@ -961,6 +956,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
                 * (pl.col("energy_ev") * pl.col("boltzfac")).sum()
                 / pl.col("boltzfac").sum()
             )
+            for batchstart in range(0, dfsuperlevel_thislevel.height, batchheight)
         )
 
     return pl.concat(contributions) if contributions else pl.DataFrame(schema=schema)

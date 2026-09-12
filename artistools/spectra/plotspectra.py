@@ -43,6 +43,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
+from artistools.misc import apply_time_range_args
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
@@ -219,13 +220,14 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     dfspectrum = stokes_params[args.stokesparam].with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu")).collect()
 
     timearray = dfspectrum.columns[1:-1]
-    (_, _, args.timemin, args.timemax) = get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
-    )
-    assert args.timemin is not None
-    assert args.timemax is not None
+    # locals, not a write-back onto args: this function runs once for each model, and a range that
+    # one model resolved would then reach the next one. get_time_range refuses a timemin that sits
+    # after the last timestep, thus it dropped a shorter model and printed one line
+    (_, _, timemin, timemax) = get_time_range(modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+    assert timemin is not None
+    assert timemax is not None
 
-    timeavg_float = (args.timemin + args.timemax) / 2.0
+    timeavg_float = (timemin + timemax) / 2.0
 
     def timedistance(timestr: str) -> float:
         return abs(float(timestr) - timeavg_float)
@@ -491,12 +493,15 @@ def plot_artis_spectrum(
 
     for axindex, axis in enumerate(axes):
         assert isinstance(axis, mplax.Axes)
+        # locals, not a write-back onto args: this function runs once for each model and once for
+        # each axis. A range that one of them resolved would reach the next one, and get_time_range
+        # then drops a model whose last timestep ends before that range
         if args.multispecplot:
-            (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
+            (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
-            (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
+            (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath,
                 args.timestep,
                 args.timemin,
@@ -508,10 +513,10 @@ def plot_artis_spectrum(
         if timestepmin == timestepmax == -1:
             return None
 
-        assert args.timemin is not None
-        assert args.timemax is not None
-        timeavg = (args.timemin + args.timemax) / 2.0
-        timedelta = (args.timemax - args.timemin) / 2
+        assert timemin is not None
+        assert timemax is not None
+        timeavg = (timemin + timemax) / 2.0
+        timedelta = (timemax - timemin) / 2
         linelabel_is_custom = linelabel is not None
         if linelabel is None:
             modelname = get_model_name(modelpath)
@@ -526,12 +531,12 @@ def plot_artis_spectrum(
         # the label carries LaTeX for the figure, thus the log line shows the plain form
         print_heading(
             f"'{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.3f} to {args.timemax:.3f}d"
+            f"({timemin:.3f} to {timemax:.3f}d"
             f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
         )
         print_detail(f"modelpath: {modelpath}")
 
-        check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
+        check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
@@ -548,8 +553,8 @@ def plot_artis_spectrum(
 
             viewinganglespectra = atspectra.get_from_packets(
                 modelpath,
-                timelowdays=args.timemin,
-                timehighdays=args.timemax,
+                timelowdays=timemin,
+                timehighdays=timemax,
                 lambda_bin_edges=lambda_bin_edges,
                 use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
@@ -565,7 +570,7 @@ def plot_artis_spectrum(
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_config = get_vpkt_config(modelpath)
             if vpkt_config["time_limits_enabled"] and (
-                args.timemin < vpkt_config["initial_time"] or args.timemax > vpkt_config["final_time"]
+                timemin < vpkt_config["initial_time"] or timemax > vpkt_config["final_time"]
             ):
                 print(
                     f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
@@ -575,13 +580,7 @@ def plot_artis_spectrum(
 
             viewinganglespectra = {
                 dirbin: atspectra.get_vspecpol_spectrum(
-                    modelpath,
-                    timeavg,
-                    dirbin,
-                    args,
-                    fluxfilterfunc=filterfunc,
-                    timemin=args.timemin,
-                    timemax=args.timemax,
+                    modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc, timemin=timemin, timemax=timemax
                 )
                 for dirbin in directionbins
                 if dirbin >= 0
@@ -659,11 +658,13 @@ def plot_artis_spectrum(
 
             if args.binflux:
                 assert args.xunit.lower() == "angstroms"
+                # bin f_lambda as well, because --write_data returns that column. The earlier
+                # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
                     atspectra
-                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", "y")
+                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", ["y", "f_lambda"])
                     .rename({"lambda_angstroms": "x"})
-                    .with_columns(lambda_angstroms=pl.col("x"), f_lambda=pl.col("y"))
+                    .with_columns(lambda_angstroms=pl.col("x"))
                 )
 
             axis.plot(
@@ -722,9 +723,7 @@ def make_spectrum_plot(
                     plot_reference_spectrum_for_args(specpath, axis, args, filterfunc, scale_to_peak, **plotkwargs)
             refspecindex += 1
         elif path_is_codecomparison(specpath):
-            (_timestepmin, _timestepmax, args.timemin, args.timemax) = get_time_range(
-                specpath, args.timestep, args.timemin, args.timemax, args.timedays
-            )
+            get_time_range(specpath, args.timestep, args.timemin, args.timemax, args.timedays)
             timeavg = args.timedays
             from artistools.codecomparison import plot_spectrum
 
@@ -783,7 +782,7 @@ def make_spectrum_plot(
 
         # make_plot has already applied args.ymax, thus reading the top back would inflate the value
         # that the user asked for by five percent
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
+        if args.stokesparam == "I" and not args.logscaley and args.ymax is args.ymin is None:
             # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
             axis.set_ylim(bottom=0.0, top=datatop * 1.05)
@@ -813,6 +812,8 @@ def get_emission_contributions(
     xmax: float,
     timestepmin: int,
     timestepmax: int,
+    timemin: float,
+    timemax: float,
     dirbin: int | None,
 ) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
@@ -867,8 +868,8 @@ def get_emission_contributions(
 
     return atspectra.get_flux_contributions_from_packets(
         modelpath,
-        timelowdays=args.timemin,
-        timehighdays=args.timemax,
+        timelowdays=timemin,
+        timehighdays=timemax,
         lambda_bin_edges=lambda_bin_edges,
         getemission=args.showemission,
         getabsorption=args.showabsorption,
@@ -1012,7 +1013,7 @@ def plot_contributions_stacked(
         if not args.showemission:
             plotobjects.extend(absstackplot)
 
-        max_absorption = (
+        summed_absorption = (
             pl
             .DataFrame({
                 f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
@@ -1021,6 +1022,8 @@ def plot_contributions_stacked(
             .select(pl.sum_horizontal(pl.all()).max())
             .item()
         )
+        # a narrow x range can filter every series to no row, thus the maximum is null
+        max_absorption = summed_absorption if summed_absorption is not None else 0.0
 
     return plotobjects, max_absorption
 
@@ -1045,6 +1048,9 @@ def plot_reference_spectra(
 
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
+            # the loop shares one dict, thus a spectrum with no -label must not keep the label of
+            # the spectrum before it. Its own metadata names it instead
+            plotkwargs.pop("label", None)
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
@@ -1060,12 +1066,14 @@ def plot_reference_spectra(
     return plotobjects, plotobjectlabels, ymaxrefall
 
 
-def get_emission_plot_label(modelpath: Path, args: argparse.Namespace, modelname: str, dirbin: int | None) -> str:
+def get_emission_plot_label(
+    modelpath: Path, args: argparse.Namespace, modelname: str, dirbin: int | None, timemin: float, timemax: float
+) -> str:
     """Return the title of the plot, which names the model, the time range, and the direction bin."""
     if args.title:
         return str(args.title)
 
-    plotlabel = f"{modelname} [{args.timemin:.2f}d to {args.timemax:.2f}d]"
+    plotlabel = f"{modelname} [{timemin:.2f}d to {timemax:.2f}d]"
     if not (args.plotviewingangle or args.plotvspecpol):
         return plotlabel
 
@@ -1098,7 +1106,8 @@ def make_emissionabsorption_plot(
     print_heading(modelname)
     clamp_to_timesteps = not args.notimeclamp
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
+    # locals, not a write-back onto args, for the reason given in plot_artis_spectrum
+    (timestepmin, timestepmax, timemin, timemax) = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays, clamp_to_timesteps=clamp_to_timesteps
     )
 
@@ -1106,7 +1115,7 @@ def make_emissionabsorption_plot(
         print(f"Can't plot {modelname}...skipping")
         return [], [], pl.DataFrame()
 
-    check_time_range_is_valid(modelpath, args.timemin, args.timemax, args.plotinvalidpart)
+    check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
 
     if args.plotvspecpol and not args.frompackets:
         args.frompackets = True
@@ -1119,11 +1128,12 @@ def make_emissionabsorption_plot(
     if args.groupby is None:
         args.groupby = "nuc" if args.gamma else "ion"
 
-    assert args.timemin is not None
-    assert args.timemax is not None
+    assert timemin is not None
+    assert timemax is not None
 
     print(
-        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({timemin:.3f} to {timemax:.3f}d"
+        f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
     )
 
     xmin, xmax = axis.get_xlim()
@@ -1131,7 +1141,7 @@ def make_emissionabsorption_plot(
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
 
     contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
-        modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, dirbin
+        modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, timemin, timemax, dirbin
     )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -1192,7 +1202,7 @@ def make_emissionabsorption_plot(
 
     axis.axhline(color="black", linewidth=1)
 
-    set_plot_title(axis, get_emission_plot_label(modelpath, args, modelname, dirbin), args)
+    set_plot_title(axis, get_emission_plot_label(modelpath, args, modelname, dirbin, timemin, timemax), args)
 
     if args.ymax is None:
         axis.set_ylim(top=max(ymaxrefall, scalefactor * max_f_emission_total * 1.2))
@@ -1261,15 +1271,12 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         legendncol = 1
         defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
 
-        if args.multispecplot:
-            dfalldata = make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
-            plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
-        else:
-            dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
-            plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
+        # the legend comes from the first axis that a plot used, which is axes[0] for
+        # --multispecplot and axes[-1] otherwise
+        specaxes = list(axes) if args.multispecplot else [axes[-1]]
+        dfalldata = make_spectrum_plot(args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
 
-    # the annotation comes after the plot calls, because those calls resolve args.timemin and
-    # args.timemax when the command line gave the time as -timedays or -timestep
     if args.showtime:
         for index, axis in enumerate(axes):
             if args.multispecplot:
@@ -1414,6 +1421,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
     )
+
+    # no code reads this for plotspectra. It stays accepted, because a script holds the spelling,
+    # and SUPPRESS keeps it out of the help text
+    parser.add_argument("--classicartis", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-xunit",
@@ -1578,10 +1589,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--showtime", action="store_true", help="Write time on plot")
 
     parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
-    )
-
-    parser.add_argument(
         "--vpkt_match_emission_exclusion_to_opac",
         action="store_true",
         help="Exclude packets with emission type no-bb/no-bf/no-(element) matching the vpkt opacity exclusion",
@@ -1618,6 +1625,60 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.timedayslist:
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
+
+    if args.classicartis:
+        print_warning(
+            "plotspectra ignores --classicartis. A spectrum comes from spec.out or from the packets,"
+            " and not from the estimators"
+        )
+
+    # one time axis serves every model, thus the range resolves one time and before any plot runs.
+    # The plot functions used to write it back onto args as they drew. The range of one model then
+    # reached the next one, and get_time_range dropped a model whose run ends earlier.
+    # A reference spectrum can hold the .out suffix of ARTIS, thus the reference predicate decides
+    # which of the paths hold ARTIS timesteps
+    modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
+    apply_time_range_args(args, modelspecpaths)
+
+    gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
+    artispaths = [get_model_folder(path) for path in modelspecpaths if path_is_artis_model(path)]
+    # a code comparison path carries timesteps of its own, thus it resolves the range when no ARTIS
+    # model does. The plot code no longer writes the range back, thus nothing else would resolve it
+    timesteppaths = artispaths or [path for path in modelspecpaths if path_is_codecomparison(path)]
+    if gave_a_time and timesteppaths and (args.timemin is None or args.timemax is None):
+        # the output file name and the time annotation need both bounds. A single -timedays names one
+        # time, and a -timemin or a -timemax on its own leaves the other side open.
+        # -timedayslist names one epoch for each subplot, thus the range spans the whole list. The
+        # first epoch alone would give one name to two lists that share it
+        timedaysvalues = args.timedayslist or [args.timedays]
+        resolvedranges = [
+            get_time_range(timesteppaths[0], args.timestep, args.timemin, args.timemax, timedays)[2:]
+            for timedays in timedaysvalues
+        ]
+        finiteranges = [
+            (rangemin, rangemax)
+            for rangemin, rangemax in resolvedranges
+            if math.isfinite(rangemin) and math.isfinite(rangemax)
+        ]
+        if finiteranges:
+            args.timemin = min(rangemin for rangemin, _ in finiteranges)
+            args.timemax = max(rangemax for _, rangemax in finiteranges)
+
+    if args.multispecplot and not args.timedayslist:
+        # every later step reads one epoch of the list for each subplot, thus an absent list gave a
+        # TypeError on len(None). -timedayslist sets --multispecplot, thus the flag alone reaches here
+        exit_with_error(
+            "--multispecplot draws one subplot for each epoch of -timedayslist, and no such list was given",
+            "Give the epochs with -timedayslist, e.g. -timedayslist 260 280 300",
+        )
+
+    if args.showtime and not args.multispecplot and (args.timemin is None or args.timemax is None):
+        # the annotation writes the middle of the range, thus a missing bound gave a TypeError here.
+        # A reference spectrum has no timesteps, thus no path can resolve a range for it
+        exit_with_error(
+            "--showtime writes the middle of the plotted time range, and no time range was given",
+            "Give -timedays (e.g. -t 300 or -t 290-320), -timestep (e.g. -ts 40), or -timemin and -timemax",
+        )
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
     args.color = resolve_series_styles(

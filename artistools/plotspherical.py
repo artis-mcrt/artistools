@@ -23,6 +23,8 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
+from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import print_theta_phi_definitions
@@ -143,9 +145,13 @@ def bin_packets_by_direction(
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
         assert dfestimators is not None
+        # select only the variables that this plot draws. A null in a column that no plot
+        # variable names then cannot remove a row
+        wants_temperature = "temperature" in plotvars or "temperature_sigma" in plotvars
+        estimatorvars = ["TR", *nnelement_vars] if wants_temperature else nnelement_vars
         dfestimators = (
             dfestimators
-            .select(["timestep", "modelgridindex", "TR", *nnelement_vars])
+            .select(["timestep", "modelgridindex", *estimatorvars])
             .drop_nulls()
             .rename({"timestep": "em_timestep", "modelgridindex": "em_modelgridindex"})
         )
@@ -315,9 +321,12 @@ def plot_spherical(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
-    parser.add_argument("-timestep", "-ts", default=None, help="Timestep number to plot, e.g. 40, last, or 40-45")
-    parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
-    parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
+    addarg_timestep(parser)
+    addarg_timeminmax(parser)
+    # the old spellings stay as aliases, because a script and a note hold them. SUPPRESS keeps the
+    # help text to one spelling
+    parser.add_argument("-tmin", dest="timemin", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-tmax", dest="timemax", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     addarg_maxpacketfiles(parser)
@@ -427,9 +436,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     )
 
     outputfilenames = []
-    for timebin, ((tstart, tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
-        if tend is not None:
-            print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
+    for timebin, ((_tstart, _tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
+        # the resolved range, not the requested one: resolve_time_range replaces a bound that the
+        # command line left open, thus a requested bound can be absent and can name another time
+        print(f"Plotting spherical map for {timerange[0]:.2f}-{timerange[1]:.2f} days {label}")
         fig, axes = plot_spherical(
             dfdirbins.filter(pl.col("timebin") == timebin),
             plotvars=args.plotvars,

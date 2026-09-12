@@ -1,5 +1,6 @@
 use crate::parse::malformed;
 use crate::parse::open_decompressed;
+use crate::parse::parse_f32_field;
 use crate::parse::parse_field;
 use polars::prelude::*;
 use pyo3::prelude::*;
@@ -184,7 +185,7 @@ impl EstimatorColumns {
             let ionstage = ionstage.strip_suffix(':').ok_or_else(|| {
                 malformed(format!("ion stage {ionstage:?} has no trailing colon"))
             })?;
-            let colvalue: f32 = parse_field(value, "a number")?;
+            let colvalue = parse_f32_field(value, "a number")?;
 
             if variablename == "populations" {
                 if ionstage == "SUM" {
