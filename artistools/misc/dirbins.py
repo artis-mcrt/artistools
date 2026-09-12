@@ -160,8 +160,8 @@ def get_phi_bin_steps() -> list[int]:
     """Return the phi step of each direction bin.
 
     Direction bin b covers the phi range that step phisteps[b] names, i.e. 2 pi (1 - (step + 1) / n)
-    to 2 pi (1 - step / n). For historical reasons the phi bins descend and flip at half way, thus
-    the steps are [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for ten bins.
+    to 2 pi (1 - step / n). For historical reasons the phi bins descend and reverse at the middle
+    bin, thus the steps are [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for ten bins.
     """
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there

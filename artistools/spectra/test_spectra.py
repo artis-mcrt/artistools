@@ -874,11 +874,12 @@ def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> No
 def test_plotspectra_refuses_two_models_whose_timestep_grids_disagree(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The plot functions wrote the resolved range back onto args, thus one model's range reached the next.
+    """Refuse one -timestep that names different days on two timestep grids.
 
-    get_time_range refuses a timemin that sits after the last timestep of a model, thus the second
-    model was dropped with one printed line. One -timestep that names different days on two grids is
-    now an error, as it already is for the light curve command.
+    The plot functions wrote the resolved range back onto args, thus the range of one model reached
+    the next one. get_time_range refuses a timemin that sits after the last timestep of a model,
+    thus it dropped the second model and printed one line. This is now an error, as it already is
+    for the light curve command.
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
 

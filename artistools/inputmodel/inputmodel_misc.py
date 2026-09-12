@@ -1141,11 +1141,11 @@ def get_dfmodel_dimensions(dfmodel: pl.DataFrame | pl.LazyFrame) -> int:
 def remap_gridcontributions(
     dfgridcontributions: pl.DataFrame | pl.LazyFrame, dfoutcell_inputcells_masses: pl.DataFrame | pl.LazyFrame
 ) -> pl.LazyFrame:
-    """Return the particle contributions on a new grid, weighted by the mass of each cell.
+    """Return the particle contributions on a new grid, with a weight from the mass of each cell.
 
     dfoutcell_inputcells_masses maps the inputcellid of each cell of the old grid to the
     out_inputcellid of its cell on the new grid. It also gives the mass_g of the old cell and the
-    out_mass_g of the new one, thus frac_of_cellmass counts against the mass of the new cell.
+    out_mass_g of the new one. Thus frac_of_cellmass counts against the mass of the new cell.
     """
     return (
         dfgridcontributions

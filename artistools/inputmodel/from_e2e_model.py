@@ -92,7 +92,8 @@ def get_grid(
     # and the reflection w.r.t. the z-axis for the final model.txt has to be done
     eqsymfac = 2 if np.amax(dat.f.pos[:, 1]) < np.pi / 2.0 else 1
 
-    # Step 2) Collect tracer particle data and account for splitting within the e2e modelling
+    # Step 2) Collect the tracer particle data and account for the particles that the
+    # end-to-end (e2e) model splits
 
     # first re-construct the original post-merger trajectories by merging the
     # splitted dynamical ejecta trajectories
@@ -1047,8 +1048,8 @@ def apply_density_perturbations(
         pert_array[r > 1] = 1
 
     elif pert_model[0] == "random":
-        # apply a random perturbation to every 2D x-y slice. The default applies it to each grid
-        # cell, thus this mode takes no d parameter, which the sinusoidal mode does take
+        # apply a random perturbation to every 2D x-y slice. The default applies it to each cell,
+        # thus this mode takes no d parameter, which the sinusoidal mode does take
         assert len(pert_model) == 2, "Incomplete data provided for random perturbations"
         delta_max = float(pert_model[1])
         rng = np.random.default_rng()

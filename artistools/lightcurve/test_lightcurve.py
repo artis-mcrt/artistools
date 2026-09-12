@@ -1734,7 +1734,7 @@ def test_escape_type_selects_the_packet_type(mockylabel: mock.MagicMock) -> None
 
 
 def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> None:
-    """ARTIS writes no direction-resolved gamma light curve, thus the request must not read the UVOIR file."""
+    """ARTIS writes no direction-resolved gamma-ray light curve, thus the request must not read the UVOIR file."""
     modelpath = at.get_path("testdata")
 
     with pytest.raises(FileNotFoundError, match="direction-resolved gamma"):

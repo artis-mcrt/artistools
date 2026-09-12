@@ -855,12 +855,12 @@ def rankbatch_parquet_staleness(
 ) -> str | None:
     """Return the reason why the parquet cache is stale, or None when the cache is current.
 
-    The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
-    conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
-    e.g. a cache that is absent, damaged, or written for a different cache format version.
+    The reader of a run and the writer of one batch both ask this. Thus one rule decides whether
+    the code converts the text files again. read_parquet_cache_metadata gives every other reason,
+    e.g. a cache that is absent, a cache that is damaged, or a cache of a different format version.
 
     A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
-    compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
+    compares in one direction only. A text file that is newer than the stamp proves a rewrite. An
     absent text file proves nothing. The cache format version applies to a batch of either kind.
     """
     # an archived run costs hours to convert again, thus a cache from before the stamps stays in

@@ -145,8 +145,8 @@ def bin_packets_by_direction(
 
     if "temperature" in plotvars or "temperature_sigma" in plotvars or nnelement_vars:
         assert dfestimators is not None
-        # only the variables that this plot draws, thus a null in a column that no plot var names
-        # cannot remove a row
+        # select only the variables that this plot draws. A null in a column that no plot
+        # variable names then cannot remove a row
         wants_temperature = "temperature" in plotvars or "temperature_sigma" in plotvars
         estimatorvars = ["TR", *nnelement_vars] if wants_temperature else nnelement_vars
         dfestimators = (

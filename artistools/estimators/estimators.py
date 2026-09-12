@@ -921,9 +921,10 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
 
         dfsuperlevel_thislevel = dfsuperlevel.filter(pl.col("levelnumber_sl") == levelnumber_sl)
 
-        # the cross join makes one row for each pair of superlevel row and level above it. A 3D model
-        # with 100k NLTE cells and a few hundred levels would need tens of GB, thus each query takes
-        # a batch of the superlevel rows. Each row is one group, thus a batch never splits a group
+        # the cross join makes one row for each pair of superlevel row and level above it. A 3D
+        # model with 100k NLTE cells and a few hundred levels would need tens of GB. Thus each
+        # query takes a batch of the superlevel rows. Each row is one group, thus a batch never
+        # splits a group
         batchheight = max(1, maxcrossrows // dflevels_above.height)
         contributions.extend(
             dfsuperlevel_thislevel

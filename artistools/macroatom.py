@@ -112,7 +112,7 @@ def read_files(
     timestepmax: int | None = None,
     atomic_number: int | None = None,
 ) -> pl.DataFrame:
-    """Return the macro atom transitions of a model, filtered by cell, timestep range, and element.
+    """Return the macroatom transitions of a model for one cell, a timestep range, and one element.
 
     read_rank_outputfiles reads one file for each rank, thus a run that holds a plain file and a
     compressed file of the same rank does not read that rank twice.
@@ -127,7 +127,7 @@ def read_files(
         dfmacroatom = dfmacroatom.filter(pl.col("Z") == atomic_number)
 
     if dfmacroatom.is_empty():
-        msg = f"{modelpath} holds no macro atom transition for this cell, timestep range, and element"
+        msg = f"{modelpath} holds no macroatom transition for this cell, timestep range, and element"
         raise ValueError(msg)
 
     return dfmacroatom

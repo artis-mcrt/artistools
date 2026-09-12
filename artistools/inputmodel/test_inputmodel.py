@@ -422,8 +422,7 @@ def test_get_elemabund_from_nucabund() -> None:
 
 def test_get_trajectory_abund_q() -> None:
     # Ensure that the testdatapath is correctly defined as in other tests
-    # modelpath = at.get_config()["path_testdata"] / "testmodel" makes testdatapath the same as
-    # at.get_config()["path_testdata"]
+    # this test reads the test data folder itself, and not the testmodel folder below it
     # In this file, testdatapath is defined globally: testdatapath = at.get_config()["path_testdata"]
 
     particleid = 109215

@@ -283,7 +283,8 @@ def make_plot_test_viewing_angle_fit(
     axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
-    # before the inversion: set_ylim re-sorts the pair it is given, thus an earlier inversion is lost
+    # set the limits before the inversion: set_ylim re-sorts the pair that the caller gives,
+    # thus it loses an earlier inversion
     at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
     axis.invert_yaxis()
     axis.axhline(y=min(fxfit), color="black", linestyle="--")
@@ -547,8 +548,8 @@ def peakmag_risetime_declinerate_init(
             # direction-resolved bins come from light_curve_res.out
             directionresolved = list(dirbins) != [-1]
             lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=directionresolved)
-            # an averaging mode groups several direction bins, and dirbins then names the first bin of
-            # each group, thus the reader must apply the same averaging
+            # a mode that averages over the angles groups several direction bins, and dirbins then
+            # names the first bin of each group. Thus the reader must average in the same way
             lcdataframes = (
                 at.lightcurve.readfile(
                     lcpath,
@@ -558,7 +559,7 @@ def peakmag_risetime_declinerate_init(
                 if directionresolved
                 else at.lightcurve.readfile(lcpath)
             )
-            # readfile slices one scan of the file, thus one collect_all parses it a single time for
+            # readfile slices one scan of the file. Thus one collect_all parses it one time for
             # every direction bin, in place of one parse for each bin
             lazyplans = [
                 lcdataframes[dirbin]

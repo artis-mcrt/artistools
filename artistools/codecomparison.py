@@ -72,7 +72,7 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
 
 
 def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.Any]:
-    """Read every cell and timestep of a code comparison workshop file.
+    """Read every cell and timestep of a file from the code comparison workshop.
 
     The caller filters the result. This function always parses the whole phys file.
     """

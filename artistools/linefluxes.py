@@ -126,9 +126,9 @@ def get_line_luminosities_from_packets(
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     lastbin = len(arr_tstart) - 1
 
-    # the bin of a packet comes from the [tstart, tend] of each bin, not from one list of shared
-    # edges, thus a gap between two bins holds no packet. Each bin is [tstart, tend), and the last
-    # bin also holds its upper edge
+    # the bin of a packet comes from the [tstart, tend] of each bin, and not from one list of
+    # shared edges. A gap between two bins thus holds no packet. Each bin is [tstart, tend), and
+    # the last bin also holds its upper edge
     timebin_expr = pl.coalesce([
         pl.when(pl.col("t_arrive_d").is_between(tstart, tend, closed="both" if binindex == lastbin else "left")).then(
             pl.lit(binindex, dtype=pl.Int32)

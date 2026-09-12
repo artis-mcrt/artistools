@@ -222,7 +222,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     timearray = dfspectrum.columns[1:-1]
     # locals, not a write-back onto args: this function runs once for each model, and a range that
     # one model resolved would then reach the next one. get_time_range refuses a timemin that sits
-    # after the last timestep, thus a shorter model was dropped with one line
+    # after the last timestep, thus it dropped a shorter model and printed one line
     (_, _, timemin, timemax) = get_time_range(modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
     assert timemin is not None
     assert timemax is not None
@@ -658,7 +658,7 @@ def plot_artis_spectrum(
 
             if args.binflux:
                 assert args.xunit.lower() == "angstroms"
-                # f_lambda is binned as well, because --write_data returns that column. The earlier
+                # bin f_lambda as well, because --write_data returns that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
                     atspectra
@@ -1048,8 +1048,8 @@ def plot_reference_spectra(
 
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
-            # the dict is shared across the loop, thus a spectrum with no -label must not keep the
-            # label of the spectrum before it. Its own metadata names it instead
+            # the loop shares one dict, thus a spectrum with no -label must not keep the label of
+            # the spectrum before it. Its own metadata names it instead
             plotkwargs.pop("label", None)
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
@@ -1271,7 +1271,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         legendncol = 1
         defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
 
-        # the legend comes from the first of the axes that were drawn on, which is axes[0] for
+        # the legend comes from the first axis that a plot used, which is axes[0] for
         # --multispecplot and axes[-1] otherwise
         specaxes = list(axes) if args.multispecplot else [axes[-1]]
         dfalldata = make_spectrum_plot(args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak)
@@ -1623,8 +1623,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timedays = args.timedayslist[0]
 
     # one time axis serves every model, thus the range resolves one time and before any plot runs.
-    # The plot functions used to write it back onto args as they drew, thus the range of one model
-    # reached the next one and get_time_range then dropped a model whose run ends earlier
+    # The plot functions used to write it back onto args as they drew. The range of one model then
+    # reached the next one, and get_time_range dropped a model whose run ends earlier
     apply_time_range_args(args, args.specpath)
     if args.timemin is None and args.timedays is not None:
         # a single -timedays names one time, thus apply_time_range_args leaves it alone. The output

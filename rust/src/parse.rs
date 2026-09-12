@@ -44,12 +44,12 @@ pub fn parse_field<T: FromStr>(token: &str, expected: &str) -> PolarsResult<T> {
         .map_err(|_| malformed(format!("could not parse {token:?} as {expected}")))
 }
 
-/// Parse a measured value into f32, refusing a number that f32 cannot hold
+/// Parse a measured value into f32 and reject a number that f32 cannot hold
 ///
 /// ARTIS writes a rate far below the smallest f32, e.g. "5.313e-95" in the `gamma_R` row of the test
 /// model. Rust parses such a token to 0.0 with no error, which is the right value for a rate that
-/// small. A token above the largest f32 parses to infinity, which would spread through every mean
-/// and sum that reads the column, thus this function rejects it instead.
+/// small. A token above the largest f32 parses to infinity. Such a value spreads through every mean
+/// and sum that reads the column, thus this function rejects it.
 pub fn parse_f32_field(token: &str, expected: &str) -> PolarsResult<f32> {
     let value: f64 = parse_field(token, expected)?;
     #[allow(

@@ -724,8 +724,8 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
             .alias("phi")
         )
 
-    # the columns above are created only when the frame does not already carry the angles, thus the
-    # drop must accept a name that this call did not add
+    # the code above creates these columns only for a frame that carries no angles. Thus the drop
+    # must accept a name that this call did not add
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"], strict=False)
 
 

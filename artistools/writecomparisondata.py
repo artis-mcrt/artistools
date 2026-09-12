@@ -72,7 +72,7 @@ def write_single_estimator(
     allnonemptymgilist: Sequence[int],
     outfile: Path,
 ) -> None:
-    """Write the deposition of every cell at the selected timesteps, in code comparison workshop format."""
+    """Write the deposition of every cell at the selected timesteps, in the format of the workshop."""
     modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
     with Path(outfile).open("w", encoding="utf-8") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)

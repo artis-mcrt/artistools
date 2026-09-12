@@ -268,8 +268,8 @@ def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | 
         )
 
         # the plot holds one time axis, thus one range in days must serve every model. A timestep
-        # names different days on a different timestep grid, and applying the days of the first
-        # model would show another timestep of the second without a word
+        # names different days on a different timestep grid. The days of the first model would
+        # then show another timestep of the second model, and no message would say so
         if args.timestep is not None:
             for otherpath in artispaths[1:]:
                 _, _, othermin, othermax = get_time_range(otherpath, timestep_range_str=args.timestep)
