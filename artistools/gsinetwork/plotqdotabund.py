@@ -556,9 +556,13 @@ def get_dfcontribsparticledata(
     list_particledata_noabund = at.parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
     print("  done")
 
-    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
+    # one collect, because plot_qdot and every cell of plot_cell_abund_evolution read this frame.
+    # A lazy concat of one frame for each particle runs its whole plan again for each of them.
+    # The join stays lazy, thus a query for one cell reads the pairs of that cell alone, and the
+    # arrays of a particle are not repeated for each cell that the particle reaches
+    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal").collect()
 
-    return dfpartcontrib.join(allparticledata, on="particleid", how="inner", maintain_order="left")
+    return dfpartcontrib.join(allparticledata.lazy(), on="particleid", how="inner", maintain_order="left")
 
 
 def plot_qdot_abund_modelcells(
@@ -619,20 +623,14 @@ def plot_qdot_abund_modelcells(
 
     if gsinet_available:
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
-        # one collect, because plot_qdot and every cell of plot_cell_abund_evolution read this
-        # frame. A lazy plan would run the gridcontributions join again for each of them
-        dfcontribsparticledata = (
-            get_dfcontribsparticledata(
-                modelpath=modelpath,
-                mgiplotlist=mgiplotlist,
-                arr_strnuc_z_n=arr_strnuc_z_n,
-                traj_root=traj_root,
-                arr_time_gsi_days=arr_time_gsi_days,
-                griddata_root=griddata_root,
-                lzdfmodel=lzdfmodel,
-            )
-            .collect()
-            .lazy()
+        dfcontribsparticledata = get_dfcontribsparticledata(
+            modelpath=modelpath,
+            mgiplotlist=mgiplotlist,
+            arr_strnuc_z_n=arr_strnuc_z_n,
+            traj_root=traj_root,
+            arr_time_gsi_days=arr_time_gsi_days,
+            griddata_root=griddata_root,
+            lzdfmodel=lzdfmodel,
         )
 
     else:
