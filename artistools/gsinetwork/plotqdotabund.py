@@ -457,35 +457,42 @@ def get_particledata(
                 traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
             )
             nts_list = sorted(set(ntslowers + ntsuppers))
-            nts_count = len(nts_list)
-            arr_massfracs = {strnuc: np.zeros(nts_count, dtype=np.float32) for strnuc, _, _ in arr_strnuc_z_n}
-            for i, nts in enumerate(nts_list):
-                dftrajnucabund, traj_time_s = (
-                    at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-                        traj_root, particleid, f"./Run_rprocess/nz-plane{nts:05d}"
-                    )
+            dftrajnucabund, traj_times_s = (
+                at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+                    traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
                 )
+            )
+            for nts, traj_time_s in zip(nts_list, traj_times_s, strict=True):
                 # nts is the exact network step, thus these two times come from the same step and
                 # agree to the precision of the file
                 at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
                     particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0
                 )
-                # one sum per element and one per nuclide, and then a lookup for each species
-                massfrac_of_z = dict(dftrajnucabund.group_by("Z").agg(pl.col("massfrac").sum()).iter_rows())
-                massfrac_of_z_n = {
-                    (Z, N): massfrac
-                    for Z, N, massfrac in dftrajnucabund.group_by("Z", "N").agg(pl.col("massfrac").sum()).iter_rows()
-                }
-                for strnuc, Z, N in arr_strnuc_z_n:
-                    arr_massfracs[strnuc][i] = (
-                        massfrac_of_z.get(Z, 0.0) if N is None else massfrac_of_z_n.get((Z, N), 0.0)
-                    )
+
+            # one row for each network step, with the mass fraction of each species
+            dfmassfracs = (
+                dftrajnucabund
+                .group_by("fileindex")
+                .agg(
+                    pl
+                    .col("massfrac")
+                    .filter((pl.col("Z") == Z) if N is None else ((pl.col("Z") == Z) & (pl.col("N") == N)))
+                    .sum()
+                    .cast(pl.Float32)
+                    .alias(strnuc)
+                    for strnuc, Z, N in arr_strnuc_z_n
+                )
+                .sort("fileindex")
+            )
+            assert dfmassfracs.height == len(nts_list)
 
             particledata = particledata.with_columns(
                 pl.Series(
                     [
                         np.interp(
-                            arr_time_s_incpremerger, [nstep_timesec[nts] for nts in nts_list], arr_massfracs[strnuc]
+                            arr_time_s_incpremerger,
+                            [nstep_timesec[nts] for nts in nts_list],
+                            dfmassfracs[strnuc].to_numpy(),
                         )
                     ],
                     dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
