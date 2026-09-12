@@ -790,9 +790,28 @@ def scan_artis_estimators(
             print(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
-        pldflazy = pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed").unique(
-            ["timestep", "modelgridindex"], maintain_order=True, keep="first"
+        # the first timestep of a restarted run repeats the last timestep of the run before it, thus the first
+        # row of each key stays. A unique() keeps every column of every row in memory until the query ends.
+        # This used 14 GB for a 3D model on the streaming engine. The group_by reads only the key columns and
+        # the row position
+        indexedrows = pl.concat(
+            [
+                pl.scan_parquet(pfile, row_index_name="sourcerow").with_columns(
+                    sourcerow=pl.lit(fileindex << 32, dtype=pl.UInt64) + pl.col("sourcerow").cast(pl.UInt64)
+                )
+                for fileindex, pfile in enumerate(parquetfiles)
+            ],
+            how="diagonal_relaxed",
         )
+        firstrows = (
+            indexedrows
+            .select("timestep", "modelgridindex", "sourcerow")
+            .group_by("timestep", "modelgridindex")
+            .agg(pl.col("sourcerow").min())
+        )
+        pldflazy = indexedrows.join(
+            firstrows, on=["timestep", "modelgridindex", "sourcerow"], how="semi", maintain_order="left"
+        ).drop("sourcerow")
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached
