@@ -6,6 +6,7 @@ from artistools.misc.cliutils import addarg_collidingflags as addarg_collidingfl
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
+from artistools.misc.cliutils import addarg_labelfontsize as addarg_labelfontsize
 from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
 from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridindex
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath

@@ -124,7 +124,17 @@ def get_line_luminosities_from_packets(
     """
     arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
+    lastbin = len(arr_tstart) - 1
+
+    # the bin of a packet comes from the [tstart, tend] of each bin, not from one list of shared
+    # edges, thus a gap between two bins holds no packet. Each bin is [tstart, tend), and the last
+    # bin also holds its upper edge
+    timebin_expr = pl.coalesce([
+        pl.when(pl.col("t_arrive_d").is_between(tstart, tend, closed="both" if binindex == lastbin else "left")).then(
+            pl.lit(binindex, dtype=pl.Int32)
+        )
+        for binindex, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend, strict=True))
+    ])
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
@@ -134,18 +144,30 @@ def get_line_luminosities_from_packets(
 
     # the lines of the features hold a small part of the packets, thus one collect keeps them in memory and
     # each feature bins the frame there. A lazy plan for each feature would scan the parquet files again
-    dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures)).collect().lazy()
+    dfpackets = (
+        dfpackets
+        .filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures))
+        .with_columns(timebin=timebin_expr)
+        .filter(pl.col("timebin").is_not_null())
+        .collect()
+        .lazy()
+    )
+
+    # a bin that holds no packet must still give a row, thus the bin list leads the join
+    dftimebins = pl.LazyFrame({"timebin": np.arange(len(arr_tstart), dtype=np.int32), "timedelta_days": arr_timedelta})
 
     dfluminosities = pl.collect_all([
-        at.packets
-        .bin_and_sum(
-            dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices)),
-            bincol="t_arrive_d",
-            bins=timearrayplusend,
-            sumcols=["e_rf"],
+        dftimebins
+        .join(
+            dfpackets
+            .filter(pl.col(emtypecolumn).is_in(feature.linelistindices))
+            .group_by("timebin")
+            .agg(e_rf_sum=pl.col("e_rf").sum()),
+            on="timebin",
+            how="left",
         )
-        .with_columns(pl.Series("timedelta_days", arr_timedelta))
-        .select(pl.col("e_rf_sum") / nprocs_read / (day_to_s * pl.col("timedelta_days")))
+        .sort("timebin")
+        .select(pl.col("e_rf_sum").fill_null(0.0) / nprocs_read / (day_to_s * pl.col("timedelta_days")))
         for feature in emfeatures
     ])
 

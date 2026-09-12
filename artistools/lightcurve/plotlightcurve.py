@@ -32,6 +32,7 @@ from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
@@ -1504,9 +1505,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
-    parser.add_argument(
-        "-labelfontsize", type=float, default=None, help="Font size of the tick labels and the axis labels"
-    )
+    addarg_labelfontsize(parser)
 
 
 def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:

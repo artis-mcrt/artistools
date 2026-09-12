@@ -738,6 +738,16 @@ def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
     arggroup(parser, "output").add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
 
 
+def addarg_labelfontsize(parser: argparse.ArgumentParser) -> None:
+    """Add the -labelfontsize argument that sets the font size of the tick labels and the axis labels."""
+    arggroup(parser, "plot style").add_argument(
+        "-labelfontsize",
+        type=float,
+        default=None,
+        help="Font size of the tick labels and the axis labels. The default comes from the artistools matplotlibrc",
+    )
+
+
 def addarg_yscale(parser: argparse.ArgumentParser) -> None:
     """Add the -yscale argument that selects the scale of the vertical axis.
 

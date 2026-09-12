@@ -38,6 +38,7 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
@@ -1600,12 +1601,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_nolegend(parser)
 
-    parser.add_argument(
-        "-labelfontsize",
-        type=float,
-        default=None,
-        help="Font size of the tick labels. The default comes from the artistools matplotlibrc",
-    )
+    addarg_labelfontsize(parser)
 
     addarg_figscale(parser, include_figwidthscale=True)
     # deprecated spelling of -figwidthscale kept as a hidden alias

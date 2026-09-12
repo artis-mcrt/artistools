@@ -21,6 +21,7 @@ from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
@@ -570,8 +571,6 @@ def plot_populations_with_time_or_velocity(
                 pop_of_level.setdefault(level, n_nlte)
             for ionlevel in ionlevels:
                 populations[timestep, ionlevel, mgi] = pop_of_level[ionlevel]
-                # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
-                #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
             plottimesteps = [ts for ts, level, _mgi in populations if level == ionlevel]
@@ -579,8 +578,6 @@ def plot_populations_with_time_or_velocity(
             plotpopulations = np.array([
                 populations[ts, level, mgi] for ts, level, mgi in populations if level == ionlevel
             ])
-            # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
-            #                             if level == ionlevel])
             linelabel = str(levelconfignames[ionlevel])
 
             if args.x == "time":
@@ -588,8 +585,6 @@ def plot_populations_with_time_or_velocity(
             elif args.x == "velocity":
                 plotvelocities = [float(velocity[mgi]) for _ts, level, mgi in populations if level == ionlevel]
                 ax.plot(plotvelocities, plotpopulations, marker=markers[modelnumber], label=linelabel)
-            # plt.plot(timedayslist, plotpopulationsLTE, marker=markers[modelnumber+1],
-            #          label=f'level {ionlevel} {modelname} LTE')
 
 
 def get_subplot_block(mgilistindex: int, nionstages: int) -> tuple[int, int]:
@@ -692,7 +687,8 @@ def make_singletimestep_plot(
 
         if dfpop.is_empty():
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")
-            return
+            # skip this cell alone. A return would discard the panels that the earlier cells filled
+            continue
 
         dfpop = dfpop.filter(pl.col("Z") == atomic_number)
 
@@ -818,12 +814,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
     addarg_verbose(parser)
 
-    parser.add_argument(
-        "-labelfontsize",
-        type=float,
-        default=None,
-        help="Font size of the tick labels. The default comes from the artistools matplotlibrc",
-    )
+    addarg_labelfontsize(parser)
 
     addarg_axislimits(parser)
 
