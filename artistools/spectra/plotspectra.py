@@ -659,11 +659,13 @@ def plot_artis_spectrum(
 
             if args.binflux:
                 assert args.xunit.lower() == "angstroms"
+                # f_lambda is binned as well, because --write_data returns that column. The earlier
+                # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
                     atspectra
-                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", "y")
+                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", ["y", "f_lambda"])
                     .rename({"lambda_angstroms": "x"})
-                    .with_columns(lambda_angstroms=pl.col("x"), f_lambda=pl.col("y"))
+                    .with_columns(lambda_angstroms=pl.col("x"))
                 )
 
             axis.plot(
@@ -783,7 +785,7 @@ def make_spectrum_plot(
 
         # make_plot has already applied args.ymax, thus reading the top back would inflate the value
         # that the user asked for by five percent
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
+        if args.stokesparam == "I" and not args.logscaley and args.ymax is None and args.ymin is None:
             # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
             axis.set_ylim(bottom=0.0, top=datatop * 1.05)
@@ -1012,7 +1014,7 @@ def plot_contributions_stacked(
         if not args.showemission:
             plotobjects.extend(absstackplot)
 
-        max_absorption = (
+        summed_absorption = (
             pl
             .DataFrame({
                 f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
@@ -1021,6 +1023,8 @@ def plot_contributions_stacked(
             .select(pl.sum_horizontal(pl.all()).max())
             .item()
         )
+        # a narrow x range can filter every series to no row, thus the maximum is null
+        max_absorption = summed_absorption if summed_absorption is not None else 0.0
 
     return plotobjects, max_absorption
 
@@ -1045,6 +1049,9 @@ def plot_reference_spectra(
 
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
+            # the dict is shared across the loop, thus a spectrum with no -label must not keep the
+            # label of the spectrum before it. Its own metadata names it instead
+            plotkwargs.pop("label", None)
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
@@ -1261,12 +1268,11 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         legendncol = 1
         defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
 
-        if args.multispecplot:
-            dfalldata = make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
-            plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
-        else:
-            dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
-            plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
+        # the legend comes from the first of the axes that were drawn on, which is axes[0] for
+        # --multispecplot and axes[-1] otherwise
+        specaxes = list(axes) if args.multispecplot else [axes[-1]]
+        dfalldata = make_spectrum_plot(args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
 
     # the annotation comes after the plot calls, because those calls resolve args.timemin and
     # args.timemax when the command line gave the time as -timedays or -timestep
@@ -1576,10 +1582,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 
     parser.add_argument("--showtime", action="store_true", help="Write time on plot")
-
-    parser.add_argument(
-        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
-    )
 
     parser.add_argument(
         "--vpkt_match_emission_exclusion_to_opac",
