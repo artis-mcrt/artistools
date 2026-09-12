@@ -370,7 +370,7 @@ def make_ionsubplot(
     )
 
     print(
-        f"{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} has a summed "
+        f"{at.get_ionstring(atomic_number, ion_stage, style='spectral')} has a summed "
         f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
     )
 

@@ -619,14 +619,20 @@ def plot_qdot_abund_modelcells(
 
     if gsinet_available:
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
-        dfcontribsparticledata = get_dfcontribsparticledata(
-            modelpath=modelpath,
-            mgiplotlist=mgiplotlist,
-            arr_strnuc_z_n=arr_strnuc_z_n,
-            traj_root=traj_root,
-            arr_time_gsi_days=arr_time_gsi_days,
-            griddata_root=griddata_root,
-            lzdfmodel=lzdfmodel,
+        # one collect, because plot_qdot and every cell of plot_cell_abund_evolution read this
+        # frame. A lazy plan would run the gridcontributions join again for each of them
+        dfcontribsparticledata = (
+            get_dfcontribsparticledata(
+                modelpath=modelpath,
+                mgiplotlist=mgiplotlist,
+                arr_strnuc_z_n=arr_strnuc_z_n,
+                traj_root=traj_root,
+                arr_time_gsi_days=arr_time_gsi_days,
+                griddata_root=griddata_root,
+                lzdfmodel=lzdfmodel,
+            )
+            .collect()
+            .lazy()
         )
 
     else:

@@ -785,7 +785,7 @@ def make_spectrum_plot(
 
         # make_plot has already applied args.ymax, thus reading the top back would inflate the value
         # that the user asked for by five percent
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is None and args.ymin is None:
+        if args.stokesparam == "I" and not args.logscaley and args.ymax is args.ymin is None:
             # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
             axis.set_ylim(bottom=0.0, top=datatop * 1.05)

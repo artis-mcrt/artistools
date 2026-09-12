@@ -1843,7 +1843,7 @@ def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
     # line 3 of model.txt gives vmax in cm/s, thus the outermost face sits at vmax * t_model
     vmax_cmps = xmax / (t_model_days * at.constants.day_to_s)
     # a 2x2x2 grid written with scientific notation, as save_modeldata() does (float_scientific=True)
-    lines = ["8", f"{t_model_days}", f"{vmax_cmps:.4e}"]
+    lines = ["8", str(t_model_days), f"{vmax_cmps:.4e}"]
     cellid = 0
     for zpos in (-xmax, 0.0):
         for ypos in (-xmax, 0.0):

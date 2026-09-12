@@ -283,11 +283,9 @@ def make_plot_test_viewing_angle_fit(
     axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
+    # before the inversion: set_ylim re-sorts the pair it is given, thus an earlier inversion is lost
+    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
     axis.invert_yaxis()
-    axis.set_xlim(args.timemin / 1.05, args.timemax * 1.05)
-    axis.minorticks_on()
-    axis.tick_params(axis="both", which="minor", top=True, right=True, length=5, width=2, labelsize=12)
-    axis.tick_params(axis="both", which="major", top=True, right=True, length=8, width=2, labelsize=12)
     axis.axhline(y=min(fxfit), color="black", linestyle="--")
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
@@ -338,14 +336,10 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
-    if args.ymin is not None or args.ymax is not None:
-        axis.set_ylim(args.ymin, args.ymax)
+    at.plottools.set_axis_properties(axis, args, xlimits=(None, None, "-xmin"))
     if not args.colouratpeak:
         # after the limits: set_ylim re-sorts the pair it is given, so an inversion applied first is lost
         at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
-    axis.minorticks_on()
-    axis.tick_params(axis="both", which="minor", top=False, right=False, length=5, width=2, labelsize=12)
-    axis.tick_params(axis="both", which="major", top=False, right=False, length=8, width=2, labelsize=12)
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()

@@ -147,9 +147,8 @@ def bin_packets_by_direction(
         assert dfestimators is not None
         # only the variables that this plot draws, thus a null in a column that no plot var names
         # cannot remove a row
-        estimatorvars = (["TR"] if "temperature" in plotvars or "temperature_sigma" in plotvars else []) + list(
-            nnelement_vars
-        )
+        wants_temperature = "temperature" in plotvars or "temperature_sigma" in plotvars
+        estimatorvars = ["TR", *nnelement_vars] if wants_temperature else nnelement_vars
         dfestimators = (
             dfestimators
             .select(["timestep", "modelgridindex", *estimatorvars])

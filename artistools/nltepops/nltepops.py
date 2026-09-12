@@ -119,7 +119,8 @@ def add_lte_pops(
             continue
 
         if not noprint:
-            print(f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber_sl}")
+            ionstr = at.get_ionstring(Z, ion_stage, style="spectral")
+            print(f"{ionstr} has a superlevel at level {levelnumber_sl}")
 
         if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
             ionlevels = ionlevels_of_ion[Z, ion_stage]

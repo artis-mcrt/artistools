@@ -50,7 +50,7 @@ def get_binned_opacities_ion(
             # the last bin, not into an out-of-range category with the index -1
             pl
             .col("lambda_angstroms")
-            .cut(breaks=list(lambda_bin_edges[1:-1]))
+            .cut(breaks=lambda_bin_edges[1:-1])
             .to_physical()
             .cast(pl.Int32)
             .alias("lambda_angstroms_binindex")

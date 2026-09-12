@@ -191,7 +191,7 @@ def make_plot(
             set_legend(axis, args, loc="upper left", handlelength=1)
 
     axislabels = [
-        f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
+        f"{at.get_ionstring(Z, ion_stage, style='spectral')}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
         for (Z, ion_stage) in ionlist
     ]
 
