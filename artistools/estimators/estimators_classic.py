@@ -189,7 +189,8 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
                 parse_ion_row_classic(row, estimcell, atomic_composition)
 
                 # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional, heatingrates[tid].gamma,
-                # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional, coolingrates[tid].adiabatic)
+                # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional,
+                # coolingrates[tid].adiabatic)
 
                 estimcell["heating_ff"] = float(row[-9])
                 estimcell["heating_bf"] = float(row[-8])

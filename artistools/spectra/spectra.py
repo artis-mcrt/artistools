@@ -168,8 +168,9 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
         nu_centre_min = dfspec.item(0, 0)
         nu_centre_max = dfspec.item(dfspec.height - 1, 0)
 
-        # This is not an exact solution for dlognu since we're assuming the bin centre spacing matches the bin edge spacing
-        # but it's close enough for our purposes and avoids the difficulty of finding the exact solution (lots more algebra)
+        # this is not the exact dlognu, because it assumes that the spacing of the bin centres
+        # matches the spacing of the bin edges. The difference is small, and the exact solution
+        # needs much more algebra
         dlognu = math.log(dfspec.item(1, 0) / dfspec.item(0, 0))  # second nu value divided by the first nu value
         nu_min_r = nu_centre_min / (1 + 0.5 * dlognu)
         nu_max_r = nu_centre_max * (1 + 0.5 * dlognu)
@@ -204,7 +205,7 @@ def get_lambda_bin_edges(
             # a bin edge of zero stays at zero after each multiplication, thus the loop below does not stop
             msg = f"deltalogx needs a positive lower x limit, got {xmin_plot}"
             raise ValueError(msg)
-        # xmin_plot is the centre of the first bin, so we need to subtract half a bin width to get the lower edge of the first bin
+        # xmin_plot is the centre of the first bin. Subtract half a bin width to get its lower edge
         xbin_lower = xmin_plot / (1 + deltalogx) ** 0.5
         xmax = xmax_plot * (1 + deltalogx) ** 0.5
         list_x_bin_edges = [xbin_lower]

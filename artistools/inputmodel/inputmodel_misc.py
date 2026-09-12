@@ -24,7 +24,11 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
+from artistools.misc import get_costheta_bins
 from artistools.misc import get_file_identity
+from artistools.misc import get_phi_bin_steps
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_warning
@@ -157,7 +161,8 @@ def read_modelfile_text(
         ).lazy()
 
     else:
-        # dfmodelraw can have cells split across two lines, so to avoid reading twice, we read in everything and slice later
+        # a cell of dfmodelraw can span two lines. One read of the full file and a slice after it
+        # prevent a second read
         dfmodelraw = read_wsv(
             filename,
             has_header=False,
@@ -808,14 +813,19 @@ def get_cell_angle(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
 
     cosphi = pos_x / (pos_y**2 + pos_x**2).sqrt()
 
-    # cut() takes only the interior bin boundaries: cos_theta spans [-1, 1] and phi_mirrored spans [0, 2 pi]
-    cos_bins = [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]
-    cos_labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
-    # assert at.get_viewingdirection_costhetabincount() == 10
-    # assert at.get_viewingdirection_phibincount() == 10
+    nphibins = get_viewingdirection_phibincount()
+    ncosthetabins = get_viewingdirection_costhetabincount()
 
-    phibins = [math.pi * frac / 5 for frac in (1, 2, 3, 4, 5, 6, 7, 8, 9)]
-    phi_labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
+    # cut() takes only the interior bin boundaries: cos_theta spans [-1, 1] and phi_mirrored spans [0, 2 pi]
+    costheta_lower, _costheta_upper, _costheta_labels = get_costheta_bins(usedegrees=False)
+    cos_bins = list(costheta_lower[1:])
+    # a direction bin is costhetabin * nphibins + phibin, thus each cos(theta) bin starts at this index
+    cos_labels = [costhetabin * nphibins for costhetabin in range(ncosthetabins)]
+
+    phibins = [2 * math.pi * step / nphibins for step in range(1, nphibins)]
+    # phi_mirrored ascends where phi descends, thus the k-th interval here is the bin of phi step k
+    phisteps = get_phi_bin_steps()
+    phi_labels = [phisteps.index(step) for step in range(nphibins)]
 
     return dfmodel.with_columns(
         cos_theta=pos_z / (pos_x**2 + pos_y**2 + pos_z**2).sqrt(),
@@ -959,7 +969,8 @@ def save_modeldata(
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
-    # the Ni57 and Co57 columns are optional, but position is important and they must appear before any other custom cols
+    # the Ni57 and Co57 columns are optional, but their position counts. They must come before
+    # every other custom column
     standardcols = get_standard_columns(
         modelmeta["dimensions"],
         includenico57=("X_Ni57" in dfmodel.collect_schema().names() or "X_Co57" in dfmodel.collect_schema().names()),
@@ -1125,6 +1136,36 @@ def get_dfmodel_dimensions(dfmodel: pl.DataFrame | pl.LazyFrame) -> int:
         return 3
 
     return 2 if "pos_z_mid" in columns else 1
+
+
+def remap_gridcontributions(
+    dfgridcontributions: pl.DataFrame | pl.LazyFrame, dfoutcell_inputcells_masses: pl.DataFrame | pl.LazyFrame
+) -> pl.LazyFrame:
+    """Return the particle contributions on a new grid, weighted by the mass of each cell.
+
+    dfoutcell_inputcells_masses maps the inputcellid of each cell of the old grid to the
+    out_inputcellid of its cell on the new grid. It also gives the mass_g of the old cell and the
+    out_mass_g of the new one, thus frac_of_cellmass counts against the mass of the new cell.
+    """
+    return (
+        dfgridcontributions
+        .lazy()
+        .with_columns(pl.col("cellindex").cast(pl.Int32))
+        .rename({"cellindex": "inputcellid"})
+        .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
+        .drop("inputcellid")
+        .group_by("out_inputcellid", "particleid")
+        .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))
+        .rename({"out_inputcellid": "cellindex"})
+        .drop_nulls("cellindex")
+        .sort("cellindex", "particleid")
+        .select(
+            "particleid",
+            "cellindex",
+            "frac_of_cellmass",
+            cs.by_name("frac_of_cellmass_includemissing", require_all=False),
+        )
+    )
 
 
 def dimension_reduce_model(
@@ -1324,25 +1365,7 @@ def dimension_reduce_model(
     )
 
     dfgridcontributions_out = (
-        (
-            dfgridcontributions
-            .lazy()
-            .with_columns(pl.col("cellindex").cast(pl.Int32))
-            .rename({"cellindex": "inputcellid"})
-            .join(dfoutcell_inputcells_masses.lazy(), on="inputcellid", how="left")
-            .drop("inputcellid")
-            .group_by("out_inputcellid", "particleid")
-            .agg((cs.starts_with("frac_").dot(pl.col("mass_g")) / pl.col("out_mass_g").first()).fill_nan(0.0))
-            .rename({"out_inputcellid": "cellindex"})
-            .drop_nulls("cellindex")
-            .sort("cellindex", "particleid")
-            .select(
-                "particleid",
-                "cellindex",
-                "frac_of_cellmass",
-                cs.by_name("frac_of_cellmass_includemissing", require_all=False),
-            )
-        )
+        remap_gridcontributions(dfgridcontributions, dfoutcell_inputcells_masses)
         if dfgridcontributions is not None
         else pl.LazyFrame()
     )

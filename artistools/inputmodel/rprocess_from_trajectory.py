@@ -257,7 +257,11 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     )
     dfthermo = at.read_wsv(enthermofilepath).select("time/s", "Qdot").rename({"time/s": "time_s"})
-    startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
+    # the integration starts at one second. np.argmax would return 0 for a file that reaches no
+    # such time, which names the first row rather than showing that no row matches
+    rows_from_1s = (dfthermo["time_s"] >= 1).to_numpy().nonzero()[0]
+    assert rows_from_1s.size > 0, f"{enthermofilepath} holds no time of one second or more"
+    startindex = int(rows_from_1s[0])
 
     assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
 

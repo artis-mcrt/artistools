@@ -168,15 +168,24 @@ def get_phibin_rank_ascending(phibin: int) -> int:
     return phibin - halfbins if phibin >= halfbins else nphibins - 1 - phibin
 
 
-def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
-    """Return the lower and upper phi boundaries of each direction bin, and a label for each."""
+def get_phi_bin_steps() -> list[int]:
+    """Return the phi step of each direction bin.
+
+    Direction bin b covers the phi range that step phisteps[b] names, i.e. 2 pi (1 - (step + 1) / n)
+    to 2 pi (1 - step / n). For historical reasons the phi bins descend and flip at half way, thus
+    the steps are [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for ten bins.
+    """
     nphibins = get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
 
-    # for historical reasons, phi bins are descending and include a flip at half way
-    # phisteps = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for nphibins == 10
-    phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
+    return list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
+
+
+def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
+    """Return the lower and upper phi boundaries of each direction bin, and a label for each."""
+    nphibins = get_viewingdirection_phibincount()
+    phisteps = get_phi_bin_steps()
 
     # set up monotonic descending phi bin boundaries
     phi_lower = np.array([2 * math.pi * (1 - (step + 1) / nphibins) for step in phisteps])

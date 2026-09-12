@@ -48,20 +48,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     dfmodel = pldfmodel.collect()
 
-    if args.abundtype == "nuclear":
-        # nuclide abundances
-        listspecies = [
-            col[2:]
-            for col in dfmodel.columns
-            if col.startswith("X_") and col.upper() != "X_FEGROUP" and col[-1].isdigit()
-        ]
-    else:
-        # nuclide abundances
-        listspecies = [
-            col[2:]
-            for col in dfmodel.columns
-            if col.startswith("X_") and col.upper() != "X_FEGROUP" and not col[-1].isdigit()
-        ]
+    # a nuclide column ends with a mass number, e.g. X_Ni56. An elemental column does not
+    wantsnuclides = args.abundtype == "nuclear"
+    listspecies = [
+        col[2:]
+        for col in dfmodel.columns
+        if col.startswith("X_") and col.upper() != "X_FEGROUP" and col[-1].isdigit() == wantsnuclides
+    ]
 
     if args.maxatomicnumber and args.maxatomicnumber > 0:
         listspecies = [species for species in listspecies if at.get_atomic_number(species) <= args.maxatomicnumber]

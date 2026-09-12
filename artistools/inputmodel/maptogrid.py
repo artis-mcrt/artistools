@@ -170,7 +170,8 @@ def maptogrid(
     logprint(
         f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
     )
-    x0 = -setgrid_fractionrmax * rmax  # Set x0 (gridmax) to a fraction of the maximum radius of the SPH particles
+    # x0 is a fraction of the largest radius of the SPH particles
+    x0 = -setgrid_fractionrmax * rmax
 
     dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
 
@@ -199,24 +200,8 @@ def maptogrid(
     logprint(f"modifysmoothinglength: {modifysmoothinglength}")
 
     for n in range(npart):
-        maxdist = 2.0 * h[n]
-        maxdist2 = maxdist**2
-
-        ilow = max(math.floor((x[n] - maxdist - x0) / dx), 0)
-        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid - 1)
-        jlow = max(math.floor((y[n] - maxdist - y0) / dy), 0)
-        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ncoordgrid - 1)
-        klow = max(math.floor((z[n] - maxdist - z0) / dz), 0)
-        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid - 1)
-
-        if min(ihigh, jhigh, khigh) >= 1 and max(ilow, jlow, klow) <= ncoordgrid:
-            particlesinsidegrid.add(n)
-        # check some min max
-
-        # ... kernel reweighting ?
-
-        # the search box above uses the smoothing length of the snapshot. The kernel below uses the
-        # modified smoothing length
+        # the smoothing length changes first, because the search box below and the kernel must use
+        # the same value. A box from the snapshot h drops every contribution that the larger h adds
         if modifysmoothinglength != "False":
             # -- change h by hand ---------
 
@@ -243,20 +228,33 @@ def maptogrid(
             # from the particle h and 150% of the mean h for all particles
             if modifysmoothinglength == "option4" and dis > rmean:
                 h[n] = max(h[n], hmean * 1.5)
-            # option 5 -- for particles with radius > mean particle radius, set a minimum smoothing length of 0.75 * dx,
-            # but also impose a maximum cap of 2500. This can help avoid excessively large smoothing lengths in the outer regions.
+            # option 5 -- for a particle with a radius above the mean, set a minimum smoothing
+            # length of 0.75 * dx and a maximum of 2500. This keeps the smoothing length of an
+            # outer particle within a limit
             if modifysmoothinglength == "option5" and dis > rmean:
                 h[n] = max(h[n], 0.75 * dx)
                 h[n] = min(h[n], 2500)
-            # option 6 -- similar to option 5, but does not impose a maximum cap on the smoothing length.
-            # Use this if you want to allow smoothing lengths to grow freely beyond 0.75 * dx in the outer regions.
+            # option 6 -- as option 5, but with no maximum. Use this option to let the smoothing
+            # length of an outer particle grow above 0.75 * dx
             if modifysmoothinglength == "option6" and dis > rmean:
                 h[n] = max(h[n], 0.75 * dx)
 
-            maxdist2 = (2.0 * h[n]) ** 2
             # -------------------------------
 
-            # or via neighbors  - not yet implemented
+            # or with the neighbours. This is not implemented yet
+
+        maxdist = 2.0 * h[n]
+        maxdist2 = maxdist**2
+
+        ilow = max(math.floor((x[n] - maxdist - x0) / dx), 0)
+        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid - 1)
+        jlow = max(math.floor((y[n] - maxdist - y0) / dy), 0)
+        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ncoordgrid - 1)
+        klow = max(math.floor((z[n] - maxdist - z0) / dz), 0)
+        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid - 1)
+
+        if min(ihigh, jhigh, khigh) >= 1 and max(ilow, jlow, klow) <= ncoordgrid:
+            particlesinsidegrid.add(n)
 
         for i in range(ilow, ihigh + 1):
             for j in range(jlow, jhigh + 1):

@@ -1027,7 +1027,8 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
 
     parser.set_defaults(**kwargs)
-    # set required=False on all arguments to avoid errors about missing required arguments when we set defaults from kwargs
+    # every argument takes required=False. A keyword argument can give the value instead, thus a
+    # required argument would give an error for a value that the caller did supply
     for arg in realactions:
         if arg.default is not None:
             arg.required = False
