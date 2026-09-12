@@ -65,7 +65,7 @@ def get_nonempty_cells(
     return lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect(), modelmeta
 
 
-def write_single_estimator(
+def write_edep(
     modelpath: str | Path,
     selected_timesteps: Sequence[int],
     estimators: dict[tuple[int, int], dict[str, t.Any]],
@@ -239,7 +239,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
-        write_single_estimator(
+        write_edep(
             modelpath,
             selected_timesteps,
             estimators,

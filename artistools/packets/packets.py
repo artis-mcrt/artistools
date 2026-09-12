@@ -409,11 +409,10 @@ def get_packets_rankbatch_parquetfile(
         # restart rewrote then makes the whole batch cache stale
         textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
         allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
-        # a text file of the batch is absent, thus artistools cannot do a new conversion. The
-        # modification times give no full comparison, but the cache format version still applies
-        textsource_mtime = max(textsource_mtimes) if allranksfound else None
 
-        # one rule decides the freshness of every batch cache of this repository
+        # one rule decides the freshness of every batch cache of this repository. A text file of the
+        # batch that is absent gives no full comparison of the modification times, but the cache
+        # format version still applies
         stalereason = rankbatch_parquet_staleness(
             parquetfilepath,
             CACHEVERSION,

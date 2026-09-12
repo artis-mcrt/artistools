@@ -436,13 +436,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     )
 
     outputfilenames = []
-    for timebin, ((tstart, tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
-        if tstart is not None and tend is not None:
-            print(f"Plotting spherical map for {tstart:.2f}-{tend:.2f} days {label}")
-        elif tend is not None:
-            print(f"Plotting spherical map up to {tend:.2f} days {label}")
-        elif tstart is not None:
-            print(f"Plotting spherical map from {tstart:.2f} days {label}")
+    for timebin, ((_tstart, _tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
+        # the resolved range, not the requested one: resolve_time_range replaces a bound that the
+        # command line left open, thus a requested bound can be absent and can name another time
+        print(f"Plotting spherical map for {timerange[0]:.2f}-{timerange[1]:.2f} days {label}")
         fig, axes = plot_spherical(
             dfdirbins.filter(pl.col("timebin") == timebin),
             plotvars=args.plotvars,

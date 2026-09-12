@@ -1642,11 +1642,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
     artispaths = [get_model_folder(path) for path in modelspecpaths if path_is_artis_model(path)]
-    if gave_a_time and artispaths and (args.timemin is None or args.timemax is None):
+    # a code comparison path carries timesteps of its own, thus it resolves the range when no ARTIS
+    # model does. The plot code no longer writes the range back, thus nothing else would resolve it
+    timesteppaths = artispaths or [path for path in modelspecpaths if path_is_codecomparison(path)]
+    if gave_a_time and timesteppaths and (args.timemin is None or args.timemax is None):
         # the output file name and the time annotation need both bounds. A single -timedays names one
         # time, and a -timemin or a -timemax on its own leaves the other side open
         (_, _, rangemin, rangemax) = get_time_range(
-            artispaths[0], args.timestep, args.timemin, args.timemax, args.timedays
+            timesteppaths[0], args.timestep, args.timemin, args.timemax, args.timedays
         )
         if math.isfinite(rangemin) and math.isfinite(rangemax):
             args.timemin, args.timemax = rangemin, rangemax
