@@ -63,26 +63,14 @@ def average_direction_bins(
             range(start_bin, start_bin + nphibins) if overangle == "phi" else range(start_bin, dirbincount, nphibins)
         )
 
-        dirbindataframesout[start_bin] = dirbindataframes[start_bin].lazy()
-        firstcolname = dirbindataframes[start_bin].collect_schema().names()[0]
-        for dirbin in contribbins[1:]:
-            dirbindataframesout[start_bin] = dirbindataframesout[start_bin].join(
-                dirbindataframes[dirbin].lazy(),
-                on=firstcolname,
-                how="left",
-                suffix=f"_dirbin{dirbin}",
-                maintain_order="left",
-            )
+        colnames = dirbindataframes[start_bin].collect_schema().names()
+        firstcolname = colnames[0]
 
-        dirbindataframesout[start_bin] = dirbindataframesout[start_bin].select(
-            cs.by_index(0),
-            *[
-                (
-                    pl.sum_horizontal([pl.col(col), *[pl.col(f"{col}_dirbin{dirbin}") for dirbin in contribbins[1:]]])
-                    / len(contribbins)
-                ).alias(col)
-                for col in dirbindataframes[start_bin].collect_schema().names()[1:]
-            ],
+        dirbindataframesout[start_bin] = (
+            pl
+            .concat([dirbindataframes[dirbin].lazy().select(colnames) for dirbin in contribbins], how="vertical")
+            .group_by(firstcolname, maintain_order=True)
+            .agg([(pl.col(col).sum() / len(contribbins)).alias(col) for col in colnames[1:]])
         )
 
         print(f"bin number {start_bin:2d} = the average of bins {contribbins}")

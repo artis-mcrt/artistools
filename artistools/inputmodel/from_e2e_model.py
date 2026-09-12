@@ -1320,7 +1320,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
-    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
+    if dfgridcontributions is not None:
+        at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
 
 
 if __name__ == "__main__":

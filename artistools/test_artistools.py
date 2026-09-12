@@ -1145,7 +1145,7 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     dftransitions, ionlist = at.transitions.get_kurucz_transitions()
 
-    assert ionlist == [at.transitions.IonTuple(44, 1)]
+    assert ionlist == [(44, 1)]
     assert len(dftransitions) == 1
     transition = dftransitions.row(0, named=True)
     assert transition["lambda_angstroms"] == pytest.approx(7155.170)
