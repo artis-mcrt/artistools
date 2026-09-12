@@ -932,3 +932,34 @@ def test_plotspectra_accepts_classicartis_and_says_it_does_nothing(
     at.spectra.plot(argsraw=["--classicartis", "-timedays", "260-300", str(modelpath), "-outputfile", str(tmp_path)])
 
     assert "ignores --classicartis" in capsys.readouterr().err
+
+
+def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
+    """-timedayslist names one epoch for each subplot, thus the file name must span the whole list.
+
+    The resolution took args.timedays, which holds the first epoch alone, thus two lists that share
+    their first epoch wrote one file name and the second plot overwrote the first.
+    """
+    names = []
+    for lastday in ("300", "330"):
+        outputfolder = tmp_path / lastday
+        outputfolder.mkdir()
+        at.spectra.plot(
+            argsraw=[
+                "-timedayslist",
+                "260",
+                lastday,
+                "--plotinvalidpart",
+                str(modelpath),
+                "-outputfile",
+                str(outputfolder),
+            ]
+        )
+        pdfnames = [path.name for path in outputfolder.glob("*.pdf")]
+        assert len(pdfnames) == 1
+        names.append(pdfnames[0])
+
+    assert names[0] != names[1], "two lists that differ in the last epoch must not share one file name"
+    # the upper bound follows the last epoch of the list, not the first
+    assert "300." in names[0]
+    assert "330." in names[1]

@@ -1647,12 +1647,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     timesteppaths = artispaths or [path for path in modelspecpaths if path_is_codecomparison(path)]
     if gave_a_time and timesteppaths and (args.timemin is None or args.timemax is None):
         # the output file name and the time annotation need both bounds. A single -timedays names one
-        # time, and a -timemin or a -timemax on its own leaves the other side open
-        (_, _, rangemin, rangemax) = get_time_range(
-            timesteppaths[0], args.timestep, args.timemin, args.timemax, args.timedays
-        )
-        if math.isfinite(rangemin) and math.isfinite(rangemax):
-            args.timemin, args.timemax = rangemin, rangemax
+        # time, and a -timemin or a -timemax on its own leaves the other side open.
+        # -timedayslist names one epoch for each subplot, thus the range spans the whole list. The
+        # first epoch alone would give one name to two lists that share it
+        timedaysvalues = args.timedayslist or [args.timedays]
+        resolvedranges = [
+            get_time_range(timesteppaths[0], args.timestep, args.timemin, args.timemax, timedays)[2:]
+            for timedays in timedaysvalues
+        ]
+        finiteranges = [
+            (rangemin, rangemax)
+            for rangemin, rangemax in resolvedranges
+            if math.isfinite(rangemin) and math.isfinite(rangemax)
+        ]
+        if finiteranges:
+            args.timemin = min(rangemin for rangemin, _ in finiteranges)
+            args.timemax = max(rangemax for _, rangemax in finiteranges)
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
     args.color = resolve_series_styles(
