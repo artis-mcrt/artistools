@@ -24,11 +24,9 @@ import artistools as at
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
-from artistools.misc import read_parquet_cache_metadata
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import format_mtime
-from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
+from artistools.misc.fileio import rankbatch_parquet_staleness
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -429,46 +427,6 @@ def get_batch_textsource_state(
     return max(batchmtimes, default=None), len(batchmtimes) == rankmax - rankmin + 1
 
 
-def rankbatch_parquet_staleness(
-    parquetfilepath: Path, textsource_mtime: float | None, *, textsource_complete: bool
-) -> str | None:
-    """Return the reason why the parquet cache is stale, or None when the cache is current.
-
-    The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
-    conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
-    e.g. a cache that is absent, damaged, or written for a different cache format version.
-
-    A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
-    compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
-    absent text file proves nothing. The cache format version applies to a batch of either kind.
-    """
-    # an archived run of estimators costs hours to convert again, thus a cache from before the stamps
-    # stays in use. See the accept_unstamped argument of read_parquet_cache_metadata
-    pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, CACHEVERSION, textsource_mtime if textsource_complete else None, accept_unstamped=True
-    )
-    if stalereason is not None or textsource_complete or textsource_mtime is None:
-        return stalereason
-
-    stampedmtime = (pqmetadata or {}).get("textsource_mtime")
-    if stampedmtime is None:
-        return None
-
-    try:
-        stampedvalue = float(stampedmtime)
-    except ValueError:
-        # a stamp that no writer of this repository can produce cannot date the text files
-        return None
-
-    if textsource_mtime > stampedvalue + MTIME_TOLERANCE_S:
-        return (
-            f"a text file of the batch changed at {format_mtime(textsource_mtime)},"
-            f" after the cache stamp of {format_mtime(stampedmtime)}"
-        )
-
-    return None
-
-
 def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_complete: bool) -> bool:
     """Return True when the cache is readable and the estimator text files cannot replace it.
 
@@ -489,7 +447,10 @@ def rankbatch_parquet_is_current(
     a readable cache of such a batch answers here even when it is stale. A complete batch converts
     its text files again, thus only a current cache answers there.
     """
-    if rankbatch_parquet_staleness(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete) is None:
+    staleness = rankbatch_parquet_staleness(
+        parquetfilepath, CACHEVERSION, textsource_mtime, textsource_complete=textsource_complete
+    )
+    if staleness is None:
         return True
 
     # the same rule that get_estimators_rankbatch_parquetfile() applies, so that the two agree
@@ -782,7 +743,7 @@ def scan_artis_estimators(
         # file that the check saw
         outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
         stalereasons = [
-            rankbatch_parquet_staleness(cachepath, mtime, textsource_complete=complete)
+            rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
             for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
         ]
         # a batch that no conversion can replace keeps its cache, thus it starts no progress bar

@@ -850,6 +850,46 @@ def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool
         return foundmtime == str(textsource_mtime)
 
 
+def rankbatch_parquet_staleness(
+    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, textsource_complete: bool
+) -> str | None:
+    """Return the reason why the parquet cache is stale, or None when the cache is current.
+
+    The reader of a run and the writer of one batch both ask this, thus one rule decides whether a
+    conversion of the text files takes place. read_parquet_cache_metadata gives every other reason,
+    e.g. a cache that is absent, damaged, or written for a different cache format version.
+
+    A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
+    compares in one direction only: a text file that is newer than the stamp proves a rewrite, and an
+    absent text file proves nothing. The cache format version applies to a batch of either kind.
+    """
+    # an archived run costs hours to convert again, thus a cache from before the stamps stays in
+    # use. See the accept_unstamped argument of read_parquet_cache_metadata
+    pqmetadata, stalereason = read_parquet_cache_metadata(
+        parquetfilepath, cacheversion, textsource_mtime if textsource_complete else None, accept_unstamped=True
+    )
+    if stalereason is not None or textsource_complete or textsource_mtime is None:
+        return stalereason
+
+    stampedmtime = (pqmetadata or {}).get("textsource_mtime")
+    if stampedmtime is None:
+        return None
+
+    try:
+        stampedvalue = float(stampedmtime)
+    except ValueError:
+        # a stamp that no writer of this repository can produce cannot date the text files
+        return None
+
+    if textsource_mtime > stampedvalue + MTIME_TOLERANCE_S:
+        return (
+            f"a text file of the batch changed at {format_mtime(textsource_mtime)},"
+            f" after the cache stamp of {format_mtime(stampedmtime)}"
+        )
+
+    return None
+
+
 def parquet_is_readable(parquetfilepath: Path) -> bool:
     """Return True when polars can read the metadata of a parquet file.
 
