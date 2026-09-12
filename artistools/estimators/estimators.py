@@ -716,9 +716,7 @@ def scan_estimators(
     is_codecomparison = path_is_codecomparison(modelpath)
 
     if is_codecomparison:
-        pldflazy = lazyframe_from_estimator_dict(
-            at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-        )
+        pldflazy = lazyframe_from_estimator_dict(at.codecomparison.read_reference_estimators(modelpath))
     elif classicartis:
         from artistools.estimators.estimators_classic import read_classic_estimators
 

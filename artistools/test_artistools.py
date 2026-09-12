@@ -2585,3 +2585,26 @@ def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> N
     """An empty timestep list wrote files that hold a header and no data."""
     with pytest.raises(ValueError, match="selected_timesteps"):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
+
+
+def test_ionfrac_header_names_the_ion_stage(tmp_path: Path) -> None:
+    """The header numbered the columns from zero, thus every column carried the stage below its own."""
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=list(range(10))
+    )
+
+    ionfracfiles = sorted(tmp_path.glob("ionfrac_*_artisnebular.txt"))
+    assert ionfracfiles, "the run wrote no ion fraction file"
+
+    elementlist = at.get_composition_data(modelpath)
+    lowermost_of_elsymbol = {
+        at.get_elsymbol(row["Z"]).lower(): row["lowermost_ion_stage"] for row in elementlist.iter_rows(named=True)
+    }
+
+    for ionfracfile in ionfracfiles:
+        elsymbol = ionfracfile.name.split("_")[1]
+        headers = [line for line in ionfracfile.read_text(encoding="utf-8").splitlines() if "#vel_mid" in line]
+        assert headers
+        for header in headers:
+            firstioncolumn = header.split()[1]
+            assert firstioncolumn == f"{elsymbol}{lowermost_of_elsymbol[elsymbol]}"
