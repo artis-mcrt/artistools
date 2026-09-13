@@ -2152,6 +2152,55 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
     assert np.allclose(dfpos["vel_r_max_kmps"], dfneg["vel_r_max_kmps"], rtol=1e-6)
 
 
+def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with_mass(tmp_path: Path) -> None:
+    """The particle contributions of a 2D model with equatorial symmetry must name the cells of both halves.
+
+    The contributions numbered the rows of the half grid from the equator, but the model reflects that grid in z.
+    Thus every contribution named a cell below the equator, which was not its mirror cell, and the upper half had none.
+    """
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+    from artistools.inputmodel.from_e2e_model import z_reflect
+
+    rng = np.random.default_rng(seed=1)
+    ntraj = 40
+    ntimes = 8
+    datpath = tmp_path / "e2emodel.npz"
+    isopath = tmp_path / "iso_table.npy"
+    # every polar angle is below pi / 2, thus the model takes equatorial symmetry
+    np.savez(
+        datpath,
+        pos=np.column_stack([rng.uniform(0.05, 0.3, ntraj), rng.uniform(0.2, 1.4, ntraj)]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=np.zeros(ntraj),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+
+    _rgrid, _zgrid, rhoint, _xint, _iso, _q, _ye, eqsymfac, dfcontribs = get_grid(
+        datpath,
+        isopath,
+        0.4,
+        model_dim=2,
+        grid_dims=np.array([4, 8]),
+        nodynej=False,
+        nohmns=False,
+        notorus=False,
+        no_nu_trapping=False,
+    )
+
+    assert eqsymfac == 2
+    # map_to_artis reflects the half grid in z, and the cell numbers follow that full grid in Fortran order
+    rhofull = z_reflect(rhoint).flatten(order="F")
+    cellswithmass = {int(index) + 1 for index in np.nonzero(rhofull > 0.0)[0]}
+    assert set(dfcontribs["cellindex"].to_list()) == cellswithmass
+
+
 def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
     """The 3D mapping grid comes from -vmax_on_c and -ngridx/y/z.
 

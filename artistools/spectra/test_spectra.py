@@ -943,6 +943,19 @@ def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     assert (tmp_path / "gamma.pdf").is_file()
 
 
+def test_plotspectra_timestep_with_only_a_reference_spectrum(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference spectrum has no timesteps, thus -timestep has no effect on it and the plot still runs.
+
+    The range resolution in main asked for an ARTIS model and stopped before it drew the reference spectrum.
+    """
+    at.spectra.plot(argsraw=["-timestep", "30", "sn2011fe_PTF11kly_20120822_norm.txt", "-outputfile", str(tmp_path)])
+
+    assert len(list(tmp_path.glob("*.pdf"))) == 1
+    assert "-timestep names a timestep of a model" in capsys.readouterr().err
+
+
 def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path) -> None:
     """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first."""
     at.spectra.plot(

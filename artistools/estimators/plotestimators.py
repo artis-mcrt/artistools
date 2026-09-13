@@ -1049,9 +1049,11 @@ def get_xlist(
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
 
-    if args.xbins is not None and (args.xbins == 0 or args.xbins < -1):
+    # every negative -xbins selects the bin width automatically, and only b4365703 refused a value below -1.
+    # Thus a script can still hold e.g. -2
+    if args.xbins == 0:
         exit_with_error(
-            f"-xbins {args.xbins} names no number of bins",
+            "-xbins 0 names no number of bins",
             "Give a positive number of bins, or -1 to select the bin width automatically.",
         )
 

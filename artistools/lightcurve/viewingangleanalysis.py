@@ -14,6 +14,7 @@ from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.misc import exit_with_error
 from artistools.misc import get_series_label
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
@@ -510,6 +511,13 @@ def peakmag_risetime_declinerate_init(
             " Write the data in one run, then plot it in another."
         )
         raise ValueError(msg)
+
+    if not args.filter and args.plotvspecpol is not None:
+        # without a filter the fit reads light_curve_res.out, whose direction bins are not virtual packet observers
+        exit_with_error(
+            "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+            "Give -filter to make the light curve of each virtual packet observer from its spectra.",
+        )
 
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 

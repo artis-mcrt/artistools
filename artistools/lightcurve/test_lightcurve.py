@@ -1690,6 +1690,35 @@ def test_viewing_angle_peakmag_export_without_filter_fits_each_direction_bin(
     assert peakmag_risetime_deltam15.shape == (2, 3), "the export holds one row per selected direction bin"
 
 
+def test_viewing_angle_peakmag_without_filter_refuses_virtual_observers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without -filter the fit reads light_curve_res.out, which holds no virtual packet observer.
+
+    The command read the direction bins of the real packets that had the numbers of the observers, and wrote that data
+    as observer data.
+    """
+    modelcopy = tmp_path / "model"
+    modelcopy.mkdir()
+    for sourcefile in modelpath_classic_3d.iterdir():
+        (modelcopy / sourcefile.name).symlink_to(sourcefile)
+    (modelcopy / "vpkt.txt").symlink_to(at.get_path("testdata") / "vspecpolmodel" / "vpkt.txt")
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelcopy],
+            plotvspecpol=[0],
+            save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+            timemin=3.2,
+            timemax=7.5,
+            outputfile=tmp_path,
+        )
+
+    assert not list(tmp_path.glob("*_viewing_angle_data.txt"))
+
+
 def test_band_peakmag_export_writes_one_file_for_each_band(tmp_path: Path) -> None:
     """Each band has its own data file with one row for each direction bin, and the decline rate is positive."""
     at.lightcurve.plot(

@@ -1640,17 +1640,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # that is not a run gives no timesteps, and the plot loop skips it with a warning
     clamp_to_timesteps = not args.notimeclamp
     modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
-    apply_time_range_args(args, modelspecpaths, clamp_to_timesteps=clamp_to_timesteps)
-
-    gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
     artispaths = [
         get_model_folder(path)
         for path in modelspecpaths
         if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
     ]
+    codecomparisonpaths = [path for path in modelspecpaths if path_is_codecomparison(path)]
+    if args.timestep is not None and args.timedays is None and not artispaths and not codecomparisonpaths:
+        # a reference spectrum has no timesteps. The command plotted it before the range resolution moved to main
+        print_warning(
+            "-timestep names a timestep of a model, and no path is an ARTIS run or a code comparison model,"
+            " thus it has no effect"
+        )
+    else:
+        apply_time_range_args(args, modelspecpaths, clamp_to_timesteps=clamp_to_timesteps)
+
+    gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
     # a code comparison path carries timesteps of its own, thus it resolves the range when no ARTIS
     # model does. The plot code no longer writes the range back, thus nothing else would resolve it
-    timesteppaths = artispaths or [path for path in modelspecpaths if path_is_codecomparison(path)]
+    timesteppaths = artispaths or codecomparisonpaths
     if gave_a_time and timesteppaths and (args.timemin is None or args.timemax is None):
         # the output file name and the time annotation need both bounds. A single -timedays names one
         # time, and a -timemin or a -timemax on its own leaves the other side open.
