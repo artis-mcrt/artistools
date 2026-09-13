@@ -95,7 +95,7 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     and the check itself costs little on a model of many cells.
     """
     modelname = get_model_name(modelpath)
-    dfmodel, _ = get_modeldata(modelpath, derived_cols=["rho"], printwarningsonly=not verbose)
+    dfmodel, _ = get_modeldata(modelpath, printwarningsonly=not verbose)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = f"{modelname} gives no init_Ye of a cell. The model file must hold a Ye column"
         raise ValueError(msg)

@@ -307,7 +307,7 @@ def plot_celltimestep(
         print("Could not find spec.out")
         args.nospec = True
 
-    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
 
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}

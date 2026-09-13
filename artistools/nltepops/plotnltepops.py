@@ -649,7 +649,7 @@ def make_singletimestep_plot(
 
     # invariant to the cell loop, so read the estimators and the model once instead of once per cell
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
-    lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols="vel_r_mid")
+    lzmodeldata, _ = at.inputmodel.get_modeldata(modelpath)
     velocity_kmps_of_mgi = {
         mgi: vel_r_mid / km_to_cm
         for mgi, vel_r_mid in lzmodeldata

@@ -75,7 +75,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
         for modelpath in args.modelpath:
-            dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g"])
+            dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
             ndim_in = modelmeta["dimensions"]
             if ndim_in <= ndim_out:
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
@@ -113,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.makeenergyinputfiles:
-        plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g", "rho"])
+        plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0])
         model = plmodel.collect()
         rho = model["rho"].cast(pl.Float64).to_numpy()
         Mtot_grams = float(model["mass_g"].sum())

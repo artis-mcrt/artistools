@@ -214,7 +214,7 @@ def plot_deposition_thermalisation(
     lumunit = get_plot_lum_unit(args)
 
     if args.plotthermalisation:
-        dfmodel, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg"])
+        dfmodel, _ = at.inputmodel.get_modeldata(modelpath)
 
         # one collect for both sums: get_modeldata returns a plan, so a second one re-derives every column
         model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)

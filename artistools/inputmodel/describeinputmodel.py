@@ -53,10 +53,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
     at.print_heading(str(modelpath))
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath,
-        get_elemabundances=not args.noabund,
-        printwarningsonly=False,
-        derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg", "rho"],
+        modelpath, get_elemabundances=not args.noabund, printwarningsonly=False
     )
 
     # don't confuse neutrons (lowercase 'n') with Nitrogen (N)

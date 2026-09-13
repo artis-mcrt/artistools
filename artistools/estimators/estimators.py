@@ -579,9 +579,7 @@ def join_cell_modeldata(
         how="left",
         maintain_order="left",
     )
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["ALL"], get_elemabundances=True, printwarningsonly=not verbose
-    )
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
 
     dfmodel = dfmodel.rename({
         colname: f"init_{colname}"

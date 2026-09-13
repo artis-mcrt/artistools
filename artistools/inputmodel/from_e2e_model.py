@@ -596,9 +596,7 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
-            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
-        )[0].collect()
+        dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))[0].collect()
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
@@ -930,9 +928,7 @@ def merge_neighbour_cells(
     new_numb_cells = N_cell_r_new * N_cell_z_new
     r_max_snap = vmax * CLIGHT * t_model_init_s
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
-    ).collect()
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).collect()
 
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new

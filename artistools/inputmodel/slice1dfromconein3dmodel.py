@@ -14,21 +14,9 @@ import polars.selectors as cs
 import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel.inputmodel_misc import get_derived_column_names
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-
-CONE_DERIVED_COLS = [
-    "volume",
-    "pos_x_mid",
-    "pos_y_mid",
-    "pos_z_mid",
-    "pos_x_min",
-    "pos_y_min",
-    "pos_z_min",
-    "pos_r_mid",
-    "mass_g",
-    "pos_r_min",
-]
 
 
 def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callable[..., None]) -> pl.DataFrame:
@@ -174,9 +162,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     """Make 1D model from 3D model."""
     modelpath = at.normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", at.get_model_name(modelpath))
-    pldfmodel, modelmeta = at.get_modeldata(
-        modelpath=modelpath, get_elemabundances=True, derived_cols=CONE_DERIVED_COLS if args.makefromcone else None
-    )
+    pldfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("from a cone")
@@ -211,7 +197,11 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
 
     else:  # make from along chosen axis
         logprint("from along the axis")
-        slice1d = get_profile_along_axis(pldfmodel.collect(), args)
+        # the slice keeps each column of the 3D model file, and it calculates logrho itself. Thus, the 1D profile
+        # must not hold the derived columns of the 3D grid.
+        slice1d = get_profile_along_axis(
+            pldfmodel.drop(get_derived_column_names(modelmeta["dimensions"]), strict=False).collect(), args
+        )
         # pos_min is the inner edge of a cell. On the positive axis, the outer edge is pos_min plus the
         # cell width of the slice axis. On the negative axis, pos_min is already the outer edge, and
         # the reverse and negate step below makes the velocities positive.

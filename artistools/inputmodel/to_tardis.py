@@ -41,9 +41,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.inputpath)
 
-    pldfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, get_elemabundances=(args.abundtype == "elemental"), derived_cols=["rho"]
-    )
+    pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     t_model_init_days = modelmeta["t_model_init_days"]
 
     dfmodel = pldfmodel.collect()

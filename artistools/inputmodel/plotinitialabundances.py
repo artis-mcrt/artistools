@@ -26,7 +26,7 @@ def make_plot(args: argparse.Namespace) -> None:
     ax = axesgrid[0][0]
 
     for model_path in args.modelpath:
-        df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g"])
+        df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path))
         df = (
             df
             .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())

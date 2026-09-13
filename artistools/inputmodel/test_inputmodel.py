@@ -95,7 +95,7 @@ def test_get_modeldata_1d() -> None:
     assert modelmeta["dimensions"] == 1
     assert modelmeta["npts_model"] == 1
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33, rel_tol=1e-05)
 
 
@@ -107,7 +107,7 @@ def test_get_modeldata_3d() -> None:
     assert modelmeta["npts_model"] == 1000
     assert modelmeta["ncoordgridx"] == 10
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
 
 
@@ -152,9 +152,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
 
 
 def test_get_cell_angle() -> None:
-    lzmodeldata = at.inputmodel.get_modeldata(
-        modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
-    )[0]
+    lzmodeldata = at.inputmodel.get_modeldata(modelpath=modelpath_3d)[0]
     modeldata = at.inputmodel.inputmodel_misc.get_cell_angle(lzmodeldata).collect()
     assert "cos_bin" in modeldata.columns
     assert "phi_bin" in modeldata.columns
@@ -166,14 +164,12 @@ def test_get_cell_angle() -> None:
 
 
 def test_downscale_3dmodel() -> None:
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True)
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
         modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
     dfmodel = lzdfmodel.collect()
-    lzdfmodel_small, modelmeta_small = at.get_modeldata(
-        modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
-    )
+    lzdfmodel_small, modelmeta_small = at.get_modeldata(modelpath_3d_small, get_elemabundances=True)
     dfmodel_small = lzdfmodel_small.collect()
     assert math.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum(), rel_tol=1e-5)
     assert math.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"], rel_tol=1e-5)
@@ -270,13 +266,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 abs_tol=1e-4,
             )
         else:
-            dfmodel3lz, _ = at.inputmodel.get_modeldata(
-                modelpath=outputpath / f"kilonova_{3:d}d", derived_cols=["mass_g"]
-            )
+            dfmodel3lz, _ = at.inputmodel.get_modeldata(modelpath=outputpath / f"kilonova_{3:d}d")
             dfmodel3 = dfmodel3lz.collect()
-            dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(
-                modelpath=outputpath / f"kilonova_{dimensions:d}d", derived_cols=["mass_g"]
-            )
+            dfmodel_lowerdlz, _ = at.inputmodel.get_modeldata(modelpath=outputpath / f"kilonova_{dimensions:d}d")
             dfmodel_lowerd = dfmodel_lowerdlz.collect()
 
             # check that the total mass is conserved
@@ -318,7 +310,7 @@ def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: 
     The command removes the empty shell and every shell outside it. A run with --quiet gave the new
     model and no warning, because the warning went to the standard output that --quiet hides.
     """
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, derived_cols=["vel_r_mid"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d)
     dfmodel = dfmodel.collect()
     vmax = dfmodel["vel_r_mid"].max()
     assert isinstance(vmax, float)
@@ -1691,8 +1683,14 @@ def test_save_load_3d_model() -> None:
     # first load will be from text, second from parquet
     for _ in (0, 1):
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
+        # the reader also gives the derived columns, which the written dataframe does not hold
         pltest.assert_frame_equal(
-            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4
+            dfmodel,
+            dfmodel_loaded.select(dfmodel.columns).collect(),
+            check_column_order=False,
+            check_dtypes=False,
+            rel_tol=1e-4,
+            abs_tol=1e-4,
         )
         assert modelmeta == modelmeta_loaded
 
@@ -1722,9 +1720,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     dfmodel3d_pl[mgi2, "rho"] = 1
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
 
-    dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g", "kinetic_en_erg"]
-    ).collect()
+    dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d).collect()
 
     ejecta_ke_erg: float | int = dfmodel3d_pl.select("kinetic_en_erg").sum().item()
 
@@ -1740,7 +1736,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
 
     benchmark(run_dimension_reduce)
 
-    dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata(modelpath=outpath, derived_cols=["mass_g", "kinetic_en_erg"])
+    dfmodel_lowerd_lz, _ = at.inputmodel.get_modeldata(modelpath=outpath)
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
 
     # check that the total mass is conserved
@@ -1767,7 +1763,7 @@ def test_pos_r_min_straddling_cells() -> None:
     ncoordgrid = 5
     dfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, derived_cols=["ALL"], modelmeta=modelmeta).collect()
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).collect()
 
     for ax in ("x", "y", "z"):
         straddles = (dfmodel[f"pos_{ax}_min"] < 0) & (dfmodel[f"pos_{ax}_max"] > 0)
@@ -1797,7 +1793,7 @@ def test_min_abs_coordinate() -> None:
 
 def test_vel_on_c_excludes_kmps_columns() -> None:
     """The vel_*_kmps columns are in km/s, so they must not be divided by c as if they were cm/s."""
-    dfmodel, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["velocity"])
+    dfmodel, _modelmeta = at.inputmodel.get_modeldata(modelpath)
     dfmodel = dfmodel.collect()
 
     assert "vel_r_max_kmps" in dfmodel.columns
@@ -1813,7 +1809,7 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
 
 def test_scale_model_to_time_uses_modelmeta() -> None:
     """The model time key must be the same one that get_modeldata and save_modeldata use."""
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["pos_min"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
     t_model_init_days = modelmeta["t_model_init_days"]
     targettime = t_model_init_days * 2.0
 
@@ -2474,6 +2470,24 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
     assert "Ye" in columns
     assert "cellYe" not in columns
     assert lzdfmodel.select("Ye").collect().to_series().to_list() == pytest.approx([0.3, 0.4])
+
+
+@pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
+def test_save_modeldata_writes_no_derived_columns(sourcemodelpath: Path, tmp_path: Path) -> None:
+    """The dataframe from get_modeldata holds the derived columns, but model.txt holds only the model file columns."""
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(sourcemodelpath)
+    derivedcols = at.inputmodel.inputmodel_misc.get_derived_column_names(modelmeta["dimensions"])
+    assert {"volume", "mass_g"} <= derivedcols
+    assert derivedcols <= set(lzdfmodel.collect_schema().names())
+
+    at.inputmodel.save_modeldata(lzdfmodel.collect(), outpath=tmp_path, modelmeta=modelmeta)
+
+    with (tmp_path / "model.txt").open(encoding="utf-8") as modelfile:
+        headerwords = {word for line in modelfile if line.startswith("#") for word in line.lstrip("#").split()}
+    assert derivedcols.isdisjoint(headerwords)
+
+    lzdfmodel_loaded, _ = at.inputmodel.get_modeldata(tmp_path)
+    assert lzdfmodel_loaded.collect_schema().names() == lzdfmodel.collect_schema().names()
 
 
 def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:

@@ -463,15 +463,13 @@ def get_model_text_folder(modelpath: Path | str) -> Path:
 
 
 def get_modeldata(
-    modelpath: Path | str = ".",
-    get_elemabundances: bool = False,
-    derived_cols: Sequence[str] | str | None = None,
-    printwarningsonly: bool = False,
+    modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Returns dfmodel, modelmeta
-        - dfmodel: a polars LazyFrame with a row for each model grid cell
+        - dfmodel: a polars LazyFrame with a row for each cell, and the columns that
+          add_derived_cols_to_modeldata adds. A query calculates only the columns that it selects.
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
 
     Parameters
@@ -480,15 +478,10 @@ def get_modeldata(
         either a path to model.txt file, or a folder containing model.txt
     get_elemabundances : bool
         also read elemental abundances (from abundances.txt) and merge with the output DataFrame
-    derived_cols : Sequence[str] | str | None
-        list of derived columns to add to the model data, or "all" to add all possible derived columns
     printwarningsonly : bool
         if True, print warnings but skip informational progress messages
 
     """
-    if isinstance(derived_cols, str):
-        derived_cols = [derived_cols]
-
     inputpath = Path(modelpath)
 
     if inputpath.is_dir():
@@ -528,12 +521,7 @@ def get_modeldata(
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
 
-    if derived_cols:
-        dfmodel = add_derived_cols_to_modeldata(
-            dfmodel=dfmodel, derived_cols=derived_cols, modelmeta=modelmeta, modelpath=modelpath
-        )
-
-    return dfmodel, modelmeta
+    return add_derived_cols_to_modeldata(dfmodel=dfmodel, modelmeta=modelmeta), modelmeta
 
 
 def get_empty_3d_model(
@@ -600,20 +588,15 @@ def min_abs_coordinate(ax: str) -> pl.Expr:
     return pl.when(pos_min * pos_max < 0.0).then(pl.lit(0.0)).otherwise(pl.min_horizontal(pos_min.abs(), pos_max.abs()))
 
 
-def add_derived_cols_to_modeldata(
-    dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: Sequence[str],
-    modelmeta: dict[str, t.Any],
-    modelpath: Path | None = None,
-) -> pl.LazyFrame:
-    """Add columns to modeldata using e.g. derived_cols = ("velocity", "Ye")."""
-    # with lazy mode, we can add every column and then drop the ones we don't need
+def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
+    """Add each column that the function calculates from the model data, e.g. the volume and the mass of each cell.
+
+    The dataframe is lazy, thus a query calculates only the columns that it selects.
+    """
     dfmodel = dfmodel.lazy()
     original_cols = dfmodel.collect_schema().names()
-    derived_cols = list(derived_cols)
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-    keep_all = any(c.lower() == "all" for c in derived_cols)
 
     if "logrho" not in original_cols and "rho" in original_cols:
         # clamp at -99 to match save_modeldata(), which treats -99 as the empty-cell marker. A plain log10() would give
@@ -779,33 +762,23 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
     # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
-    dfmodel = dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
-    colnames = dfmodel.collect_schema().names()
+    return dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
 
-    if unknown_cols := [
-        col
-        for col in derived_cols
-        if col not in colnames and col.lower() not in {"pos_min", "pos_max", "all", "velocity"}
-    ]:
-        print_warning(f"Unknown derived columns: {unknown_cols}")
 
-    if "pos_min" in derived_cols:
-        derived_cols.extend(col for col in colnames if col.startswith("pos_") and col.endswith("_min"))
+def get_derived_column_names(dimensions: int) -> set[str]:
+    """Return the names of the columns that add_derived_cols_to_modeldata adds to a model of these dimensions.
 
-    if "pos_max" in derived_cols:
-        derived_cols.extend(col for col in colnames if col.startswith("pos_") and col.endswith("_max"))
-
-    if "velocity" in derived_cols:
-        derived_cols.extend(col for col in colnames if col.startswith("vel_"))
-
-    if not keep_all:
-        dfmodel = dfmodel.drop([col for col in colnames if col not in original_cols and col not in derived_cols])
-
-    if "angle_bin" in derived_cols:
-        assert modelpath is not None
-        dfmodel = get_cell_angle(dfmodel)
-
-    return dfmodel
+    The names do not depend on the values. Thus, the function uses a dataframe with no rows and a value of 1.0 for
+    each metadata key.
+    """
+    standardcols = get_standard_columns(dimensions)
+    placeholdermeta = {"dimensions": dimensions, "t_model_init_days": 1.0, "wid_init": 1.0} | {
+        f"wid_init_{axis}": 1.0 for axis in ("x", "y", "z", "rcyl")
+    }
+    dfwithoutrows = pl.LazyFrame(schema=dict.fromkeys(standardcols, pl.Float64))
+    return set(add_derived_cols_to_modeldata(dfwithoutrows, placeholdermeta).collect_schema().names()) - set(
+        standardcols
+    )
 
 
 def get_cell_angle(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
@@ -981,6 +954,9 @@ def save_modeldata(
     else:
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
+
+    # a dataframe from get_modeldata holds the derived columns, which model.txt does not store
+    dfmodel = dfmodel.drop(get_derived_column_names(modelmeta["dimensions"]), strict=False)
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
     # every other custom column
@@ -1220,7 +1196,13 @@ def dimension_reduce_model(
     print(f"Resampling {ndim_in:d}D model with {in_ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    dfmodel_out = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta, derived_cols=["velocity", "mass_g"])
+    # the aggregation below makes a list from each column of an unknown kind. Thus, only the velocities and the mass
+    # go into the output with the columns of the input model file.
+    derivedcols = get_derived_column_names(ndim_in)
+    inputfilecols = [col for col in dfmodel.collect_schema().names() if col not in derivedcols]
+    dfmodel_out = add_derived_cols_to_modeldata(dfmodel.select(inputfilecols), modelmeta=modelmeta).select(
+        *inputfilecols, cs.starts_with("vel_") - cs.by_name(inputfilecols, require_all=False), "mass_g"
+    )
 
     if outputdimensions == 0:
         ncoordgridr = 1
@@ -1333,7 +1315,8 @@ def dimension_reduce_model(
         dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
 
     dfmodel_out = (
-        add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out, derived_cols=["volume"])
+        add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out)
+        .select(*dfmodel_out.collect_schema().names(), "volume")
         .with_columns(rho=pl.col("out_mass_g") / pl.col("volume"))
         .drop("volume", cs.starts_with("out_n_"))
         .rename({"out_mass_g": "mass_g"})

@@ -141,9 +141,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    lzdfmodel, modelmeta = at.get_modeldata(
-        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
-    )
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     assert modelmeta["dimensions"] > 1
     dfmodel = lzdfmodel.collect()
 
