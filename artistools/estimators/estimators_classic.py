@@ -143,10 +143,14 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
+                # a restart, or the concatenation of two rank files, can leave a blank line
+                if not row:
+                    continue
+
                 # a classic ARTIS run writes a row of numbers that starts with the cell index. A modern
                 # run writes "timestep 0 modelgridindex 0 ...", and it does so even with the options of
                 # the classic code, thus the name of --classicartis misleads
-                if row and row[0] == "timestep":
+                if row[0] == "timestep":
                     msg = (
                         f"{estfilepath} holds the estimator format of a modern ARTIS run, thus "
                         "--classicartis does not read it. That argument reads the output of the classic "
@@ -184,8 +188,10 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
 
                 parse_ion_row_classic(row, estimcell, atomic_composition)
 
-                # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional, heatingrates[tid].gamma,
-                # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional, coolingrates[tid].adiabatic)
+                # the classic code writes the last nine columns in this order:
+                # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional,
+                # heatingrates[tid].gamma, coolingrates[tid].ff, coolingrates[tid].fb,
+                # coolingrates[tid].collisional, coolingrates[tid].adiabatic
 
                 estimcell["heating_ff"] = float(row[-9])
                 estimcell["heating_bf"] = float(row[-8])

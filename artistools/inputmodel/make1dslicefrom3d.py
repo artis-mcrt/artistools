@@ -62,9 +62,15 @@ def slice_3dmodel(
     dict3dcellidto1dcellid = {}
     outcellid = 0
     with Path(inputfolder, "model.txt").open(encoding="utf-8") as fmodelin:
-        fmodelin.readline()  # npts_model3d
+        npts_model3d = int(fmodelin.readline())
         t_model = fmodelin.readline()  # days
-        fmodelin.readline()  # v_max in [cm/s]
+        vmax_cmps = float(fmodelin.readline())
+
+        # pos_min is the inner face of a cell, but the 1D model gives the outer boundary of a shell.
+        # The cell width makes that outer face, thus the first shell holds a volume
+        ncoordgrid = round(npts_model3d ** (1 / 3))
+        assert ncoordgrid**3 == npts_model3d, f"{npts_model3d} cells do not make a cubic grid"
+        wid_init = 2 * vmax_cmps * float(t_model) * day_to_s / ncoordgrid
 
         while True:
             # two lines making up a model grid cell
@@ -93,7 +99,7 @@ def slice_3dmodel(
             if all(pos == 0.0 or (chosenaxis == ax and pos >= 0.0) for ax, pos in positions.items()):
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cell["cellid"])] = outcellid
-                append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists)
+                append_cell_to_output(cell, outcellid, t_model, wid_init, listout, xlist, ylists)
                 print(f"Cell {outcellid:4d} input1: {block[0].rstrip()}")
                 print(f"Cell {outcellid:4d} input2: {block[1].rstrip()}")
                 print(f"Cell {outcellid:4d} output: {listout[-1]}")
@@ -152,13 +158,16 @@ def append_cell_to_output(
     cell: dict[str, float | str],
     outcellid: int,
     t_model: str | float,
+    wid_init: float,
     listout: list[str],
     xlist: list[float],
     ylists: list[list[float]],
 ) -> None:
     """Append one cell to the 1D model output lines and to the density and abundance plot series."""
     dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    velocity = dist / float(t_model) / day_to_s / km_to_cm
+    # the slice keeps the positive half-axis, thus pos_min is the inner face and the outer face of
+    # the shell is one cell width further out. vel_r_max_kmps names that outer boundary
+    velocity = (dist + wid_init) / float(t_model) / day_to_s / km_to_cm
 
     listout.append(
         f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "

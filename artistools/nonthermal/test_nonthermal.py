@@ -19,6 +19,24 @@ def test_spencerfano_excitation() -> None:
     at.nonthermal.solvespencerfanocmd.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200)
 
 
+def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
+    """A -vary x_e sweep changes the list of ions from one step to the next, thus -ostat gives a column to each ion.
+
+    The file named the ions of the first step, and a later step with another list stopped the command.
+    """
+    ostatfile = tmp_path / "ntstats.txt"
+    at.nonthermal.solvespencerfanocmd.main(
+        argsraw=[], composition="Fe", x_e=0.001, vary="x_e", npts=50, noexcitation=True, ostat=str(ostatfile)
+    )
+
+    dfstats = at.read_wsv(ostatfile, comment_prefix="#", header_from_comment=True)
+    assert dfstats.height == 9
+    assert {"frac_ionization_FeI", "frac_ionization_FeII", "frac_ionization_FeXI"} <= set(dfstats.columns)
+    # an ion that a step does not hold takes zero, e.g. Fe I at the highest electron fraction
+    assert dfstats["frac_ionization_FeI"][-1] == 0.0
+    assert dfstats["frac_ionization_FeXI"][-1] > 0.0
+
+
 @pytest.mark.parametrize("x_e", [0.0, 0.01, 0.5, 1.0, 1.5, 2.0, 3.7, 26.0])
 def test_ionpops_for_electronfraction(x_e: float) -> None:
     """The ion populations must average to x_e free electrons per nucleus, for x_e above one as well as below.

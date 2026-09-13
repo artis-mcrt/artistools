@@ -320,13 +320,19 @@ def makemodelfromgriddata(
         dfelabundances = None
 
     if dimensions < 3:
-        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+        # the function returns an empty frame, not None, for an input that was None. The guards below
+        # test for None, thus an empty frame would write an empty gridcontributions.txt
+        gave_elabundances = dfelabundances is not None
+        gave_gridcontributions = dfgridcontributions is not None
+        dfmodel, dfelabundances_reduced, dfgridcontributions_reduced, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,
             dfgridcontributions=dfgridcontributions,
             modelmeta=modelmeta,
         )
+        dfelabundances = dfelabundances_reduced if gave_elabundances else None
+        dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
 
     if "Ye" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)

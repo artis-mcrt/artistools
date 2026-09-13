@@ -44,6 +44,29 @@ pub fn parse_field<T: FromStr>(token: &str, expected: &str) -> PolarsResult<T> {
         .map_err(|_| malformed(format!("could not parse {token:?} as {expected}")))
 }
 
+/// Parse a measured value into f32 and reject a number that f32 cannot hold
+///
+/// ARTIS writes a rate far below the smallest f32, e.g. "5.313e-95" in the `gamma_R` row of the test
+/// model. Rust parses such a token to 0.0 with no error, which is the right value for a rate that
+/// small. A token above the largest f32 parses to infinity. Such a value spreads through every mean
+/// and sum that reads the column, thus this function rejects it.
+pub fn parse_f32_field(token: &str, expected: &str) -> PolarsResult<f32> {
+    let value: f64 = parse_field(token, expected)?;
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the check below rejects a value that f32 cannot hold"
+    )]
+    let value_f32 = value as f32;
+
+    if value.is_finite() && !value_f32.is_finite() {
+        return Err(malformed(format!(
+            "{token:?} is outside the range that f32 holds"
+        )));
+    }
+
+    Ok(value_f32)
+}
+
 /// Take the next token of a line and parse it, failing if the line ends first
 pub fn next_field<'a, T: FromStr>(
     tokens: &mut impl Iterator<Item = &'a str>,

@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import numpy as np
 import pytest
 
 import artistools as at
@@ -74,3 +75,21 @@ def test_decayproducts_parquet_output(tmp_path: Path, monkeypatch: pytest.Monkey
     parquetfiles = sorted(p.name for p in (outputpath_requested / "parquet").glob("*.parquet"))
     assert parquetfiles, "no parquet files written under the output path"
     assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"
+
+
+def test_decayproducts_process_trajectory_takes_no_plot_times() -> None:
+    """An empty list of plot times gives empty arrays. The index array of the heating rows was a float array."""
+    trajpath = at.get_path("testdata") / "kilonova" / "trajectories"
+    nuc_data = at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka")
+
+    decay_powers = at.gsinetwork.decayproducts.process_trajectory(
+        nuc_data=nuc_data,
+        traj_root=trajpath,
+        traj_masses_g={109215: 1.0e30},
+        arr_t_day=np.array([]),
+        nuclide_contrib=False,
+        traj_parquet_dir=None,
+        traj_ID=109215,
+    )
+
+    assert all(len(values) == 0 for values in decay_powers.values())

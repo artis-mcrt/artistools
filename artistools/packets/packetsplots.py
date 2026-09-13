@@ -100,7 +100,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure."""
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
-        start_of_filename = f"{wavelen:.0f}A_"
+        start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
     start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
     start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
 

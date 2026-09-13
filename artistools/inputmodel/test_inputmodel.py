@@ -420,9 +420,31 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
+def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) -> None:
+    """A timestep file whose first line is blank gives no time, thus the read must stop and name that file.
+
+    A blank line gave a null field count, which the check for six fields passed. The reader then returned None
+    for the time.
+    """
+    rundir = tmp_path / "1" / "Run_rprocess"
+    rundir.mkdir(parents=True)
+    abundlines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
+    (rundir / "nz-plane00001").write_text(
+        "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
+    )
+    (rundir / "nz-plane00002").write_text("\n" + abundlines)
+
+    reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
+    _, timesecs = reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001"])
+    assert timesecs == [8873.645]
+
+    with pytest.raises(ValueError, match="nz-plane00002"):
+        reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
+
+
 def test_get_trajectory_abund_q() -> None:
     # Ensure that the testdatapath is correctly defined as in other tests
-    # modelpath = at.get_config()["path_testdata"] / "testmodel" implies testdatapath is at.get_config()["path_testdata"]
+    # this test reads the test data folder itself, and not the testmodel folder below it
     # In this file, testdatapath is defined globally: testdatapath = at.get_config()["path_testdata"]
 
     particleid = 109215
@@ -1649,7 +1671,8 @@ def test_save_load_3d_model() -> None:
         pl.Series(name=isocol, values=randommassfracs, dtype=pl.Float32) for isocol in isocolnames
     ])
 
-    # abundances don't matter if rho is zero, so we'll set them to zero to match the resulting dataframe that will be loaded
+    # an abundance counts for nothing when rho is zero. Set each one to zero, so that the values
+    # match the dataframe that the reader gives
     dfmodel = dfmodel.with_columns(
         pl.when(dfmodel["rho"] > 0).then(pl.col(col)).otherwise(0) for col in dfmodel.columns if col.startswith("X_")
     )
@@ -1836,9 +1859,12 @@ def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
     inputfolder.mkdir()
     outputfolder.mkdir()
 
+    t_model_days = 1.0
     xmax = 1.0e15
+    # line 3 of model.txt gives vmax in cm/s, thus the outermost face sits at vmax * t_model
+    vmax_cmps = xmax / (t_model_days * at.constants.day_to_s)
     # a 2x2x2 grid written with scientific notation, as save_modeldata() does (float_scientific=True)
-    lines = ["8", "1.0", f"{xmax:.4e}"]
+    lines = ["8", str(t_model_days), f"{vmax_cmps:.4e}"]
     cellid = 0
     for zpos in (-xmax, 0.0):
         for ypos in (-xmax, 0.0):
@@ -1851,7 +1877,11 @@ def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
 
     # only the cell at (0, 0, 0) is on the positive x axis with y == z == 0
     assert dict3dcellidto1dcellid == {8: 1}
-    assert xlist == pytest.approx([0.0])
+    # the 1D model gives the outer boundary of each shell. That cell spans 0 to one cell width, thus
+    # its vel_r_max_kmps is the velocity of the cell width and not zero
+    # the file holds the rounded value, thus the expectation must read it back
+    wid_init = 2 * float(f"{vmax_cmps:.4e}") * t_model_days * at.constants.day_to_s / 2
+    assert xlist == pytest.approx([wid_init / (t_model_days * at.constants.day_to_s) / at.constants.km_to_cm])
     assert (outputfolder / "model.txt").read_text(encoding="utf-8").splitlines()[0].strip() == "1"
 
 

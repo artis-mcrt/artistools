@@ -37,14 +37,14 @@ _DISPATCH_CLASSES: tuple[type, ...] = (
 )
 
 
-def _is_empty_method(func: Callable[..., pl.Series]) -> bool:
+def is_empty_method(func: Callable[..., pl.Series]) -> bool:
     """Report whether a polars method is a stub whose body is nothing but a docstring."""
     # matching an empty function's bytecode already implies a body that only returns None, so unlike
     # polars' own check there is nothing left to confirm in the version-dependent co_consts
     return isinstance(func, FunctionType) and func.__code__.co_code in plseriesutils._EMPTY_BYTECODE  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
 
-def _dispatch_is_working() -> bool:
+def dispatch_is_working() -> bool:
     """Report whether polars rebound its stubs, by calling a Series method it never implements itself."""
     # the type stubs promise a Series, so cast away the lie that an unrepaired stub returns one
     return t.cast("object", pl.Series("x", [1]).unique()) is not None
@@ -52,18 +52,18 @@ def _dispatch_is_working() -> bool:
 
 def repair_series_expr_dispatch() -> None:
     """Rebind polars' unimplemented Series methods to their Expr equivalents if polars itself failed to."""
-    if _dispatch_is_working():
+    if dispatch_is_working():
         return
 
     # expr_dispatch reads _is_empty_method as a module global, so swap it only for the rebinding pass
     original = plseriesutils._is_empty_method  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    plseriesutils._is_empty_method = _is_empty_method  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
+    plseriesutils._is_empty_method = is_empty_method  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]  # ty:ignore[invalid-assignment]
     try:
         for cls in _DISPATCH_CLASSES:
             plseriesutils.expr_dispatch(cls)
     finally:
         plseriesutils._is_empty_method = original  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
-    if not _dispatch_is_working():
+    if not dispatch_is_working():
         msg = "failed to restore the polars Series methods that polars leaves unimplemented on this Python version"
         raise RuntimeError(msg)
