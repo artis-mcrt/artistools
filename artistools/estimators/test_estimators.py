@@ -339,6 +339,17 @@ def test_xbins_gives_the_number_of_bins() -> None:
         assert np.isclose(widths[-1], expectedwidth / 2.0), xbins
 
 
+def test_xbins_below_minus_one_selects_automatic_bins() -> None:
+    """Every negative -xbins selects automatic bins, as it did before commit b4365703.
+
+    A check for zero also refused every value below -1, thus a script that gave -xbins -2 stopped.
+    """
+    xvalues_minus1, _ = get_binned_xvalues_and_limits(-1)
+    xvalues_minus2, _ = get_binned_xvalues_and_limits(-2)
+
+    assert np.array_equal(xvalues_minus1, xvalues_minus2)
+
+
 def test_automatic_xbins_with_one_x_value() -> None:
     """Automatic bins for data of one x value draw finite values. Before, the equal edges made cut() raise an error."""
     drawnyvalues: list[npt.NDArray[np.float64]] = []
