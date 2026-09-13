@@ -420,7 +420,12 @@ def get_grid(
         # the rows run over nz, then nr, then the particle id, thus put nz first
         wloc = wloc.transpose((1, 0, 2))
         cellhasmass = cellhasmass.T
-        cellids = (np.arange(nvz)[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[..., np.newaxis]
+        # map_to_artis reflects a grid with equatorial symmetry in z, thus row iz of the half grid is row nvz + iz
+        # of the full grid
+        zrowoffset = nvz if eqsymfac == 2 else 0
+        cellids = ((zrowoffset + np.arange(nvz))[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[
+            ..., np.newaxis
+        ]
     else:
         nx, ny, nz = (np.arange(n) for n in grid_dims)
         cellids = (
@@ -439,6 +444,18 @@ def get_grid(
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
 
     if model_dim == 2:
+        if eqsymfac == 2:
+            # the lower half of the full grid reflects the upper half, thus each particle also gives its fraction to
+            # the mirror cell. For row iz of the half grid, the mirror is row nvz - 1 - iz of the full grid
+            nrowsfull, ncolsfull = 2 * int(nvz), int(nvr)
+            fullrow = (pl.col("cellindex") - 1) // ncolsfull
+            dfparticlecontribs = pl.concat([
+                dfparticlecontribs,
+                dfparticlecontribs.with_columns(
+                    cellindex=(nrowsfull - 1 - fullrow) * ncolsfull + (pl.col("cellindex") - 1) % ncolsfull + 1
+                ),
+            ]).sort("cellindex", "particleid")
+
         return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
     # 3D case
     return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
