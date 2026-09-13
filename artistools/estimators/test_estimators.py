@@ -339,6 +339,32 @@ def test_xbins_gives_the_number_of_bins() -> None:
         assert np.isclose(widths[-1], expectedwidth / 2.0), xbins
 
 
+def test_automatic_xbins_with_one_x_value() -> None:
+    """Automatic bins for data of one x value draw finite values. Before, the equal edges made cut() raise an error."""
+    drawnyvalues: list[npt.NDArray[np.float64]] = []
+    realplot = mplax.Axes.plot
+
+    def spyplot(self: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if len(args) >= 2 and np.ndim(args[1]) > 0:
+            drawnyvalues.append(np.asarray(args[1], dtype=np.float64))
+        return realplot(self, *args, **kwargs)
+
+    with mock.patch.object(mplax.Axes, "plot", spyplot):
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            plotlist=[["Te"]],
+            modelgridindex="0",
+            timestep="10-20",
+            x="velocity",
+            xbins=-1,
+            outputfile=outputpath / "test_automatic_xbins_with_one_x_value.pdf",
+        )
+
+    assert drawnyvalues
+    assert all(np.isfinite(yvalues).all() for yvalues in drawnyvalues)
+
+
 def get_binned_xvalues_and_limits(xbins: int) -> tuple[npt.NDArray[np.float64], tuple[float, float]]:
     """Return the x values that one plot of binned estimators draws, and the limits of its x axis."""
     drawn: list[npt.NDArray[np.float64]] = []

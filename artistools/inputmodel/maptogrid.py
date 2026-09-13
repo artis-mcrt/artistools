@@ -259,6 +259,11 @@ def maptogrid(
         if min(ihigh, jhigh, khigh) >= 1 and max(ilow, jlow, klow) <= ncoordgrid:
             particlesinsidegrid.add(n)
 
+        # a kernel that ends two cells or more before the grid gives a negative slice end. A slice reads that
+        # as an offset from the end of the axis, thus skip the particle, because its box is empty
+        if ilow > ihigh or jlow > jhigh or klow > khigh:
+            continue
+
         distx2 = (arrgx[ilow : ihigh + 1] - x[n]) ** 2
         disty2 = (arrgy[jlow : jhigh + 1] - y[n]) ** 2
         distz2 = (arrgz[klow : khigh + 1] - z[n]) ** 2

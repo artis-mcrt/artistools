@@ -1080,7 +1080,9 @@ def get_xlist(
     if args.xbins is not None:
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
-        xbinedges = np.linspace(xmin, xmax, args.xbins + 1)
+        # a range of zero width gives equal edges, and cut() gives an error for equal breaks.
+        # Thus one bin holds all the x values
+        xbinedges = np.linspace(xmin, xmax, args.xbins + 1 if xmax > xmin else 2)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2
