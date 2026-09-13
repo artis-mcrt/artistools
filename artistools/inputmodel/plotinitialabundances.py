@@ -26,7 +26,18 @@ def make_plot(args: argparse.Namespace) -> None:
     ax = axesgrid[0][0]
 
     for model_path in args.modelpath:
-        df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g"])
+        df, _ = at.inputmodel.get_modeldata(modelpath=Path(model_path), derived_cols=["mass_g", "velocity"])
+        df = df.with_columns(theta_deg=pl.arctan2(pl.col("vel_rcyl_mid_on_c"), pl.col("vel_z_mid_on_c")).degrees())
+
+        if args.vmin is not None:
+            df = df.filter(pl.col("vel_r_mid_on_c") >= args.vmin)
+        if args.vmax is not None:
+            df = df.filter(pl.col("vel_r_mid_on_c") <= args.vmax)
+        if args.thetamin is not None:
+            df = df.filter(pl.col("theta_deg") >= args.thetamin)
+        if args.thetamax is not None:
+            df = df.filter(pl.col("theta_deg") <= args.thetamax)
+
         df = (
             df
             .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
@@ -109,6 +120,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["massfraction", "abundance"],
         help="Vertical axis quantity: mass fraction or number abundance",
     )
+    parser.add_argument("-vmin", type=float, default=None, help="minimum velocity [c]")
+    parser.add_argument("-vmax", type=float, default=None, help="maximum velocity [c]")
+    parser.add_argument("-thetamin", type=float, default=None, help="minimum polar angle [degress]")
+    parser.add_argument("-thetamax", type=float, default=None, help="maximum polar angle [degress]")
+
     at.addarg_show(parser)
 
 
