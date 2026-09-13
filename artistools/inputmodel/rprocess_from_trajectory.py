@@ -265,10 +265,11 @@ def get_trajectory_timestepfiles_nuc_abund(
         .drop("log10abund"),
     ])
 
-    dfheaders = dfheaders.sort("fileindex")
-    badheaders = dfheaders.filter(pl.col("fieldcount") != 6)["fileindex"]
-    if dfheaders.height != len(trajpaths) or not badheaders.is_empty():
-        badfileindex = badheaders.item(0) if not badheaders.is_empty() else 0
+    # a blank header line gives a null field count, and a file without lines gives no header row
+    dfheaders = dfheaders.filter(pl.col("fieldcount") == 6).sort("fileindex")
+    goodfileindices = set(dfheaders["fileindex"].to_list())
+    badfileindex = next((index for index in range(len(trajpaths)) if index not in goodfileindices), None)
+    if badfileindex is not None:
         msg = f"Cannot read the header line of {memberfilenames[badfileindex]} for trajectory {particleid}"
         print(msg)
         raise ValueError(msg)

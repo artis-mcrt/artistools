@@ -904,6 +904,81 @@ def test_plotspectra_resolves_both_bounds_of_a_one_sided_time_range(tmp_path: Pa
     assert "None" not in pdfnames[0]
 
 
+def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -> None:
+    """An x range that holds no wavelength bin must stop with a message, not with an error in the flux sums."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath,
+            outputfile=tmp_path,
+            timedays=300,
+            emissionabsorption=True,
+            use_thermalemissiontype=True,
+            xmin=5000.0,
+            xmax=5000.5,
+        )
+
+
+def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path) -> None:
+    """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first."""
+    at.spectra.plot(
+        argsraw=[
+            "--frompackets",
+            "--notimeclamp",
+            "-timemin",
+            "260",
+            "--plotinvalidpart",
+            str(modelpath),
+            "-outputfile",
+            str(tmp_path),
+        ]
+    )
+
+    pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
+    assert pdfnames == ["plotspectra_260.00d-350.00d.pdf"]
+
+
+def test_plotspectra_skips_a_folder_that_is_not_a_run(tmp_path: Path) -> None:
+    """A folder without input.txt gives no timesteps, thus the plot of the other models must still run.
+
+    The range resolution of main asked the first folder for its timesteps and stopped before any plot.
+    """
+    notarun = tmp_path / "notarun"
+    notarun.mkdir()
+    outputfolder = tmp_path / "output"
+    outputfolder.mkdir()
+
+    at.spectra.plot(argsraw=["-timedays", "300", str(notarun), str(modelpath), "-outputfile", str(outputfolder)])
+
+    assert len(list(outputfolder.glob("*.pdf"))) == 1
+
+
+@pytest.mark.skipif(
+    not (at.get_path("testdata") / "test-classicmode_1d").is_dir(),
+    reason="run tests/data/setuptestdata.sh for the 1D classic model",
+)
+def test_plotspectra_one_sided_bound_that_the_first_model_does_not_reach(tmp_path: Path) -> None:
+    """A -timemin after the end of the first model must take its range from a later model.
+
+    Only the first model resolved the range, thus timemax stayed None and the output file name raised TypeError.
+    """
+    at.spectra.plot(
+        argsraw=[
+            "-timemin",
+            "260",
+            "--plotinvalidpart",
+            str(at.get_path("testdata") / "test-classicmode_1d"),
+            str(modelpath),
+            "-outputfile",
+            str(tmp_path),
+        ]
+    )
+
+    pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
+    assert len(pdfnames) == 1
+    assert "None" not in pdfnames[0]
+
+
 def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) -> None:
     """A reference spectrum can carry the .out suffix of ARTIS, thus its folder holds no timesteps.
 

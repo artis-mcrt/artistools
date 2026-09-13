@@ -104,23 +104,28 @@ def write_ionfracts(
         elsymb = at.get_elsymbol(atomic_number)
         nions = elementlist["nions"].item(elementindex)
         lowermost_ion_stage = elementlist["lowermost_ion_stage"].item(elementindex)
-        # the header must name the ion stage that each column holds. A count from zero made every
-        # reader, this repository included, attribute each column to the stage below it
-        ion_stages = [lowermost_ion_stage + ion for ion in range(nions)]
-        ionstrs = [at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral") for ion_stage in ion_stages]
+        # the format labels the neutral stage 0 and needs a column for each stage up to the highest one. ARTIS
+        # holds no population below lowermost_ion_stage, thus those columns hold zero
+        nstages = lowermost_ion_stage + nions - 1
+        nstagesbelowlowermost = lowermost_ion_stage - 1
+        ionstrs = [
+            at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+            for ion_stage in range(lowermost_ion_stage, nstages + 1)
+        ]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w", encoding="utf-8") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-            f.write(f"#NSTAGES: {nions}\n")
+            f.write(f"#NSTAGES: {nstages}\n")
             f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
             f.write("#\n")
             for timestep in selected_timesteps:
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
                 f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
-                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{ion_stage}' for ion_stage in ion_stages])}\n")
+                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}\n")
                 for modelgridindex, vel_r_mid in cellrows:
                     f.write(f"{vel_r_mid / km_to_cm:.2f}")
+                    f.write(f" {0.0:.4e}" * nstagesbelowlowermost)
                     elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
                     for ionstr in ionstrs:
                         ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)

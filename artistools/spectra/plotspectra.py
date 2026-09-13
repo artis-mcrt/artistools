@@ -47,6 +47,7 @@ from artistools.misc import apply_time_range_args
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import folder_is_artis_run
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
@@ -723,7 +724,6 @@ def make_spectrum_plot(
                     plot_reference_spectrum_for_args(specpath, axis, args, filterfunc, scale_to_peak, **plotkwargs)
             refspecindex += 1
         elif path_is_codecomparison(specpath):
-            get_time_range(specpath, args.timestep, args.timemin, args.timemax, args.timedays)
             timeavg = args.timedays
             from artistools.codecomparison import plot_spectrum
 
@@ -1013,7 +1013,7 @@ def plot_contributions_stacked(
         if not args.showemission:
             plotobjects.extend(absstackplot)
 
-        summed_absorption = (
+        max_absorption = (
             pl
             .DataFrame({
                 f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
@@ -1022,8 +1022,6 @@ def plot_contributions_stacked(
             .select(pl.sum_horizontal(pl.all()).max())
             .item()
         )
-        # a narrow x range can filter every series to no row, thus the maximum is null
-        max_absorption = summed_absorption if summed_absorption is not None else 0.0
 
     return plotobjects, max_absorption
 
@@ -1143,6 +1141,12 @@ def make_emissionabsorption_plot(
     contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
         modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, timemin, timemax, dirbin
     )
+    if not np.any((arraylambda_angstroms >= xmin) & (arraylambda_angstroms <= xmax)):
+        # every sum and every maximum below reads the bins of the x range
+        exit_with_error(
+            f"the wavelength range {xmin:.1f} to {xmax:.1f} holds no bin of the spectrum",
+            "Give a wider range with -xmin and -xmax",
+        )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
@@ -1632,16 +1636,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             " and not from the estimators"
         )
 
-    # one time axis serves every model, thus the range resolves one time and before any plot runs.
-    # The plot functions used to write it back onto args as they drew. The range of one model then
-    # reached the next one, and get_time_range dropped a model whose run ends earlier.
-    # A reference spectrum can hold the .out suffix of ARTIS, thus the reference predicate decides
-    # which of the paths hold ARTIS timesteps
+    # one time axis serves every model, thus the range resolves one time and before any plot runs. A path
+    # that is not a run gives no timesteps, and the plot loop skips it with a warning
+    clamp_to_timesteps = not args.notimeclamp
     modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
-    apply_time_range_args(args, modelspecpaths)
+    apply_time_range_args(args, modelspecpaths, clamp_to_timesteps=clamp_to_timesteps)
 
     gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
-    artispaths = [get_model_folder(path) for path in modelspecpaths if path_is_artis_model(path)]
+    artispaths = [
+        get_model_folder(path)
+        for path in modelspecpaths
+        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+    ]
     # a code comparison path carries timesteps of its own, thus it resolves the range when no ARTIS
     # model does. The plot code no longer writes the range back, thus nothing else would resolve it
     timesteppaths = artispaths or [path for path in modelspecpaths if path_is_codecomparison(path)]
@@ -1650,9 +1656,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # time, and a -timemin or a -timemax on its own leaves the other side open.
         # -timedayslist names one epoch for each subplot, thus the range spans the whole list. The
         # first epoch alone would give one name to two lists that share it
+        # read the range of every model, because a model can end before a -timemin that a later model reaches
         timedaysvalues = args.timedayslist or [args.timedays]
         resolvedranges = [
-            get_time_range(timesteppaths[0], args.timestep, args.timemin, args.timemax, timedays)[2:]
+            get_time_range(
+                timesteppath,
+                timestep_range_str=args.timestep,
+                timemin=args.timemin,
+                timemax=args.timemax,
+                timedays_range_str=timedays,
+                clamp_to_timesteps=clamp_to_timesteps,
+            )[2:]
+            for timesteppath in timesteppaths
             for timedays in timedaysvalues
         ]
         finiteranges = [
@@ -1774,10 +1789,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
         filenameout = str(args.outputfile)
-        if args.timemin is not None:
+        if args.timemin is not None and args.timemax is not None:
             filenameout = filenameout.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
         elif "{" in filenameout:
-            # no global time range was resolved (e.g. --multispecplot), so the time placeholders can't be filled
+            # no model resolved both bounds, thus the time placeholders get no values
             filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
 
         if args.write_data and len(dfalldata.columns) > 0:

@@ -420,6 +420,28 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
+def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) -> None:
+    """A timestep file whose first line is blank gives no time, thus the read must stop and name that file.
+
+    A blank line gave a null field count, which the check for six fields passed. The reader then returned None
+    for the time.
+    """
+    rundir = tmp_path / "1" / "Run_rprocess"
+    rundir.mkdir(parents=True)
+    abundlines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
+    (rundir / "nz-plane00001").write_text(
+        "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
+    )
+    (rundir / "nz-plane00002").write_text("\n" + abundlines)
+
+    reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
+    _, timesecs = reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001"])
+    assert timesecs == [8873.645]
+
+    with pytest.raises(ValueError, match="nz-plane00002"):
+        reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
+
+
 def test_get_trajectory_abund_q() -> None:
     # Ensure that the testdatapath is correctly defined as in other tests
     # this test reads the test data folder itself, and not the testmodel folder below it

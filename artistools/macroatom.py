@@ -114,10 +114,13 @@ def read_files(
 ) -> pl.DataFrame:
     """Return the macroatom transitions of a model for one cell, a timestep range, and one element.
 
-    read_rank_outputfiles reads one file for each rank, thus a run that holds a plain file and a
-    compressed file of the same rank does not read that rank twice.
+    Each rank writes the transitions of every cell that its own packets reach, thus this function reads the files
+    of all ranks. The rank that updates a cell holds only part of the transitions of that cell.
     """
-    dfmacroatom = at.read_rank_outputfiles(modelpath, "macroatom_{mpirank:04d}.out", modelgridindex=modelgridindex)
+    dfmacroatom = at.read_rank_outputfiles(modelpath, "macroatom_{mpirank:04d}.out")
+
+    if modelgridindex is not None and modelgridindex >= 0:
+        dfmacroatom = dfmacroatom.filter(pl.col("modelgridindex") == modelgridindex)
 
     if timestepmin is not None:
         dfmacroatom = dfmacroatom.filter(pl.col("timestep") >= timestepmin)

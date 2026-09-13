@@ -25,6 +25,26 @@ minionfraction = 0.0  # minimum number fraction of the total population to inclu
 defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
+def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]]) -> None:
+    """Write one row for each solver step, with a column for each ion of any step.
+
+    A -vary x_e sweep changes the list of ions from one step to the next, thus an ion that a step does not hold
+    takes zero in that row.
+    """
+    ioncolumns = list(dict.fromkeys(col for row in rows for col in row if col.startswith("frac_ionization_")))
+    with Path(ntstatfile).open("w", encoding="utf-8") as fstat:
+        fstat.write(
+            " ".join(["#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating", *ioncolumns]) + "\n"
+        )
+        fstat.writelines(
+            f"{row['emin']} {row['emax']} {row['npts']} {row['x_e']:7.2e} {row['frac_sum']:6.3f} "
+            f"{row['frac_excitation']:6.3f} {row['frac_ionization']:6.3f}  {row['frac_heating']:6.3f}"
+            + "".join(f" {row.get(col, 0.0):.4f}" for col in ioncolumns)
+            + "\n"
+            for row in rows
+        )
+
+
 def make_ntstats_plot(ntstatfile: str | Path) -> None:
     """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
     fig, axesgrid = make_frame_figure(fullwidth=False)
@@ -217,8 +237,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 
     stepcount = 9 if args.vary else 1
-    # the -ostat header names the ions one time, thus every step must hold the same list
-    ostat_ions: list[str] = []
+    ostatrows: list[dict[str, float]] = []
     for step in range(stepcount):
         emin = args.emin
         emax = args.emax
@@ -260,25 +279,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
             )
 
-        if args.ostat:
-            ostat_ions_thisstep = [
-                at.get_ionstring(atomic_number, ion_stage, sep="") for atomic_number, ion_stage in ions
-            ]
-            if step == 0:
-                strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
-                for ionstr in ostat_ions_thisstep:
-                    strheader += f" frac_ionization_{ionstr}"
-                Path(args.ostat).write_text(strheader + "\n", encoding="utf-8")
-                ostat_ions = ostat_ions_thisstep
-            elif ostat_ions_thisstep != ostat_ions:
-                # the file gives one column for each ion, and the header names them one time
-                msg = (
-                    f"-ostat names one column for each ion, but step {step} holds"
-                    f" {ostat_ions_thisstep} and the header names {ostat_ions}."
-                    " Give a -vary mode that keeps the ion list, or leave out -ostat"
-                )
-                raise ValueError(msg)
-
         with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
             for Z, ion_stage in ions:
                 nnion = ionpopdict[Z, ion_stage]
@@ -308,19 +308,29 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:
-                with Path(args.ostat).open("a", encoding="utf-8") as fstat:
-                    strlineout = (
-                        f"{emin} {emax} {npts} {x_e:7.2e} {sf.get_frac_sum():6.3f} "
-                        f"{sf.get_frac_excitation_tot():6.3f} {sf.get_frac_ionisation_tot():6.3f} "
-                        f" {sf.get_frac_heating():6.3f}"
-                    )
-                    for atomic_number, ion_stage in ions:
-                        nnion = ionpopdict[atomic_number, ion_stage]
-                        frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ion_stage) if nnion > 0.0 else 0.0
-                        strlineout += f" {frac_ionis_ion:.4f}"
-                    fstat.write(strlineout + "\n")
+                ostatrows.append(
+                    {
+                        "emin": emin,
+                        "emax": emax,
+                        "npts": npts,
+                        "x_e": x_e,
+                        "frac_sum": sf.get_frac_sum(),
+                        "frac_excitation": sf.get_frac_excitation_tot(),
+                        "frac_ionization": sf.get_frac_ionisation_tot(),
+                        "frac_heating": sf.get_frac_heating(),
+                    }
+                    | {
+                        f"frac_ionization_{at.get_ionstring(atomic_number, ion_stage, sep='')}": (
+                            sf.get_frac_ionisation_ion(atomic_number, ion_stage)
+                            if ionpopdict[atomic_number, ion_stage] > 0.0
+                            else 0.0
+                        )
+                        for atomic_number, ion_stage in ions
+                    }
+                )
 
     if args.ostat:
+        write_ntstats_file(args.ostat, ostatrows)
         make_ntstats_plot(args.ostat)
 
 

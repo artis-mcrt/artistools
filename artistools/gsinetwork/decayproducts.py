@@ -245,11 +245,12 @@ def process_trajectory(
             "abundweighted_Qdot",
         )
     }
-    arr_networktimestepindex = np.array(networktimestepindices)
+    arr_networktimestepindex = np.array(networktimestepindices, dtype=np.int64)
     hasnetworkstep = arr_networktimestepindex >= 1
+    # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
+    arr_heatingrow = np.where(hasnetworkstep, arr_networktimestepindex - 1, 0)
     decay_powers |= {
-        col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_networktimestepindex - 1], 0.0)
-        * traj_mass_grams
+        col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_heatingrow], 0.0) * traj_mass_grams
         for col in ("hbeta", "htot", "Qdot")
     }
     decay_powers |= {"timedays": np.array(arr_t_day)}

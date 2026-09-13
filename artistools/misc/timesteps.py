@@ -19,6 +19,7 @@ from artistools.misc.cliutils import parse_float_range
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import folder_is_artis_run
 from artistools.misc.fileio import get_model_folder
 from artistools.misc.fileio import path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison
@@ -243,7 +244,9 @@ def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
     return dictvars[token] if token in dictvars else int(token)
 
 
-def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | str]) -> None:
+def apply_time_range_args(
+    args: argparse.Namespace, modelpaths: Sequence[Path | str], clamp_to_timesteps: bool = True
+) -> None:
     """Narrow the plotted time range from -timestep or from a -timedays range.
 
     -timemin and -timemax give the range directly. A single -timedays value names one time for
@@ -255,8 +258,13 @@ def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | 
 
     # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
     # command that plots reference data alone still takes a range in days
-    # a path can name a light curve file of a run, and get_time_range reads the folder of the run
-    artispaths = [get_model_folder(path) for path in modelpaths if path_is_artis_model(path)]
+    # a path can name a light curve file of a run, and get_time_range reads the folder of the run. A folder
+    # without input.txt is not a run, e.g. reference data named .out, and the plot code skips it with a warning
+    artispaths = [
+        get_model_folder(path)
+        for path in modelpaths
+        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+    ]
     if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
@@ -264,7 +272,10 @@ def apply_time_range_args(args: argparse.Namespace, modelpaths: Sequence[Path | 
         rangemin, rangemax = dayrange
     else:
         _, _, rangemin, rangemax = get_time_range(
-            artispaths[0], timestep_range_str=args.timestep, timedays_range_str=args.timedays
+            artispaths[0],
+            timestep_range_str=args.timestep,
+            timedays_range_str=args.timedays,
+            clamp_to_timesteps=clamp_to_timesteps,
         )
 
         # the plot holds one time axis, thus one range in days must serve every model. A timestep

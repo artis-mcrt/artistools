@@ -110,6 +110,34 @@ def get_timebins(
     return arr_tstart, arr_tend, arr_tmid
 
 
+def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: Sequence[float]) -> pl.Expr:
+    """Return the index of the time bin [tstart, tend) that holds each time, or null for a time in no bin.
+
+    The last bin also holds its upper edge. A gap between two bins holds no time, but an end that differs
+    from the next start by rounding alone meets that start, e.g. the times of timesteps.out.
+    """
+    arr_binedge_start = np.asarray(arr_tstart, dtype=np.float64)
+    arr_binedge_end = np.asarray(arr_tend, dtype=np.float64).copy()
+    endsmeetnextstart = np.isclose(arr_binedge_end[:-1], arr_binedge_start[1:], rtol=1e-5, atol=0.0)
+    arr_binedge_end[:-1][endsmeetnextstart] = arr_binedge_start[1:][endsmeetnextstart]
+
+    # use one cut() on all the edges, because a when() test for each bin made one column for each bin
+    edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
+    binofinterval: dict[int, int] = {}
+    for binindex, (tstart, tend) in enumerate(zip(arr_binedge_start, arr_binedge_end, strict=True)):
+        for intervalindex in range(int(np.searchsorted(edges, tstart)), int(np.searchsorted(edges, tend))):
+            binofinterval[intervalindex] = binindex
+
+    # cut() gives 0 below the first edge, thus interval k of the edges takes the category k + 1
+    intervalindex = timeexpr.cut(breaks=edges.tolist(), left_closed=True).to_physical().cast(pl.Int32) - 1
+    return (
+        pl
+        .when(timeexpr == edges[-1])
+        .then(pl.lit(len(arr_binedge_start) - 1, dtype=pl.Int32))
+        .otherwise(intervalindex.replace_strict(binofinterval, default=None, return_dtype=pl.Int32))
+    )
+
+
 def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
@@ -124,17 +152,7 @@ def get_line_luminosities_from_packets(
     """
     arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    lastbin = len(arr_tstart) - 1
-
-    # the bin of a packet comes from the [tstart, tend] of each bin, and not from one list of
-    # shared edges. A gap between two bins thus holds no packet. Each bin is [tstart, tend), and
-    # the last bin also holds its upper edge
-    timebin_expr = pl.coalesce([
-        pl.when(pl.col("t_arrive_d").is_between(tstart, tend, closed="both" if binindex == lastbin else "left")).then(
-            pl.lit(binindex, dtype=pl.Int32)
-        )
-        for binindex, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend, strict=True))
-    ])
+    timebin_expr = get_timebin_expr(pl.col("t_arrive_d"), arr_tstart, arr_tend)
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 

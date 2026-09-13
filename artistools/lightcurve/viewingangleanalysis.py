@@ -283,10 +283,9 @@ def make_plot_test_viewing_angle_fit(
     axis.set_ylabel(f"{FILTERNAME_ALIASES.get(key, key)} Magnitude")
 
     axis.set_xlabel("Time Since Explosion [d]")
-    # set the limits before the inversion: set_ylim re-sorts the pair that the caller gives,
-    # thus it loses an earlier inversion
+    # -ymin and -ymax can already give the limits in the order of a magnitude axis, and invert_yaxis() toggles them back
     at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
-    axis.invert_yaxis()
+    at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
     axis.axhline(y=min(fxfit), color="black", linestyle="--")
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")

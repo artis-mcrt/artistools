@@ -660,6 +660,9 @@ def make_singletimestep_plot(
     }
 
     elsymbol = at.get_elsymbol(atomic_number)
+    # the lowest panel that the loop draws shows the configuration names, and a cell without data draws no panel
+    mgis_withdata = set(dfpop_allcells["modelgridindex"].to_list())
+    lastmgi_withdata = next(mgi for mgi in reversed(mgilist) if mgi in mgis_withdata)
 
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex, mgilastaxindex = get_subplot_block(mgilistindex, len(ion_stage_list))
@@ -701,7 +704,7 @@ def make_singletimestep_plot(
         at.plottools.set_plot_title(axes[mgifirstaxindex], subplot_title, args)
 
         for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
-            lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
+            lastsubplot = modelgridindex == lastmgi_withdata and ion_stage == ion_stage_list[-1]
             make_ionsubplot(
                 ax,
                 modelpath,

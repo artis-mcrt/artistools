@@ -504,6 +504,28 @@ def test_estimparse_xz_high_preset(tmp_path: Path) -> None:
     assert dfest["Te"].to_list() == pytest.approx([3000.0])
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e39",
+        "heating: ff 1.0e39 bf 2.0",
+        "populations Z=26 1: 1.0e39 2: 2.0",
+    ],
+)
+def test_estimparse_rejects_a_value_above_the_f32_range(tmp_path: Path, line: str) -> None:
+    """A value that f32 cannot hold must stop the parse and not give infinity.
+
+    Only the rows of the ions had the check, thus a cell header or a heating row stored infinity with no error.
+    """
+    cellheader = "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n"
+    (tmp_path / "estimators_0000.out").write_text(
+        line + "\n" if line.startswith("timestep") else cellheader + line + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(Exception, match="outside the range that f32 holds"):
+        at.rustext.estimparse(tmp_path, 0, 0)
+
+
 def test_estimparse() -> None:
     pldf = at.rustext.estimparse(modelpath, 0, 0)
     assert pldf.height == 100
@@ -974,15 +996,8 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert np.isclose(dfone["Te"].item(), 6200.0)
 
 
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plot_codecomparison_single_epoch(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A code comparison file of one epoch gives no timestep width, and the plot still draws its cells.
-
-    The cell weight of the average is the cell volume times the timestep width. One epoch makes every
-    weight zero. get_line_points then divided by zero, and drop_nans removed each line.
-    """
+def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Write a code comparison model of one epoch and three shells, and return its virtual path."""
     physdir = tmp_path / "ccdata" / "toymodel"
     physdir.mkdir(parents=True)
     (physdir / "phys_toymodel_toycode.txt").write_text(
@@ -1020,9 +1035,21 @@ def test_plot_codecomparison_single_epoch(
     monkeypatch.setattr(at, "get_path", fake_get_path)
     monkeypatch.setattr(artistools.inputmodel.inputmodel_misc, "get_path", fake_get_path)
 
+    return "codecomparison/toymodel/toycode"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plot_codecomparison_single_epoch(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A code comparison file of one epoch still plots its cells.
+
+    The cell weight of the average is the cell volume times the timestep width. One epoch had a width of zero,
+    thus every weight was zero. get_line_points then divided by zero, and drop_nans removed each line.
+    """
     at.estimators.plot(
         argsraw=[],
-        modelpath="codecomparison/toymodel/toycode",
+        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
         plotlist=[["Te"]],
         x="velocity",
         timestep="0",
@@ -1033,6 +1060,27 @@ def test_plot_codecomparison_single_epoch(
     # the first point repeats the innermost cell at the axis origin, thus the three cells follow it
     assert np.allclose(arr_yvalue[-3:], [5000.0, 5100.0, 5200.0])
     assert np.allclose(arr_xvalue[-3:], [500.0, 1500.0, 2500.0])
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plot_codecomparison_single_epoch_weights_the_cells_by_volume(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The average over the shells of one epoch weights each shell by its volume.
+
+    One epoch had a timestep width of zero, thus every weight was zero and the average became the plain mean.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
+        plotlist=[["Te"]],
+        x="time",
+        outputfile=tmp_path / "est.pdf",
+    )
+
+    arr_yvalue = mockplot.call_args_list[0].args[2]
+    # the shells end at 1000, 2000, and 3000 km/s, thus their volumes have the ratio 1 : 7 : 19
+    assert np.allclose(arr_yvalue, (5000.0 * 1 + 5100.0 * 7 + 5200.0 * 19) / 27)
 
 
 def test_exportmassfractions(tmp_path: Path) -> None:

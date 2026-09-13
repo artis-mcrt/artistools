@@ -135,7 +135,7 @@ impl EstimatorColumns {
         } else if let Some(prefix) = firsttoken.strip_suffix(':') {
             // deposition, heating, cooling
             for (name, value) in token_pairs(rest) {
-                self.push(format!("{prefix}_{name}"), parse_field(value, "a number")?)?;
+                self.push(format!("{prefix}_{name}"), parse_f32_field(value, "a number")?)?;
             }
         }
 
@@ -156,7 +156,7 @@ impl EstimatorColumns {
             if INDEX_COLUMNS.contains(&colname) {
                 self.push_int(colname.to_owned(), parse_field(value, "an integer")?)?;
             } else {
-                self.push(colname.to_owned(), parse_field(value, "a number")?)?;
+                self.push(colname.to_owned(), parse_f32_field(value, "a number")?)?;
             }
         }
 

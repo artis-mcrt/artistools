@@ -48,9 +48,10 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["start", "mid", "en
     tstarts = np.zeros_like(tmids)
     tends = np.zeros_like(tmids)
     if len(tmids) == 1:
-        # one epoch gives no neighbour to halve the gap with, thus the epoch alone sets the bounds
-        tstarts[0] = tmids[0]
-        tends[0] = tmids[0]
+        # one epoch gives no neighbour to halve the gap with. A width of zero made each cell weight zero, thus the
+        # epoch takes one day. The weight of a cell is its volume times this width, and any positive width cancels
+        tstarts[0] = tmids[0] - 0.5
+        tends[0] = tmids[0] + 0.5
     else:
         tstarts[1:] = (tmids[1:] + tmids[:-1]) / 2.0
         tstarts[0] = tmids[0] - (tstarts[1] - tmids[0])

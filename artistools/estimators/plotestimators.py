@@ -192,9 +192,8 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
         .filter(pl.col("yvalue").is_not_null())
         .group_by("xvalue_binned")
         .agg(
-            # every weight of a bin can be zero, e.g. a code comparison file of one epoch gives no
-            # timestep width, and an element that is absent from the bin has no mass. Equal weights
-            # make the weighted average the plain average, thus the bin keeps its point
+            # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.
+            # Equal weights make the weighted average the plain average, thus the bin keeps its point
             yvalue_binned=pl
             .when(pl.col("celltsweight").sum() != 0.0)
             .then((pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum())

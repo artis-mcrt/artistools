@@ -1545,7 +1545,7 @@ def test_lightcurve_day_range_of_a_model_clamps_to_its_timesteps() -> None:
     """A model in the list gives the timestep times, thus the range still clamps to a timestep edge."""
     import argparse
 
-    from artistools.lightcurve.plotlightcurve import apply_time_range_args
+    from artistools.misc import apply_time_range_args
 
     withmodel = argparse.Namespace(timestep=None, timedays="260-300", timemin=None, timemax=None)
     apply_time_range_args(withmodel, [modelpath])
@@ -1573,7 +1573,7 @@ def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
     """
     import argparse
 
-    from artistools.lightcurve.plotlightcurve import apply_time_range_args
+    from artistools.misc import apply_time_range_args
 
     def build(timestep: str | None, timedays: str | None) -> argparse.Namespace:
         return argparse.Namespace(timestep=timestep, timedays=timedays, timemin=None, timemax=None)
@@ -1625,6 +1625,44 @@ def test_angle_averaged_peakmag_without_filter_reads_the_averaged_file(
     )
 
     assert list(tmp_path.glob("*angle_averaged_all_models_data.txt"))
+
+
+def test_viewing_angle_fit_plot_keeps_magnitude_limits_inverted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """-ymin and -ymax in the order of a magnitude axis must stay inverted. invert_yaxis() toggled them back."""
+    import argparse
+
+    import matplotlib.figure as mplfig
+
+    parser = argparse.ArgumentParser()
+    at.lightcurve.plotlightcurve.addargs(parser)
+    args = parser.parse_args(["-ymin", "-14", "-ymax", "-20"])
+    args.timemin, args.timemax = 1.0, 20.0
+
+    savedfigures: list[mplfig.Figure] = []
+
+    def save_figure_spy(fig: mplfig.Figure, *_args: t.Any, **_kwargs: t.Any) -> None:
+        savedfigures.append(fig)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(at.lightcurve.viewingangleanalysis, "save_figure", save_figure_spy)
+    at.lightcurve.viewingangleanalysis.make_plot_test_viewing_angle_fit(
+        time=[1.0, 5.0, 20.0],
+        magnitude=np.array([-16.0, -18.0, -15.0]),
+        xfit=[1.0, 5.0, 20.0],
+        fxfit=[-16.0, -18.0, -15.0],
+        key="B",
+        mag_after15days_polyfit=-15.5,
+        tmax_polyfit=5.0,
+        time_after15days_polyfit=20.0,
+        modelname="model",
+        angle=0,
+        args=args,
+    )
+
+    ymin, ymax = savedfigures[0].axes[0].get_ylim()
+    assert ymin > ymax, "the plot must draw a brighter magnitude higher"
 
 
 def test_viewing_angle_peakmag_export_without_filter_fits_each_direction_bin(
