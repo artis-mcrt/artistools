@@ -1141,11 +1141,11 @@ def make_emissionabsorption_plot(
     contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
         modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, timemin, timemax, dirbin
     )
-    if not np.any((arraylambda_angstroms >= xmin) & (arraylambda_angstroms <= xmax)):
-        # every sum and every maximum below reads the bins of the x range
+    if arraylambda_angstroms.size == 0:
+        # every sum and every maximum below reads the bins of the x range. The limits use the unit of the x axis,
+        # thus the test reads the bins that get_emission_contributions kept, which are in Angstroms
         exit_with_error(
-            f"the wavelength range {xmin:.1f} to {xmax:.1f} holds no bin of the spectrum",
-            "Give a wider range with -xmin and -xmax",
+            f"the x range {xmin:g} to {xmax:g} holds no bin of the spectrum", "Give a wider range with -xmin and -xmax"
         )
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)

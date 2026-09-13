@@ -919,6 +919,30 @@ def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -
         )
 
 
+@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
+    mockgetcontributions: mock.MagicMock, tmp_path: Path
+) -> None:
+    """The check for an empty x range must not compare the limits in keV with bins in Angstroms."""
+    contribution_list: list[atspectra.FluxContributionTuple] = []
+    mockgetcontributions.return_value = (contribution_list, np.ones(3), np.array([0.01, 0.02, 0.03]))
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=tmp_path / "gamma.pdf",
+        timemin=290.0,
+        timemax=320.0,
+        emissionabsorption=True,
+        frompackets=True,
+        xunit="kev",
+        xmin=100.0,
+        xmax=2000.0,
+    )
+
+    assert (tmp_path / "gamma.pdf").is_file()
+
+
 def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path) -> None:
     """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first."""
     at.spectra.plot(
