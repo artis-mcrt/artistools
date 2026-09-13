@@ -191,7 +191,7 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
                 # the classic code writes the last nine columns in this order:
                 # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional,
                 # heatingrates[tid].gamma, coolingrates[tid].ff, coolingrates[tid].fb,
-                # coolingrates[tid].collisional, coolingrates[tid].adiabatic
+                # coolingrates[tid].collisional, coolingrates[tid].adiabatic, energy_deposition[n]
 
                 estimcell["heating_ff"] = float(row[-9])
                 estimcell["heating_bf"] = float(row[-8])
