@@ -135,7 +135,10 @@ impl EstimatorColumns {
         } else if let Some(prefix) = firsttoken.strip_suffix(':') {
             // deposition, heating, cooling
             for (name, value) in token_pairs(rest) {
-                self.push(format!("{prefix}_{name}"), parse_f32_field(value, "a number")?)?;
+                self.push(
+                    format!("{prefix}_{name}"),
+                    parse_f32_field(value, "a number")?,
+                )?;
             }
         }
 
