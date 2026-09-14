@@ -1964,9 +1964,19 @@ def test_energyfiles_from_trajectory() -> None:
 
 
 def write_2d_model(
-    modeldir: Path, ncoordgridrcyl: int, ncoordgridz: int, vmax_cmps: float, t_model_days: float, zshift: float = 0.0
+    modeldir: Path,
+    ncoordgridrcyl: int,
+    ncoordgridz: int,
+    vmax_cmps: float,
+    t_model_days: float,
+    zshift: float = 0.0,
+    x_ni56_upper: float = 0.4,
 ) -> Path:
-    """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition."""
+    """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition.
+
+    The cells with a positive z take the Ni56 mass fraction x_ni56_upper, thus a test can find the half of the
+    model that a filter kept.
+    """
     t_model_s = t_model_days * at.constants.day_to_s
     wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
     wid_init_z = 2 * vmax_cmps * t_model_s / ncoordgridz
@@ -1977,7 +1987,8 @@ def write_2d_model(
         n_z = modelgridindex // ncoordgridrcyl
         pos_rcyl_mid = wid_init_rcyl * n_r + 0.5 * wid_init_rcyl
         pos_z_mid = -vmax_cmps * t_model_s + wid_init_z * n_z + 0.5 * wid_init_z + zshift
-        lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 0.4 0.05 0.03 0.02")
+        x_ni56 = x_ni56_upper if pos_z_mid > 0 else 0.4
+        lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 {x_ni56} 0.05 0.03 0.02")
 
     modelfile = modeldir / "model.txt"
     modelfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -2698,8 +2709,8 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
     assert np.ma.getmaskarray(colorscale).any(), "the 3D test model holds an empty cell to hide"
 
 
-def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle() -> None:
-    """A polar angle range keeps only the cells on that side of the 3D model, and a 1D model rejects it.
+def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_path: Path) -> None:
+    """A polar angle range keeps only the cells on that side of a 2D or 3D model, and a 1D model rejects it.
 
     The polar angle needed the 2D column vel_rcyl_mid_on_c, thus a 3D model and a 1D model both failed with
     ColumnNotFoundError.
@@ -2728,3 +2739,19 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle() -> No
     assert len(get_nuclide_massfractions(modelpath_1d, vmin=0.01)) > 0
     with pytest.raises(ValueError, match="polar angle"):
         get_nuclide_massfractions(modelpath_1d, thetamax=90.0)
+
+    write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0, x_ni56_upper=0.1)
+    dfmodel_2d, modelmeta_2d = at.inputmodel.get_modeldata(tmp_path)
+    dfmodel_2d = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_2d, modelmeta=modelmeta_2d).collect()
+    dfupper_2d = get_nuclide_massfractions(tmp_path, thetamax=90.0)
+    assert np.isclose(dfupper_2d.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), 0.1)
+    dflower_2d = get_nuclide_massfractions(tmp_path, thetamin=90.0)
+    assert np.isclose(dflower_2d.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), 0.4)
+    dfslow_2d = get_nuclide_massfractions(tmp_path, vmax=0.02, thetamin=45.0, thetamax=135.0)
+    cellsslow_2d = dfmodel_2d.filter(
+        (pl.col("vel_r_mid_on_c") <= 0.02) & (pl.col("vel_z_mid_on_c").abs() <= pl.col("vel_rcyl_mid_on_c"))
+    )
+    assert 0 < len(cellsslow_2d) < len(dfmodel_2d)
+    assert np.isclose(
+        dfslow_2d.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), massfrac_ni56(cellsslow_2d)
+    )
