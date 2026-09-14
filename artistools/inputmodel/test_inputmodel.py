@@ -2625,6 +2625,24 @@ def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:
     assert "cellYe" not in griddata.columns
 
 
+def test_griddat_reader_renames_the_q_column_of_an_old_grid(tmp_path: Path) -> None:
+    """An old grid.dat names the heating energy Q, and the reader gives q, which save_modeldata writes."""
+    from artistools.inputmodel.modelfromhydro import read_griddat_file
+
+    kilonovapath = at.get_path("testdata") / "kilonova"
+    for filename in ("sfho_info.dat494", "tmerger.txt"):
+        shutil.copy(kilonovapath / filename, tmp_path / filename)
+    gridlines = (kilonovapath / "grid.dat").read_text(encoding="utf-8").splitlines()
+    gridlines[3] += "    Q"
+    gridlines[4:] = [f"{line}  1.0" for line in gridlines[4:]]
+    (tmp_path / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+
+    griddata, _t_model, _t_merger, _vmax, _modelmeta = read_griddat_file(tmp_path)
+
+    assert "q" in griddata.columns
+    assert "Q" not in griddata.columns
+
+
 def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> None:
     """model_a.1.txt and model_a.2.txt must not share one parquet cache."""
     for variant, logrho in (("1", -10.0), ("2", -12.0)):
