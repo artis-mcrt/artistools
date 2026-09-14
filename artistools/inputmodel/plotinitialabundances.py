@@ -20,6 +20,7 @@ from artistools.plottools import set_legend
 
 def filter_model_cells(
     dfmodel: pl.LazyFrame,
+    modelmeta: dict[str, t.Any],
     vmin: float | None = None,
     vmax: float | None = None,
     thetamin: float | None = None,
@@ -27,8 +28,9 @@ def filter_model_cells(
 ) -> pl.LazyFrame:
     """Keep the cells whose mid-point velocity [c] and polar angle [degrees] are inside the given ranges.
 
-    The positive z axis gives a polar angle of zero. A 1D model has no polar angle, thus an angle range
-    on a 1D model raises an error.
+    Call add_derived_cols_to_modeldata first, because this function reads the vel_*_on_c columns. The
+    positive z axis gives a polar angle of zero. A cell at the origin has no polar angle, thus an angle
+    range excludes it. A 1D model has no polar angle, thus an angle range on a 1D model raises an error.
     """
     if vmin is not None:
         dfmodel = dfmodel.filter(pl.col("vel_r_mid_on_c") >= vmin)
@@ -38,20 +40,15 @@ def filter_model_cells(
     if thetamin is thetamax is None:
         return dfmodel
 
-    colnames = dfmodel.collect_schema().names()
-    if "vel_rcyl_mid_on_c" in colnames:
-        vel_rcyl = pl.col("vel_rcyl_mid_on_c")
-    elif "vel_x_mid_on_c" in colnames:
-        vel_rcyl = (pl.col("vel_x_mid_on_c") ** 2 + pl.col("vel_y_mid_on_c") ** 2).sqrt()
-    else:
-        msg = "A polar angle range needs a 2D or 3D model"
+    if modelmeta["dimensions"] == 1:
+        msg = "-thetamin and -thetamax need a 2D or 3D model, but the model is 1D"
         raise ValueError(msg)
 
-    dfmodel = dfmodel.with_columns(theta_deg=pl.arctan2(vel_rcyl, pl.col("vel_z_mid_on_c")).degrees())
+    theta_deg = (pl.col("vel_z_mid_on_c") / pl.col("vel_r_mid_on_c")).arccos().degrees()
     if thetamin is not None:
-        dfmodel = dfmodel.filter(pl.col("theta_deg") >= thetamin)
+        dfmodel = dfmodel.filter(theta_deg >= thetamin)
     if thetamax is not None:
-        dfmodel = dfmodel.filter(pl.col("theta_deg") <= thetamax)
+        dfmodel = dfmodel.filter(theta_deg <= thetamax)
 
     return dfmodel
 
@@ -66,13 +63,18 @@ def get_nuclide_massfractions(
     """Return the mass-weighted mass fraction and number abundance of each nuclide in the selected cells."""
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath=modelpath)
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
-    dfmodel = filter_model_cells(dfmodel, vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
+    dfmodel = filter_model_cells(dfmodel, modelmeta, vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
+
+    # a selection with no cell would give 0 / 0 = NaN for every nuclide and a blank plot
+    if dfmodel.select(pl.len()).collect().item() == 0:
+        msg = f"No cell of {modelpath} is inside the velocity range and the polar angle range"
+        raise ValueError(msg)
 
     return (
         dfmodel
         .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
         .unpivot(variable_name="nuclide", value_name="massfraction")
-        # split X_Ni56 into its element symbol and mass number, then look Z up by joining the element table
+        # split X_Ni56 into its element symbol and mass number, then a join with the element table gives Z
         .with_columns(
             elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
             A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
