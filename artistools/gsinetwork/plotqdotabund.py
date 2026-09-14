@@ -596,9 +596,8 @@ def plot_qdot_abund_modelcells(
     nogsinet: bool = False,
 ) -> None:
     """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["mass_g", "rho", "logrho", "volume"], get_elemabundances=True
-    )
+    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
+    lzdfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")

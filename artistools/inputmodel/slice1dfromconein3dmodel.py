@@ -17,19 +17,6 @@ from artistools.constants import km_to_cm
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 
-CONE_DERIVED_COLS = [
-    "volume",
-    "pos_x_mid",
-    "pos_y_mid",
-    "pos_z_mid",
-    "pos_x_min",
-    "pos_y_min",
-    "pos_z_min",
-    "pos_r_mid",
-    "mass_g",
-    "pos_r_min",
-]
-
 
 def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callable[..., None]) -> pl.DataFrame:
     """Return the cells of the 3D model lying within args.coneangle of the chosen axis."""
@@ -174,13 +161,12 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     """Make 1D model from 3D model."""
     modelpath = at.normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", at.get_model_name(modelpath))
-    pldfmodel, modelmeta = at.get_modeldata(
-        modelpath=modelpath, get_elemabundances=True, derived_cols=CONE_DERIVED_COLS if args.makefromcone else None
-    )
+    pldfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("from a cone")
-        cone = make_cone(args, pldfmodel, logprint)
+        # the cone selection reads the mid-point positions and the mass of each cell
+        cone = make_cone(args, at.add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta), logprint)
         N_shells = args.nshells
         # Max radius that still ensures a full shell as the cartesian grid means some
         # radius values will be greater than the max radius of the axis the cone is centred on

@@ -476,9 +476,14 @@ def plot_levelpop(
 
     at.plottools.set_exponent_label(ax)
 
-    modeldata = at.inputmodel.get_modeldata(
-        modelpath, derived_cols=["mass_g", "volume", "vel_r_min_kmps", "vel_r_max_kmps"]
-    )[0].collect()
+    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
+    modeldata = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
+        .collect()
+    )
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -1699,14 +1704,18 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     modelpath = at.normalize_path_list(args.modelpath)[0]
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
-        dfmodel = at.inputmodel.get_modeldata(modelpath)[0].collect()
+        dfmodel = (
+            at.inputmodel
+            .get_modeldata(modelpath)[0]
+            .select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min")
+            .collect()
+        )
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around {args.axis} axis")
+        lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
         # the cone selection reads the mid-point positions, which are derived columns
-        lzmodel = at.inputmodel.get_modeldata(
-            modelpath, derived_cols=at.inputmodel.slice1dfromconein3dmodel.CONE_DERIVED_COLS
-        )[0]
+        lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, lzmodel, logprint=print)
     else:
         msg = f"Invalid args.readonlymgi: {args.readonlymgi}"

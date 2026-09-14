@@ -98,9 +98,13 @@ def viewing_angles_visualisation(
     go = at.import_optional("plotly.graph_objects")
 
     # Load model contents
-    # get_modeldata takes the name of each column, and "pos_mid" names none of them, thus the read
-    # gave no position column and the command stopped at the first one that it reads
-    dfmodel = at.get_modeldata(modelfile, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"])[0].collect()
+    lzmodel, modelmeta = at.get_modeldata(modelfile)
+    dfmodel = (
+        at
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")
+        .collect()
+    )
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 

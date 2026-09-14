@@ -596,9 +596,14 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
-            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
-        )[0].collect()
+        lzdyn_model, dyn_modelmeta_in = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))
+        # the merge below reads the volume and the mid-point velocity. The other derived columns stay out of memory
+        dyn_model: pl.DataFrame = (
+            at.inputmodel
+            .add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
+            .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
+            .collect()
+        )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
@@ -666,13 +671,21 @@ def map_to_artis(
                 "t_model_init_days": t_model_init_s / day_to_s,
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
+            # the files for the consistency check also hold bin_state, which selects the cells of the dynamical ejecta
+            dyn_extracols = ("bin_state",)
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_notrescaled.txt"),
+                extracols=dyn_extracols,
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_rescaled.txt"),
+                extracols=dyn_extracols,
             )
 
             # mass fractions, avoid looping
@@ -930,9 +943,13 @@ def merge_neighbour_cells(
     new_numb_cells = N_cell_r_new * N_cell_z_new
     r_max_snap = vmax * CLIGHT * t_model_init_s
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
-    ).collect()
+    # the merge reads mass_g and the columns of the model file
+    dfmodel = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        .select(cs.by_name(dfmodel.columns) | cs.by_name("mass_g"))
+        .collect()
+    )
 
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new

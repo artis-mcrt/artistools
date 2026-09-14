@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 
@@ -41,12 +42,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.inputpath)
 
-    pldfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, get_elemabundances=(args.abundtype == "elemental"), derived_cols=["rho"]
-    )
+    pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     t_model_init_days = modelmeta["t_model_init_days"]
 
-    dfmodel = pldfmodel.collect()
+    dfmodel = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta)
+        .select("vel_r_max_kmps", "rho", cs.starts_with("X_"))
+        .collect()
+    )
 
     # a nuclide column ends with a mass number, e.g. X_Ni56. An elemental column does not
     wantsnuclides = args.abundtype == "nuclear"
