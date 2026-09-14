@@ -597,10 +597,13 @@ def map_to_artis(
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
         lzdyn_model, dyn_modelmeta_in = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))
-        # the merge below reads the volumes and the velocities
-        dyn_model: pl.DataFrame = at.inputmodel.add_derived_cols_to_modeldata(
-            lzdyn_model, modelmeta=dyn_modelmeta_in
-        ).collect()
+        # the merge below reads the volumes and the velocities. The other derived columns stay out of memory
+        dyn_model: pl.DataFrame = (
+            at.inputmodel
+            .add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
+            .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume") | cs.starts_with("vel_"))
+            .collect()
+        )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
