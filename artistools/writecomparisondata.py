@@ -60,8 +60,9 @@ def get_nonempty_cells(
     modelpath: str | Path, allnonemptymgilist: Sequence[int]
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
-    # write_phys reads logrho, which a 3D model.txt does not carry. The reader derives it from rho
+    # write_phys reads logrho, which a 3D model.txt does not contain. The derivation calculates it from rho
     lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    lzmodeldata = at.inputmodel.add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
     return lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect(), modelmeta
 
 

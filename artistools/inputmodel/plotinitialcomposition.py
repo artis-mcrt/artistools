@@ -144,12 +144,13 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = at.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     assert modelmeta["dimensions"] > 1
-    # the plot reads only the cell edges of the derived columns, and the others cost much memory on a large 3D model
-    dfmodel = lzdfmodel.drop(
-        col
-        for col in at.inputmodel.get_derived_column_names(modelmeta["dimensions"])
-        if not (col.startswith("pos_") and col.endswith(("_min", "_max")))
-    ).collect()
+    # the plot reads the cell edges, which are derived columns in 2D. The other derived columns stay out of memory
+    dfmodel = (
+        at
+        .add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+        .select(cs.by_name(lzdfmodel.collect_schema().names()) | cs.starts_with("pos_"))
+        .collect()
+    )
 
     if modelmeta["dimensions"] == 3:
         sliceaxis: AxisType = args.sliceaxis

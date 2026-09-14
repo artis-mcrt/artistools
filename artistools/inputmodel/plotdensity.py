@@ -127,6 +127,7 @@ def plot_density_profiles(args: argparse.Namespace, axes: npt.NDArray[np.object_
     for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
         print(f"Plotting {label}")
         lzdfmodel, modelmeta = at.get_modeldata(modelpath)
+        lzdfmodel = at.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
         max_vmax_on_c = max(vmax_on_c, max_vmax_on_c)

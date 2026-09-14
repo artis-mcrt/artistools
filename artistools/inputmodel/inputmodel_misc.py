@@ -468,8 +468,9 @@ def get_modeldata(
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Returns dfmodel, modelmeta
-        - dfmodel: a polars LazyFrame with a row for each cell, and the columns that
-          add_derived_cols_to_modeldata adds. A query calculates only the columns that it selects.
+        - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file. A 1D model also
+          gets vel_r_min_kmps, which comes from the row before it. add_derived_cols_to_modeldata adds the other
+          columns, e.g. the volume and the mass of each cell.
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
 
     Parameters
@@ -521,7 +522,11 @@ def get_modeldata(
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
 
-    return add_derived_cols_to_modeldata(dfmodel=dfmodel, modelmeta=modelmeta), modelmeta
+    if modelmeta["dimensions"] == 1:
+        # the inner velocity of a shell comes from the row before it, thus the reader adds it before any filter
+        dfmodel = dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+
+    return dfmodel, modelmeta
 
 
 def get_empty_3d_model(
@@ -589,36 +594,44 @@ def min_abs_coordinate(ax: str) -> pl.Expr:
 
 
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
-    """Add each column that the function calculates from the model data, e.g. the volume and the mass of each cell.
+    """Add each column that follows from the columns of the model file, e.g. the volume and the mass of each cell.
 
-    The dataframe is lazy, thus a query calculates only the columns that it selects.
+    The function calculates each derived column again, also one that the dataframe already holds. Thus a call after
+    a change to a column of the model file gives current values. Call this function last in the chain that selects
+    the columns. The dataframe is lazy, thus the query then calculates only the columns that it selects.
     """
     dfmodel = dfmodel.lazy()
     original_cols = dfmodel.collect_schema().names()
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
+    dimensions = modelmeta["dimensions"]
 
-    if "logrho" not in original_cols and "rho" in original_cols:
-        # clamp at -99 to match save_modeldata(), which treats -99 as the empty-cell marker. A plain log10() would give
-        # -inf for rho == 0, which cannot be written to model.txt
-        dfmodel = dfmodel.with_columns(
-            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
-        )
-
-    if "rho" not in original_cols and "logrho" in original_cols:
-        dfmodel = dfmodel.with_columns(
-            rho=(pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0))
-        )
+    # the model file gives the density as logrho in 1D and as rho in 2D and 3D. That column is the source of the other
+    # one. A dataframe that holds only the other one gets the file column first
+    logrho_from_rho = pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+    rho_from_logrho = pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
+    if dimensions == 1:
+        if "logrho" not in original_cols:
+            dfmodel = dfmodel.with_columns(logrho=logrho_from_rho)
+        dfmodel = dfmodel.with_columns(rho=rho_from_logrho)
+    else:
+        if "rho" not in original_cols:
+            dfmodel = dfmodel.with_columns(rho=rho_from_logrho)
+        # the clamp at -99 matches save_modeldata, which treats -99 as the empty-cell marker. A plain log10() gives
+        # -inf for rho == 0, which cannot go into model.txt
+        dfmodel = dfmodel.with_columns(logrho=logrho_from_rho)
 
     axes: list[str] = []
-    dimensions = modelmeta["dimensions"]
     match dimensions:
         case 1:
             axes = ["r"]
 
+            if "vel_r_min_kmps" not in original_cols:
+                # the inner velocity comes from the row before, thus a filtered dataframe must already hold it
+                dfmodel = dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
+
             dfmodel = (
                 dfmodel
-                .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
                 .with_columns(
                     vel_r_min=(pl.col("vel_r_min_kmps") * km_to_cm), vel_r_max=(pl.col("vel_r_max_kmps") * km_to_cm)
                 )
@@ -751,36 +764,14 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
         kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
     )
 
-    colnames = dfmodel.collect_schema().names()
-    dfmodel = dfmodel.with_columns(
-        (pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_"))
-        for col in colnames
-        if col.startswith("pos_")
-    )
-
-    if "rho" in colnames and "volume" in colnames:
-        dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
-
-    # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
-    # the _on_c columns of an earlier pass also start with vel_, and a second pass must not scale them again
-    return dfmodel.with_columns(
-        ((cs.starts_with("vel_") - cs.ends_with("_kmps", "_on_c")) / C_cm_per_s).name.suffix("_on_c")
-    )
-
-
-def get_derived_column_names(dimensions: int) -> set[str]:
-    """Return the names of the columns that add_derived_cols_to_modeldata adds to a model of these dimensions.
-
-    The names do not depend on the values. Thus, the function uses a dataframe with no rows and a value of 1.0 for
-    each metadata key.
-    """
-    standardcols = get_standard_columns(dimensions)
-    placeholdermeta = {"dimensions": dimensions, "t_model_init_days": 1.0, "wid_init": 1.0} | {
-        f"wid_init_{axis}": 1.0 for axis in ("x", "y", "z", "rcyl")
-    }
-    dfwithoutrows = pl.LazyFrame(schema=dict.fromkeys(standardcols, pl.Float64))
-    return set(add_derived_cols_to_modeldata(dfwithoutrows, placeholdermeta).collect_schema().names()) - set(
-        standardcols
+    poscols = [col for col in dfmodel.collect_schema().names() if col.startswith("pos_")]
+    return (
+        dfmodel
+        .with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")) for col in poscols)
+        .with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
+        # the vel_*_kmps columns are in km/s and not in cm/s. The _on_c columns of an earlier call also start
+        # with vel_. Thus the scale to c leaves out both groups
+        .with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps", "_on_c")) / C_cm_per_s).name.suffix("_on_c"))
     )
 
 
@@ -1206,10 +1197,10 @@ def dimension_reduce_model(
     timestart = time.perf_counter()
 
     # the aggregation below makes a list from each column of an unknown kind. Thus, only the velocities and the mass
-    # go into the output with the columns of the input model file.
-    derivedcols = get_derived_column_names(ndim_in)
+    # go into the output with the columns of the input model file
+    inputcols = dfmodel.collect_schema().names()
     dfmodel_out = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
-        ~cs.by_name(derivedcols, require_all=False) | cs.starts_with("vel_") | cs.by_name("mass_g")
+        cs.by_name(inputcols) | cs.starts_with("vel_") | cs.by_name("mass_g")
     )
 
     if outputdimensions == 0:

@@ -476,7 +476,13 @@ def plot_levelpop(
 
     at.plottools.set_exponent_label(ax)
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_min_kmps", "vel_r_max_kmps", "volume").collect()
+    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    modeldata = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("vel_r_min_kmps", "vel_r_max_kmps", "volume")
+        .collect()
+    )
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -1706,7 +1712,9 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around {args.axis} axis")
-        lzmodel = at.inputmodel.get_modeldata(modelpath)[0]
+        lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+        # the cone selection reads the mid-point positions, which are derived columns
+        lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, lzmodel, logprint=print)
     else:
         msg = f"Invalid args.readonlymgi: {args.readonlymgi}"

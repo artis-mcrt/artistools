@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.constants import EV_to_erg
 from artistools.estimators.estimators import scan_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -95,7 +96,8 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     costs little on a model of many cells.
     """
     modelname = get_model_name(modelpath)
-    dfmodel, _ = get_modeldata(modelpath, printwarningsonly=not verbose)
+    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=not verbose)
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = f"{modelname} gives no init_Ye of a cell. The model file must hold a Ye column"
         raise ValueError(msg)

@@ -186,8 +186,14 @@ def energy_from_rprocess_calculation(
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
     """Plot the analytic nuclear heating power of the whole model against time."""
     times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    lzmodel, _ = at.inputmodel.get_modeldata(modelpath)
-    Mtot_grams = lzmodel.select(pl.col("mass_g").sum()).collect().item()
+    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    Mtot_grams = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select(pl.col("mass_g").sum())
+        .collect()
+        .item()
+    )
     axis.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
     )

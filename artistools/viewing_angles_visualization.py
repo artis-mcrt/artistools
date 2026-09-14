@@ -98,7 +98,13 @@ def viewing_angles_visualisation(
     go = at.import_optional("plotly.graph_objects")
 
     # Load model contents
-    dfmodel = at.get_modeldata(modelfile)[0].select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho").collect()
+    lzmodel, modelmeta = at.get_modeldata(modelfile)
+    dfmodel = (
+        at
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")
+        .collect()
+    )
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
