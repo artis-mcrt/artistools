@@ -44,6 +44,8 @@ def filter_model_cells(
         msg = "-thetamin and -thetamax need a 2D or 3D model, but the model is 1D"
         raise ValueError(msg)
 
+    # polars orders NaN above each finite value, thus the angle 0 / 0 of a cell at the origin needs its own test
+    dfmodel = dfmodel.filter(pl.col("vel_r_mid_on_c") > 0.0)
     theta_deg = (pl.col("vel_z_mid_on_c") / pl.col("vel_r_mid_on_c")).arccos().degrees()
     if thetamin is not None:
         dfmodel = dfmodel.filter(theta_deg >= thetamin)

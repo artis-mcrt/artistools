@@ -2760,3 +2760,19 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     )
     assert 0 < len(cellsslow_2d) < len(dfmodel_2d)
     assert np.isclose(selected_massfrac_ni56(dfslow_2d), massfrac_ni56(cellsslow_2d))
+
+    # a 3 x 3 x 3 grid has a cell at the origin, which no angle range keeps
+    from artistools.inputmodel.plotinitialabundances import filter_model_cells
+
+    modelmeta_origin = {"dimensions": 3, "t_model_init_days": 1.0, "wid_init": 1.0e9}
+    dfmodel_origin = pl.LazyFrame({
+        "inputcellid": list(range(1, 28)),
+        "pos_x_min": [-1.5e9 + (i % 3) * 1.0e9 for i in range(27)],
+        "pos_y_min": [-1.5e9 + (i // 3 % 3) * 1.0e9 for i in range(27)],
+        "pos_z_min": [-1.5e9 + (i // 9) * 1.0e9 for i in range(27)],
+        "rho": [1.0] * 27,
+    })
+    dfmodel_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin)
+    assert dfmodel_origin.filter(pl.col("vel_r_mid_on_c") == 0.0).select(pl.len()).collect().item() == 1
+    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamin=0.0).select(pl.len()).collect().item() == 26
+    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamax=180.0).select(pl.len()).collect().item() == 26
