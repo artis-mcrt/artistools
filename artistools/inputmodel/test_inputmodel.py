@@ -1964,20 +1964,32 @@ def test_energyfiles_from_trajectory() -> None:
 
 
 def write_2d_model(
-    modeldir: Path, ncoordgridrcyl: int, ncoordgridz: int, vmax_cmps: float, t_model_days: float, zshift: float = 0.0
+    modeldir: Path,
+    ncoordgridrcyl: int,
+    ncoordgridz: int,
+    vmax_cmps: float,
+    t_model_days: float,
+    zshift: float = 0.0,
+    x_ni56_upper: float | None = None,
 ) -> Path:
-    """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition."""
+    """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition.
+
+    The cells with a positive z take the Ni56 mass fraction x_ni56_upper. A test can then find the half of
+    the model that a filter kept.
+    """
     t_model_s = t_model_days * at.constants.day_to_s
     wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
     wid_init_z = 2 * vmax_cmps * t_model_s / ncoordgridz
 
+    x_ni56_lower = 0.4
     lines = [f"{ncoordgridrcyl} {ncoordgridz}", str(t_model_days), f"{vmax_cmps:.4e}"]
     for modelgridindex in range(ncoordgridrcyl * ncoordgridz):
         n_r = modelgridindex % ncoordgridrcyl
         n_z = modelgridindex // ncoordgridrcyl
         pos_rcyl_mid = wid_init_rcyl * n_r + 0.5 * wid_init_rcyl
         pos_z_mid = -vmax_cmps * t_model_s + wid_init_z * n_z + 0.5 * wid_init_z + zshift
-        lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 0.4 0.05 0.03 0.02")
+        x_ni56 = x_ni56_upper if x_ni56_upper is not None and pos_z_mid > 0 else x_ni56_lower
+        lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 {x_ni56} 0.05 0.03 0.02")
 
     modelfile = modeldir / "model.txt"
     modelfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -2696,3 +2708,71 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
     colorscale = mockimshow.call_args.args[1]
     assert np.ma.isMaskedArray(colorscale), "the mask of --hideemptycells must survive the floor clamp"
     assert np.ma.getmaskarray(colorscale).any(), "the 3D test model holds an empty cell to hide"
+
+
+def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_path: Path) -> None:
+    """A polar angle range keeps only the cells on that side of a 2D or 3D model, and a 1D model rejects it.
+
+    The polar angle needed the 2D column vel_rcyl_mid_on_c, thus a 3D model and a 1D model both failed with
+    ColumnNotFoundError. A selection with no cell gave NaN mass fractions and a blank plot.
+    """
+    from artistools.inputmodel.plotinitialabundances import get_nuclide_massfractions
+
+    def massfrac_ni56(dfcells: pl.DataFrame) -> float:
+        return float((dfcells["X_Ni56"] * dfcells["mass_g"]).sum()) / float(dfcells["mass_g"].sum())
+
+    def selected_massfrac_ni56(dfnuclides: pl.DataFrame) -> float:
+        return float(dfnuclides.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item())
+
+    dfmodel = get_derived_modeldata(modelpath_classic_3d)[0].collect()
+
+    dfall = get_nuclide_massfractions(modelpath_classic_3d)
+    assert np.isclose(selected_massfrac_ni56(dfall), massfrac_ni56(dfmodel))
+
+    dfupper = get_nuclide_massfractions(modelpath_classic_3d, thetamax=90.0)
+    cellsupper = dfmodel.filter(pl.col("vel_z_mid_on_c") >= 0.0)
+    assert np.isclose(selected_massfrac_ni56(dfupper), massfrac_ni56(cellsupper))
+
+    dfslow = get_nuclide_massfractions(modelpath_classic_3d, vmax=0.02, thetamin=90.0)
+    cellsslow = dfmodel.filter((pl.col("vel_z_mid_on_c") <= 0.0) & (pl.col("vel_r_mid_on_c") <= 0.02))
+    assert 0 < len(cellsslow) < len(dfmodel)
+    assert np.isclose(selected_massfrac_ni56(dfslow), massfrac_ni56(cellsslow))
+
+    with pytest.raises(ValueError, match="No cell"):
+        get_nuclide_massfractions(modelpath_classic_3d, vmin=0.5)
+
+    modelpath_1d = testdatapath / "test-classicmode_1d"
+    dfmodel_1d = get_derived_modeldata(modelpath_1d)[0].collect()
+    dffast_1d = get_nuclide_massfractions(modelpath_1d, vmin=0.01)
+    cellsfast_1d = dfmodel_1d.filter(pl.col("vel_r_mid_on_c") >= 0.01)
+    assert 0 < len(cellsfast_1d) < len(dfmodel_1d)
+    assert np.isclose(selected_massfrac_ni56(dffast_1d), massfrac_ni56(cellsfast_1d))
+    with pytest.raises(ValueError, match="1D"):
+        get_nuclide_massfractions(modelpath_1d, thetamax=90.0)
+
+    write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0, x_ni56_upper=0.1)
+    dfmodel_2d = get_derived_modeldata(tmp_path)[0].collect()
+    assert np.isclose(selected_massfrac_ni56(get_nuclide_massfractions(tmp_path, thetamax=90.0)), 0.1)
+    assert np.isclose(selected_massfrac_ni56(get_nuclide_massfractions(tmp_path, thetamin=90.0)), 0.4)
+    dfslow_2d = get_nuclide_massfractions(tmp_path, vmax=0.02, thetamin=45.0, thetamax=135.0)
+    cellsslow_2d = dfmodel_2d.filter(
+        (pl.col("vel_r_mid_on_c") <= 0.02) & (pl.col("vel_z_mid_on_c").abs() <= pl.col("vel_rcyl_mid_on_c"))
+    )
+    assert 0 < len(cellsslow_2d) < len(dfmodel_2d)
+    assert np.isclose(selected_massfrac_ni56(dfslow_2d), massfrac_ni56(cellsslow_2d))
+
+    # a 3 x 3 x 3 grid has a cell at the origin, which no angle range keeps
+    from artistools.inputmodel.plotinitialabundances import filter_model_cells
+
+    modelmeta_origin = {"dimensions": 3, "t_model_init_days": 1.0, "wid_init": 1.0e9}
+    dfmodel_origin = pl.LazyFrame({
+        "inputcellid": list(range(1, 28)),
+        "pos_x_min": [-1.5e9 + (i % 3) * 1.0e9 for i in range(27)],
+        "pos_y_min": [-1.5e9 + (i // 3 % 3) * 1.0e9 for i in range(27)],
+        "pos_z_min": [-1.5e9 + (i // 9) * 1.0e9 for i in range(27)],
+        "rho": [1.0] * 27,
+    })
+    dfmodel_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin)
+    assert dfmodel_origin.filter(pl.col("vel_r_mid_on_c") == 0.0).select(pl.len()).collect().item() == 1
+    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamin=0.0).select(pl.len()).collect().item() == 26
+    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamax=180.0).select(pl.len()).collect().item() == 26
