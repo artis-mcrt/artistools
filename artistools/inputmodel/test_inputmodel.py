@@ -2460,3 +2460,35 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
     colorscale = mockimshow.call_args.args[1]
     assert np.ma.isMaskedArray(colorscale), "the mask of --hideemptycells must survive the floor clamp"
     assert np.ma.getmaskarray(colorscale).any(), "the 3D test model holds an empty cell to hide"
+
+
+def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle() -> None:
+    """A polar angle range keeps only the cells on that side of the 3D model, and a 1D model rejects it.
+
+    The polar angle needed the 2D column vel_rcyl_mid_on_c, thus a 3D model and a 1D model both failed with
+    ColumnNotFoundError.
+    """
+    from artistools.inputmodel.plotinitialabundances import get_nuclide_massfractions
+
+    dfmodel, _ = at.inputmodel.get_modeldata(modelpath=modelpath_classic_3d, derived_cols=["mass_g", "velocity"])
+    dfmodel = dfmodel.collect()
+
+    def massfrac_ni56(dfcells: pl.DataFrame) -> float:
+        return float((dfcells["X_Ni56"] * dfcells["mass_g"]).sum()) / float(dfcells["mass_g"].sum())
+
+    dfall = get_nuclide_massfractions(modelpath_classic_3d)
+    assert np.isclose(dfall.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), massfrac_ni56(dfmodel))
+
+    dfupper = get_nuclide_massfractions(modelpath_classic_3d, thetamax=90.0)
+    cellsupper = dfmodel.filter(pl.col("vel_z_mid_on_c") >= 0.0)
+    assert np.isclose(dfupper.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), massfrac_ni56(cellsupper))
+
+    dfslow = get_nuclide_massfractions(modelpath_classic_3d, vmax=0.02, thetamin=90.0)
+    cellsslow = dfmodel.filter((pl.col("vel_z_mid_on_c") <= 0.0) & (pl.col("vel_r_mid_on_c") <= 0.02))
+    assert 0 < len(cellsslow) < len(dfmodel)
+    assert np.isclose(dfslow.filter(pl.col("nuclide") == "X_Ni56")["massfraction"].item(), massfrac_ni56(cellsslow))
+
+    modelpath_1d = testdatapath / "test-classicmode_1d"
+    assert len(get_nuclide_massfractions(modelpath_1d, vmin=0.01)) > 0
+    with pytest.raises(ValueError, match="polar angle"):
+        get_nuclide_massfractions(modelpath_1d, thetamax=90.0)
