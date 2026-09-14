@@ -468,9 +468,8 @@ def get_modeldata(
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Returns dfmodel, modelmeta
-        - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file. A 1D model also
-          gets vel_r_min_kmps, which comes from the row before it. add_derived_cols_to_modeldata adds the other
-          columns, e.g. the volume and the mass of each cell.
+        - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file.
+          add_derived_cols_to_modeldata adds the other columns, e.g. the volume and the mass of each cell.
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
 
     Parameters
@@ -521,10 +520,6 @@ def get_modeldata(
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
-
-    if modelmeta["dimensions"] == 1:
-        # the inner velocity of a shell comes from the row before it, thus the reader adds it before any filter
-        dfmodel = dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
 
     return dfmodel, modelmeta
 
@@ -598,7 +593,8 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
 
     The function calculates each derived column again, also one that the dataframe already holds. Thus a call after
     a change to a column of the model file gives current values. Call this function last in the chain that selects
-    the columns. The dataframe is lazy, thus the query then calculates only the columns that it selects.
+    the columns. The dataframe is lazy, thus the query then calculates only the columns that it selects. In 1D, the
+    inner velocity of a shell comes from the row before it, thus call this function before a filter of the rows.
     """
     dfmodel = dfmodel.lazy()
     original_cols = dfmodel.collect_schema().names()
@@ -626,12 +622,9 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
         case 1:
             axes = ["r"]
 
-            if "vel_r_min_kmps" not in original_cols:
-                # the inner velocity comes from the row before, thus a filtered dataframe must already hold it
-                dfmodel = dfmodel.with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
-
             dfmodel = (
                 dfmodel
+                .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
                 .with_columns(
                     vel_r_min=(pl.col("vel_r_min_kmps") * km_to_cm), vel_r_max=(pl.col("vel_r_max_kmps") * km_to_cm)
                 )

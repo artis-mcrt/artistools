@@ -2480,9 +2480,8 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
     """Give only the file columns. A change to a file column then keeps each derived column current."""
     lzdfmodel_file, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(sourcemodelpath)
-    gridcols = ["modelgridindex", "vel_r_min_kmps"] if modelmeta["dimensions"] == 1 else ["modelgridindex"]
-    assert lzdfmodel.collect_schema().names() == [*lzdfmodel_file.collect_schema().names(), *gridcols]
+    lzdfmodel, _ = at.inputmodel.get_modeldata(sourcemodelpath)
+    assert lzdfmodel.collect_schema().names() == [*lzdfmodel_file.collect_schema().names(), "modelgridindex"]
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
@@ -2498,6 +2497,16 @@ def test_add_derived_cols_calculates_each_column_again(sourcemodelpath: Path) ->
     # the mass_g of the changed dataframe is out of date, and the second derivation gives the current value
     assert lzdfmodel_changed.select(pl.sum("mass_g")).collect().item() == pytest.approx(mass_g)
     assert lzdfmodel_derivedagain.select(pl.sum("mass_g")).collect().item() == pytest.approx(10.0 * mass_g, rel=1e-5)
+
+
+def test_add_derived_cols_recalculates_the_inner_velocity_of_a_1d_shell() -> None:
+    """A change to the outer velocities must also change the inner velocities, which come from the row before."""
+    lzdfmodel, modelmeta = get_derived_modeldata(modelpath)
+    lzdfmodel_stretched = at.inputmodel.add_derived_cols_to_modeldata(
+        lzdfmodel.with_columns(pl.col("vel_r_max_kmps") * 2.0), modelmeta=modelmeta
+    )
+    dfvelocities = lzdfmodel_stretched.select("vel_r_min_kmps", "vel_r_max_kmps").collect()
+    assert dfvelocities["vel_r_min_kmps"].to_list() == [0.0, *dfvelocities["vel_r_max_kmps"].to_list()[:-1]]
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])

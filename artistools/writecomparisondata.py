@@ -62,8 +62,13 @@ def get_nonempty_cells(
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
     # write_phys reads logrho, which a 3D model.txt does not contain. The derivation calculates it from rho
     lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
-    lzmodeldata = at.inputmodel.add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
-    return lzmodeldata.filter(pl.col("modelgridindex").is_in(allnonemptymgilist)).collect(), modelmeta
+    return (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
+        .filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        .select("modelgridindex", "vel_r_mid", "logrho")
+        .collect()
+    ), modelmeta
 
 
 def write_edep(
