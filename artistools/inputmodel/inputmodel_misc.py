@@ -762,7 +762,10 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
         dfmodel = dfmodel.with_columns(mass_g=(pl.col("rho") * pl.col("volume")))
 
     # add vel_*_on_c scaled velocities. The vel_*_kmps columns are in km/s instead of cm/s, so exclude them here
-    return dfmodel.with_columns(((cs.starts_with("vel_") - cs.ends_with("_kmps")) / C_cm_per_s).name.suffix("_on_c"))
+    # the _on_c columns of an earlier pass also start with vel_, and a second pass must not scale them again
+    return dfmodel.with_columns(
+        ((cs.starts_with("vel_") - cs.ends_with("_kmps", "_on_c")) / C_cm_per_s).name.suffix("_on_c")
+    )
 
 
 def get_derived_column_names(dimensions: int) -> set[str]:
@@ -914,8 +917,6 @@ def save_modeldata(
     if "inputcellid" not in colnames_in and "modelgridindex" in colnames_in:
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
-    dfmodel = dfmodel.drop("mass_g", "modelgridindex", strict=False).lazy().collect()
-
     if modelmeta is None:
         modelmeta = {}
 
@@ -928,6 +929,22 @@ def save_modeldata(
     headercommentlines = modelmeta.get("headercommentlines")
     vmax = modelmeta.get("vmax_cmps")
 
+    if modelmeta.get("dimensions") is None:
+        modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
+
+    if modelmeta["dimensions"] not in {1, 2, 3}:
+        msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
+        raise ValueError(msg)
+
+    # a dataframe from get_modeldata holds the derived columns, which model.txt does not store. The drop comes before
+    # the collect, thus a lazy query does not calculate them
+    dfmodel = (
+        dfmodel
+        .drop("modelgridindex", *get_derived_column_names(modelmeta["dimensions"]), strict=False)
+        .lazy()
+        .collect()
+    )
+
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
         assert modelmeta["npts_model"] == dfmodel_npts_model
@@ -935,9 +952,6 @@ def save_modeldata(
         modelmeta["npts_model"] = dfmodel_npts_model
 
     timestart = time.perf_counter()
-    if modelmeta.get("dimensions") is None:
-        modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
-
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {dfmodel_npts_model}")
 
@@ -950,13 +964,6 @@ def save_modeldata(
         griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
         print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
         assert griddimension**3 == dfmodel_npts_model
-
-    else:
-        msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
-        raise ValueError(msg)
-
-    # a dataframe from get_modeldata holds the derived columns, which model.txt does not store
-    dfmodel = dfmodel.drop(get_derived_column_names(modelmeta["dimensions"]), strict=False)
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
     # every other custom column
@@ -1199,9 +1206,8 @@ def dimension_reduce_model(
     # the aggregation below makes a list from each column of an unknown kind. Thus, only the velocities and the mass
     # go into the output with the columns of the input model file.
     derivedcols = get_derived_column_names(ndim_in)
-    inputfilecols = [col for col in dfmodel.collect_schema().names() if col not in derivedcols]
-    dfmodel_out = add_derived_cols_to_modeldata(dfmodel.select(inputfilecols), modelmeta=modelmeta).select(
-        *inputfilecols, cs.starts_with("vel_") - cs.by_name(inputfilecols, require_all=False), "mass_g"
+    dfmodel_out = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
+        ~cs.by_name(derivedcols, require_all=False) | cs.starts_with("vel_") | cs.by_name("mass_g")
     )
 
     if outputdimensions == 0:

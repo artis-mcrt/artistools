@@ -216,7 +216,7 @@ def plot_deposition_thermalisation(
     if args.plotthermalisation:
         dfmodel, _ = at.inputmodel.get_modeldata(modelpath)
 
-        # one collect for both sums: get_modeldata returns a plan, so a second one re-derives every column
+        # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
         model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 

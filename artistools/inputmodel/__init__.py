@@ -18,6 +18,7 @@ from artistools.inputmodel import to_tardis as to_tardis
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import dimension_reduce_model as dimension_reduce_model
 from artistools.inputmodel.inputmodel_misc import get_cell_angle as get_cell_angle
+from artistools.inputmodel.inputmodel_misc import get_derived_column_names as get_derived_column_names
 from artistools.inputmodel.inputmodel_misc import get_empty_3d_model as get_empty_3d_model
 from artistools.inputmodel.inputmodel_misc import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms

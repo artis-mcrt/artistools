@@ -114,7 +114,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makeenergyinputfiles:
         plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0])
-        model = plmodel.collect()
+        model = plmodel.select("rho", "mass_g").collect()
         rho = model["rho"].cast(pl.Float64).to_numpy()
         Mtot_grams = float(model["mass_g"].sum())
 

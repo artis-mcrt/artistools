@@ -89,25 +89,23 @@ def test_describeinputmodel_3d() -> None:
 
 
 def test_get_modeldata_1d() -> None:
-    _, modelmeta = at.get_modeldata(modelpath=modelpath)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
     assert math.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rel_tol=0.0001)
     assert math.isclose(modelmeta["vmax_cmps"], 800000000.0)
     assert modelmeta["dimensions"] == 1
     assert modelmeta["npts_model"] == 1
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 1.416963e33, rel_tol=1e-05)
 
 
 @pytest.mark.benchmark
 def test_get_modeldata_3d() -> None:
-    _, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
     assert math.isclose(modelmeta["vmax_cmps"], 2892020000.0)
     assert modelmeta["dimensions"] == 3
     assert modelmeta["npts_model"] == 1000
     assert modelmeta["ncoordgridx"] == 10
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
 
 
@@ -318,7 +316,7 @@ def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: 
     # empty the outer part of the model, thus every cell of an outer shell has a density of zero
     dfmodel = dfmodel.with_columns(
         pl.when(pl.col("vel_r_mid") > 0.4 * vmax).then(pl.lit(0.0)).otherwise(pl.col("rho")).alias("rho")
-    ).drop("vel_r_mid")
+    )
     at.inputmodel.save_modeldata(dfmodel=dfmodel, outpath=tmp_path, modelmeta=modelmeta)
     shutil.copy(modelpath_3d / "abundances.txt.xz", tmp_path / "abundances.txt.xz")
 
@@ -2480,14 +2478,37 @@ def test_save_modeldata_writes_no_derived_columns(sourcemodelpath: Path, tmp_pat
     assert {"volume", "mass_g"} <= derivedcols
     assert derivedcols <= set(lzdfmodel.collect_schema().names())
 
-    at.inputmodel.save_modeldata(lzdfmodel.collect(), outpath=tmp_path, modelmeta=modelmeta)
+    # a second derivation must add no column, e.g. a vel_*_on_c_on_c column that the name set does not hold
+    lzdfmodel_derivedagain = at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+    assert lzdfmodel_derivedagain.collect_schema().names() == lzdfmodel.collect_schema().names()
 
-    with (tmp_path / "model.txt").open(encoding="utf-8") as modelfile:
-        headerwords = {word for line in modelfile if line.startswith("#") for word in line.lstrip("#").split()}
-    assert derivedcols.isdisjoint(headerwords)
+    at.inputmodel.save_modeldata(lzdfmodel_derivedagain.collect(), outpath=tmp_path, modelmeta=modelmeta)
+
+    lzdfmodel_filecolumns, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(tmp_path / "model.txt")
+    assert derivedcols.isdisjoint(lzdfmodel_filecolumns.collect_schema().names())
 
     lzdfmodel_loaded, _ = at.inputmodel.get_modeldata(tmp_path)
     assert lzdfmodel_loaded.collect_schema().names() == lzdfmodel.collect_schema().names()
+
+
+@pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
+def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, outputdimensions: int) -> None:
+    """A model can give rho in place of logrho, or logrho in place of rho, and the reduction makes the other one."""
+    lzdfmodel, modelmeta = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
+    dfmodel = lzdfmodel.collect()
+    densitycol, otherdensitycol = ("rho", "logrho") if modelmeta["dimensions"] == 3 else ("logrho", "rho")
+    dfmodel_otherdensity = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
+        *[col for col in dfmodel.columns if col != densitycol], otherdensitycol
+    )
+
+    dfmodel_out, _, _, _ = at.inputmodel.dimension_reduce_model(
+        dfmodel=dfmodel, outputdimensions=outputdimensions, modelmeta=modelmeta.copy()
+    )
+    dfmodel_out_otherdensity, _, _, _ = at.inputmodel.dimension_reduce_model(
+        dfmodel=dfmodel_otherdensity, outputdimensions=outputdimensions, modelmeta=modelmeta.copy()
+    )
+
+    pltest.assert_frame_equal(dfmodel_out, dfmodel_out_otherdensity, check_column_order=False, rel_tol=1e-6)
 
 
 def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:

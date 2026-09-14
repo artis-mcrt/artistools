@@ -1697,11 +1697,15 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     modelpath = at.normalize_path_list(args.modelpath)[0]
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
-        dfmodel = at.inputmodel.get_modeldata(modelpath)[0].collect()
+        dfmodel = (
+            at.inputmodel
+            .get_modeldata(modelpath)[0]
+            .select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min")
+            .collect()
+        )
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around {args.axis} axis")
-        # the cone selection reads the mid-point positions, which are derived columns
         lzmodel = at.inputmodel.get_modeldata(modelpath)[0]
         dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, lzmodel, logprint=print)
     else:

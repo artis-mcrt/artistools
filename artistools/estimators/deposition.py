@@ -90,9 +90,9 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     cell. Thus the count covers the cells that hold matter, and a range of a low init_Ye gets the
     number of cells that the table sums.
 
-    The read asks for the density and for no other derived column, and it reads no abundance. Thus a
-    range that selects no cell stops the command before the much slower read of the estimator files,
-    and the check itself costs little on a model of many cells.
+    The query selects only the density and Ye, and it reads no abundance. Thus a range that selects no
+    cell stops the command before the much slower read of the estimator files, and the check itself
+    costs little on a model of many cells.
     """
     modelname = get_model_name(modelpath)
     dfmodel, _ = get_modeldata(modelpath, printwarningsonly=not verbose)
