@@ -65,24 +65,28 @@ def get_nuclide_massfractions(
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
     dfmodel = filter_model_cells(dfmodel, modelmeta, vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
 
+    # one collect gives the mass-weighted sums and the total mass, thus the model scan runs one time
+    dfsums = dfmodel.select(
+        cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g")), mass_g=pl.col("mass_g").sum()
+    ).collect()
+
     # a selection with no cell would give 0 / 0 = NaN for every nuclide and a blank plot
-    if dfmodel.select(pl.len()).collect().item() == 0:
+    if dfsums["mass_g"].item() == 0.0:
         msg = f"No cell of {modelpath} is inside the velocity range and the polar angle range"
         raise ValueError(msg)
 
     return (
-        dfmodel
-        .select((cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g"))) / pl.col("mass_g").sum())
+        dfsums
+        .select(cs.exclude("mass_g") / pl.col("mass_g"))
         .unpivot(variable_name="nuclide", value_name="massfraction")
         # split X_Ni56 into its element symbol and mass number, then a join with the element table gives Z
         .with_columns(
             elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
             A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
         )
-        .join(at.get_elsymbols_df(), on="elsymbol", how="left", maintain_order="left")
+        .join(at.get_elsymbols_df().collect(), on="elsymbol", how="left", maintain_order="left")
         .rename({"atomic_number": "Z"})
         .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
-        .collect()
     )
 
 
