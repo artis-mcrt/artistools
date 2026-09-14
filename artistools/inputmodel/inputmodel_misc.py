@@ -936,14 +936,15 @@ def save_modeldata(
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
-    # a dataframe from get_modeldata holds the derived columns, which model.txt does not store. The drop comes before
-    # the collect, thus a lazy query does not calculate them
-    dfmodel = (
-        dfmodel
-        .drop("modelgridindex", *get_derived_column_names(modelmeta["dimensions"]), strict=False)
-        .lazy()
-        .collect()
-    )
+    # model.txt holds no derived column of any dimension, no pos_ or vel_ column other than the standard ones, and the
+    # density in one form. The drop comes before the collect, thus a lazy query does not calculate the dropped columns
+    derivedcols = {col for dimensions in (1, 2, 3) for col in get_derived_column_names(dimensions)}
+    columnsnotinfile = (
+        cs.by_name("modelgridindex", *derivedcols, require_all=False)
+        | cs.starts_with("pos_", "vel_")
+        | cs.by_name("rho", "logrho", require_all=False)
+    ) - cs.by_name(get_standard_columns(modelmeta["dimensions"]), require_all=False)
+    dfmodel = dfmodel.lazy().drop(columnsnotinfile).collect()
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:

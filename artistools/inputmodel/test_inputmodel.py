@@ -2471,24 +2471,36 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
-def test_save_modeldata_writes_no_derived_columns(sourcemodelpath: Path, tmp_path: Path) -> None:
-    """The dataframe from get_modeldata holds the derived columns, but model.txt holds only the model file columns."""
+def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcemodelpath: Path, tmp_path: Path) -> None:
+    """model.txt must be the same from the file columns alone and from a dataframe that holds every derived column.
+
+    The dataframe also holds rho and logrho, and the pos_ and vel_ columns of the other dimensions.
+    """
+    lzdfmodel_file, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, modelmeta = at.inputmodel.get_modeldata(sourcemodelpath)
-    derivedcols = at.inputmodel.inputmodel_misc.get_derived_column_names(modelmeta["dimensions"])
-    assert {"volume", "mass_g"} <= derivedcols
-    assert derivedcols <= set(lzdfmodel.collect_schema().names())
 
     # a second derivation must add no column, e.g. a vel_*_on_c_on_c column that the name set does not hold
     lzdfmodel_derivedagain = at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
     assert lzdfmodel_derivedagain.collect_schema().names() == lzdfmodel.collect_schema().names()
 
-    at.inputmodel.save_modeldata(lzdfmodel_derivedagain.collect(), outpath=tmp_path, modelmeta=modelmeta)
+    otherdimensions = {1, 2, 3} - {modelmeta["dimensions"]}
+    otherderivedcols = sorted(
+        set().union(*(at.inputmodel.get_derived_column_names(dimensions) for dimensions in otherdimensions))
+        - set(lzdfmodel.collect_schema().names())
+    )
+    assert any(col.startswith("pos_") for col in otherderivedcols)
+    assert any(col.startswith("vel_") for col in otherderivedcols)
+    lzdfmodel_allderived = lzdfmodel_derivedagain.with_columns(pl.lit(1.0).alias(col) for col in otherderivedcols)
+    assert {"rho", "logrho"} <= set(lzdfmodel_allderived.collect_schema().names())
 
-    lzdfmodel_filecolumns, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(tmp_path / "model.txt")
-    assert derivedcols.isdisjoint(lzdfmodel_filecolumns.collect_schema().names())
+    dfmodel_written = {}
+    for label, dfmodel in (("filecolumns", lzdfmodel_file), ("allderived", lzdfmodel_allderived)):
+        outpath = tmp_path / label
+        outpath.mkdir()
+        at.inputmodel.save_modeldata(dfmodel.collect(), outpath=outpath, modelmeta=modelmeta.copy())
+        dfmodel_written[label] = at.inputmodel.inputmodel_misc.read_modelfile_text(outpath / "model.txt")[0].collect()
 
-    lzdfmodel_loaded, _ = at.inputmodel.get_modeldata(tmp_path)
-    assert lzdfmodel_loaded.collect_schema().names() == lzdfmodel.collect_schema().names()
+    pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
 
 @pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
