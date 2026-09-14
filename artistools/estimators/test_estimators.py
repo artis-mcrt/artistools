@@ -339,6 +339,43 @@ def test_xbins_gives_the_number_of_bins() -> None:
         assert np.isclose(widths[-1], expectedwidth / 2.0), xbins
 
 
+def test_xbins_below_minus_one_selects_automatic_bins() -> None:
+    """Every negative -xbins selects automatic bins, as it did before commit b4365703.
+
+    A check for zero also refused every value below -1, thus a script that gave -xbins -2 stopped.
+    """
+    xvalues_minus1, _ = get_binned_xvalues_and_limits(-1)
+    xvalues_minus2, _ = get_binned_xvalues_and_limits(-2)
+
+    assert np.array_equal(xvalues_minus1, xvalues_minus2)
+
+
+def test_automatic_xbins_with_one_x_value() -> None:
+    """Automatic bins for data of one x value draw finite values. Before, the equal edges made cut() raise an error."""
+    drawnyvalues: list[npt.NDArray[np.float64]] = []
+    realplot = mplax.Axes.plot
+
+    def spyplot(self: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if len(args) >= 2 and np.ndim(args[1]) > 0:
+            drawnyvalues.append(np.asarray(args[1], dtype=np.float64))
+        return realplot(self, *args, **kwargs)
+
+    with mock.patch.object(mplax.Axes, "plot", spyplot):
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            plotlist=[["Te"]],
+            modelgridindex="0",
+            timestep="10-20",
+            x="velocity",
+            xbins=-1,
+            outputfile=outputpath / "test_automatic_xbins_with_one_x_value.pdf",
+        )
+
+    assert drawnyvalues
+    assert all(np.isfinite(yvalues).all() for yvalues in drawnyvalues)
+
+
 def get_binned_xvalues_and_limits(xbins: int) -> tuple[npt.NDArray[np.float64], tuple[float, float]]:
     """Return the x values that one plot of binned estimators draws, and the limits of its x axis."""
     drawn: list[npt.NDArray[np.float64]] = []
@@ -476,6 +513,28 @@ def test_estimparse_xz_high_preset(tmp_path: Path) -> None:
 
     dfest = at.rustext.estimparse(tmp_path, 0, 0)
     assert dfest["Te"].to_list() == pytest.approx([3000.0])
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e39",
+        "heating: ff 1.0e39 bf 2.0",
+        "populations Z=26 1: 1.0e39 2: 2.0",
+    ],
+)
+def test_estimparse_rejects_a_value_above_the_f32_range(tmp_path: Path, line: str) -> None:
+    """A value that f32 cannot hold must stop the parse and not give infinity.
+
+    Only the rows of the ions had the check, thus a cell header or a heating row stored infinity with no error.
+    """
+    cellheader = "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n"
+    (tmp_path / "estimators_0000.out").write_text(
+        line + "\n" if line.startswith("timestep") else cellheader + line + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(Exception, match="outside the range that f32 holds"):
+        at.rustext.estimparse(tmp_path, 0, 0)
 
 
 def test_estimparse() -> None:
@@ -786,14 +845,17 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     from artistools.estimators.estimators import CACHEVERSION
     from artistools.estimators.estimators import get_rankbatch_parquetpath
     from artistools.estimators.estimators import rankbatch_parquet_is_current
-    from artistools.estimators.estimators import rankbatch_parquet_staleness
     from artistools.misc.fileio import MTIME_TOLERANCE_S
+    from artistools.misc.fileio import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
 
     # a cache that no run wrote yet needs the conversion
-    assert rankbatch_parquet_staleness(parquetfilepath, None, textsource_complete=False) == "the file does not exist"
+    assert (
+        rankbatch_parquet_staleness(parquetfilepath, CACHEVERSION, None, textsource_complete=False)
+        == "the file does not exist"
+    )
 
     mtime = 1000.0
     at.write_parquet_atomic(
@@ -943,6 +1005,93 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert dfone["timestep"].item() == 1
     assert dfone["modelgridindex"].item() == 2
     assert np.isclose(dfone["Te"].item(), 6200.0)
+
+
+def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Write a code comparison model of one epoch and three shells, and return its virtual path."""
+    physdir = tmp_path / "ccdata" / "toymodel"
+    physdir.mkdir(parents=True)
+    (physdir / "phys_toymodel_toycode.txt").write_text(
+        "#NTIMES: 1\n"
+        "#TIMES[d]: 10.0\n"
+        "#TIME: 10.0\n"
+        "#NVEL: 3\n"
+        "#vel_mid Te rho nne nntot\n"
+        "1000.0 5000.0 1e-13 1e6 1e6\n"
+        "2000.0 5100.0 2e-13 2e6 2e6\n"
+        "3000.0 5200.0 3e-13 3e6 3e6\n"
+    )
+
+    artismodeldir = tmp_path / "ccmodel" / "toymodel"
+    artismodeldir.mkdir(parents=True)
+    (artismodeldir / "model.txt").write_text(
+        "3\n10.0\n1 1000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n2 2000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
+        "3 3000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
+    )
+    abundrow = " ".join(["0.0"] * 25 + ["0.1", "0.0", "0.9", "0.0", "0.0"])
+    (artismodeldir / "abundances.txt").write_text("".join(f"{cellid} {abundrow}\n" for cellid in (1, 2, 3)))
+
+    realgetpath = at.get_path
+
+    def fake_get_path(key: str) -> Path:
+        if key == "codecomparisondata1path":
+            return tmp_path / "ccdata"
+        if key == "codecomparisonmodelartismodelpath":
+            return tmp_path / "ccmodel"
+        return realgetpath(key)
+
+    import artistools.inputmodel.inputmodel_misc
+
+    # codecomparison.py calls at.get_path, and inputmodel_misc.py holds its own import of the name
+    monkeypatch.setattr(at, "get_path", fake_get_path)
+    monkeypatch.setattr(artistools.inputmodel.inputmodel_misc, "get_path", fake_get_path)
+
+    return "codecomparison/toymodel/toycode"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plot_codecomparison_single_epoch(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A code comparison file of one epoch still plots its cells.
+
+    The cell weight of the average is the cell volume times the timestep width. One epoch had a width of zero,
+    thus every weight was zero. get_line_points then divided by zero, and drop_nans removed each line.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
+        plotlist=[["Te"]],
+        x="velocity",
+        timestep="0",
+        outputfile=tmp_path / "est.pdf",
+    )
+
+    arr_xvalue, arr_yvalue = mockplot.call_args_list[0].args[1:3]
+    # the first point repeats the innermost cell at the axis origin, thus the three cells follow it
+    assert np.allclose(arr_yvalue[-3:], [5000.0, 5100.0, 5200.0])
+    assert np.allclose(arr_xvalue[-3:], [500.0, 1500.0, 2500.0])
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plot_codecomparison_single_epoch_weights_the_cells_by_volume(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The average over the shells of one epoch weights each shell by its volume.
+
+    One epoch had a timestep width of zero, thus every weight was zero and the average became the plain mean.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
+        plotlist=[["Te"]],
+        x="time",
+        outputfile=tmp_path / "est.pdf",
+    )
+
+    arr_yvalue = mockplot.call_args_list[0].args[2]
+    # the shells end at 1000, 2000, and 3000 km/s, thus their volumes have the ratio 1 : 7 : 19
+    assert np.allclose(arr_yvalue, (5000.0 * 1 + 5100.0 * 7 + 5200.0 * 19) / 27)
 
 
 def test_exportmassfractions(tmp_path: Path) -> None:
@@ -2081,9 +2230,10 @@ def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     No conversion can replace such a cache. A rejection made get_runfolder_timesteps() find no
     timesteps, thus get_runfolders() dropped the folder and the reader saw a run that holds no data.
     """
+    from artistools.estimators.estimators import CACHEVERSION
     from artistools.estimators.estimators import rankbatch_cache_cannot_be_rebuilt
     from artistools.estimators.estimators import rankbatch_parquet_is_current
-    from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.misc.fileio import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.write_parquet_atomic(
@@ -2091,7 +2241,9 @@ def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     )
 
     # the reason still names the fault, so that the reader can give a warning
-    assert "cache format version" in str(rankbatch_parquet_staleness(oldversion, None, textsource_complete=False))
+    assert "cache format version" in str(
+        rankbatch_parquet_staleness(oldversion, CACHEVERSION, None, textsource_complete=False)
+    )
     # but the cache stays readable, because no conversion can replace it
     assert rankbatch_cache_cannot_be_rebuilt(oldversion, textsource_complete=False)
     assert rankbatch_parquet_is_current(oldversion, None, textsource_complete=False)
@@ -2171,10 +2323,13 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     # a rewrite of the file that remains still proves that the cache is stale
     os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
     mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
-    from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.misc.fileio import rankbatch_parquet_staleness
 
     assert "after the cache stamp" in str(
-        rankbatch_parquet_staleness(parquetfilepath, mtime_rewritten, textsource_complete=complete_rewritten)
+        rankbatch_parquet_staleness(
+            parquetfilepath, CACHEVERSION, mtime_rewritten, textsource_complete=complete_rewritten
+        )
     )
 
 
@@ -2263,8 +2418,9 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     read the one text file that remains, thus it lost the timesteps that only the cache holds and it
     named a set that the scan cannot deliver.
     """
+    from artistools.estimators.estimators import CACHEVERSION
     from artistools.estimators.estimators import rankbatch_parquet_is_current
-    from artistools.estimators.estimators import rankbatch_parquet_staleness
+    from artistools.misc.fileio import rankbatch_parquet_staleness
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
     runfolder = tmp_path / "job1.slurm"
@@ -2283,7 +2439,7 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
 
     # the reason still names the fault, so that the reader can give a warning
     assert "cache format version" in str(
-        rankbatch_parquet_staleness(parquetfilepath, 1000.0, textsource_complete=False)
+        rankbatch_parquet_staleness(parquetfilepath, CACHEVERSION, 1000.0, textsource_complete=False)
     )
     # but the cache answers, because the scan of the run keeps it for the same reason
     assert rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)

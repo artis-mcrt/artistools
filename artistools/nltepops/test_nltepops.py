@@ -70,6 +70,21 @@ def make_model_without_plotted_cell_estimators(tmp_path: Path) -> None:
     )
 
 
+@mock.patch.object(mplax.Axes, "set_xticklabels", side_effect=mplax.Axes.set_xticklabels, autospec=True)
+def test_nltepops_config_labels_skip_a_last_cell_without_data(mockticklabels: mock.MagicMock, tmp_path: Path) -> None:
+    """The lowest panel that the command draws shows the configuration names, also when the last cell has no data.
+
+    Only a panel of the last cell in the list took the names, thus a last cell without NLTE data left every axis blank.
+    """
+    make_model_without_plotted_cell_estimators(tmp_path)
+
+    # the NLTE file holds cell 0 alone, thus cell 1 has no data
+    at.nltepops.plot(argsraw=[], modelpath=tmp_path, outputfile=tmp_path, cell="0,1", timestep=40, x="config")
+
+    labelsets = [list(callargs[0][1]) for callargs in mockticklabels.call_args_list]
+    assert any(any(label for label in labels) for labels in labelsets)
+
+
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nltepops_no_estimator_data(

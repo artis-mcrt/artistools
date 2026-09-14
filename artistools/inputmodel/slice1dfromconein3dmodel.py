@@ -17,19 +17,6 @@ from artistools.constants import km_to_cm
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 
-CONE_DERIVED_COLS = [
-    "volume",
-    "pos_x_mid",
-    "pos_y_mid",
-    "pos_z_mid",
-    "pos_x_min",
-    "pos_y_min",
-    "pos_z_min",
-    "pos_r_mid",
-    "mass_g",
-    "pos_r_min",
-]
-
 
 def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callable[..., None]) -> pl.DataFrame:
     """Return the cells of the 3D model lying within args.coneangle of the chosen axis."""
@@ -152,11 +139,11 @@ def get_cone_shells(
                 "1D model but worth checking the log file to ensure the normalisation of the cells in the 3D \n"
                 "model used in the 1D model shells is close to 1 before this\n"
             )
-        # Skipping first 5 columns which contain the radioisotopes utilised in SN models
-        # the remaining columns contain the 30 elements in the composition file for SN models
-        # which have the radioisotopes already included in the composition total for the
-        # relevant elements
-        sum_composition_check = sum(composition[species] for species in speciescols[5:])
+        # sum the elemental mass fractions alone. A nuclide column such as X_Ni56 already counts in
+        # the mass fraction of its element, and X_Fegroup is a sum over several elements. A count of
+        # the leading nuclide columns cannot do this: a model can carry X_Ni57 and X_Co57 as well
+        elementcols = [col for col in speciescols if col != "X_Fegroup" and not col[-1].isdigit()]
+        sum_composition_check = sum(composition[species] for species in elementcols)
         logprint(
             f"Shell {i + 1:<3}     3D cells averaged: {shell['cellcount']:<6} composition sum before norm: {sum_composition_check}"
         )
@@ -174,13 +161,12 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     """Make 1D model from 3D model."""
     modelpath = at.normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", at.get_model_name(modelpath))
-    pldfmodel, modelmeta = at.get_modeldata(
-        modelpath=modelpath, get_elemabundances=True, derived_cols=CONE_DERIVED_COLS if args.makefromcone else None
-    )
+    pldfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("from a cone")
-        cone = make_cone(args, pldfmodel, logprint)
+        # the cone selection reads the mid-point positions and the mass of each cell
+        cone = make_cone(args, at.add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta), logprint)
         N_shells = args.nshells
         # Max radius that still ensures a full shell as the cartesian grid means some
         # radius values will be greater than the max radius of the axis the cone is centred on
@@ -234,7 +220,6 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         logprint("Scaling density by a factor of:", args.rhoscale)
         slice1d = slice1d.with_columns(pl.col("rho") * args.rhoscale)
 
-    # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
     slice1d = slice1d.with_columns(
         pl.when(pl.col("rho") != 0).then(pl.col("rho").log10()).otherwise(-100).alias("rho")

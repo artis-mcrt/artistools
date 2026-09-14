@@ -1930,6 +1930,23 @@ def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps(
     assert get_runfolder_timesteps(runfolder) == ()
 
 
+def test_get_runfolder_timesteps_tries_every_rank_stem(tmp_path: Path) -> None:
+    """The lowest rank can exist only as a sibling that zopen does not read, e.g. a .bak file.
+
+    A later rank then still holds a readable file. A test of the lowest stem alone returned no
+    timestep, thus get_runfolders dropped a folder whose data is present.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    (tmp_path / "estimators_0000.out.bak").write_text("junk\n", encoding="utf-8")
+    (tmp_path / "estimators_0001.out").write_text(
+        "timestep 7 modelgridindex 0\ntimestep 8 modelgridindex 0\n", encoding="utf-8"
+    )
+
+    # the first timestep of the file counts as the duplicate of a restart, thus 8 remains
+    assert get_runfolder_timesteps(tmp_path) == (8,)
+
+
 def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
     """A NaN element holds no data, thus the filter must keep it in its own element and give it no weight.
 

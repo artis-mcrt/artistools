@@ -64,7 +64,8 @@ def get_nuclide_massfractions(
     thetamax: float | None = None,
 ) -> pl.DataFrame:
     """Return the mass-weighted mass fraction and number abundance of each nuclide in the selected cells."""
-    dfmodel, _ = at.inputmodel.get_modeldata(modelpath=modelpath, derived_cols=["mass_g", "velocity"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath=modelpath)
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
     dfmodel = filter_model_cells(dfmodel, vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
 
     return (

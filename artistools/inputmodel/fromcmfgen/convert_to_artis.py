@@ -116,7 +116,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # fraction without getting an element column of its own.
     ige_index = np.array(atomic_numbers) > 20
 
-    # The radii/velocity in the CMFGEN files are zone centered, while in ARTIS they represent
+    # The radii and the velocity of the CMFGEN files are zone centred, but in ARTIS they give
     # the outer radius of a given zone. So we need to do a transformation
     r = a["rad"] * 1e10
     rmid = 0.5 * (r[:-1] + r[1:])

@@ -53,12 +53,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
     at.print_heading(str(modelpath))
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath,
-        get_elemabundances=not args.noabund,
-        printwarningsonly=False,
-        derived_cols=["mass_g", "vel_r_mid", "kinetic_en_erg", "rho"],
+        modelpath, get_elemabundances=not args.noabund, printwarningsonly=False
     )
 
+    # the collect below puts the dataframe in memory. Thus the select keeps only the derived columns that the steps read
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
+        cs.by_name(dfmodel.collect_schema().names()) | cs.by_name("rho", "mass_g", "vel_r_mid", "kinetic_en_erg")
+    )
     # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
     dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.starts_with("X_n"), strict=False)
 

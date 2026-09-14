@@ -491,8 +491,9 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    z = get_atomic_number(nucname.rstrip(string.digits))
-    assert z > 0
+    # the mass number stays on the name, because it tells the free neutron "n1" from nitrogen
+    z = get_atomic_number(nucname)
+    assert z >= 0, f"{nucname} does not start with an element symbol"
 
     a = int(nucname.lower().lstrip(string.ascii_lowercase))
 
@@ -575,11 +576,15 @@ def get_elsymbols_df() -> pl.LazyFrame:
 def get_atomic_number(elsymbol: str) -> int:
     """Return the atomic number of an element symbol, or -1 if it is not an element symbol."""
     assert elsymbol is not None
-    elsymbol = elsymbol.removeprefix("X_")
-    elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip(string.digits)
+    name = elsymbol.removeprefix("X_").split("_")[0].split("-")[0]
+
+    # only "n1" is the free neutron. A symbol is not case sensitive, thus "n", "n14", and "nII" are
+    # nitrogen. No isotope of nitrogen has a mass number of 1
+    if name == "n1":
+        return 0
 
     # a dict lookup, because this is called once per column name in some loops
-    return get_atomic_number_of_elsymbol().get(elsymbol.title(), -1)
+    return get_atomic_number_of_elsymbol().get(name.rstrip(string.digits).title(), -1)
 
 
 ROMANNUMERALCHARS = frozenset("IVXLCDM")

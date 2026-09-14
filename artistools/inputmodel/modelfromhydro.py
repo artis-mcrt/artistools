@@ -147,15 +147,17 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-            # an old grid.dat names the electron fraction cellYe, and Ye is the name everywhere after this point
+            # an old grid.dat names the electron fraction cellYe and the heating energy Q. Ye and q are the names
+            # everywhere after this point, and q is the column that ARTIS reads from model.txt
             "cellYe": "Ye",
+            "Q": "q",
         },
         strict=False,
     )
 
     griddata = griddata.with_columns(
         # griddata in geom units
-        cs.by_name("rho", "Ye", "Q", require_all=False).fill_null(0.0)
+        cs.by_name("rho", "Ye", "q", require_all=False).fill_null(0.0)
     ).with_columns(
         cs.starts_with("pos_") * factor_position * km_to_cm,
         pl.col("rho") * 6.176e17,  # convert to g/cm³
@@ -320,13 +322,19 @@ def makemodelfromgriddata(
         dfelabundances = None
 
     if dimensions < 3:
-        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+        # the function returns an empty frame, not None, for an input that was None. The guards below
+        # test for None, thus an empty frame would write an empty gridcontributions.txt
+        gave_elabundances = dfelabundances is not None
+        gave_gridcontributions = dfgridcontributions is not None
+        dfmodel, dfelabundances_reduced, dfgridcontributions_reduced, modelmeta = at.inputmodel.dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,
             dfgridcontributions=dfgridcontributions,
             modelmeta=modelmeta,
         )
+        dfelabundances = dfelabundances_reduced if gave_elabundances else None
+        dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
 
     if "Ye" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)

@@ -12,6 +12,7 @@ import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 from matplotlib import gridspec
 from matplotlib.image import AxesImage
 
@@ -141,11 +142,17 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    lzdfmodel, modelmeta = at.get_modeldata(
-        modelpath, get_elemabundances=get_elemabundances, derived_cols=["pos_min", "pos_max"]
-    )
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     assert modelmeta["dimensions"] > 1
-    dfmodel = lzdfmodel.collect()
+    # the plot reads the cell edges, which are derived columns in 2D. The other derived columns stay out of memory
+    dfmodel = (
+        at
+        .add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+        .select(
+            cs.by_name(lzdfmodel.collect_schema().names()) | (cs.starts_with("pos_") & cs.ends_with("_min", "_max"))
+        )
+        .collect()
+    )
 
     if modelmeta["dimensions"] == 3:
         sliceaxis: AxisType = args.sliceaxis
@@ -223,7 +230,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     plmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     vmax = modelmeta["vmax_cmps"]
-    model = plmodel.collect()
+    # the model file can hold no Ye column, and then the Ye.txt file below gives it
+    model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
 
     if "Ye" in args.plotvars and "Ye" not in model.columns:
         file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)

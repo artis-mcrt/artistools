@@ -92,7 +92,8 @@ def get_grid(
     # and the reflection w.r.t. the z-axis for the final model.txt has to be done
     eqsymfac = 2 if np.amax(dat.f.pos[:, 1]) < np.pi / 2.0 else 1
 
-    # Step 2) Collect tracer particle data and account for splitting within the e2e modeling
+    # Step 2) Collect the tracer particle data and account for the particles that the
+    # end-to-end (e2e) model splits
 
     # first re-construct the original post-merger trajectories by merging the
     # splitted dynamical ejecta trajectories
@@ -317,13 +318,13 @@ def get_grid(
     # f1 correction a la Garcia-Senz? (does not seem to make a significant difference)
     rho2dhat = rho2dtraj * f1corr(rcyltraj, hsmooth)
 
-    # cross check: count number of neighbors within smoothing length
+    # cross check: count the number of neighbours within the smoothing length
     neinum = np.zeros(ntraj)
     for i in range(ntraj):
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         neinum[i] = np.sum(np.where(dist / hsmooth < 2.0, 1.0, 0.0))
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
-    print("average number of neighbors:", neinumavg)
+    print("average number of neighbours:", neinumavg)
 
     # Step 5) Final mapping by interpolating all quantities onto the grid
 
@@ -357,25 +358,26 @@ def get_grid(
     yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
     bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
-    # renormalize so that interpolated mass = sum of particle masses
+    # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
-    print("total mass after interpolation (but BEFORE renormalization):", np.sum(dmgrid) / msol * eqsymfac)
+    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * eqsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
     elif model_dim == 3:
-        # renormalize each partial density such that isotopic masses on mapped grid = isotopic masses from tracers
+        # renormalise each partial density, so that the isotopic masses on the mapped grid equal the
+        # isotopic masses of the tracers
         rescfacx = np.zeros(ncomp)
         for n in np.arange(ncomp):
             rescfacx[n] = np.sum(xiso0[:, n] * dat.f.mass * msol) / (np.sum(xint[n, :, :] * volgrid) + 1e-100)
             xint[n, :, :] *= rescfacx[n]
         # ... recompute total density from partial densities?
         rhoint = np.sum(xint, axis=0)
-        # ... renormalize total density
+        # ... renormalise the total density
         rescfac = np.sum(mtraj) / np.sum(rhoint * volgrid)
         rhoint *= rescfac
         print("rescfac 1:", rescfac)
-        # ... and finally renormalize all partial densities by the same factor
+        # ... and finally renormalise every partial density by the same factor
         for k in np.arange(ncomp):
             xint[k, :, :] *= rescfac
         # ... obtain mass fractions
@@ -418,7 +420,12 @@ def get_grid(
         # the rows run over nz, then nr, then the particle id, thus put nz first
         wloc = wloc.transpose((1, 0, 2))
         cellhasmass = cellhasmass.T
-        cellids = (np.arange(nvz)[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[..., np.newaxis]
+        # map_to_artis reflects a grid with equatorial symmetry in z, thus row iz of the half grid is row nvz + iz
+        # of the full grid
+        zrowoffset = nvz if eqsymfac == 2 else 0
+        cellids = ((zrowoffset + np.arange(nvz))[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[
+            ..., np.newaxis
+        ]
     else:
         nx, ny, nz = (np.arange(n) for n in grid_dims)
         cellids = (
@@ -437,6 +444,18 @@ def get_grid(
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
 
     if model_dim == 2:
+        if eqsymfac == 2:
+            # the lower half of the full grid reflects the upper half, thus each particle also gives its fraction to
+            # the mirror cell. For row iz of the half grid, the mirror is row nvz - 1 - iz of the full grid
+            nrowsfull, ncolsfull = 2 * int(nvz), int(nvr)
+            fullrow = (pl.col("cellindex") - 1) // ncolsfull
+            dfparticlecontribs = pl.concat([
+                dfparticlecontribs,
+                dfparticlecontribs.with_columns(
+                    cellindex=(nrowsfull - 1 - fullrow) * ncolsfull + (pl.col("cellindex") - 1) % ncolsfull + 1
+                ),
+            ]).sort("cellindex", "particleid")
+
         return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
     # 3D case
     return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
@@ -577,9 +596,14 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        dyn_model: pl.DataFrame = at.inputmodel.get_modeldata(
-            modelpath=Path(replacedyn), derived_cols=["volume", "velocity"]
-        )[0].collect()
+        lzdyn_model, dyn_modelmeta_in = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))
+        # the merge below reads the volume and the mid-point velocity. The other derived columns stay out of memory
+        dyn_model: pl.DataFrame = (
+            at.inputmodel
+            .add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
+            .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
+            .collect()
+        )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
@@ -647,13 +671,21 @@ def map_to_artis(
                 "t_model_init_days": t_model_init_s / day_to_s,
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
+            # the files for the consistency check also hold bin_state, which selects the cells of the dynamical ejecta
+            dyn_extracols = ("bin_state",)
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_notrescaled.txt"),
+                extracols=dyn_extracols,
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_rescaled.txt"),
+                extracols=dyn_extracols,
             )
 
             # mass fractions, avoid looping
@@ -705,8 +737,6 @@ def map_to_artis(
                 Z = at.get_atomic_number(isot_str)
                 interpol_X_iso = dfmodel[isot_str].to_numpy()
                 elem_str = f"X_{at.get_elsymbol(Z)}"
-                if elem_str == "X_N":
-                    elem_str = "X_n"
                 if elem_str in dictelabunds:
                     dictelabunds[elem_str] = dictelabunds[elem_str].copy()
                     dictelabunds[elem_str] += interpol_X_iso
@@ -717,7 +747,7 @@ def map_to_artis(
             # replace above threshold
             print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")
             # get cell list from original model which shall be replaced
-            id_list = (dfmodel["bin_state"] > bs_thr).to_numpy().nonzero()[0].tolist()
+            id_list = dfmodel.filter(pl.col("bin_state") > bs_thr).select("inputcellid").to_series().to_list()
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
@@ -894,18 +924,32 @@ def remap_mass_weighted_quantity(
 
 
 def merge_neighbour_cells(
-    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any], red_fact: int, ngrid_rcyl: int, ngrid_z: int, vmax: float
-) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    """red_fact: number of cells to be merged."""
+    dfmodel: pl.DataFrame,
+    modelmeta: dict[str, t.Any],
+    red_fact: int,
+    ngrid_rcyl: int,
+    ngrid_z: int,
+    vmax: float,
+    dfgridcontributions: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any], pl.DataFrame | None]:
+    """Merge each block of red_fact cells into one cell of a coarser grid.
+
+    red_fact gives the number of cells that one merged cell holds. The particle contributions follow
+    the same mapping, thus gridcontributions.txt names the cells of the new grid.
+    """
     red_fact_1D = int(np.sqrt(red_fact))
     N_cell_r_old, N_cell_z_old = ngrid_rcyl, ngrid_z
     N_cell_r_new, N_cell_z_new = N_cell_r_old // red_fact_1D, N_cell_z_old // red_fact_1D
     new_numb_cells = N_cell_r_new * N_cell_z_new
     r_max_snap = vmax * CLIGHT * t_model_init_s
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(
-        dfmodel, modelmeta=modelmeta, derived_cols=["mass_g"]
-    ).collect()
+    # the merge reads mass_g and the columns of the model file
+    dfmodel = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        .select(cs.by_name(dfmodel.columns) | cs.by_name("mass_g"))
+        .collect()
+    )
 
     # create new grid
     Delta_r = r_max_snap / N_cell_r_new
@@ -975,8 +1019,30 @@ def merge_neighbour_cells(
         "t_model_init_days": t_model_init_s / day_to_s,
         "vmax_cmps": vmax * CLIGHT,
     }
+    # the contributions name the cells of the fine grid, thus they follow the same mapping. A fine
+    # cell outside the first red_fact * N_cell_new cells of an axis belongs to no coarse cell
+    dfgridcontributions_out = None
+    if dfgridcontributions is not None:
+        index_old = np.arange(N_cell_r_old * N_cell_z_old)
+        ir_old = index_old % N_cell_r_old
+        iz_old = index_old // N_cell_r_old
+        in_coarse_grid = (ir_old < red_fact_1D * N_cell_r_new) & (iz_old < red_fact_1D * N_cell_z_new)
+        dfcellmap = (
+            pl
+            .DataFrame({
+                "inputcellid": (index_old + 1).astype(np.int32),
+                "out_inputcellid": np.where(
+                    in_coarse_grid, (iz_old // red_fact_1D) * N_cell_r_new + (ir_old // red_fact_1D) + 1, 0
+                ).astype(np.int32),
+                "mass_g": dfmodel["mass_g"].to_numpy(),
+            })
+            .filter(pl.col("out_inputcellid") > 0)
+            .with_columns(out_mass_g=pl.col("mass_g").sum().over("out_inputcellid"))
+        )
+        dfgridcontributions_out = at.inputmodel.remap_gridcontributions(dfgridcontributions, dfcellmap).collect()
+
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
-    return dfmodel_out, dfelabundances, modelmeta_out
+    return dfmodel_out, dfelabundances, modelmeta_out, dfgridcontributions_out
 
 
 def apply_density_perturbations(
@@ -1016,7 +1082,8 @@ def apply_density_perturbations(
         pert_array[r > 1] = 1
 
     elif pert_model[0] == "random":
-        # apply random perturbations to every 2D x-y slice. Random perturbation by default on each grid cell, i.e. no d-parameter as in the sinusoidal mode.
+        # apply a random perturbation to every 2D x-y slice. The default applies it to each cell,
+        # thus this mode takes no d parameter, which the sinusoidal mode does take
         assert len(pert_model) == 2, "Incomplete data provided for random perturbations"
         delta_max = float(pert_model[1])
         rng = np.random.default_rng()
@@ -1225,13 +1292,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             assert (ngrid_rcyl / np.sqrt(args.mergecells)).is_integer(), (
                 "Number of merged cells in r direction is no integer!"
             )
-            dfmodel, dfelabundances, modelmeta = merge_neighbour_cells(
+            dfmodel, dfelabundances, modelmeta, dfgridcontributions = merge_neighbour_cells(
                 dfmodel=dfmodel,
                 modelmeta=modelmeta,
                 red_fact=args.mergecells,
                 ngrid_rcyl=ngrid_rcyl,
                 ngrid_z=ngrid_z,
                 vmax=args.vmax_on_c,
+                dfgridcontributions=dfgridcontributions,
             )
     elif model_dim == 3:
         x3d, y3d, z3d, rhoint, xint, iso, q_ergperg, yeinterpol, bsinterpol, eqsymfac, dfgridcontributions = get_grid(
@@ -1287,7 +1355,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
-    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
+    if dfgridcontributions is not None:
+        at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
 
 
 if __name__ == "__main__":

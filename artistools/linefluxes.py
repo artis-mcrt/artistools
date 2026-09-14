@@ -110,6 +110,34 @@ def get_timebins(
     return arr_tstart, arr_tend, arr_tmid
 
 
+def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: Sequence[float]) -> pl.Expr:
+    """Return the index of the time bin [tstart, tend) that holds each time, or null for a time in no bin.
+
+    The last bin also holds its upper edge. A gap between two bins holds no time, but an end that differs
+    from the next start by rounding alone meets that start, e.g. the times of timesteps.out.
+    """
+    arr_binedge_start = np.asarray(arr_tstart, dtype=np.float64)
+    arr_binedge_end = np.asarray(arr_tend, dtype=np.float64).copy()
+    endsmeetnextstart = np.isclose(arr_binedge_end[:-1], arr_binedge_start[1:], rtol=1e-5, atol=0.0)
+    arr_binedge_end[:-1][endsmeetnextstart] = arr_binedge_start[1:][endsmeetnextstart]
+
+    # use one cut() on all the edges, because a when() test for each bin made one column for each bin
+    edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
+    binofinterval: dict[int, int] = {}
+    for binindex, (tstart, tend) in enumerate(zip(arr_binedge_start, arr_binedge_end, strict=True)):
+        for intervalindex in range(int(np.searchsorted(edges, tstart)), int(np.searchsorted(edges, tend))):
+            binofinterval[intervalindex] = binindex
+
+    # cut() gives 0 below the first edge, thus interval k of the edges takes the category k + 1
+    intervalindex = timeexpr.cut(breaks=edges.tolist(), left_closed=True).to_physical().cast(pl.Int32) - 1
+    return (
+        pl
+        .when(timeexpr == edges[-1])
+        .then(pl.lit(len(arr_binedge_start) - 1, dtype=pl.Int32))
+        .otherwise(intervalindex.replace_strict(binofinterval, default=None, return_dtype=pl.Int32))
+    )
+
+
 def get_line_luminosities_from_packets(
     emtypecolumn: str,
     emfeatures: Sequence[FeatureTuple],
@@ -124,7 +152,7 @@ def get_line_luminosities_from_packets(
     """
     arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]]).tolist()
+    timebin_expr = get_timebin_expr(pl.col("t_arrive_d"), arr_tstart, arr_tend)
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
@@ -134,18 +162,30 @@ def get_line_luminosities_from_packets(
 
     # the lines of the features hold a small part of the packets, thus one collect keeps them in memory and
     # each feature bins the frame there. A lazy plan for each feature would scan the parquet files again
-    dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures)).collect().lazy()
+    dfpackets = (
+        dfpackets
+        .filter(pl.col(emtypecolumn).is_in(linelistindices_allfeatures))
+        .with_columns(timebin=timebin_expr)
+        .filter(pl.col("timebin").is_not_null())
+        .collect()
+        .lazy()
+    )
+
+    # a bin that holds no packet must still give a row, thus the bin list leads the join
+    dftimebins = pl.LazyFrame({"timebin": np.arange(len(arr_tstart), dtype=np.int32), "timedelta_days": arr_timedelta})
 
     dfluminosities = pl.collect_all([
-        at.packets
-        .bin_and_sum(
-            dfpackets.filter(pl.col(emtypecolumn).is_in(feature.linelistindices)),
-            bincol="t_arrive_d",
-            bins=timearrayplusend,
-            sumcols=["e_rf"],
+        dftimebins
+        .join(
+            dfpackets
+            .filter(pl.col(emtypecolumn).is_in(feature.linelistindices))
+            .group_by("timebin")
+            .agg(e_rf_sum=pl.col("e_rf").sum()),
+            on="timebin",
+            how="left",
         )
-        .with_columns(pl.Series("timedelta_days", arr_timedelta))
-        .select(pl.col("e_rf_sum") / nprocs_read / (day_to_s * pl.col("timedelta_days")))
+        .sort("timebin")
+        .select(pl.col("e_rf_sum").fill_null(0.0) / nprocs_read / (day_to_s * pl.col("timedelta_days")))
         for feature in emfeatures
     ])
 
@@ -167,7 +207,13 @@ def get_line_luminosities_from_pops(
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
     _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
-    modeldata = at.inputmodel.get_modeldata(modelpath, derived_cols=["vel_r_min_kmps", "vel_r_max_kmps"])[0].collect()
+    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    modeldata = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("vel_r_min_kmps", "vel_r_max_kmps")
+        .collect()
+    )
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)

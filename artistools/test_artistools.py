@@ -490,6 +490,24 @@ def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
+def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
+    """A rank writes the transitions of every cell that its packets reach, not only of its own cells."""
+    for filename in ("model.txt", "estimators_0000.out", "macroatom_0000.out.xz"):
+        (tmp_path / filename).symlink_to(modelpath / filename)
+    inputlines = (modelpath / "input.txt").read_text(encoding="utf-8").split("\n")
+    # line 22 of input.txt gives the number of MPI ranks
+    inputlines[21] = "2"
+    (tmp_path / "input.txt").write_text("\n".join(inputlines), encoding="utf-8")
+
+    dfrank0 = at.read_wsv(modelpath / "macroatom_0000.out.xz").filter(
+        (pl.col("modelgridindex") == 0) & (pl.col("timestep") == 10)
+    )
+    dfrank0.head(7).write_csv(tmp_path / "macroatom_0001.out", separator=" ")
+
+    dfallranks = at.macroatom.read_files(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
+    assert dfallranks.height == dfrank0.height + 7
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @pytest.mark.benchmark
@@ -655,6 +673,21 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("He") == 2
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
+
+    # the free neutron is "n1", and a title-case lookup gave nitrogen for it
+    assert at.get_atomic_number("X_n1") == 0
+    assert at.get_z_a_nucname("X_n1") == (0, 1)
+    assert at.get_z_a_nucname("n1") == (0, 1)
+    # a symbol is not case sensitive, thus every other "n" is nitrogen
+    assert at.get_atomic_number("n") == 7
+    assert at.get_atomic_number("N") == 7
+    assert at.get_atomic_number("X_N14") == 7
+    assert at.get_z_a_nucname("X_N14") == (7, 14)
+    assert at.get_z_a_nucname("n14") == (7, 14)
+    assert at.get_ion_tuple("nII") == (7, 2)
+
+    # a symbol that the caller gave in the wrong case still resolves
+    assert at.get_atomic_number("fe") == 26
 
     assert at.get_elsymbol(26) == "Fe"
     assert at.get_elsymbol(28) == "Ni"
@@ -1134,7 +1167,7 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     dftransitions, ionlist = at.transitions.get_kurucz_transitions()
 
-    assert ionlist == [at.transitions.IonTuple(44, 1)]
+    assert ionlist == [(44, 1)]
     assert len(dftransitions) == 1
     transition = dftransitions.row(0, named=True)
     assert transition["lambda_angstroms"] == pytest.approx(7155.170)
@@ -1213,6 +1246,37 @@ def test_linefluxes_default_timebins_use_each_models_timesteps() -> None:
     )
 
     pltest.assert_frame_equal(dflcdata_default, dflcdata_explicit)
+
+
+def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
+    """A packet between two bins that meet within rounding takes a bin, and a packet in a real gap takes none.
+
+    Each bin was [tstart, tstart + twidth), and timesteps.out gives six significant figures. A packet in the
+    rounding gap before the next start then had no bin, and the sums did not include it.
+    """
+    from artistools.linefluxes import get_timebin_expr
+
+    dftimes = pl.DataFrame({"t": [0.9, 1.0, 1.999995, 2.0, 2.9999, 3.0, 3.5, 4.0, 5.0, 5.1]})
+    timebins = dftimes.select(get_timebin_expr(pl.col("t"), [1.0, 2.0, 4.0], [1.99999, 3.0, 5.0]))
+    assert timebins.to_series().to_list() == [None, 0, 0, 1, 1, None, None, 2, 2, None]
+
+
+def test_linefluxes_from_pops_reads_the_shell_velocities() -> None:
+    """The luminosity from the populations needs the inner and the outer velocity of each shell of a 1D model."""
+    from artistools.linefluxes import FeatureTuple
+    from artistools.linefluxes import get_line_luminosities_from_pops
+
+    # the test model has no linestat.out, thus the feature names its one Fe II transition directly
+    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
+    # timestep 10 is the one timestep with NLTE populations in the test model
+    dflcdata = get_line_luminosities_from_pops(
+        emfeatures,
+        modelpath,
+        arr_tstart=[at.get_timestep_times(modelpath, loc="start")[10]],
+        arr_tend=[at.get_timestep_times(modelpath, loc="end")[10]],
+    )
+    assert dflcdata.height == 1
+    assert dflcdata["Fe II 1-0"].item() > 0.0
 
 
 def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
@@ -2574,3 +2638,37 @@ def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> N
     """An empty timestep list wrote files that hold a header and no data."""
     with pytest.raises(ValueError, match="selected_timesteps"):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
+
+
+def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
+    """The format labels the neutral stage 0, thus the stages below the lowest ion of an element hold zero.
+
+    The header gave each column its ARTIS ion stage, which is 1 for the neutral stage, thus Co II took the label co2.
+    """
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=list(range(10))
+    )
+
+    ionfracfiles = sorted(tmp_path.glob("ionfrac_*_artisnebular.txt"))
+    assert ionfracfiles, "the run wrote no ion fraction file"
+
+    elementlist = at.get_composition_data(modelpath)
+    lowermost_of_elsymbol = {
+        at.get_elsymbol(row["Z"]).lower(): row["lowermost_ion_stage"] for row in elementlist.iter_rows(named=True)
+    }
+    assert any(lowermost > 1 for lowermost in lowermost_of_elsymbol.values())
+
+    for ionfracfile in ionfracfiles:
+        elsymbol = ionfracfile.name.split("_")[1]
+        lines = ionfracfile.read_text(encoding="utf-8").splitlines()
+        nstages = int(next(line for line in lines if line.startswith("#NSTAGES:")).split()[1])
+        headers = [line for line in lines if line.startswith("#vel_mid")]
+        assert headers
+        for header in headers:
+            assert header.split()[1:] == [f"{elsymbol}{stage}" for stage in range(nstages)]
+
+        datarows = [line.split()[1:] for line in lines if not line.startswith("#")]
+        assert datarows
+        for row in datarows:
+            assert len(row) == nstages
+            assert all(float(value) == 0.0 for value in row[: lowermost_of_elsymbol[elsymbol] - 1])

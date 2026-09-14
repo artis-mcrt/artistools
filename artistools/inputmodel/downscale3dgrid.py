@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 import artistools as at
 from artistools.constants import day_to_s
@@ -40,7 +41,7 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = at.get_modeldata(modelpath)
-    dfmodel = pldfmodel.collect()
+    dfmodel = pldfmodel.select("rho", cs.starts_with("X_")).collect()
     dfelemabund = at.inputmodel.get_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
