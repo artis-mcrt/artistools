@@ -56,8 +56,15 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         modelpath, get_elemabundances=not args.noabund, printwarningsonly=False
     )
 
+    # the collect below keeps the dataframe in memory, thus the derived columns that no step reads go first
+    unreadderivedcols = at.inputmodel.get_derived_column_names(modelmeta["dimensions"]) - {
+        "rho",
+        "mass_g",
+        "vel_r_mid",
+        "kinetic_en_erg",
+    }
     # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.starts_with("X_n"), strict=False)
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.starts_with("X_n"), *unreadderivedcols, strict=False)
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"), strict=False)

@@ -4,6 +4,8 @@ import typing as t
 from functools import lru_cache
 from pathlib import Path
 
+import polars.selectors as cs
+
 import artistools as at
 from artistools.misc import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -114,7 +116,10 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     The cache serves the no-data report, which reads the run a second time. Do not change the dict
     that this function returns.
     """
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    # only a 1D model reads the outer velocity of each cell
+    modeldata = (
+        at.inputmodel.get_modeldata(modelpath)[0].select(cs.by_name("vel_r_max_kmps", require_all=False)).collect()
+    )
     estimfiles = get_classic_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")

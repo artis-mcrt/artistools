@@ -476,7 +476,7 @@ def plot_levelpop(
 
     at.plottools.set_exponent_label(ax)
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_min_kmps", "vel_r_max_kmps", "volume").collect()
 
     adata = at.atomic.get_levels(modelpath)
 

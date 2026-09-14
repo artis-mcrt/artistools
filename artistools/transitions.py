@@ -343,7 +343,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     )
     assert timestep is not None, "-timestep holds a default, thus it names a timestep"
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+    modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
     modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
     estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:

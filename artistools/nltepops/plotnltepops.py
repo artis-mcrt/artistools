@@ -173,7 +173,7 @@ def get_floers_data(
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+            modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
             vel_outer = modeldata["vel_r_max_kmps"].item(modelgridindex)
             print(f"  Reading {floersmultizonefilename} for vel_outer {vel_outer} and Te {T_e}")
             dffloers = pl.read_csv(floersmultizonefilename).filter((pl.col("vel_outer") - vel_outer).abs() < 0.5)
@@ -542,7 +542,7 @@ def plot_populations_with_time_or_velocity(
         modelgridindex_list = [modelgridindex] * len(timesteps)
 
     if args.x == "velocity":
-        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].collect()
+        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].select("vel_r_max_kmps").collect()
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 

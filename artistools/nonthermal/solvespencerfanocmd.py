@@ -209,7 +209,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     "no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last"
                 )
 
-        modeldata = at.inputmodel.get_modeldata(modelpath)[0].collect()
+        modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
