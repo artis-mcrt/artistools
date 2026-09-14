@@ -4,8 +4,6 @@ import typing as t
 from functools import lru_cache
 from pathlib import Path
 
-import polars.selectors as cs
-
 import artistools as at
 from artistools.misc import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -116,10 +114,6 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     The cache serves the no-data report, which reads the run a second time. Do not change the dict
     that this function returns.
     """
-    # only a 1D model reads the outer velocity of each cell
-    modeldata = (
-        at.inputmodel.get_modeldata(modelpath)[0].select(cs.by_name("vel_r_max_kmps", require_all=False)).collect()
-    )
     estimfiles = get_classic_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")
@@ -131,6 +125,12 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
 
     inputparams = at.get_inputparams(modelpath)
     ndimensions = inputparams["n_dimensions"]
+    # only a 1D model gives the outer velocity of each cell
+    vel_r_max_kmps = (
+        at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect().to_series()
+        if ndimensions == 1
+        else None
+    )
 
     estimators: dict[tuple[int, int], t.Any] = {}
     # a classic estimator file numbers its timesteps from zero, thus a folder of a restarted run needs
@@ -183,8 +183,8 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
                 folderofkey[timestep, modelgridindex] = estfilepath.parent
                 estimators[timestep, modelgridindex] = estimcell
 
-                if ndimensions == 1:
-                    estimcell["vel_r_max_kmps"] = modeldata["vel_r_max_kmps"][modelgridindex]
+                if vel_r_max_kmps is not None:
+                    estimcell["vel_r_max_kmps"] = vel_r_max_kmps[modelgridindex]
 
                 estimcell["TR"] = float(row[1])
                 estimcell["Te"] = float(row[2])

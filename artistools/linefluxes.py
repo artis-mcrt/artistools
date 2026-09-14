@@ -207,7 +207,13 @@ def get_line_luminosities_from_pops(
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
     _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_min_kmps", "vel_r_max_kmps").collect()
+    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    modeldata = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("vel_r_min_kmps", "vel_r_max_kmps")
+        .collect()
+    )
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)

@@ -588,6 +588,12 @@ def min_abs_coordinate(ax: str) -> pl.Expr:
     return pl.when(pos_min * pos_max < 0.0).then(pl.lit(0.0)).otherwise(pl.min_horizontal(pos_min.abs(), pos_max.abs()))
 
 
+# the clamp at -99 matches save_modeldata, which treats -99 as the empty-cell marker. A plain log10() gives -inf for
+# rho == 0, which cannot go into model.txt
+LOGRHO_FROM_RHO = pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
+RHO_FROM_LOGRHO = pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
+
+
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
     """Add each column that follows from the columns of the model file, e.g. the volume and the mass of each cell.
 
@@ -602,20 +608,11 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     dimensions = modelmeta["dimensions"]
 
-    # the model file gives the density as logrho in 1D and as rho in 2D and 3D. That column is the source of the other
-    # one. A dataframe that holds only the other one gets the file column first
-    logrho_from_rho = pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
-    rho_from_logrho = pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
-    if dimensions == 1:
-        if "logrho" not in original_cols:
-            dfmodel = dfmodel.with_columns(logrho=logrho_from_rho)
-        dfmodel = dfmodel.with_columns(rho=rho_from_logrho)
-    else:
-        if "rho" not in original_cols:
-            dfmodel = dfmodel.with_columns(rho=rho_from_logrho)
-        # the clamp at -99 matches save_modeldata, which treats -99 as the empty-cell marker. A plain log10() gives
-        # -inf for rho == 0, which cannot go into model.txt
-        dfmodel = dfmodel.with_columns(logrho=logrho_from_rho)
+    # rho is the source of logrho, because a caller changes the density as rho. A 1D model file gives logrho only,
+    # thus a dataframe without rho gets it from logrho first
+    if "rho" not in original_cols:
+        dfmodel = dfmodel.with_columns(rho=RHO_FROM_LOGRHO)
+    dfmodel = dfmodel.with_columns(logrho=LOGRHO_FROM_RHO)
 
     axes: list[str] = []
     match dimensions:
@@ -877,7 +874,7 @@ def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-    extracols: Sequence[str] = ("Ye", "q", "tracercount"),
+    extracols: Sequence[str] = (),
     **kwargs: t.Any,
 ) -> None:
     """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
@@ -897,8 +894,9 @@ def save_modeldata(
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
 
-    model.txt gets the standard columns, each X_ column, and each column of extracols that dfmodel holds. It gets no
-    other column, e.g. no derived column from get_modeldata.
+    model.txt gets the standard columns, each X_ column, and the custom columns that ARTIS reads (Ye, q, and
+    tracercount) if dfmodel holds them. A caller names each other custom column in extracols. model.txt gets no
+    other column, e.g. no derived column.
     """
     assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
     colnames_in = dfmodel.collect_schema().names()
@@ -924,8 +922,6 @@ def save_modeldata(
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
-    if modelmeta["dimensions"] == 3:
-        dfmodel = dfmodel.rename({"gridindex": "inputcellid"}, strict=False)
     colnames = dfmodel.collect_schema().names()
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
@@ -933,8 +929,9 @@ def save_modeldata(
     standardcols = get_standard_columns(
         modelmeta["dimensions"], includenico57=("X_Ni57" in colnames or "X_Co57" in colnames)
     )
+    writtencustomcols = {"Ye", "q", "tracercount", *extracols}
     customcols = sorted(
-        (col for col in colnames if col not in standardcols and (col.startswith("X_") or col in extracols)),
+        (col for col in colnames if col not in standardcols and (col.startswith("X_") or col in writtencustomcols)),
         key=customcolsortkey,
     )
 
@@ -1308,15 +1305,13 @@ def dimension_reduce_model(
 
     dfmodel_out = (
         add_derived_cols_to_modeldata(dfmodel_out, modelmeta=modelmeta_out)
-        .select(*dfmodel_out.collect_schema().names(), "volume")
+        .select(cs.by_name(dfmodel_out.collect_schema().names()) | cs.by_name("volume"))
         .with_columns(rho=pl.col("out_mass_g") / pl.col("volume"))
         .drop("volume", cs.starts_with("out_n_"))
         .rename({"out_mass_g": "mass_g"})
     )
     if outputdimensions < 2:
-        dfmodel_out = dfmodel_out.with_columns(
-            logrho=pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col("rho").log10())).otherwise(-99.0)
-        ).drop("rho")
+        dfmodel_out = dfmodel_out.with_columns(logrho=LOGRHO_FROM_RHO).drop("rho")
 
     modelmeta_out["npts_model"] = dfmodel_out.select(pl.len()).collect().item()
     assert modelmeta_out["npts_model"] == ncoordgridr * ncoordgridz

@@ -148,7 +148,9 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     dfmodel = (
         at
         .add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
-        .select(cs.by_name(lzdfmodel.collect_schema().names()) | cs.starts_with("pos_"))
+        .select(
+            cs.by_name(lzdfmodel.collect_schema().names()) | (cs.starts_with("pos_") & cs.ends_with("_min", "_max"))
+        )
         .collect()
     )
 

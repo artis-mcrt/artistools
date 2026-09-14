@@ -477,10 +477,11 @@ def plot_levelpop(
     at.plottools.set_exponent_label(ax)
 
     lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
     modeldata = (
         at.inputmodel
         .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .select("vel_r_min_kmps", "vel_r_max_kmps", "volume")
+        .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
         .collect()
     )
 

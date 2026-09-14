@@ -1687,14 +1687,9 @@ def test_save_load_3d_model() -> None:
     # first load will be from text, second from parquet
     for _ in (0, 1):
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
-        # the reader also gives the derived columns, which the written dataframe does not hold
+        assert set(dfmodel_loaded.collect_schema().names()) == set(dfmodel.columns)
         pltest.assert_frame_equal(
-            dfmodel,
-            dfmodel_loaded.select(dfmodel.columns).collect(),
-            check_column_order=False,
-            check_dtypes=False,
-            rel_tol=1e-4,
-            abs_tol=1e-4,
+            dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4
         )
         assert modelmeta == modelmeta_loaded
 
@@ -2488,8 +2483,7 @@ def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> Non
 def test_add_derived_cols_calculates_each_column_again(sourcemodelpath: Path) -> None:
     """A second call after a change to the density gives current values, and it adds no column."""
     lzdfmodel, modelmeta = get_derived_modeldata(sourcemodelpath)
-    tentimesdensity = pl.col("logrho") + 1.0 if modelmeta["dimensions"] == 1 else pl.col("rho") * 10.0
-    lzdfmodel_changed = lzdfmodel.with_columns(tentimesdensity)
+    lzdfmodel_changed = lzdfmodel.with_columns(pl.col("rho") * 10.0)
     lzdfmodel_derivedagain = at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel_changed, modelmeta=modelmeta)
 
     assert lzdfmodel_derivedagain.collect_schema().names() == lzdfmodel.collect_schema().names()
@@ -2501,12 +2495,49 @@ def test_add_derived_cols_calculates_each_column_again(sourcemodelpath: Path) ->
 
 def test_add_derived_cols_recalculates_the_inner_velocity_of_a_1d_shell() -> None:
     """A change to the outer velocities must also change the inner velocities, which come from the row before."""
-    lzdfmodel, modelmeta = get_derived_modeldata(modelpath)
+    modelmeta = {"dimensions": 1, "t_model_init_days": 1.0}
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2, 3],
+        "vel_r_max_kmps": [1000.0, 2000.0, 3000.0],
+        "logrho": [-10.0] * 3,
+    })
+    lzdfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
     lzdfmodel_stretched = at.inputmodel.add_derived_cols_to_modeldata(
         lzdfmodel.with_columns(pl.col("vel_r_max_kmps") * 2.0), modelmeta=modelmeta
     )
     dfvelocities = lzdfmodel_stretched.select("vel_r_min_kmps", "vel_r_max_kmps").collect()
     assert dfvelocities["vel_r_min_kmps"].to_list() == [0.0, *dfvelocities["vel_r_max_kmps"].to_list()[:-1]]
+
+
+def test_add_derived_cols_before_a_filter_keeps_the_inner_velocity_of_a_1d_shell() -> None:
+    """A filter after the derivation keeps the inner velocity of a shell, which comes from the row before."""
+    modelmeta = {"dimensions": 1, "t_model_init_days": 1.0}
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2, 3],
+        "vel_r_max_kmps": [1000.0, 2000.0, 3000.0],
+        "logrho": [-10.0, -99.0, -10.0],
+    })
+    dfshells = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        .filter(pl.col("logrho") > -98)
+        .select("inputcellid", "vel_r_min_kmps")
+        .collect()
+    )
+    assert dfshells["vel_r_min_kmps"].to_list() == [0.0, 2000.0]
+
+
+def test_dimension_reduce_takes_a_model_with_a_volume_column() -> None:
+    """A dataframe that already holds volume, e.g. from an earlier derivation, must reduce without an error."""
+    lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
+    dfmodel_out, _, _, _ = at.inputmodel.dimension_reduce_model(
+        dfmodel=lzdfmodel.select(
+            cs.by_name(at.inputmodel.get_modeldata(modelpath_3d)[0].collect_schema().names()) | cs.by_name("volume")
+        ),
+        outputdimensions=1,
+        modelmeta=modelmeta.copy(),
+    )
+    assert "volume" not in dfmodel_out.columns
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
@@ -2533,12 +2564,13 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
 
 
 @pytest.mark.parametrize(
-    ("extracols", "expectedcustomcols"), [(None, ["Ye", "tracercount"]), (["mycolumn", "Ye"], ["Ye", "mycolumn"])]
+    ("extracols", "expectedcustomcols"),
+    [(None, ["Ye", "tracercount"]), (["mycolumn"], ["Ye", "tracercount", "mycolumn"])],
 )
 def test_save_modeldata_writes_the_extra_columns(
     extracols: list[str] | None, expectedcustomcols: list[str], tmp_path: Path
 ) -> None:
-    """model.txt gets Ye, q, and tracercount by default, and it gets a different custom column only if a caller names it.
+    """model.txt always gets Ye, q, and tracercount. It gets a different custom column only if a caller names it.
 
     The custom columns keep the order of the dataframe.
     """

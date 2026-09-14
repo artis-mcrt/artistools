@@ -1261,6 +1261,24 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
     assert timebins.to_series().to_list() == [None, 0, 0, 1, 1, None, None, 2, 2, None]
 
 
+def test_linefluxes_from_pops_reads_the_shell_velocities() -> None:
+    """The luminosity from the populations needs the inner and the outer velocity of each shell of a 1D model."""
+    from artistools.linefluxes import FeatureTuple
+    from artistools.linefluxes import get_line_luminosities_from_pops
+
+    # the test model has no linestat.out, thus the feature names its one Fe II transition directly
+    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
+    # timestep 10 is the one timestep with NLTE populations in the test model
+    dflcdata = get_line_luminosities_from_pops(
+        emfeatures,
+        modelpath,
+        arr_tstart=[at.get_timestep_times(modelpath, loc="start")[10]],
+        arr_tend=[at.get_timestep_times(modelpath, loc="end")[10]],
+    )
+    assert dflcdata.height == 1
+    assert dflcdata["Fe II 1-0"].item() > 0.0
+
+
 def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
     """The vectorised sum over the lines and the cells must give what the loop over each cell gave.
 
