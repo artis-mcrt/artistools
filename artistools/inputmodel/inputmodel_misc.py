@@ -893,6 +893,7 @@ def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
     modelmeta: dict[str, t.Any] | None = None,
+    extracols: Sequence[str] = ("Ye", "q", "tracercount"),
     **kwargs: t.Any,
 ) -> None:
     """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
@@ -911,6 +912,9 @@ def save_modeldata(
     -------
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
+
+    model.txt gets the standard columns, each X_ column, and each column of extracols that dfmodel holds. It gets no
+    other column, e.g. no derived column from get_modeldata.
     """
     assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
     colnames_in = dfmodel.collect_schema().names()
@@ -936,15 +940,29 @@ def save_modeldata(
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
-    # model.txt holds no derived column of any dimension, no pos_ or vel_ column other than the standard ones, and the
-    # density in one form. The drop comes before the collect, thus a lazy query does not calculate the dropped columns
-    derivedcols = {col for dimensions in (1, 2, 3) for col in get_derived_column_names(dimensions)}
-    columnsnotinfile = (
-        cs.by_name("modelgridindex", *derivedcols, require_all=False)
-        | cs.starts_with("pos_", "vel_")
-        | cs.by_name("rho", "logrho", require_all=False)
-    ) - cs.by_name(get_standard_columns(modelmeta["dimensions"]), require_all=False)
-    dfmodel = dfmodel.lazy().drop(columnsnotinfile).collect()
+    if modelmeta["dimensions"] == 3:
+        dfmodel = dfmodel.rename({"gridindex": "inputcellid"}, strict=False)
+    colnames = dfmodel.collect_schema().names()
+
+    # the Ni57 and Co57 columns are optional, but their position counts. They must come before
+    # every other custom column
+    standardcols = get_standard_columns(
+        modelmeta["dimensions"], includenico57=("X_Ni57" in colnames or "X_Co57" in colnames)
+    )
+    customcols = sorted(
+        (col for col in colnames if col not in standardcols and (col.startswith("X_") or col in extracols)),
+        key=customcolsortkey,
+    )
+
+    # the select comes before the collect, thus a lazy query does not calculate the columns that model.txt does not get
+    dfmodel = (
+        dfmodel
+        .lazy()
+        .with_columns(pl.lit(0.0).alias(col) for col in standardcols if col.startswith("X_") and col not in colnames)
+        .select(*standardcols, *customcols)
+        .with_columns(pl.col("inputcellid").cast(pl.Int32))
+        .collect()
+    )
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
@@ -961,26 +979,9 @@ def save_modeldata(
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == dfmodel_npts_model
 
     elif modelmeta["dimensions"] == 3:
-        dfmodel = dfmodel.rename({"gridindex": "inputcellid"}, strict=False)
         griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
         print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
         assert griddimension**3 == dfmodel_npts_model
-
-    # the Ni57 and Co57 columns are optional, but their position counts. They must come before
-    # every other custom column
-    standardcols = get_standard_columns(
-        modelmeta["dimensions"],
-        includenico57=("X_Ni57" in dfmodel.collect_schema().names() or "X_Co57" in dfmodel.collect_schema().names()),
-    )
-
-    # set missing radioabundance columns to zero
-    for col in standardcols:
-        if col not in dfmodel.collect_schema().names() and col.startswith("X_"):
-            dfmodel = dfmodel.with_columns(pl.lit(0.0).alias(col))
-
-    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
-    customcols = [col for col in dfmodel.collect_schema().names() if col not in standardcols]
-    customcols.sort(key=customcolsortkey)
 
     modelfilepath = resolve_outputfile(outpath, "model.txt")
 

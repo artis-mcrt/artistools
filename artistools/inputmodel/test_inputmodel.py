@@ -2503,6 +2503,37 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
     pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
 
+@pytest.mark.parametrize(
+    ("extracols", "expectedcustomcols"), [(None, ["Ye", "tracercount"]), (["mycolumn", "Ye"], ["Ye", "mycolumn"])]
+)
+def test_save_modeldata_writes_the_extra_columns(
+    extracols: list[str] | None, expectedcustomcols: list[str], tmp_path: Path
+) -> None:
+    """model.txt gets Ye, q, and tracercount by default, and it gets a different custom column only if a caller names it.
+
+    The custom columns keep the order of the dataframe.
+    """
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-10.0, -11.0],
+        "X_Fegroup": [1.0, 1.0],
+        "X_Ni56": [0.5, 0.4],
+        "X_Sr89": [0.1, 0.2],
+        "Ye": [0.3, 0.4],
+        "tracercount": [3, 4],
+        "mycolumn": [5.0, 6.0],
+    })
+    extracolsarg = {} if extracols is None else {"extracols": extracols}
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
+    )
+
+    lzdfmodel_written, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(tmp_path / "model.txt")
+    standardcols = at.inputmodel.inputmodel_misc.get_standard_columns(1)
+    assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
+
+
 @pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
 def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, outputdimensions: int) -> None:
     """A model can give rho in place of logrho, or logrho in place of rho, and the reduction makes the other one."""

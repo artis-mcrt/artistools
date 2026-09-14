@@ -664,13 +664,21 @@ def map_to_artis(
                 "t_model_init_days": t_model_init_s / day_to_s,
                 "vmax_cmps": vmax_on_c * CLIGHT,
             }
+            # the files for the consistency check also hold bin_state, which selects the cells of the dynamical ejecta
+            dyn_extracols = ("Ye", "q", "tracercount", "bin_state")
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_notrescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_notrescaled.txt"),
+                extracols=dyn_extracols,
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
             at.inputmodel.save_modeldata(
-                dfmodel=dyn_model, modelmeta=dyn_modelmeta, outpath=Path("dyn_model_rescaled.txt")
+                dfmodel=dyn_model,
+                modelmeta=dyn_modelmeta,
+                outpath=Path("dyn_model_rescaled.txt"),
+                extracols=dyn_extracols,
             )
 
             # mass fractions, avoid looping
