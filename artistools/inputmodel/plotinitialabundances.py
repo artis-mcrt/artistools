@@ -17,42 +17,64 @@ from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
+# The model columns are Float32. Float32 rounds a value, thus a cell on a bound can move to the other side of
+# the bound. The measured errors are 6e-8 in velocity and 8e-6 degrees in angle, thus these tolerances give a margin.
+VELOCITY_RTOL = 1e-6
+POLAR_ANGLE_ATOL_DEG = 1e-4
 
-def filter_model_cells(
-    dfmodel: pl.LazyFrame,
-    modelmeta: dict[str, t.Any],
-    vmin: float | None = None,
-    vmax: float | None = None,
-    thetamin: float | None = None,
-    thetamax: float | None = None,
-) -> pl.LazyFrame:
-    """Keep the cells whose mid-point velocity [c] and polar angle [degrees] are inside the given ranges.
 
-    Call add_derived_cols_to_modeldata first, because this function reads the vel_*_on_c columns. The
-    positive z axis gives a polar angle of zero. A cell at the origin has no polar angle, thus an angle
-    range excludes it. A 1D model has no polar angle, thus an angle range on a 1D model raises an error.
+def get_selection_labels(
+    vmin: float | None = None, vmax: float | None = None, thetamin: float | None = None, thetamax: float | None = None
+) -> list[str]:
+    """Return a label for each given bound, e.g. vmin=0.02.
+
+    The label holds the shortest text that gives the same float again. Two different bounds then give two
+    different file names.
     """
-    if vmin is not None:
-        dfmodel = dfmodel.filter(pl.col("vel_r_mid_on_c") >= vmin)
-    if vmax is not None:
-        dfmodel = dfmodel.filter(pl.col("vel_r_mid_on_c") <= vmax)
+    bounds = {"vmin": vmin, "vmax": vmax, "thetamin": thetamin, "thetamax": thetamax}
+    return [f"{name}={value!r}" for name, value in bounds.items() if value is not None]
 
-    if thetamin is thetamax is None:
-        return dfmodel
 
-    if modelmeta["dimensions"] == 1:
-        msg = "-thetamin and -thetamax need a 2D or 3D model, but the model is 1D"
+def get_cell_selection(
+    vmin: float | None = None, vmax: float | None = None, thetamin: float | None = None, thetamax: float | None = None
+) -> pl.Expr:
+    """Return a selection that is true for a cell in the velocity range [c] and the polar angle range [degrees].
+
+    The selection reads the columns vel_r_mid_on_c and vel_z_mid_on_c. Call add_derived_cols_to_modeldata first.
+    The positive z axis gives a polar angle of zero. A cell at the origin has no polar angle, thus a polar angle
+    range excludes it. Both ends of a range are inside the range. A cell on a bound stays inside, because the
+    tolerances are larger than the Float32 error.
+    """
+    if vmin is not None and vmax is not None and vmin > vmax:
+        msg = f"vmin must be less than or equal to vmax, but vmin={vmin:g} and vmax={vmax:g}"
         raise ValueError(msg)
+    if thetamin is not None and thetamax is not None and thetamin > thetamax:
+        msg = f"thetamin must be less than or equal to thetamax, but thetamin={thetamin:g} and thetamax={thetamax:g}"
+        raise ValueError(msg)
+    for name, theta in (("thetamin", thetamin), ("thetamax", thetamax)):
+        if theta is not None and not 0.0 <= theta <= 180.0:
+            msg = f"{name} must be between 0 and 180 degrees, but {name}={theta:g}"
+            raise ValueError(msg)
 
-    # polars orders NaN above each finite value, thus the angle 0 / 0 of a cell at the origin needs its own test
-    dfmodel = dfmodel.filter(pl.col("vel_r_mid_on_c") > 0.0)
-    theta_deg = (pl.col("vel_z_mid_on_c") / pl.col("vel_r_mid_on_c")).arccos().degrees()
-    if thetamin is not None:
-        dfmodel = dfmodel.filter(theta_deg >= thetamin)
-    if thetamax is not None:
-        dfmodel = dfmodel.filter(theta_deg <= thetamax)
+    vel_r = pl.col("vel_r_mid_on_c")
+    conditions: list[pl.Expr] = []
+    if vmin is not None:
+        conditions.append(vel_r >= vmin * (1.0 - VELOCITY_RTOL))
+    if vmax is not None:
+        conditions.append(vel_r <= vmax * (1.0 + VELOCITY_RTOL))
 
-    return dfmodel
+    if thetamin is not None or thetamax is not None:
+        # a cell at the origin has a null angle, and each comparison with a null gives false
+        theta_deg = pl.when(vel_r > 0.0).then(pl.col("vel_z_mid_on_c") / vel_r).arccos().degrees()
+        if thetamin is not None:
+            conditions.append(theta_deg >= thetamin - POLAR_ANGLE_ATOL_DEG)
+        if thetamax is not None:
+            conditions.append(theta_deg <= thetamax + POLAR_ANGLE_ATOL_DEG)
+
+    if not conditions:
+        return pl.repeat(value=True, n=pl.len())
+
+    return pl.all_horizontal(conditions).fill_null(value=False)
 
 
 def get_nuclide_massfractions(
@@ -64,58 +86,74 @@ def get_nuclide_massfractions(
 ) -> pl.DataFrame:
     """Return the mass-weighted mass fraction and number abundance of each nuclide in the selected cells."""
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath=modelpath)
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
-    dfmodel = filter_model_cells(dfmodel, modelmeta, vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
-
-    # one collect gives the mass-weighted sums and the total mass, thus the model scan runs one time
-    dfsums = dfmodel.select(
-        cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(pl.col("mass_g")), mass_g=pl.col("mass_g").sum()
-    ).collect()
-
-    # a selection with no cell would give 0 / 0 = NaN for every nuclide and a blank plot
-    if dfsums["mass_g"].item() == 0.0:
-        msg = f"No cell of {modelpath} is inside the velocity range and the polar angle range"
+    if modelmeta["dimensions"] == 1 and (thetamin is not None or thetamax is not None):
+        msg = f"A polar angle range needs a 2D or 3D model, but {modelpath} is 1D"
         raise ValueError(msg)
 
-    return (
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+
+    # A weight of zero in place of a row filter prevents a copy of every nuclide column. One collect gives
+    # the mass-weighted sums, the total mass, and the cell count in one scan of the model.
+    selected = get_cell_selection(vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax)
+    weight = pl.when(selected).then(pl.col("mass_g")).otherwise(0.0)
+    dfsums = dfmodel.select(
+        cs.matches(r"^X_[A-Z][a-z]?\d+$").dot(weight), mass_g=weight.sum(), ncells=selected.sum()
+    ).collect()
+
+    selection = ", ".join(get_selection_labels(vmin=vmin, vmax=vmax, thetamin=thetamin, thetamax=thetamax))
+    ncells = dfsums["ncells"].item()
+    if ncells == 0:
+        msg = f"Every cell of {modelpath} is outside the selection ({selection})"
+        raise ValueError(msg)
+
+    # a selection of empty cells would give 0 / 0 = NaN for every nuclide and a blank plot
+    if dfsums["mass_g"].item() == 0.0:
+        msg = f"The {ncells} selected cells of {modelpath} hold no mass ({selection or 'all cells'})"
+        raise ValueError(msg)
+
+    dfnuclides = (
         dfsums
-        .select(cs.exclude("mass_g") / pl.col("mass_g"))
+        .select(cs.exclude("mass_g", "ncells") / pl.col("mass_g"))
         .unpivot(variable_name="nuclide", value_name="massfraction")
         # split X_Ni56 into its element symbol and mass number, then a join with the element table gives Z
-        .with_columns(
-            elsymbol=pl.col("nuclide").str.extract(r"^X_([A-Z][a-z]?)\d+$"),
-            A=pl.col("nuclide").str.extract(r"^X_[A-Z][a-z]?(\d+)$").cast(pl.Int32),
-        )
+        .with_columns(pl.col("nuclide").str.extract_groups(r"^X_(?<elsymbol>[A-Z][a-z]?)(?<A>\d+)$").struct.unnest())
+        .with_columns(pl.col("A").cast(pl.Int32))
         .join(at.get_elsymbols_df().collect(), on="elsymbol", how="left", maintain_order="left")
         .rename({"atomic_number": "Z"})
         .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
     )
+
+    # The join replaced the assert in get_atomic_number. Without this test, an unknown symbol keeps a null Z,
+    # and the plot shows a stray bin.
+    if unknown := dfnuclides.filter(pl.col("Z").is_null())["elsymbol"].unique().to_list():
+        msg = f"Unknown element symbols in {modelpath}: {unknown}"
+        raise ValueError(msg)
+
+    massfracsum = dfnuclides["massfraction"].sum()
+    if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
+        print_warning(f"mass fractions for model {modelpath} sum to {massfracsum:.3f} instead of 1.0.")
+
+    return dfnuclides
 
 
 def make_plot(args: argparse.Namespace) -> None:
     """Plot the mass-weighted abundances of every model in args.modelpath and save the figure."""
     args.xaxis = {"Z": "atomicnumber", "A": "massnumber"}.get(args.xaxis, args.xaxis)
 
+    # Read every model before the code makes the figure. An error in the data then occurs while no figure is open.
+    dfmodels = [
+        get_nuclide_massfractions(
+            Path(model_path), vmin=args.vmin, vmax=args.vmax, thetamin=args.thetamin, thetamax=args.thetamax
+        )
+        for model_path in args.modelpath
+    ]
+
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
-    for model_path in args.modelpath:
-        df = get_nuclide_massfractions(
-            Path(model_path), vmin=args.vmin, vmax=args.vmax, thetamin=args.thetamin, thetamax=args.thetamax
-        )
-
-        # the join replaced get_atomic_number's assert, so an unrecognised symbol would otherwise leave a null Z
-        # and be plotted as a stray bin instead of raising
-        if unknown := df.filter(pl.col("Z").is_null())["elsymbol"].unique().to_list():
-            msg = f"Unknown element symbols in {model_path}: {unknown}"
-            raise ValueError(msg)
-
-        massfracsum = df["massfraction"].sum()
-        if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
-            print_warning(f"mass fractions for model {model_path} sum to {massfracsum:.3f} instead of 1.0.")
-
+    for model_path, dfnuclides in zip(args.modelpath, dfmodels, strict=True):
         df = (
-            df
+            dfnuclides
             .select(
                 xvalue="A" if args.xaxis == "massnumber" else "Z",
                 yvalue="massfraction" if args.yaxis == "massfraction" else "abundance",
@@ -134,11 +172,19 @@ def make_plot(args: argparse.Namespace) -> None:
 
     ax.set_ylim(*((1e-5, 1.0) if args.yaxis == "massfraction" else (1e-7, 0.1)))
 
+    selectionlabels = get_selection_labels(
+        vmin=args.vmin, vmax=args.vmax, thetamin=args.thetamin, thetamax=args.thetamax
+    )
+    if selectionlabels:
+        ax.set_title(", ".join(selectionlabels))
+
     set_legend(ax, args)
 
     strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
-    outpath = at.resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}.pdf")
+    # the default file name records the selection, thus a second run with a range keeps the earlier figure
+    namesuffix = "".join(f"_{label.replace('=', '')}" for label in selectionlabels)
+    outpath = at.resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}{namesuffix}.pdf")
     save_figure(fig, outpath, args=args, dpi=300)
 
 
