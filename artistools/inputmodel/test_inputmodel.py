@@ -1970,12 +1970,13 @@ def write_2d_model(
     vmax_cmps: float,
     t_model_days: float,
     zshift: float = 0.0,
-    x_ni56_upper: float | None = None,
+    x_ni56_upper: float = 0.4,
 ) -> Path:
     """Write a 2D cylindrical model.txt whose cell midpoints follow the ARTIS grid definition.
 
-    The cells with a positive z take the Ni56 mass fraction x_ni56_upper. A test can then find the half of
-    the model that a filter kept.
+    The cells with a negative z take a Ni56 mass fraction of 0.4, and the cells with a positive z take
+    x_ni56_upper. A test that gives a different x_ni56_upper can then find the half of the model that a
+    selection kept.
     """
     t_model_s = t_model_days * at.constants.day_to_s
     wid_init_rcyl = vmax_cmps * t_model_s / ncoordgridrcyl
@@ -1988,7 +1989,7 @@ def write_2d_model(
         n_z = modelgridindex // ncoordgridrcyl
         pos_rcyl_mid = wid_init_rcyl * n_r + 0.5 * wid_init_rcyl
         pos_z_mid = -vmax_cmps * t_model_s + wid_init_z * n_z + 0.5 * wid_init_z + zshift
-        x_ni56 = x_ni56_upper if x_ni56_upper is not None and pos_z_mid > 0 else x_ni56_lower
+        x_ni56 = x_ni56_upper if pos_z_mid > 0 else x_ni56_lower
         lines.append(f"{modelgridindex + 1} {pos_rcyl_mid:.6e} {pos_z_mid:.6e} 1.0e-10 0.5 {x_ni56} 0.05 0.03 0.02")
 
     modelfile = modeldir / "model.txt"
@@ -2711,11 +2712,12 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
 
 
 def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_path: Path) -> None:
-    """A polar angle range keeps only the cells on that side of a 2D or 3D model, and a 1D model rejects it.
+    """A velocity range and a polar angle range select the expected cells of a 1D, a 2D, and a 3D model.
 
-    The polar angle needed the 2D column vel_rcyl_mid_on_c, thus a 3D model and a 1D model both failed with
-    ColumnNotFoundError. A selection with no cell gave NaN mass fractions and a blank plot.
+    A selection with no cell raises an error. A selection of empty cells raises a different error that
+    names the mass. A 1D model rejects a polar angle range.
     """
+    from artistools.inputmodel.plotinitialabundances import get_cell_selection
     from artistools.inputmodel.plotinitialabundances import get_nuclide_massfractions
 
     def massfrac_ni56(dfcells: pl.DataFrame) -> float:
@@ -2738,8 +2740,18 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     assert 0 < len(cellsslow) < len(dfmodel)
     assert np.isclose(selected_massfrac_ni56(dfslow), massfrac_ni56(cellsslow))
 
-    with pytest.raises(ValueError, match="No cell"):
+    with pytest.raises(ValueError, match=r"Every cell of .* is outside the selection \(vmin=0.5\)"):
         get_nuclide_massfractions(modelpath_classic_3d, vmin=0.5)
+
+    # the corner cells beyond 0.15 c are empty, thus the message must name the mass and not the range
+    assert len(dfmodel.filter(pl.col("vel_r_mid_on_c") >= 0.15)) > 0
+    with pytest.raises(ValueError, match=r"The 8 selected cells of .* hold no mass \(vmin=0.15\)"):
+        get_nuclide_massfractions(modelpath_classic_3d, vmin=0.15)
+
+    with pytest.raises(ValueError, match="vmin must be less than or equal to vmax"):
+        get_nuclide_massfractions(modelpath_classic_3d, vmin=0.1, vmax=0.01)
+    with pytest.raises(ValueError, match="thetamax must be between 0 and 180 degrees"):
+        get_nuclide_massfractions(modelpath_classic_3d, thetamax=190.0)
 
     modelpath_1d = testdatapath / "test-classicmode_1d"
     dfmodel_1d = get_derived_modeldata(modelpath_1d)[0].collect()
@@ -2747,7 +2759,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     cellsfast_1d = dfmodel_1d.filter(pl.col("vel_r_mid_on_c") >= 0.01)
     assert 0 < len(cellsfast_1d) < len(dfmodel_1d)
     assert np.isclose(selected_massfrac_ni56(dffast_1d), massfrac_ni56(cellsfast_1d))
-    with pytest.raises(ValueError, match="1D"):
+    with pytest.raises(ValueError, match=r"needs a 2D or 3D model, but .* is 1D"):
         get_nuclide_massfractions(modelpath_1d, thetamax=90.0)
 
     write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0, x_ni56_upper=0.1)
@@ -2761,18 +2773,56 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     assert 0 < len(cellsslow_2d) < len(dfmodel_2d)
     assert np.isclose(selected_massfrac_ni56(dfslow_2d), massfrac_ni56(cellsslow_2d))
 
-    # a 3 x 3 x 3 grid has a cell at the origin, which no angle range keeps
-    from artistools.inputmodel.plotinitialabundances import filter_model_cells
+    # a grid with an odd cell count on each axis has a cell at the origin. No polar angle range keeps that cell
+    dfmodel_origin, modelmeta_origin = at.inputmodel.get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
+    dfcells_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin).collect()
+    assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0.0)) == 1
+    assert len(dfcells_origin.filter(get_cell_selection())) == 27
+    assert len(dfcells_origin.filter(get_cell_selection(thetamin=0.0))) == 26
+    assert len(dfcells_origin.filter(get_cell_selection(thetamax=180.0))) == 26
 
-    modelmeta_origin = {"dimensions": 3, "t_model_init_days": 1.0, "wid_init": 1.0e9}
-    dfmodel_origin = pl.LazyFrame({
-        "inputcellid": list(range(1, 28)),
-        "pos_x_min": [-1.5e9 + (i % 3) * 1.0e9 for i in range(27)],
-        "pos_y_min": [-1.5e9 + (i // 3 % 3) * 1.0e9 for i in range(27)],
-        "pos_z_min": [-1.5e9 + (i // 9) * 1.0e9 for i in range(27)],
-        "rho": [1.0] * 27,
-    })
-    dfmodel_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin)
-    assert dfmodel_origin.filter(pl.col("vel_r_mid_on_c") == 0.0).select(pl.len()).collect().item() == 1
-    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamin=0.0).select(pl.len()).collect().item() == 26
-    assert filter_model_cells(dfmodel_origin, modelmeta_origin, thetamax=180.0).select(pl.len()).collect().item() == 26
+
+def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path) -> None:
+    """A cell whose midpoint lies on a bound stays inside the range, but the columns are Float32.
+
+    A 2D grid of square cells has a diagonal of cells at 45 degrees. Their Float32 angles differ from 45
+    degrees by approximately 1e-5 degrees. A velocity bound of 0.7 c is 0.69999999 in Float32.
+    """
+    from artistools.inputmodel.plotinitialabundances import get_cell_selection
+
+    write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=8, vmax_cmps=1.0e9, t_model_days=1.0)
+    dfcells = get_derived_modeldata(tmp_path)[0].collect()
+    oncone = dfcells.filter(np.isclose(dfcells["vel_z_mid_on_c"].abs(), dfcells["vel_rcyl_mid_on_c"]))
+    assert len(oncone) == 8
+    assert len(oncone.filter(get_cell_selection(thetamax=45.0))) == 4
+    assert len(oncone.filter(get_cell_selection(thetamin=45.0))) == 8
+    assert len(oncone.filter(get_cell_selection(thetamin=135.0))) == 4
+    assert len(oncone.filter(get_cell_selection(thetamin=45.0, thetamax=135.0))) == 8
+
+    dfbound = pl.DataFrame({"vel_r_mid_on_c": pl.Series([0.7], dtype=pl.Float32), "vel_z_mid_on_c": [0.0]})
+    assert len(dfbound.filter(get_cell_selection(vmin=0.7))) == 1
+    assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 1
+
+
+def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:
+    """The command sends the four range arguments to the data function, and the file name records them."""
+    import matplotlib.axes as mplax
+
+    from artistools.inputmodel.plotinitialabundances import get_nuclide_massfractions
+
+    with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
+        at.inputmodel.plotinitialabundances.main(
+            argsraw=[str(modelpath_classic_3d), "-vmax", "0.02", "-thetamin", "90", "-o", str(tmp_path)]
+        )
+
+    expected = (
+        get_nuclide_massfractions(modelpath_classic_3d, vmax=0.02, thetamin=90.0)
+        .group_by("A")
+        .agg(pl.col("massfraction").sum())
+        .sort("A")
+    )
+    assert mockplot.call_count == 1
+    plotted_x, plotted_y = mockplot.call_args.args[1:3]
+    assert np.allclose(plotted_x, expected["A"])
+    assert np.allclose(plotted_y, expected["massfraction"])
+    assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.pdf").is_file()
