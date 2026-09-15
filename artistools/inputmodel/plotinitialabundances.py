@@ -26,9 +26,13 @@ POLAR_ANGLE_ATOL_DEG = 1e-4
 def get_selection_labels(
     vmin: float | None = None, vmax: float | None = None, thetamin: float | None = None, thetamax: float | None = None
 ) -> list[str]:
-    """Return a label for each given bound, e.g. vmin=0.02."""
+    """Return a label for each given bound, e.g. vmin=0.02.
+
+    The label holds the shortest text that gives the same float again. Two different bounds then give two
+    different file names.
+    """
     bounds = {"vmin": vmin, "vmax": vmax, "thetamin": thetamin, "thetamax": thetamax}
-    return [f"{name}={value:g}" for name, value in bounds.items() if value is not None]
+    return [f"{name}={value!r}" for name, value in bounds.items() if value is not None]
 
 
 def get_cell_selection(

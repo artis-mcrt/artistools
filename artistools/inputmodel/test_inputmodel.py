@@ -2825,4 +2825,4 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     plotted_x, plotted_y = mockplot.call_args.args[1:3]
     assert np.allclose(plotted_x, expected["A"])
     assert np.allclose(plotted_y, expected["massfraction"])
-    assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.pdf").is_file()
+    assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
