@@ -848,7 +848,9 @@ def get_emission_contributions(
     else:
         use_time = "arrival"
 
-    if args.groupby in {"nuc", "nucmass"}:
+    if args.groupby == "velocity":
+        emtypecolumn = "true_emission_velocity" if args.use_thermalemissiontype else "emission_velocity"
+    elif args.groupby in {"nuc", "nucmass"}:
         emtypecolumn = "pellet_nucindex"
     elif args.use_thermalemissiontype:
         emtypecolumn = "trueemissiontype"
@@ -886,7 +888,47 @@ def get_emission_contributions(
         average_over_theta=args.average_over_theta_angle,
         directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+        velocityshells_kmps=args.velocityshells,
     )
+
+
+def order_and_color_velocity_shells(
+    contributions: list[atspectra.FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+) -> list[atspectra.FluxContributionTuple]:
+    """Return the shells from the inner one to the outer one, with the colours of a sequential map.
+
+    The order of the ions is the order of the flux. A reader expects the shells in the order of the
+    velocity, and a colour that goes from dark to light with the velocity.
+    """
+    import matplotlib.pyplot as plt
+
+    if args.fixedionlist is None:
+        # a shell that holds no packet gives no series, and the name of such a shell gives a warning
+        foundlabels = {contribution.linelabel for contribution in contributions}
+        args.fixedionlist = [
+            label for label in atspectra.get_velocity_shell_labels(args.velocityshells) if label in foundlabels
+        ]
+
+    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+        contributions,
+        args.maxseriescount,
+        arraylambda_angstroms,
+        fixedionlist=args.fixedionlist,
+        hideother=args.hideother,
+    )
+
+    shells = [contribution for contribution in contributions_sorted_reduced if contribution.linelabel != "Other"]
+    colormap = plt.get_cmap("viridis")
+    shellcolors = {
+        contribution.linelabel: colormap(index / max(len(shells) - 1, 1)) for index, contribution in enumerate(shells)
+    }
+
+    return [
+        contribution._replace(color=shellcolors.get(contribution.linelabel, contribution.color))
+        for contribution in contributions_sorted_reduced
+    ]
 
 
 def collect_emission_and_absorption(
@@ -1150,13 +1192,16 @@ def make_emissionabsorption_plot(
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
-    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
-        contribution_list,
-        args.maxseriescount,
-        arraylambda_angstroms,
-        fixedionlist=args.fixedionlist,
-        hideother=args.hideother,
-    )
+    if args.groupby == "velocity":
+        contributions_sorted_reduced = order_and_color_velocity_shells(contribution_list, arraylambda_angstroms, args)
+    else:
+        contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+            contribution_list,
+            args.maxseriescount,
+            arraylambda_angstroms,
+            fixedionlist=args.fixedionlist,
+            hideother=args.hideother,
+        )
 
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []
@@ -1499,8 +1544,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["ion", "line", "nuc", "nucmass"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets",
+        choices=["ion", "line", "nuc", "nucmass", "velocity"],
+        help=(
+            "Use a different colour for each ion, line, nuclide, or velocity shell of the last interaction with"
+            " --showemission. groupby line, nuc, nucmass, and velocity imply --frompackets"
+        ),
+    )
+
+    parser.add_argument(
+        "-velocityshells",
+        type=float,
+        nargs="+",
+        default=None,
+        metavar="v_kmps",
+        help=(
+            "Edges in km/s of the shells of -groupby velocity, e.g. 0 5000 10000 20000. The default is ten"
+            " shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D grid"
+        ),
     )
 
     # the older spelling of a reference spectrum that a positional path now names
@@ -1738,8 +1798,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby is not None:
         args.showemission = True
 
-    if args.groupby in {"line", "nuc", "nucmass"}:
+    if args.groupby in {"line", "nuc", "nucmass", "velocity"}:
         args.frompackets = True
+
+    if args.groupby == "velocity" and args.velocityshells is None:
+        # the plot draws the model of the first path, thus the shells come from that model
+        args.velocityshells = atspectra.get_default_velocity_shells(args.specpath[0])
 
     if args.gamma and args.plotviewingangle:
         # exspec does not generate angle-resolved gamma spectra files,

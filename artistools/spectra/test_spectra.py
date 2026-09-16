@@ -287,6 +287,61 @@ def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
         get_contributions_classic_3d(groupby="nuc", emtypecolumn="pellet_nucindex")
 
 
+def test_spectra_velocity_shell_contributions() -> None:
+    """A velocity shell holds the emission and the absorption of the packets whose last interaction lies inside it.
+
+    The shells together hold every packet, thus their sums equal the totals of the ion groups.
+    """
+    # the corner of the 3D grid lies at sqrt(3) times vmax, which is 50 091 km/s
+    shells = [0.0, 10000.0, 20000.0, 30000.0, 51000.0]
+    contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
+        groupby="velocity", emtypecolumn="emission_velocity", velocityshells_kmps=shells
+    )
+    contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    shelllabels = atspectra.get_velocity_shell_labels(shells)
+    assert shelllabels == ["0-10000 km/s", "10000-20000 km/s", "20000-30000 km/s", "30000-51000 km/s"]
+    assert [contrib.linelabel for contrib in contributions if contrib.linelabel in shelllabels] == [
+        contrib.linelabel for contrib in contributions
+    ]
+    assert len(contributions) >= 2
+
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+
+    absorption_shells = sum(contrib.array_flambda_absorption for contrib in contributions)
+    absorption_ions = sum(contrib.array_flambda_absorption for contrib in contributions_ion)
+    assert np.trapezoid(absorption_shells, x=array_lambda) > 0.0
+    assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6)
+
+
+def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
+    with pytest.raises(ValueError, match="needs the shell edges"):
+        get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity")
+
+    with pytest.raises(ValueError, match="must increase"):
+        get_contributions_classic_3d(
+            groupby="velocity", emtypecolumn="emission_velocity", velocityshells_kmps=[0.0, 20000.0, 10000.0]
+        )
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The emission plot stacks the shells from the inner one to the outer one, with the default shell edges."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells.pdf",
+        timemin=4,
+        timemax=6.5,
+        emissionabsorption=True,
+        groupby="velocity",
+    )
+
+    assert mockstackplot.call_count == 2
+    nseries = len(mockstackplot.call_args_list[0].args[2])
+    assert 2 <= nseries <= 12
+
+
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80

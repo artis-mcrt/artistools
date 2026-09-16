@@ -909,6 +909,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-ts",
     "-vary",
     "-velocity",
+    "-velocityshells",
     "-vgrid-lambdaranges",
     "-vgrid-tmax",
     "-vgrid-tmin",

@@ -125,6 +125,13 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
+def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
+    """Return the radial velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem)."""
+    return (
+        pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2 + pl.col(f"{position}_posz") ** 2
+    ).sqrt() / pl.col(f"{position}_time")
+
+
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -139,17 +146,10 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
     )
 
     if "trueem_posx" in dfpackets.collect_schema().names():
-        dfpackets = dfpackets.with_columns(
-            true_emission_velocity=(
-                (pl.col("trueem_posx") ** 2 + pl.col("trueem_posy") ** 2 + pl.col("trueem_posz") ** 2).sqrt()
-                / pl.col("trueem_time")
-            )
-        )
+        dfpackets = dfpackets.with_columns(true_emission_velocity=get_emission_velocity_expr("trueem"))
 
     dfpackets = dfpackets.with_columns(
-        emission_velocity=(
-            (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
-        ),
+        emission_velocity=get_emission_velocity_expr("em"),
         emission_velocity_lineofsight=(
             (
                 (pl.col("em_posx") * pl.col("dirx"))

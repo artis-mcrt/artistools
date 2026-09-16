@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 
 import argparse
+import itertools
 import math
 import typing as t
 from collections.abc import Callable
@@ -1252,6 +1253,44 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
     )
 
 
+def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> list[float]:
+    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner.
+
+    A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
+    packets from these cells.
+    """
+    from artistools.inputmodel import get_modeldata
+
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    vmax_kmps = modelmeta["vmax_cmps"] / const.km_to_cm
+    edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
+    if modelmeta["dimensions"] > 1:
+        edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
+
+    return edges
+
+
+def check_velocity_shells(velocityshells_kmps: Sequence[float]) -> None:
+    """Stop with an error if the shell edges do not increase or give no shell."""
+    if len(velocityshells_kmps) < 2 or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(velocityshells_kmps)):
+        msg = f"The velocity shell edges must increase and give at least one shell, not {list(velocityshells_kmps)}"
+        raise ValueError(msg)
+
+
+def get_velocity_shell_labels(velocityshells_kmps: Sequence[float]) -> list[str]:
+    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s'."""
+    return [f"{vlow:.0f}-{vhigh:.0f} km/s" for vlow, vhigh in itertools.pairwise(velocityshells_kmps)]
+
+
+def get_velocity_shell_expr(velocitycolumn: str, velocityshells_kmps: Sequence[float]) -> pl.Expr:
+    """Return the label of the shell that holds the velocity [cm/s] of each packet, or null outside every shell."""
+    edges_cmps = [v * const.km_to_cm for v in velocityshells_kmps]
+    labels = ["below", *get_velocity_shell_labels(velocityshells_kmps), "above"]
+    shell = pl.col(velocitycolumn).cut(breaks=edges_cmps, labels=labels, left_closed=True).cast(pl.String)
+
+    return pl.when(pl.col(velocitycolumn).is_between(edges_cmps[0], edges_cmps[-1], closed="left")).then(shell)
+
+
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -1272,14 +1311,30 @@ def get_flux_contributions_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
+    velocityshells_kmps: Sequence[float] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the emission and absorption contributions binned from the packets, and the flux and wavelength arrays.
 
-    groupby selects whether the packets are grouped by ion, line, nuclide, or nuclide mass.
+    groupby selects the group of each packet: ion, line, nuclide, nuclide mass, or velocity shell.
+
+    A velocity shell holds the packets whose last interaction lies inside it. velocityshells_kmps gives
+    the edges of the shells. The last absorption of a packet happens at the position of its last emission,
+    thus the shell of the absorption comes from the emission_velocity column. The shell of the emission
+    comes from emtypecolumn, which is emission_velocity or true_emission_velocity.
     """
-    assert groupby in {"ion", "line", "nuc", "nucmass"}
+    assert groupby in {"ion", "line", "nuc", "nucmass", "velocity"}
     assert use_time in {"arrival", "emission", "escape"}
-    assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
+    if groupby == "velocity":
+        assert emtypecolumn in {"emission_velocity", "true_emission_velocity"}
+        if velocityshells_kmps is None:
+            msg = "groupby velocity needs the shell edges in velocityshells_kmps"
+            raise ValueError(msg)
+        check_velocity_shells(velocityshells_kmps)
+        if directionbins_are_vpkt_observers:
+            msg = "A virtual packet holds no emission position, thus no velocity shell can hold it"
+            raise ValueError(msg)
+    else:
+        assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
     if getabsorption and groupby == "nuc":
         # A nuclide emits a packet, but a nuclide does not absorb a packet.
         # Thus a nuclide name cannot be a label for an absorption contribution.
@@ -1331,6 +1386,19 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
+        if groupby == "velocity":
+            if emtypecolumn == "true_emission_velocity":
+                if "trueem_posx" not in lzdfpackets.collect_schema().names():
+                    msg = (
+                        "The packets hold no thermal emission position, thus --use_thermalemissiontype cannot"
+                        " group by velocity shell"
+                    )
+                    raise ValueError(msg)
+                lzdfpackets = lzdfpackets.with_columns(
+                    true_emission_velocity=atpackets.get_emission_velocity_expr("trueem")
+                )
+            lzdfpackets = lzdfpackets.with_columns(emission_velocity=atpackets.get_emission_velocity_expr("em"))
+
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
         lzdfpackets, _ = atpackets.filter_packets_dirbin(
@@ -1346,6 +1414,8 @@ def get_flux_contributions_from_packets(
 
     if getabsorption:
         cols |= {"absorption_type", "absorption_freq"}
+        if groupby == "velocity":
+            cols.add("emission_velocity")
 
     if directionbin != -1:
         if average_over_phi:
@@ -1360,11 +1430,26 @@ def get_flux_contributions_from_packets(
     # The code reads these columns one time. The emission labels and the absorption labels both use them.
     # The memory becomes free when this function returns. Each absorption label is a line label.
     # Thus only an emission-only plot with a nuclide group can omit the linelist.
-    needs_linelist = getabsorption or (getemission and groupby in {"ion", "line"})
+    needs_linelist = groupby != "velocity" and (getabsorption or (getemission and groupby in {"ion", "line"}))
     dflines = get_linelist_label_columns(modelpath, groupby) if needs_linelist else pl.DataFrame()
 
+    if groupby == "velocity":
+        assert velocityshells_kmps is not None
+        shellexprs = {}
+        if getemission:
+            assert emtypecolumn is not None
+            shellexprs["emissiontype_str"] = get_velocity_shell_expr(emtypecolumn, velocityshells_kmps)
+        if getabsorption:
+            shellexprs["absorptiontype_str"] = get_velocity_shell_expr("emission_velocity", velocityshells_kmps)
+        dfpackets = dfpackets.with_columns(**shellexprs).drop(
+            "emission_velocity", "true_emission_velocity", "absorption_type", strict=False
+        )
+        noutside = dfpackets.select(pl.all_horizontal(pl.col(list(shellexprs)).is_null()).sum()).item()
+        if noutside > 0:
+            print_warning(f"{noutside} packets lie outside every velocity shell, thus no series holds them")
+
     # The code adds the labels after it collects the packets. Thus it finds a label only for a code that a packet uses.
-    if getemission:
+    if getemission and groupby != "velocity":
         if groupby == "nuc":
             emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
         elif groupby == "nucmass":
@@ -1416,7 +1501,7 @@ def get_flux_contributions_from_packets(
                 elsymb = get_elsymbol(z_exclude)
                 dfpackets = dfpackets.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
 
-    if getabsorption:
+    if getabsorption and groupby != "velocity":
         abstypelabels = pl.concat([
             get_line_labels(dflines, dfpackets["absorption_type"], groupby, "absorptiontype_str"),
             pl.LazyFrame(
