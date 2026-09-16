@@ -1576,7 +1576,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Edges of the shells of -groupby velocity, in km/s, e.g. 0 5000 10000 20000, or as a fraction of c,"
             " e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of c. The default"
-            " is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D grid"
+            " is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D grid, with"
+            " the labels in units of c when vmax is at least 0.2 c"
         ),
     )
 
@@ -1827,7 +1828,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.velocityshellunit = "kmps"
     if args.groupby == "velocity" and args.velocityshells is None:
         # the plot draws the model of the first path, thus the shells come from that model
-        args.velocityshells = atspectra.get_default_velocity_shells(args.specpath[0])
+        args.velocityshells, args.velocityshellunit = atspectra.get_default_velocity_shells(args.specpath[0])
     elif args.velocityshells is not None:
         # argparse gives a parsed pair, and a keyword argument of the API gives a text or a number
         parsedshells = [

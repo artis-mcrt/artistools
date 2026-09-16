@@ -1253,11 +1253,12 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
     )
 
 
-def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> list[float]:
-    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner.
+def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tuple[list[float], t.Literal["kmps", "c"]]:
+    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
 
     A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
-    packets from these cells.
+    packets from these cells. The labels take units of c when vmax is at least 0.2 c, e.g. for a
+    kilonova, and km/s below that, e.g. for a supernova.
     """
     from artistools.inputmodel import get_modeldata
 
@@ -1267,7 +1268,8 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> lis
     if modelmeta["dimensions"] > 1:
         edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
 
-    return edges
+    unit: t.Literal["kmps", "c"] = "c" if modelmeta["vmax_cmps"] / const.C_cm_per_s >= 0.2 else "kmps"
+    return edges, unit
 
 
 def check_velocity_shells(velocityshells_kmps: Sequence[float]) -> None:
@@ -1292,16 +1294,20 @@ def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
 def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps") -> list[str]:
     """Return the label of each velocity shell in order, e.g. '5000-10000 km/s' or '0.1-0.2 c'.
 
-    The label is the key of the group, thus two shells must not share one. A whole number of km/s
-    gives the shortest label. An edge with a fraction keeps its digits, e.g. '0.1-0.2 km/s'.
+    The label is the key of the group, thus two shells must not share one. A whole number of km/s, or
+    three significant digits of c, gives the shortest label. An edge that two such labels share keeps
+    all its digits, e.g. '0.1-0.2 km/s'.
     """
     if unit == "c":
-        c_kmps = const.C_cm_per_s / const.km_to_cm
-        edges = [f"{v / c_kmps:g}" for v in velocityshells_kmps]
+        values = [v / (const.C_cm_per_s / const.km_to_cm) for v in velocityshells_kmps]
+        shortformat = ".3g"
     else:
-        edges = [f"{v:.0f}" for v in velocityshells_kmps]
-        if len(set(edges)) < len(edges):
-            edges = [f"{v:g}" for v in velocityshells_kmps]
+        values = list(velocityshells_kmps)
+        shortformat = ".0f"
+
+    edges = [f"{v:{shortformat}}" for v in values]
+    if len(set(edges)) < len(edges):
+        edges = [f"{v:g}" for v in values]
 
     if len(set(edges)) < len(edges):
         msg = f"Two velocity shell edges give the same label: {edges}"

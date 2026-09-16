@@ -326,12 +326,28 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
 
     shells = [0.0, 29979.2458, 59958.4916]
     assert atspectra.get_velocity_shell_labels(shells, "c") == ["0-0.1 c", "0.1-0.2 c"]
+    # a default edge in units of c takes three significant digits
+    assert atspectra.get_velocity_shell_labels([0.0, 14315.06, 28630.12], "c") == ["0-0.0477 c", "0.0477-0.0955 c"]
     assert atspectra.get_velocity_shell_labels(shells) == ["0-29979 km/s", "29979-59958 km/s"]
 
     # an edge with a fraction keeps its digits, because the label is the key of the group
     assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["0.1-0.2 km/s", "0.2-0.3 km/s"]
     with pytest.raises(ValueError, match="same label"):
         atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
+
+
+def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> None:
+    """The default shells take km/s below a vmax of 0.2 c, and units of c from 0.2 c."""
+    edges, unit = atspectra.get_default_velocity_shells(modelpath_classic_3d)
+    assert unit == "kmps"
+    assert len(edges) == 12
+    assert np.isclose(edges[10], 28920.2, rtol=1e-4)
+
+    fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
+    with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+        edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
+    assert unit == "c"
+    assert atspectra.get_velocity_shell_labels(edges, unit) == ["0-0.1 c", "0.1-0.2 c", "0.2-0.3 c"]
 
 
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
