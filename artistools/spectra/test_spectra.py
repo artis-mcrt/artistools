@@ -331,10 +331,11 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
         "[0, 0.0477) c",
         "[0.0477, 0.0955) c",
     ]
-    assert atspectra.get_velocity_shell_labels(shells) == ["[0, 29979) km/s", "[29979, 59958) km/s"]
+    assert atspectra.get_velocity_shell_labels(shells) == ["[0, 29979.2) km/s", "[29979.2, 59958.5) km/s"]
 
-    # an edge with a fraction keeps its digits, because the label is the key of the group
+    # an edge with a fraction keeps its digits, because the label is the key of the group and names the bound
     assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["[0.1, 0.2) km/s", "[0.2, 0.3) km/s"]
+    assert atspectra.get_velocity_shell_labels([0.4, 1.4, 2.0]) == ["[0.4, 1.4) km/s", "[1.4, 2) km/s"]
     with pytest.raises(ValueError, match="same label"):
         atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
 

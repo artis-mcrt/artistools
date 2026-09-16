@@ -1296,20 +1296,18 @@ def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Lite
 
     A shell holds its lower edge and not its upper edge, which the brackets show.
 
-    The label is the key of the group, thus two shells must not share one. A whole number of km/s, or
-    three significant digits of c, gives the shortest label. An edge that two such labels share keeps
-    all its digits, e.g. '[0.1, 0.2) km/s'.
+    The label is the key of the group, thus two shells must not share one. An edge in km/s keeps its
+    fraction, e.g. '[0.4, 1.4) km/s', and a whole number of km/s shows no fraction. An edge in c takes
+    three significant digits. Two edges that share such a label keep all their digits.
     """
     if unit == "c":
         values = [v / (const.C_cm_per_s / const.km_to_cm) for v in velocityshells_kmps]
-        shortformat = ".3g"
+        edges = [f"{v:.3g}" for v in values]
+        if len(set(edges)) < len(edges):
+            edges = [f"{v:g}" for v in values]
     else:
         values = list(velocityshells_kmps)
-        shortformat = ".0f"
-
-    edges = [f"{v:{shortformat}}" for v in values]
-    if len(set(edges)) < len(edges):
-        edges = [f"{v:g}" for v in values]
+        edges = [f"{v:.0f}" if v == round(v) else f"{v:g}" for v in values]
 
     if len(set(edges)) < len(edges):
         msg = f"Two velocity shell edges give the same label: {edges}"
@@ -1358,9 +1356,10 @@ def get_flux_contributions_from_packets(
     groupby selects the group of each packet: ion, line, nuclide, nuclide mass, or velocity shell.
 
     A velocity shell holds the packets whose last interaction lies inside it. velocityshells_kmps gives
-    the edges of the shells, and velocityshellunit gives the unit of the labels. The last absorption of a packet happens at the position of its last emission,
-    thus the shell of the absorption comes from the emission_velocity column. The shell of the emission
-    comes from emtypecolumn, which is emission_velocity or true_emission_velocity.
+    the edges of the shells, and velocityshellunit gives the unit of the labels. The last absorption
+    of a packet happens at the position of its last emission, thus the shell of the absorption comes
+    from the emission_velocity column. The shell of the emission comes from emtypecolumn, which is
+    emission_velocity or true_emission_velocity.
     """
     assert groupby in {"ion", "line", "nuc", "nucmass", "velocity"}
     assert use_time in {"arrival", "emission", "escape"}
