@@ -171,12 +171,12 @@ def get_modelgridindex_expr(
     if modelmeta["dimensions"] == 2:
         vwidthrcyl = float(modelmeta["wid_init_rcyl"]) / t_model_s
         vwidthz = float(modelmeta["wid_init_z"]) / t_model_s
-        coordrcyl = ((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl).cast(pl.Int32)
-        coordz = ((velocity("z") + vmax) / vwidthz).cast(pl.Int32)
+        coordrcyl = ((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl).cast(pl.Int32, strict=False)
+        coordz = ((velocity("z") + vmax) / vwidthz).cast(pl.Int32, strict=False)
         return coordz * int(modelmeta["ncoordgridrcyl"]) + coordrcyl
 
     vwidth = float(modelmeta["wid_init"]) / t_model_s
-    coord = {axis: ((velocity(axis) + vmax) / vwidth).cast(pl.Int32) for axis in ("x", "y", "z")}
+    coord = {axis: ((velocity(axis) + vmax) / vwidth).cast(pl.Int32, strict=False) for axis in ("x", "y", "z")}
     ncoordgridx = int(modelmeta["ncoordgridx"])
     ncoordgridy = int(modelmeta["ncoordgridy"])
     return coord["z"] * ncoordgridy * ncoordgridx + coord["y"] * ncoordgridx + coord["x"]
