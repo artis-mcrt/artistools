@@ -146,6 +146,12 @@ def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) 
     ) / pl.col(f"{position}_time")
 
 
+def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:
+    """Return the index of the cell of a 1D model that holds a radial velocity [cm/s]."""
+    velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
+    return velocity.cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
+
+
 def get_modelgridindex_expr(
     position: t.Literal["em", "trueem"], modelmeta: dict[str, t.Any], dfmodel: pl.LazyFrame
 ) -> pl.Expr:
@@ -154,8 +160,7 @@ def get_modelgridindex_expr(
     A position outside the grid gives an index that no cell has, and a position of NaN gives null.
     """
     if modelmeta["dimensions"] == 1:
-        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
-        return get_emission_velocity_expr(position).cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
+        return get_modelgridindex_from_velocity_expr(get_emission_velocity_expr(position), dfmodel)
 
     t_model_s = float(modelmeta["t_model_init_days"]) * day_to_s
     vmax = float(modelmeta["vmax_cmps"])
@@ -193,11 +198,17 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
         em_modelgridindex=get_modelgridindex_expr("em", modelmeta, dfmodel),
     )
 
-    if "trueem_posx" in dfpackets.collect_schema().names():
+    packetcolumns = dfpackets.collect_schema().names()
+    if "trueem_posx" in packetcolumns:
         dfpackets = dfpackets.with_columns(
             true_emission_velocity=get_emission_velocity_expr("trueem"),
             true_emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("trueem"),
             emtrue_modelgridindex=get_modelgridindex_expr("trueem", modelmeta, dfmodel),
+        )
+    elif "true_emission_velocity" in packetcolumns and modelmeta["dimensions"] == 1:
+        # an old packets file holds the thermal emission velocity and no position, which gives the cell of a 1D model
+        dfpackets = dfpackets.with_columns(
+            emtrue_modelgridindex=get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
         )
 
     return dfpackets

@@ -10,6 +10,7 @@ from artistools.spectra.spectra import convert_angstroms_to_unit as convert_angs
 from artistools.spectra.spectra import convert_unit_to_angstroms as convert_unit_to_angstroms
 from artistools.spectra.spectra import convert_xlimits_to_lambda_range as convert_xlimits_to_lambda_range
 from artistools.spectra.spectra import convert_xunit_aliases_to_canonical as convert_xunit_aliases_to_canonical
+from artistools.spectra.spectra import DEFAULT_YE_SHELLS as DEFAULT_YE_SHELLS
 from artistools.spectra.spectra import get_default_losvelocity_shells as get_default_losvelocity_shells
 from artistools.spectra.spectra import get_default_velocity_shells as get_default_velocity_shells
 from artistools.spectra.spectra import get_dfspectrum_x_y_with_units as get_dfspectrum_x_y_with_units
@@ -32,6 +33,7 @@ from artistools.spectra.spectra import parse_velocity_argument as parse_velocity
 from artistools.spectra.spectra import parse_xunit_argument as parse_xunit_argument
 from artistools.spectra.spectra import print_integrated_flux as print_integrated_flux
 from artistools.spectra.spectra import read_spec_res as read_spec_res
+from artistools.spectra.spectra import SHELLCOLUMNS as SHELLCOLUMNS
 from artistools.spectra.spectra import sort_and_reduce_flux_contribution_list as sort_and_reduce_flux_contribution_list
 from artistools.spectra.spectra import timeshift_fluxscale_co56law as timeshift_fluxscale_co56law
 from artistools.spectra.writespectra import write_flambda_spectra as write_flambda_spectra
