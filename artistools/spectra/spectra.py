@@ -1362,8 +1362,9 @@ def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["km
     """Return the label of the shell that holds the value of each packet, or null outside every shell.
 
     A velocity column holds cm/s, and the edges are in km/s. A packet with no thermal emission record
-    has a value of NaN, because ARTIS writes a time of -1 and no position for it. Such a packet takes
-    the label NOT SET, as the ion grouping gives it.
+    has a value of NaN, because ARTIS writes a time of -1 and no position for it. A packet whose value
+    is null, e.g. from an old cache with no thermal column, has no value either. Such a packet takes the
+    label NOT SET, as the ion grouping gives it.
     """
     scale = 1.0 if unit == "ye" else const.km_to_cm
     edges = [v * scale for v in shelledges]
@@ -1373,7 +1374,7 @@ def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["km
 
     return (
         pl
-        .when(value.is_nan())
+        .when(value.is_null() | value.is_nan())
         .then(pl.lit("NOT SET"))
         .when(value.is_between(edges[0], edges[-1], closed="left"))
         .then(shell)
@@ -1388,9 +1389,13 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
     packetcolumns = lzdfpackets.collect_schema().names()
     positions: list[tuple[str, t.Literal["em", "trueem"]]] = [(lastcolumn, "em")]
+    # an old packets file holds the thermal emission velocity and no position. That velocity gives the
+    # radial shell and the cell of a 1D model, but not the line of sight
+    thermalfromvelocity = (
+        usethermal and "trueem_posx" not in packetcolumns and "true_emission_velocity" in packetcolumns
+    )
     if usethermal and thermalcolumn not in packetcolumns:
-        # an old packets file holds the thermal emission velocity and no position
-        if "trueem_posx" not in packetcolumns:
+        if "trueem_posx" not in packetcolumns and not (thermalfromvelocity and groupby == "ye"):
             msg = "The packets hold no thermal emission position, thus --use_thermalemissiontype cannot group by shell"
             raise ValueError(msg)
         positions.append((thermalcolumn, "trueem"))
@@ -1415,9 +1420,16 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     dfcellye = dfmodel.select((pl.col("inputcellid") - 1).cast(pl.Int32).alias("modelgridindex"), "Ye").collect()
     for column, position in positions:
         indexcolumn = f"{position}_modelgridindex"
+        if position == "trueem" and thermalfromvelocity:
+            if modelmeta["dimensions"] != 1:
+                msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
+                raise ValueError(msg)
+            indexexpr = atpackets.get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
+        else:
+            indexexpr = atpackets.get_modelgridindex_expr(position, modelmeta, dfmodel)
         lzdfpackets = (
             lzdfpackets
-            .with_columns(atpackets.get_modelgridindex_expr(position, modelmeta, dfmodel).alias(indexcolumn))
+            .with_columns(indexexpr.alias(indexcolumn))
             .join(dfcellye.lazy().rename({"modelgridindex": indexcolumn, "Ye": column}), on=indexcolumn, how="left")
             .drop(indexcolumn)
         )

@@ -9,6 +9,7 @@ from artistools.packets.packets import get_directionbin as get_directionbin
 from artistools.packets.packets import get_emission_velocity_expr as get_emission_velocity_expr
 from artistools.packets.packets import get_emission_velocity_lineofsight_expr as get_emission_velocity_lineofsight_expr
 from artistools.packets.packets import get_modelgridindex_expr as get_modelgridindex_expr
+from artistools.packets.packets import get_modelgridindex_from_velocity_expr as get_modelgridindex_from_velocity_expr
 from artistools.packets.packets import get_packets as get_packets
 from artistools.packets.packets import get_packets_textsource_mtimes as get_packets_textsource_mtimes
 from artistools.packets.packets import get_virtual_packets as get_virtual_packets

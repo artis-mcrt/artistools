@@ -349,9 +349,9 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
 
 def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() -> None:
     """A packet with a NaN velocity takes the label NOT SET, and a packet outside every shell takes null."""
-    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9]})
+    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9, None]})
     labels = dfpackets.select(atspectra.get_shell_expr("v", [0.0, 10000.0, 20000.0])).to_series().to_list()
-    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s"]
+    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s", "NOT SET"]
 
 
 def test_spectra_velocity_shell_order_counts_not_set_against_the_limit() -> None:
