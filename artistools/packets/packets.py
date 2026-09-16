@@ -135,8 +135,9 @@ def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem) along the packet direction.
 
-    The packet direction at the escape is the line of sight of the observer of that packet.
-    A positive value means motion away from the observer.
+    The packet direction at the escape is the line of sight of the observer of that packet. The
+    velocity is the homologous velocity of the position, thus a positive value means motion toward
+    the observer.
     """
     return (
         pl.col(f"{position}_posx") * pl.col("dirx")
