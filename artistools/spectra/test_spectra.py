@@ -337,7 +337,15 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["[0.1, 0.2) km/s", "[0.2, 0.3) km/s"]
     assert atspectra.get_velocity_shell_labels([0.4, 1.4, 2.0]) == ["[0.4, 1.4) km/s", "[1.4, 2) km/s"]
     with pytest.raises(ValueError, match="same label"):
-        atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
+        atspectra.get_velocity_shell_labels([0.1, 0.1, 0.3])
+
+    # two edges that six significant digits cannot separate keep every digit
+    c_kmps = 2.99792458e5
+    labels = atspectra.get_velocity_shell_labels([0.1234561 * c_kmps, 0.1234564 * c_kmps, 0.2 * c_kmps], "c")
+    assert len(set(labels)) == 2
+    assert labels[0].startswith("[0.1234561")
+    labels = atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
+    assert len(set(labels)) == 2
 
 
 def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() -> None:
@@ -345,6 +353,23 @@ def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() 
     dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9]})
     labels = dfpackets.select(atspectra.get_velocity_shell_expr("v", [0.0, 10000.0, 20000.0])).to_series().to_list()
     assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s"]
+
+
+def test_spectra_velocity_shell_order_counts_not_set_against_the_limit() -> None:
+    """The NOT SET series takes one place of -maxseriescount, thus the plot never keeps one series too many."""
+    lambdas = np.array([4000.0, 5000.0])
+    shells = [0.0, 10000.0, 20000.0, 30000.0]
+    labels = [*atspectra.get_velocity_shell_labels(shells), "NOT SET"]
+    contributions = [
+        atspectra.FluxContributionTuple(flux, label, np.full(2, flux), np.zeros(2))
+        for label, flux in zip(labels, [3.0, 1.0, 2.0, 4.0], strict=True)
+    ]
+    args = argparse.Namespace(
+        fixedionlist=None, maxseriescount=2, velocityshells=shells, velocityshellunit="kmps", hideother=False
+    )
+    ordered = at.spectra.plotspectra.order_and_color_velocity_shells(contributions, lambdas, args)
+
+    assert [contribution.linelabel for contribution in ordered] == ["[0, 10000) km/s", "NOT SET", "Other"]
 
 
 def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> None:

@@ -908,20 +908,18 @@ def order_and_color_velocity_shells(
 
     if args.fixedionlist is None:
         # a shell that holds no packet gives no series, and the name of such a shell gives a warning. The packet
-        # reducer can already hold an Other series, which must not take the place of a shell
-        shells = [contribution for contribution in contributions if contribution.linelabel != "Other"]
+        # reducer can already hold an Other series, which must not take the place of a shell. The NOT SET
+        # series of the packets with no thermal emission record counts against the limit as a shell does
+        named = [contribution for contribution in contributions if contribution.linelabel != "Other"]
         keptlabels = {
             contribution.linelabel
-            for contribution in sorted(shells, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
+            for contribution in sorted(named, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
         }
         args.fixedionlist = [
             label
-            for label in atspectra.get_velocity_shell_labels(args.velocityshells, args.velocityshellunit)
+            for label in (*atspectra.get_velocity_shell_labels(args.velocityshells, args.velocityshellunit), "NOT SET")
             if label in keptlabels
         ]
-        # a packet with no thermal emission record goes in no shell, and its series comes last
-        if any(contribution.linelabel == "NOT SET" for contribution in contributions):
-            args.fixedionlist.append("NOT SET")
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
         contributions,

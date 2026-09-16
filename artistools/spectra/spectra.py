@@ -1302,12 +1302,20 @@ def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Lite
     """
     if unit == "c":
         values = [v / (const.C_cm_per_s / const.km_to_cm) for v in velocityshells_kmps]
-        edges = [f"{v:.3g}" for v in values]
-        if len(set(edges)) < len(edges):
-            edges = [f"{v:g}" for v in values]
+        formats = [".3g", "g"]
     else:
         values = list(velocityshells_kmps)
-        edges = [f"{v:.0f}" if v == round(v) else f"{v:g}" for v in values]
+        formats = ["g"]
+
+    edges = [f"{v:.0f}" if unit == "kmps" and v == round(v) else f"{v:{formats[0]}}" for v in values]
+    for fmt in formats:
+        if len(set(edges)) == len(edges):
+            break
+        edges = [f"{v:{fmt}}" for v in values]
+
+    if len(set(edges)) < len(edges):
+        # the shortest text that reads back as the same float, thus two different floats give two texts
+        edges = [np.format_float_positional(v, trim="-") for v in values]
 
     if len(set(edges)) < len(edges):
         msg = f"Two velocity shell edges give the same label: {edges}"
