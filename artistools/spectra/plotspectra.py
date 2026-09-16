@@ -919,6 +919,9 @@ def order_and_color_velocity_shells(
             for label in atspectra.get_velocity_shell_labels(args.velocityshells, args.velocityshellunit)
             if label in keptlabels
         ]
+        # a packet with no thermal emission record goes in no shell, and its series comes last
+        if any(contribution.linelabel == "NOT SET" for contribution in contributions):
+            args.fixedionlist.append("NOT SET")
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
         contributions,
@@ -928,11 +931,16 @@ def order_and_color_velocity_shells(
         hideother=args.hideother,
     )
 
-    shells = [contribution for contribution in contributions_sorted_reduced if contribution.linelabel != "Other"]
+    shells = [
+        contribution
+        for contribution in contributions_sorted_reduced
+        if contribution.linelabel not in {"Other", "NOT SET"}
+    ]
     colormap = plt.get_cmap("viridis")
-    shellcolors = {
+    shellcolors: dict[str, mplt.ColorType] = {
         contribution.linelabel: colormap(index / max(len(shells) - 1, 1)) for index, contribution in enumerate(shells)
     }
+    shellcolors["NOT SET"] = "lightgrey"
 
     return [
         contribution._replace(color=shellcolors.get(contribution.linelabel, contribution.color))

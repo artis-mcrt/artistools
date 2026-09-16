@@ -340,6 +340,13 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
         atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
 
 
+def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() -> None:
+    """A packet with a NaN velocity takes the label NOT SET, and a packet outside every shell takes null."""
+    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9]})
+    labels = dfpackets.select(atspectra.get_velocity_shell_expr("v", [0.0, 10000.0, 20000.0])).to_series().to_list()
+    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s"]
+
+
 def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> None:
     """The default shells take km/s below a vmax of 0.2 c, and units of c from 0.2 c."""
     edges, unit = atspectra.get_default_velocity_shells(modelpath_classic_3d)

@@ -1320,12 +1320,23 @@ def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Lite
 def get_velocity_shell_expr(
     velocitycolumn: str, velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps"
 ) -> pl.Expr:
-    """Return the label of the shell that holds the velocity [cm/s] of each packet, or null outside every shell."""
+    """Return the label of the shell that holds the velocity [cm/s] of each packet, or null outside every shell.
+
+    A packet with no thermal emission record has a velocity of NaN, because ARTIS writes a time of -1
+    and no position for it. Such a packet takes the label NOT SET, as the ion grouping gives it.
+    """
     edges_cmps = [v * const.km_to_cm for v in velocityshells_kmps]
     labels = ["below", *get_velocity_shell_labels(velocityshells_kmps, unit), "above"]
-    shell = pl.col(velocitycolumn).cut(breaks=edges_cmps, labels=labels, left_closed=True).cast(pl.String)
+    velocity = pl.col(velocitycolumn)
+    shell = velocity.cut(breaks=edges_cmps, labels=labels, left_closed=True).cast(pl.String)
 
-    return pl.when(pl.col(velocitycolumn).is_between(edges_cmps[0], edges_cmps[-1], closed="left")).then(shell)
+    return (
+        pl
+        .when(velocity.is_null() | velocity.is_nan())
+        .then(pl.lit("NOT SET"))
+        .when(velocity.is_between(edges_cmps[0], edges_cmps[-1], closed="left"))
+        .then(shell)
+    )
 
 
 def get_flux_contributions_from_packets(
@@ -1489,7 +1500,17 @@ def get_flux_contributions_from_packets(
         dfpackets = dfpackets.with_columns(**shellexprs).drop(
             "emission_velocity", "true_emission_velocity", "absorption_type", strict=False
         )
-        noutside = dfpackets.select(pl.all_horizontal(pl.col(list(shellexprs)).is_null()).sum()).item()
+        labelcolumns = pl.col(list(shellexprs))
+        counts = dfpackets.select(
+            noutside=pl.all_horizontal(labelcolumns.is_null()).sum(),
+            nnotset=pl.any_horizontal(labelcolumns == "NOT SET").sum(),
+        ).row(0)
+        noutside, nnotset = counts
+        if nnotset > 0:
+            print_warning(
+                f"{nnotset} packets have no thermal emission record, thus the series NOT SET holds them."
+                " Drop --use_thermalemissiontype to group these packets by the position of the last interaction"
+            )
         if noutside > 0:
             print_warning(f"{noutside} packets lie outside every velocity shell, thus no series holds them")
 
