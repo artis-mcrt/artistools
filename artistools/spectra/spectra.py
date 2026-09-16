@@ -1292,11 +1292,13 @@ def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
 
 
 def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps") -> list[str]:
-    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s' or '0.1-0.2 c'.
+    """Return the label of each velocity shell in order, e.g. '[5000, 10000) km/s' or '[0.1, 0.2) c'.
+
+    A shell holds its lower edge and not its upper edge, which the brackets show.
 
     The label is the key of the group, thus two shells must not share one. A whole number of km/s, or
     three significant digits of c, gives the shortest label. An edge that two such labels share keeps
-    all its digits, e.g. '0.1-0.2 km/s'.
+    all its digits, e.g. '[0.1, 0.2) km/s'.
     """
     if unit == "c":
         values = [v / (const.C_cm_per_s / const.km_to_cm) for v in velocityshells_kmps]
@@ -1314,7 +1316,7 @@ def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Lite
         raise ValueError(msg)
 
     unitlabel = "c" if unit == "c" else "km/s"
-    return [f"{vlow}-{vhigh} {unitlabel}" for vlow, vhigh in itertools.pairwise(edges)]
+    return [f"[{vlow}, {vhigh}) {unitlabel}" for vlow, vhigh in itertools.pairwise(edges)]
 
 
 def get_velocity_shell_expr(

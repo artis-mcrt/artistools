@@ -300,7 +300,7 @@ def test_spectra_velocity_shell_contributions() -> None:
     contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
     shelllabels = atspectra.get_velocity_shell_labels(shells)
-    assert shelllabels == ["0-10000 km/s", "10000-20000 km/s", "20000-30000 km/s", "30000-51000 km/s"]
+    assert shelllabels == ["[0, 10000) km/s", "[10000, 20000) km/s", "[20000, 30000) km/s", "[30000, 51000) km/s"]
     assert [contrib.linelabel for contrib in contributions if contrib.linelabel in shelllabels] == [
         contrib.linelabel for contrib in contributions
     ]
@@ -325,13 +325,16 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
         atspectra.parse_velocity_argument("fast")
 
     shells = [0.0, 29979.2458, 59958.4916]
-    assert atspectra.get_velocity_shell_labels(shells, "c") == ["0-0.1 c", "0.1-0.2 c"]
+    assert atspectra.get_velocity_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]
     # a default edge in units of c takes three significant digits
-    assert atspectra.get_velocity_shell_labels([0.0, 14315.06, 28630.12], "c") == ["0-0.0477 c", "0.0477-0.0955 c"]
-    assert atspectra.get_velocity_shell_labels(shells) == ["0-29979 km/s", "29979-59958 km/s"]
+    assert atspectra.get_velocity_shell_labels([0.0, 14315.06, 28630.12], "c") == [
+        "[0, 0.0477) c",
+        "[0.0477, 0.0955) c",
+    ]
+    assert atspectra.get_velocity_shell_labels(shells) == ["[0, 29979) km/s", "[29979, 59958) km/s"]
 
     # an edge with a fraction keeps its digits, because the label is the key of the group
-    assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["0.1-0.2 km/s", "0.2-0.3 km/s"]
+    assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["[0.1, 0.2) km/s", "[0.2, 0.3) km/s"]
     with pytest.raises(ValueError, match="same label"):
         atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
 
@@ -347,7 +350,7 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
         edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
     assert unit == "c"
-    assert atspectra.get_velocity_shell_labels(edges, unit) == ["0-0.1 c", "0.1-0.2 c", "0.2-0.3 c"]
+    assert atspectra.get_velocity_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
 
 
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
