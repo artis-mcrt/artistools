@@ -1290,12 +1290,25 @@ def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
 
 
 def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps") -> list[str]:
-    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s' or '0.1-0.2 c'."""
+    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s' or '0.1-0.2 c'.
+
+    The label is the key of the group, thus two shells must not share one. A whole number of km/s
+    gives the shortest label. An edge with a fraction keeps its digits, e.g. '0.1-0.2 km/s'.
+    """
     if unit == "c":
         c_kmps = const.C_cm_per_s / const.km_to_cm
-        return [f"{vlow / c_kmps:g}-{vhigh / c_kmps:g} c" for vlow, vhigh in itertools.pairwise(velocityshells_kmps)]
+        edges = [f"{v / c_kmps:g}" for v in velocityshells_kmps]
+    else:
+        edges = [f"{v:.0f}" for v in velocityshells_kmps]
+        if len(set(edges)) < len(edges):
+            edges = [f"{v:g}" for v in velocityshells_kmps]
 
-    return [f"{vlow:.0f}-{vhigh:.0f} km/s" for vlow, vhigh in itertools.pairwise(velocityshells_kmps)]
+    if len(set(edges)) < len(edges):
+        msg = f"Two velocity shell edges give the same label: {edges}"
+        raise ValueError(msg)
+
+    unitlabel = "c" if unit == "c" else "km/s"
+    return [f"{vlow}-{vhigh} {unitlabel}" for vlow, vhigh in itertools.pairwise(edges)]
 
 
 def get_velocity_shell_expr(
@@ -1406,8 +1419,10 @@ def get_flux_contributions_from_packets(
         dirbin_nu_column = "nu_rf"
 
         if groupby == "velocity":
-            if emtypecolumn == "true_emission_velocity":
-                if "trueem_posx" not in lzdfpackets.collect_schema().names():
+            packetcolumns = lzdfpackets.collect_schema().names()
+            # an old packets file holds the thermal emission velocity and no position
+            if emtypecolumn == "true_emission_velocity" and "true_emission_velocity" not in packetcolumns:
+                if "trueem_posx" not in packetcolumns:
                     msg = (
                         "The packets hold no thermal emission position, thus --use_thermalemissiontype cannot"
                         " group by velocity shell"

@@ -901,17 +901,21 @@ def order_and_color_velocity_shells(
     """Return the shells from the inner one to the outer one, with the colours of a sequential map.
 
     The order of the ions is the order of the flux. A reader expects the shells in the order of the
-    velocity, and a colour that goes from dark to light with the velocity.
+    velocity, and a colour that goes from dark to light with the velocity. -maxseriescount still applies:
+    the shells with the least flux join the "Other" series, as the ions do.
     """
     import matplotlib.pyplot as plt
 
     if args.fixedionlist is None:
         # a shell that holds no packet gives no series, and the name of such a shell gives a warning
-        foundlabels = {contribution.linelabel for contribution in contributions}
+        keptlabels = {
+            contribution.linelabel
+            for contribution in sorted(contributions, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
+        }
         args.fixedionlist = [
             label
             for label in atspectra.get_velocity_shell_labels(args.velocityshells, args.velocityshellunit)
-            if label in foundlabels
+            if label in keptlabels
         ]
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
@@ -1214,6 +1218,13 @@ def make_emissionabsorption_plot(
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
     max_f_emission_total = float(max_f_emission_total)
+
+    if scale_to_peak and max_f_emission_total <= 0.0:
+        # the scale to the peak divides by this maximum
+        exit_with_error(
+            "--normalised needs a peak, and no packet of the selection emits inside the plotted range",
+            "Widen the time range, the x range, or the velocity shells",
+        )
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
 
@@ -1804,6 +1815,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.groupby in {"line", "nuc", "nucmass", "velocity"}:
         args.frompackets = True
+
+    if args.gamma and args.groupby == "velocity":
+        # the velocity shells are not tested on gamma packets, thus the command refuses the combination
+        exit_with_error(
+            "-groupby velocity does not apply to a gamma-ray spectrum", "Give -groupby nuc or -groupby nucmass"
+        )
 
     args.velocityshellunit = "kmps"
     if args.groupby == "velocity" and args.velocityshells is None:

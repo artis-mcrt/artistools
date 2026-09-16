@@ -328,6 +328,11 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     assert atspectra.get_velocity_shell_labels(shells, "c") == ["0-0.1 c", "0.1-0.2 c"]
     assert atspectra.get_velocity_shell_labels(shells) == ["0-29979 km/s", "29979-59958 km/s"]
 
+    # an edge with a fraction keeps its digits, because the label is the key of the group
+    assert atspectra.get_velocity_shell_labels([0.1, 0.2, 0.3]) == ["0.1-0.2 km/s", "0.2-0.3 km/s"]
+    with pytest.raises(ValueError, match="same label"):
+        atspectra.get_velocity_shell_labels([0.1, 0.1 + 1e-12, 0.3])
+
 
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
     with pytest.raises(ValueError, match="needs the shell edges"):
@@ -374,6 +379,54 @@ def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.M
     # the edges lie inside vmax of the model, thus each of the three shells holds packets
     assert mockstackplot.call_count == 1
     assert len(mockstackplot.call_args_list[0].args[2]) == 3
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
+    mockstackplot: mock.MagicMock, tmp_path: Path
+) -> None:
+    """More shells than -maxseriescount give that many series plus Other, as the ions do."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells_limit.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="velocity",
+        velocityshells=list(np.linspace(8000.0, 28000.0, 21)),
+        maxseriescount=3,
+    )
+
+    assert len(mockstackplot.call_args_list[0].args[2]) == 4
+
+
+def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Path) -> None:
+    """A gamma spectrum and an empty shell selection stop with a message and not a traceback."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            gamma=True,
+            outputfile=tmp_path / "gamma.pdf",
+        )
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            velocityshells=["0.5c", "0.6c"],
+            normalised=True,
+            outputfile=tmp_path / "empty.pdf",
+        )
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
