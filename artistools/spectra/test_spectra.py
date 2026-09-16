@@ -287,6 +287,267 @@ def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
         get_contributions_classic_3d(groupby="nuc", emtypecolumn="pellet_nucindex")
 
 
+def test_spectra_velocity_shell_contributions() -> None:
+    """A velocity shell holds the emission and the absorption of the packets whose last interaction lies inside it.
+
+    The shells together hold every packet, thus their sums equal the totals of the ion groups.
+    """
+    # the corner of the 3D grid lies at sqrt(3) times vmax, which is 50 091 km/s
+    shells = [0.0, 10000.0, 20000.0, 30000.0, 51000.0]
+    contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
+        groupby="velocity", emtypecolumn="emission_velocity", shelledges=shells
+    )
+    contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    shelllabels = atspectra.get_shell_labels(shells)
+    assert shelllabels == ["[0, 10000) km/s", "[10000, 20000) km/s", "[20000, 30000) km/s", "[30000, 51000) km/s"]
+    assert [contrib.linelabel for contrib in contributions if contrib.linelabel in shelllabels] == [
+        contrib.linelabel for contrib in contributions
+    ]
+    assert len(contributions) >= 2
+
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+
+    absorption_shells = sum(contrib.array_flambda_absorption for contrib in contributions)
+    absorption_ions = sum(contrib.array_flambda_absorption for contrib in contributions_ion)
+    assert np.trapezoid(absorption_shells, x=array_lambda) > 0.0
+    assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6)
+
+
+def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
+    """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
+    assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
+    velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
+    assert unit == "c"
+    assert np.isclose(velocity_kmps, 29979.2458)
+
+    for badvalue in ("fast", "inf", "infc", "nan"):
+        with pytest.raises(argparse.ArgumentTypeError, match="not a finite velocity"):
+            atspectra.parse_velocity_argument(badvalue)
+
+    shells = [0.0, 29979.2458, 59958.4916]
+    assert atspectra.get_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]
+    # a default edge in units of c takes three significant digits
+    assert atspectra.get_shell_labels([0.0, 14315.06, 28630.12], "c") == ["[0, 0.0477) c", "[0.0477, 0.0955) c"]
+    assert atspectra.get_shell_labels(shells) == ["[0, 29979.2) km/s", "[29979.2, 59958.5) km/s"]
+
+    # an edge with a fraction keeps its digits, because the label is the key of the group and names the bound
+    assert atspectra.get_shell_labels([0.1, 0.2, 0.3]) == ["[0.1, 0.2) km/s", "[0.2, 0.3) km/s"]
+    assert atspectra.get_shell_labels([0.4, 1.4, 2.0]) == ["[0.4, 1.4) km/s", "[1.4, 2) km/s"]
+    assert atspectra.get_shell_labels([0.0, 0.15000000000000002, 0.5], "ye") == ["Ye [0, 0.15)", "Ye [0.15, 0.5)"]
+    with pytest.raises(ValueError, match="same label"):
+        atspectra.get_shell_labels([0.1, 0.1, 0.3])
+
+    # two edges that six significant digits cannot separate keep every digit
+    c_kmps = 2.99792458e5
+    labels = atspectra.get_shell_labels([0.1234561 * c_kmps, 0.1234564 * c_kmps, 0.2 * c_kmps], "c")
+    assert len(set(labels)) == 2
+    assert labels[0].startswith("[0.1234561")
+    labels = atspectra.get_shell_labels([0.1, 0.1 + 1e-12, 0.3])
+    assert len(set(labels)) == 2
+
+
+def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() -> None:
+    """A packet with a NaN velocity takes the label NOT SET, and a packet outside every shell takes null."""
+    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9, None]})
+    labels = dfpackets.select(atspectra.get_shell_expr("v", [0.0, 10000.0, 20000.0])).to_series().to_list()
+    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s", "NOT SET"]
+
+
+def test_spectra_velocity_shell_order_counts_not_set_against_the_limit() -> None:
+    """The NOT SET series takes one place of -maxseriescount, thus the plot never keeps one series too many."""
+    lambdas = np.array([4000.0, 5000.0])
+    shells = [0.0, 10000.0, 20000.0, 30000.0]
+    labels = [*atspectra.get_shell_labels(shells), "NOT SET"]
+    contributions = [
+        atspectra.FluxContributionTuple(flux, label, np.full(2, flux), np.zeros(2))
+        for label, flux in zip(labels, [3.0, 1.0, 2.0, 4.0], strict=True)
+    ]
+    args = argparse.Namespace(fixedionlist=None, maxseriescount=2, shelledges=shells, shellunit="kmps", hideother=False)
+    ordered = at.spectra.plotspectra.order_and_color_shells(contributions, lambdas, args)
+
+    assert [contribution.linelabel for contribution in ordered] == ["[0, 10000) km/s", "NOT SET", "Other"]
+
+
+def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> None:
+    """The default shells take km/s below a vmax of 0.2 c, and units of c from 0.2 c."""
+    edges, unit = atspectra.get_default_velocity_shells(modelpath_classic_3d)
+    assert unit == "kmps"
+    assert len(edges) == 12
+    assert np.isclose(edges[10], 28920.2, rtol=1e-4)
+
+    fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
+    with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+        edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
+    assert unit == "c"
+    assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
+
+
+def test_spectra_losvelocity_shell_contributions() -> None:
+    """A line-of-sight shell holds the packets by the signed velocity along the packet direction."""
+    shells = [-51000.0, -20000.0, 0.0, 20000.0, 51000.0]
+    contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
+        groupby="losvelocity", emtypecolumn="emission_velocity_lineofsight", shelledges=shells
+    )
+    _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    labels = [contrib.linelabel for contrib in contributions]
+    assert set(labels) <= set(atspectra.get_shell_labels(shells))
+    assert any(label.startswith("[-") for label in labels)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
+
+
+def test_spectra_ye_shell_contributions() -> None:
+    """A Ye shell holds the packets by the initial electron fraction of the cell of the last interaction."""
+    import artistools.inputmodel
+
+    realgetmodeldata = artistools.inputmodel.get_modeldata
+
+    def get_modeldata_with_ye(*args: t.Any, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+        # the test model has no Ye column, thus the odd cells get 0.2 and the even cells get 0.4
+        dfmodel, modelmeta = realgetmodeldata(*args, **kwargs)
+        return dfmodel.with_columns(Ye=0.2 + 0.2 * (pl.col("inputcellid") % 2 == 0).cast(pl.Float32)), modelmeta
+
+    with mock.patch("artistools.inputmodel.get_modeldata", side_effect=get_modeldata_with_ye):
+        contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
+            groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6]
+        )
+    _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    assert sorted(contrib.linelabel for contrib in contributions) == ["Ye [0, 0.3)", "Ye [0.3, 0.6)"]
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
+
+    with pytest.raises(ValueError, match="no Ye column"):
+        get_contributions_classic_3d(groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6])
+
+
+def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
+    with pytest.raises(ValueError, match="needs the shell edges"):
+        get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity")
+
+    for badshells in ([0.0, 20000.0, 10000.0], [0.0, math.inf], [0.0, math.nan, 20000.0]):
+        with pytest.raises(ValueError, match="must be finite, increase"):
+            get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity", shelledges=badshells)
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The emission plot stacks the shells from the inner one to the outer one, with the default shell edges."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells.pdf",
+        timemin=4,
+        timemax=6.5,
+        emissionabsorption=True,
+        groupby="velocity",
+    )
+
+    assert mockstackplot.call_count == 2
+    nseries = len(mockstackplot.call_args_list[0].args[2])
+    assert 2 <= nseries <= 12
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
+    """A shell edge with a c suffix sets the edges and the labels in units of c."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells_c.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="velocity",
+        velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
+    )
+
+    # the edges lie inside vmax of the model, thus each of the three shells holds packets
+    assert mockstackplot.call_count == 1
+    assert len(mockstackplot.call_args_list[0].args[2]) == 3
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_losvelocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The default line-of-sight shells run from -vmax to vmax, plus one shell to each corner."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "losvelocity.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="losvelocity",
+    )
+
+    edges, _ = atspectra.get_default_losvelocity_shells(modelpath_classic_3d)
+    assert len(edges) == 13
+    assert edges[0] == -edges[-1]
+    assert 2 <= len(mockstackplot.call_args_list[0].args[2]) <= 12
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
+    mockstackplot: mock.MagicMock, tmp_path: Path
+) -> None:
+    """More shells than -maxseriescount give that many series plus Other, as the ions do."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells_limit.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="velocity",
+        velocityshells=list(np.linspace(8000.0, 28000.0, 21)),
+        maxseriescount=3,
+    )
+
+    assert len(mockstackplot.call_args_list[0].args[2]) == 4
+
+
+def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Path) -> None:
+    """A gamma spectrum, a virtual packet observer, and an empty shell selection stop with a message."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            gamma=True,
+            outputfile=tmp_path / "gamma.pdf",
+        )
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            plotvspecpol=[0],
+            outputfile=tmp_path / "vspecpol.pdf",
+        )
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            velocityshells=["0.5c", "0.6c"],
+            normalised=True,
+            outputfile=tmp_path / "empty.pdf",
+        )
+
+
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80

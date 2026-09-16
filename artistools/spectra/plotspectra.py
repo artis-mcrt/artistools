@@ -848,7 +848,9 @@ def get_emission_contributions(
     else:
         use_time = "arrival"
 
-    if args.groupby in {"nuc", "nucmass"}:
+    if args.groupby in atspectra.SHELLCOLUMNS:
+        emtypecolumn = atspectra.SHELLCOLUMNS[args.groupby][1 if args.use_thermalemissiontype else 0]
+    elif args.groupby in {"nuc", "nucmass"}:
         emtypecolumn = "pellet_nucindex"
     elif args.use_thermalemissiontype:
         emtypecolumn = "trueemissiontype"
@@ -886,7 +888,62 @@ def get_emission_contributions(
         average_over_theta=args.average_over_theta_angle,
         directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+        shelledges=args.shelledges,
+        shellunit=args.shellunit,
     )
+
+
+def order_and_color_shells(
+    contributions: list[atspectra.FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+) -> list[atspectra.FluxContributionTuple]:
+    """Return the shells from the lowest edge to the highest one, with the colours of a sequential map.
+
+    The order of the ions is the order of the flux. A reader expects the shells in the order of their
+    edges, and a colour that goes from dark to light with the edge. -maxseriescount still applies: the
+    shells with the least flux join the "Other" series, as the ions do.
+    """
+    import matplotlib.pyplot as plt
+
+    if args.fixedionlist is None:
+        # a shell that holds no packet gives no series, and the name of such a shell gives a warning. The packet
+        # reducer can already hold an Other series, which must not take the place of a shell. The NOT SET
+        # series of the packets with no thermal emission record counts against the limit as a shell does
+        named = [contribution for contribution in contributions if contribution.linelabel != "Other"]
+        keptlabels = {
+            contribution.linelabel
+            for contribution in sorted(named, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
+        }
+        args.fixedionlist = [
+            label
+            for label in (*atspectra.get_shell_labels(args.shelledges, args.shellunit), "NOT SET")
+            if label in keptlabels
+        ]
+
+    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+        contributions,
+        args.maxseriescount,
+        arraylambda_angstroms,
+        fixedionlist=args.fixedionlist,
+        hideother=args.hideother,
+    )
+
+    shells = [
+        contribution
+        for contribution in contributions_sorted_reduced
+        if contribution.linelabel not in {"Other", "NOT SET"}
+    ]
+    colormap = plt.get_cmap("viridis")
+    shellcolors: dict[str, mplt.ColorType] = {
+        contribution.linelabel: colormap(index / max(len(shells) - 1, 1)) for index, contribution in enumerate(shells)
+    }
+    shellcolors["NOT SET"] = "lightgrey"
+
+    return [
+        contribution._replace(color=shellcolors.get(contribution.linelabel, contribution.color))
+        for contribution in contributions_sorted_reduced
+    ]
 
 
 def collect_emission_and_absorption(
@@ -1150,13 +1207,16 @@ def make_emissionabsorption_plot(
 
     atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
-    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
-        contribution_list,
-        args.maxseriescount,
-        arraylambda_angstroms,
-        fixedionlist=args.fixedionlist,
-        hideother=args.hideother,
-    )
+    if args.groupby in atspectra.SHELLCOLUMNS:
+        contributions_sorted_reduced = order_and_color_shells(contribution_list, arraylambda_angstroms, args)
+    else:
+        contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+            contribution_list,
+            args.maxseriescount,
+            arraylambda_angstroms,
+            fixedionlist=args.fixedionlist,
+            hideother=args.hideother,
+        )
 
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []
@@ -1166,6 +1226,13 @@ def make_emissionabsorption_plot(
     max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
     max_f_emission_total = float(max_f_emission_total)
+
+    if scale_to_peak and max_f_emission_total <= 0.0:
+        # the scale to the peak divides by this maximum
+        exit_with_error(
+            "--normalised needs a peak, and no packet of the selection emits inside the plotted range",
+            "Widen the time range, the x range, or the shells",
+        )
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
 
@@ -1499,8 +1566,38 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["ion", "line", "nuc", "nucmass"],
-        help="Use a different color for each ion or line when using --showemission. groupby='line', 'nuc', 'nucmass' imply --frompackets",
+        choices=["ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
+        help=(
+            "Use a different colour for each ion, line, or nuclide with --showemission, or for each shell of the"
+            " last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of sight,"
+            " and ye the initial electron fraction of the cell. Every choice but ion implies --frompackets"
+        ),
+    )
+
+    parser.add_argument(
+        "-velocityshells",
+        type=atspectra.parse_velocity_argument,
+        nargs="+",
+        default=None,
+        metavar="velocity",
+        help=(
+            "Edges of the shells of -groupby velocity or losvelocity, in km/s, e.g. 0 5000 10000 20000, or as a"
+            " fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of c."
+            " The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
+            " grid, with the labels in units of c when vmax is at least 0.2 c"
+        ),
+    )
+
+    parser.add_argument(
+        "-yeshells",
+        type=float,
+        nargs="+",
+        default=None,
+        metavar="Ye",
+        help=(
+            "Edges of the shells of -groupby ye, e.g. 0 0.1 0.2 0.3 0.5. The default is shells of 0.05 up to 0.5,"
+            " and one more shell to 1"
+        ),
     )
 
     # the older spelling of a reference spectrum that a positional path now names
@@ -1597,6 +1694,31 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Exclude packets with emission type no-bb/no-bf/no-(element) matching the vpkt opacity exclusion",
     )
+
+
+def resolve_shell_args(args: argparse.Namespace) -> None:
+    """Set the shell edges and the unit of their labels for a shell grouping, from the arguments or the model."""
+    args.shelledges = None
+    args.shellunit = "kmps"
+    if args.groupby == "ye":
+        args.shelledges = list(args.yeshells) if args.yeshells is not None else list(atspectra.DEFAULT_YE_SHELLS)
+        args.shellunit = "ye"
+    elif args.groupby in atspectra.SHELLCOLUMNS and args.velocityshells is None:
+        # the plot draws the model of the first path, thus the shells come from that model
+        getdefault = (
+            atspectra.get_default_losvelocity_shells
+            if args.groupby == "losvelocity"
+            else atspectra.get_default_velocity_shells
+        )
+        args.shelledges, args.shellunit = getdefault(args.specpath[0])
+    elif args.velocityshells is not None:
+        # argparse gives a parsed pair, and a keyword argument of the API gives a text or a number
+        parsedshells = [
+            atspectra.parse_velocity_argument(str(shell)) if not isinstance(shell, tuple) else shell
+            for shell in args.velocityshells
+        ]
+        args.shellunit = "c" if any(unit == "c" for _, unit in parsedshells) else "kmps"
+        args.shelledges = [velocity_kmps for velocity_kmps, _ in parsedshells]
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1738,8 +1860,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby is not None:
         args.showemission = True
 
-    if args.groupby in {"line", "nuc", "nucmass"}:
+    if args.groupby in {"line", "nuc", "nucmass", *atspectra.SHELLCOLUMNS}:
         args.frompackets = True
+
+    if args.gamma and args.groupby in atspectra.SHELLCOLUMNS:
+        # the shells are not tested on gamma packets, thus the command refuses the combination
+        exit_with_error(
+            f"-groupby {args.groupby} does not apply to a gamma-ray spectrum", "Give -groupby nuc or -groupby nucmass"
+        )
+
+    if args.plotvspecpol and args.groupby in atspectra.SHELLCOLUMNS:
+        exit_with_error(
+            f"a virtual packet holds no emission position, thus -groupby {args.groupby} does not apply to -plotvspecpol",
+            "Give -plotviewingangle for a direction bin of the real packets",
+        )
+
+    resolve_shell_args(args)
 
     if args.gamma and args.plotviewingangle:
         # exspec does not generate angle-resolved gamma spectra files,

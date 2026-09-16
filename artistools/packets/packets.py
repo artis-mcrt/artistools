@@ -125,6 +125,63 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
+def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
+    """Return the radial velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem)."""
+    return (
+        pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2 + pl.col(f"{position}_posz") ** 2
+    ).sqrt() / pl.col(f"{position}_time")
+
+
+def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
+    """Return the velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem) along the packet direction.
+
+    The packet direction at the escape is the line of sight of the observer of that packet. The
+    velocity is the homologous velocity of the position, thus a positive value means motion toward
+    the observer.
+    """
+    return (
+        pl.col(f"{position}_posx") * pl.col("dirx")
+        + pl.col(f"{position}_posy") * pl.col("diry")
+        + pl.col(f"{position}_posz") * pl.col("dirz")
+    ) / pl.col(f"{position}_time")
+
+
+def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:
+    """Return the index of the cell of a 1D model that holds a radial velocity [cm/s]."""
+    velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
+    return velocity.cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
+
+
+def get_modelgridindex_expr(
+    position: t.Literal["em", "trueem"], modelmeta: dict[str, t.Any], dfmodel: pl.LazyFrame
+) -> pl.Expr:
+    """Return the index of the model cell that holds the last interaction (em) or the last thermal emission (trueem).
+
+    A position outside the grid gives an index that no cell has, and a position of NaN gives null.
+    """
+    if modelmeta["dimensions"] == 1:
+        return get_modelgridindex_from_velocity_expr(get_emission_velocity_expr(position), dfmodel)
+
+    t_model_s = float(modelmeta["t_model_init_days"]) * day_to_s
+    vmax = float(modelmeta["vmax_cmps"])
+
+    def velocity(axis: str) -> pl.Expr:
+        return pl.col(f"{position}_pos{axis}") / pl.col(f"{position}_time")
+
+    if modelmeta["dimensions"] == 2:
+        vwidthrcyl = float(modelmeta["wid_init_rcyl"]) / t_model_s
+        vwidthz = float(modelmeta["wid_init_z"]) / t_model_s
+        coordrcyl = ((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl).cast(pl.Int32, strict=False)
+        coordz = ((velocity("z") + vmax) / vwidthz).cast(pl.Int32, strict=False)
+        return coordz * int(modelmeta["ncoordgridrcyl"]) + coordrcyl
+
+    vwidth = float(modelmeta["wid_init"]) / t_model_s
+    coord = {axis: ((velocity(axis) + vmax) / vwidth).cast(pl.Int32, strict=False) for axis in ("x", "y", "z")}
+    ncoordgridx = int(modelmeta["ncoordgridx"])
+    ncoordgridy = int(modelmeta["ncoordgridy"])
+    return coord["z"] * ncoordgridy * ncoordgridx + coord["y"] * ncoordgridx + coord["x"]
+
+
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -135,69 +192,24 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
         at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
     dfpackets = dfpackets.lazy().with_columns(
-        (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep")
+        (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep"),
+        emission_velocity=get_emission_velocity_expr("em"),
+        emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("em"),
+        em_modelgridindex=get_modelgridindex_expr("em", modelmeta, dfmodel),
     )
 
-    if "trueem_posx" in dfpackets.collect_schema().names():
+    packetcolumns = dfpackets.collect_schema().names()
+    if "trueem_posx" in packetcolumns:
         dfpackets = dfpackets.with_columns(
-            true_emission_velocity=(
-                (pl.col("trueem_posx") ** 2 + pl.col("trueem_posy") ** 2 + pl.col("trueem_posz") ** 2).sqrt()
-                / pl.col("trueem_time")
-            )
+            true_emission_velocity=get_emission_velocity_expr("trueem"),
+            true_emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("trueem"),
+            emtrue_modelgridindex=get_modelgridindex_expr("trueem", modelmeta, dfmodel),
         )
-
-    dfpackets = dfpackets.with_columns(
-        emission_velocity=(
-            (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
-        ),
-        emission_velocity_lineofsight=(
-            (
-                (pl.col("em_posx") * pl.col("dirx"))
-                + (pl.col("em_posy") * pl.col("diry"))
-                + (pl.col("em_posz") * pl.col("dirz"))
-            )
-            / pl.col("em_time")
-        ),
-    )
-
-    if modelmeta["dimensions"] > 1:
-        t_model_s = modelmeta["t_model_init_days"] * day_to_s
-        vmax = modelmeta["vmax_cmps"]
-
-        if modelmeta["dimensions"] == 2:
-            vwidthrcyl = modelmeta["wid_init_rcyl"] / t_model_s
-            vwidthz = modelmeta["wid_init_z"] / t_model_s
-            dfpackets = dfpackets.with_columns(
-                coordpointnumrcyl=(
-                    (pl.col("em_posx").pow(2) + pl.col("em_posy").pow(2)).sqrt() / pl.col("em_time") / vwidthrcyl
-                ).cast(pl.Int32),
-                coordpointnumz=((pl.col("em_posz") / pl.col("em_time") + vmax) / vwidthz).cast(pl.Int32),
-            ).with_columns(
-                em_modelgridindex=(pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl"))
-            )
-
-        elif modelmeta["dimensions"] == 3:
-            vwidth = modelmeta["wid_init"] / t_model_s
-            dfpackets = dfpackets.with_columns([
-                ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth).cast(pl.Int32).alias(f"coordpointnum{ax}")
-                for ax in ("x", "y", "z")
-            ]).with_columns(
-                em_modelgridindex=(
-                    pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
-                    + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
-                    + pl.col("coordpointnumx")
-                )
-            )
-
-    elif modelmeta["dimensions"] == 1:
-        velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
-
-        def velocity_to_mgi(velcol: str) -> pl.Expr:
-            return pl.col(velcol).cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
-
-        dfpackets = dfpackets.with_columns(em_modelgridindex=velocity_to_mgi("emission_velocity"))
-        if "true_emission_velocity" in dfpackets.collect_schema().names():
-            dfpackets = dfpackets.with_columns(emtrue_modelgridindex=velocity_to_mgi("true_emission_velocity"))
+    elif "true_emission_velocity" in packetcolumns and modelmeta["dimensions"] == 1:
+        # an old packets file holds the thermal emission velocity and no position, which gives the cell of a 1D model
+        dfpackets = dfpackets.with_columns(
+            emtrue_modelgridindex=get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
+        )
 
     return dfpackets
 
