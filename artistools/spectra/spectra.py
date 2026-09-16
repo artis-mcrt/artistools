@@ -1273,22 +1273,32 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
 
 
 def check_velocity_shells(velocityshells_kmps: Sequence[float]) -> None:
-    """Stop with an error if the shell edges do not increase or give no shell."""
-    if len(velocityshells_kmps) < 2 or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(velocityshells_kmps)):
-        msg = f"The velocity shell edges must increase and give at least one shell, not {list(velocityshells_kmps)}"
+    """Stop with an error if the shell edges are not finite, do not increase, or give no shell."""
+    if (
+        len(velocityshells_kmps) < 2
+        or not all(math.isfinite(v) for v in velocityshells_kmps)
+        or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(velocityshells_kmps))
+    ):
+        msg = (
+            "The velocity shell edges must be finite, increase, and give at least one shell,"
+            f" not {list(velocityshells_kmps)}"
+        )
         raise ValueError(msg)
 
 
 def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
     """Return the velocity [km/s] and the unit of a command line value, e.g. 5000 or 0.1c."""
     text = value.strip()
+    unit: t.Literal["kmps", "c"] = "c" if text.lower().endswith("c") else "kmps"
     try:
-        if text.lower().endswith("c"):
-            return float(text[:-1]) * const.C_cm_per_s / const.km_to_cm, "c"
-        return float(text), "kmps"
+        number = float(text[:-1] if unit == "c" else text)
     except ValueError:
-        msg = f"'{value}' is not a velocity. Give a number in km/s, e.g. 5000, or a fraction of c, e.g. 0.1c"
-        raise argparse.ArgumentTypeError(msg) from None
+        number = math.nan
+    if not math.isfinite(number):
+        msg = f"'{value}' is not a finite velocity. Give a number in km/s, e.g. 5000, or a fraction of c, e.g. 0.1c"
+        raise argparse.ArgumentTypeError(msg)
+
+    return (number * const.C_cm_per_s / const.km_to_cm if unit == "c" else number), unit
 
 
 def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps") -> list[str]:

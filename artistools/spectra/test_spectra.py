@@ -321,8 +321,9 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)
 
-    with pytest.raises(argparse.ArgumentTypeError, match="not a velocity"):
-        atspectra.parse_velocity_argument("fast")
+    for badvalue in ("fast", "inf", "infc", "nan"):
+        with pytest.raises(argparse.ArgumentTypeError, match="not a finite velocity"):
+            atspectra.parse_velocity_argument(badvalue)
 
     shells = [0.0, 29979.2458, 59958.4916]
     assert atspectra.get_velocity_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]
@@ -390,10 +391,11 @@ def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
     with pytest.raises(ValueError, match="needs the shell edges"):
         get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity")
 
-    with pytest.raises(ValueError, match="must increase"):
-        get_contributions_classic_3d(
-            groupby="velocity", emtypecolumn="emission_velocity", velocityshells_kmps=[0.0, 20000.0, 10000.0]
-        )
+    for badshells in ([0.0, 20000.0, 10000.0], [0.0, math.inf], [0.0, math.nan, 20000.0]):
+        with pytest.raises(ValueError, match="must be finite, increase"):
+            get_contributions_classic_3d(
+                groupby="velocity", emtypecolumn="emission_velocity", velocityshells_kmps=badshells
+            )
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
