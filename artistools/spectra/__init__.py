@@ -10,6 +10,7 @@ from artistools.spectra.spectra import convert_angstroms_to_unit as convert_angs
 from artistools.spectra.spectra import convert_unit_to_angstroms as convert_unit_to_angstroms
 from artistools.spectra.spectra import convert_xlimits_to_lambda_range as convert_xlimits_to_lambda_range
 from artistools.spectra.spectra import convert_xunit_aliases_to_canonical as convert_xunit_aliases_to_canonical
+from artistools.spectra.spectra import get_default_losvelocity_shells as get_default_losvelocity_shells
 from artistools.spectra.spectra import get_default_velocity_shells as get_default_velocity_shells
 from artistools.spectra.spectra import get_dfspectrum_x_y_with_units as get_dfspectrum_x_y_with_units
 from artistools.spectra.spectra import get_escape_surface_gamma as get_escape_surface_gamma
@@ -18,10 +19,10 @@ from artistools.spectra.spectra import get_flux_contributions_from_packets as ge
 from artistools.spectra.spectra import get_from_packets as get_from_packets
 from artistools.spectra.spectra import get_lambda_bin_edges as get_lambda_bin_edges
 from artistools.spectra.spectra import get_reference_spectrum as get_reference_spectrum
+from artistools.spectra.spectra import get_shell_labels as get_shell_labels
 from artistools.spectra.spectra import get_specpol_data as get_specpol_data
 from artistools.spectra.spectra import get_spectra as get_spectra
 from artistools.spectra.spectra import get_spectrum_at_time as get_spectrum_at_time
-from artistools.spectra.spectra import get_velocity_shell_labels as get_velocity_shell_labels
 from artistools.spectra.spectra import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.spectra import get_vspecpol_spectrum as get_vspecpol_spectrum
 from artistools.spectra.spectra import get_xunit as get_xunit

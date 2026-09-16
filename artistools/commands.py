@@ -929,6 +929,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-yaxis",
     "-ye",
     "-yemax",
+    "-yeshells",
     "-ymax",
     "-ymin",
     "-yscale",
