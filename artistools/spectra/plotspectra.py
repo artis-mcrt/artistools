@@ -907,10 +907,12 @@ def order_and_color_velocity_shells(
     import matplotlib.pyplot as plt
 
     if args.fixedionlist is None:
-        # a shell that holds no packet gives no series, and the name of such a shell gives a warning
+        # a shell that holds no packet gives no series, and the name of such a shell gives a warning. The packet
+        # reducer can already hold an Other series, which must not take the place of a shell
+        shells = [contribution for contribution in contributions if contribution.linelabel != "Other"]
         keptlabels = {
             contribution.linelabel
-            for contribution in sorted(contributions, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
+            for contribution in sorted(shells, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
         }
         args.fixedionlist = [
             label
