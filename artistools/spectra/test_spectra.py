@@ -421,7 +421,7 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
 
 
 def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Path) -> None:
-    """A gamma spectrum and an empty shell selection stop with a message and not a traceback."""
+    """A gamma spectrum, a virtual packet observer, and an empty shell selection stop with a message."""
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],
@@ -432,6 +432,18 @@ def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Pa
             groupby="velocity",
             gamma=True,
             outputfile=tmp_path / "gamma.pdf",
+        )
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            groupby="velocity",
+            plotvspecpol=[0],
+            outputfile=tmp_path / "vspecpol.pdf",
         )
 
     with pytest.raises(SystemExit):

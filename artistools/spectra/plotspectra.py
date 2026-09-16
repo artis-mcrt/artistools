@@ -1825,6 +1825,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "-groupby velocity does not apply to a gamma-ray spectrum", "Give -groupby nuc or -groupby nucmass"
         )
 
+    if args.plotvspecpol and args.groupby == "velocity":
+        exit_with_error(
+            "a virtual packet holds no emission position, thus -groupby velocity does not apply to -plotvspecpol",
+            "Give -plotviewingangle for a direction bin of the real packets",
+        )
+
     args.velocityshellunit = "kmps"
     if args.groupby == "velocity" and args.velocityshells is None:
         # the plot draws the model of the first path, thus the shells come from that model
