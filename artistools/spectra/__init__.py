@@ -27,6 +27,7 @@ from artistools.spectra.spectra import get_vspecpol_spectrum as get_vspecpol_spe
 from artistools.spectra.spectra import get_xunit as get_xunit
 from artistools.spectra.spectra import make_averaged_vspecfiles as make_averaged_vspecfiles
 from artistools.spectra.spectra import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
+from artistools.spectra.spectra import parse_velocity_argument as parse_velocity_argument
 from artistools.spectra.spectra import parse_xunit_argument as parse_xunit_argument
 from artistools.spectra.spectra import print_integrated_flux as print_integrated_flux
 from artistools.spectra.spectra import read_spec_res as read_spec_res

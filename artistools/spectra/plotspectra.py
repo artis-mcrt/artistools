@@ -889,6 +889,7 @@ def get_emission_contributions(
         directionbins_are_vpkt_observers=args.plotvspecpol is not None,
         vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
         velocityshells_kmps=args.velocityshells,
+        velocityshellunit=args.velocityshellunit,
     )
 
 
@@ -908,7 +909,9 @@ def order_and_color_velocity_shells(
         # a shell that holds no packet gives no series, and the name of such a shell gives a warning
         foundlabels = {contribution.linelabel for contribution in contributions}
         args.fixedionlist = [
-            label for label in atspectra.get_velocity_shell_labels(args.velocityshells) if label in foundlabels
+            label
+            for label in atspectra.get_velocity_shell_labels(args.velocityshells, args.velocityshellunit)
+            if label in foundlabels
         ]
 
     contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
@@ -1553,13 +1556,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-velocityshells",
-        type=float,
+        type=atspectra.parse_velocity_argument,
         nargs="+",
         default=None,
-        metavar="v_kmps",
+        metavar="velocity",
         help=(
-            "Edges in km/s of the shells of -groupby velocity, e.g. 0 5000 10000 20000. The default is ten"
-            " shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D grid"
+            "Edges of the shells of -groupby velocity, in km/s, e.g. 0 5000 10000 20000, or as a fraction of c,"
+            " e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of c. The default"
+            " is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D grid"
         ),
     )
 
@@ -1801,9 +1805,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby in {"line", "nuc", "nucmass", "velocity"}:
         args.frompackets = True
 
+    args.velocityshellunit = "kmps"
     if args.groupby == "velocity" and args.velocityshells is None:
         # the plot draws the model of the first path, thus the shells come from that model
         args.velocityshells = atspectra.get_default_velocity_shells(args.specpath[0])
+    elif args.velocityshells is not None:
+        # argparse gives a parsed pair, and a keyword argument of the API gives a text or a number
+        parsedshells = [
+            atspectra.parse_velocity_argument(str(shell)) if not isinstance(shell, tuple) else shell
+            for shell in args.velocityshells
+        ]
+        args.velocityshellunit = "c" if any(unit == "c" for _, unit in parsedshells) else "kmps"
+        args.velocityshells = [velocity_kmps for velocity_kmps, _ in parsedshells]
 
     if args.gamma and args.plotviewingangle:
         # exspec does not generate angle-resolved gamma spectra files,

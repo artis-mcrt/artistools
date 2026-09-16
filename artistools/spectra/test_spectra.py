@@ -314,6 +314,21 @@ def test_spectra_velocity_shell_contributions() -> None:
     assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6)
 
 
+def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
+    """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
+    assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
+    velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
+    assert unit == "c"
+    assert np.isclose(velocity_kmps, 29979.2458)
+
+    with pytest.raises(argparse.ArgumentTypeError, match="not a velocity"):
+        atspectra.parse_velocity_argument("fast")
+
+    shells = [0.0, 29979.2458, 59958.4916]
+    assert atspectra.get_velocity_shell_labels(shells, "c") == ["0-0.1 c", "0.1-0.2 c"]
+    assert atspectra.get_velocity_shell_labels(shells) == ["0-29979 km/s", "29979-59958 km/s"]
+
+
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
     with pytest.raises(ValueError, match="needs the shell edges"):
         get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity")
@@ -340,6 +355,25 @@ def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_
     assert mockstackplot.call_count == 2
     nseries = len(mockstackplot.call_args_list[0].args[2])
     assert 2 <= nseries <= 12
+
+
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
+    """A shell edge with a c suffix sets the edges and the labels in units of c."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityshells_c.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="velocity",
+        velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
+    )
+
+    # the edges lie inside vmax of the model, thus each of the three shells holds packets
+    assert mockstackplot.call_count == 1
+    assert len(mockstackplot.call_args_list[0].args[2]) == 3
 
 
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:

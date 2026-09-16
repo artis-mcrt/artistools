@@ -1277,15 +1277,33 @@ def check_velocity_shells(velocityshells_kmps: Sequence[float]) -> None:
         raise ValueError(msg)
 
 
-def get_velocity_shell_labels(velocityshells_kmps: Sequence[float]) -> list[str]:
-    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s'."""
+def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
+    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000 or 0.1c."""
+    text = value.strip()
+    try:
+        if text.lower().endswith("c"):
+            return float(text[:-1]) * const.C_cm_per_s / const.km_to_cm, "c"
+        return float(text), "kmps"
+    except ValueError:
+        msg = f"'{value}' is not a velocity. Give a number in km/s, e.g. 5000, or a fraction of c, e.g. 0.1c"
+        raise argparse.ArgumentTypeError(msg) from None
+
+
+def get_velocity_shell_labels(velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps") -> list[str]:
+    """Return the label of each velocity shell in order, e.g. '5000-10000 km/s' or '0.1-0.2 c'."""
+    if unit == "c":
+        c_kmps = const.C_cm_per_s / const.km_to_cm
+        return [f"{vlow / c_kmps:g}-{vhigh / c_kmps:g} c" for vlow, vhigh in itertools.pairwise(velocityshells_kmps)]
+
     return [f"{vlow:.0f}-{vhigh:.0f} km/s" for vlow, vhigh in itertools.pairwise(velocityshells_kmps)]
 
 
-def get_velocity_shell_expr(velocitycolumn: str, velocityshells_kmps: Sequence[float]) -> pl.Expr:
+def get_velocity_shell_expr(
+    velocitycolumn: str, velocityshells_kmps: Sequence[float], unit: t.Literal["kmps", "c"] = "kmps"
+) -> pl.Expr:
     """Return the label of the shell that holds the velocity [cm/s] of each packet, or null outside every shell."""
     edges_cmps = [v * const.km_to_cm for v in velocityshells_kmps]
-    labels = ["below", *get_velocity_shell_labels(velocityshells_kmps), "above"]
+    labels = ["below", *get_velocity_shell_labels(velocityshells_kmps, unit), "above"]
     shell = pl.col(velocitycolumn).cut(breaks=edges_cmps, labels=labels, left_closed=True).cast(pl.String)
 
     return pl.when(pl.col(velocitycolumn).is_between(edges_cmps[0], edges_cmps[-1], closed="left")).then(shell)
@@ -1312,13 +1330,14 @@ def get_flux_contributions_from_packets(
     vpkt_match_emission_exclusion_to_opac: bool = False,
     gamma: bool = False,
     velocityshells_kmps: Sequence[float] | None = None,
+    velocityshellunit: t.Literal["kmps", "c"] = "kmps",
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the emission and absorption contributions binned from the packets, and the flux and wavelength arrays.
 
     groupby selects the group of each packet: ion, line, nuclide, nuclide mass, or velocity shell.
 
     A velocity shell holds the packets whose last interaction lies inside it. velocityshells_kmps gives
-    the edges of the shells. The last absorption of a packet happens at the position of its last emission,
+    the edges of the shells, and velocityshellunit gives the unit of the labels. The last absorption of a packet happens at the position of its last emission,
     thus the shell of the absorption comes from the emission_velocity column. The shell of the emission
     comes from emtypecolumn, which is emission_velocity or true_emission_velocity.
     """
@@ -1438,9 +1457,13 @@ def get_flux_contributions_from_packets(
         shellexprs = {}
         if getemission:
             assert emtypecolumn is not None
-            shellexprs["emissiontype_str"] = get_velocity_shell_expr(emtypecolumn, velocityshells_kmps)
+            shellexprs["emissiontype_str"] = get_velocity_shell_expr(
+                emtypecolumn, velocityshells_kmps, velocityshellunit
+            )
         if getabsorption:
-            shellexprs["absorptiontype_str"] = get_velocity_shell_expr("emission_velocity", velocityshells_kmps)
+            shellexprs["absorptiontype_str"] = get_velocity_shell_expr(
+                "emission_velocity", velocityshells_kmps, velocityshellunit
+            )
         dfpackets = dfpackets.with_columns(**shellexprs).drop(
             "emission_velocity", "true_emission_velocity", "absorption_type", strict=False
         )
