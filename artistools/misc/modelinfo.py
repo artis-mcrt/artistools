@@ -235,7 +235,7 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):
         # this import runs at call time, because artistools.estimators imports artistools.misc
-        from artistools.estimators.estimators import estimbatch_parquet_is_current
+        from artistools.estimators import estimbatch_parquet_is_current
 
         # a stale cache can hold fewer timesteps than the text files, e.g. while ARTIS still runs.
         # Thus only a current cache answers. For a stale cache, the text files answer instead

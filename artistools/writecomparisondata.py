@@ -18,10 +18,10 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
-from artistools.estimators.estimators import read_estimators
+from artistools.estimators import read_estimators
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.lightcurve.lightcurve import find_lightcurve_file
+from artistools.lightcurve import find_lightcurve_file
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import firstexisting

@@ -18,7 +18,7 @@ from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
-from artistools.estimators.estimators import scan_estimators
+from artistools.estimators import scan_estimators
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays

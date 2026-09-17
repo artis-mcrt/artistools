@@ -17,7 +17,7 @@ from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.constants import EV_to_erg
-from artistools.estimators.estimators import read_estimators
+from artistools.estimators import read_estimators
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_modelgridindex

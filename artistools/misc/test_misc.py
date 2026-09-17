@@ -284,7 +284,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     get_runfolder_timesteps read the first batch cache with no freshness check. Thus a plot during
     a run excluded the new timesteps of the folder.
     """
-    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.estimators import CACHEVERSION
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
     stale_folder = tmp_path / "stale"

@@ -18,7 +18,7 @@ from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
-from artistools.spectra.spectra import read_spec_res
+from artistools.spectra import read_spec_res
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:

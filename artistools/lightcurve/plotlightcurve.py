@@ -88,7 +88,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
-from artistools.packets.packets import get_packets
+from artistools.packets import get_packets
 from artistools.plottools import add_cax_for_fixed_frames
 from artistools.plottools import AxesTree
 from artistools.plottools import get_next_color

@@ -2,8 +2,8 @@
 
 __all__ = ["plot", "plotlightcurve"]
 
-from artistools.lightcurve import plotlightcurve
-from artistools.lightcurve import viewingangleanalysis as viewingangleanalysis
+# the core module comes first. A module of a different package imports these names from this package, and
+# the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.lightcurve.lightcurve import bracket_spectrum_to_band as bracket_spectrum_to_band
 from artistools.lightcurve.lightcurve import find_bol_reflightcurve_file as find_bol_reflightcurve_file
 from artistools.lightcurve.lightcurve import find_lightcurve_file as find_lightcurve_file
@@ -17,5 +17,9 @@ from artistools.lightcurve.lightcurve import path_is_reference_lightcurve as pat
 from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.lightcurve import read_hesma_lightcurve_file as read_hesma_lightcurve_file
 from artistools.lightcurve.lightcurve import readfile as readfile
+
+# isort: split
+from artistools.lightcurve import plotlightcurve
+from artistools.lightcurve import viewingangleanalysis as viewingangleanalysis
 from artistools.lightcurve.plotlightcurve import addargs as addargs
 from artistools.lightcurve.plotlightcurve import main as plot

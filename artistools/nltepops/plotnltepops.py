@@ -24,7 +24,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
-from artistools.estimators.estimators import read_estimators
+from artistools.estimators import read_estimators
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata

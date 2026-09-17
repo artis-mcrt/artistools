@@ -18,7 +18,7 @@ from artistools.atomic import get_atomic_number
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
-from artistools.estimators.estimators import scan_estimators
+from artistools.estimators import scan_estimators
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits

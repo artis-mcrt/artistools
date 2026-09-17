@@ -18,7 +18,7 @@ from artistools.atomic import get_linelist_pldf
 from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.estimators.estimators import scan_estimators
+from artistools.estimators import scan_estimators
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
@@ -38,9 +38,9 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
-from artistools.packets.packets import add_derived_columns_lazy
-from artistools.packets.packets import bin_packet_directions_polars
-from artistools.packets.packets import get_packets
+from artistools.packets import add_derived_columns_lazy
+from artistools.packets import bin_packet_directions_polars
+from artistools.packets import get_packets
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure

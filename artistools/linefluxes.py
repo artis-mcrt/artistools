@@ -26,7 +26,7 @@ from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
-from artistools.estimators.estimators import scan_estimators
+from artistools.estimators import scan_estimators
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_axislimits
@@ -48,8 +48,8 @@ from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
-from artistools.packets.packets import add_derived_columns_lazy
-from artistools.packets.packets import get_packets
+from artistools.packets import add_derived_columns_lazy
+from artistools.packets import get_packets
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend

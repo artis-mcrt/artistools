@@ -30,7 +30,7 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 from artistools.plottools import set_legend
-from artistools.spectra.spectra import get_specpol_data
+from artistools.spectra import get_specpol_data
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:

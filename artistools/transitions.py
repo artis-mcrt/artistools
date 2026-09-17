@@ -21,7 +21,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import hc_in_ev_cm
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
-from artistools.estimators.estimators import read_estimators
+from artistools.estimators import read_estimators
 from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale

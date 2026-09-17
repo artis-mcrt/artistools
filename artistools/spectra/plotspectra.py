@@ -73,7 +73,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
-from artistools.packets.packets import get_packets
+from artistools.packets import get_packets
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import label_dirbin_series

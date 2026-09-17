@@ -41,15 +41,15 @@ from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
-from artistools.packets.packets import bin_and_sum
-from artistools.packets.packets import filter_packets_dirbin
-from artistools.packets.packets import get_packets
-from artistools.packets.packets import get_virtual_packets
-from artistools.spectra.spectra import get_escape_surface_gamma
-from artistools.spectra.spectra import get_specpol_data
-from artistools.spectra.spectra import get_spectra
-from artistools.spectra.spectra import get_spectrum_at_time
-from artistools.spectra.spectra import get_vspecpol_data
+from artistools.packets import bin_and_sum
+from artistools.packets import filter_packets_dirbin
+from artistools.packets import get_packets
+from artistools.packets import get_virtual_packets
+from artistools.spectra import get_escape_surface_gamma
+from artistools.spectra import get_specpol_data
+from artistools.spectra import get_spectra
+from artistools.spectra import get_spectrum_at_time
+from artistools.spectra import get_vspecpol_data
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})

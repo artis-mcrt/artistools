@@ -50,14 +50,14 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
-from artistools.packets.packets import bin_and_sum
-from artistools.packets.packets import filter_packets_dirbin
-from artistools.packets.packets import get_emission_velocity_expr
-from artistools.packets.packets import get_emission_velocity_lineofsight_expr
-from artistools.packets.packets import get_modelgridindex_expr
-from artistools.packets.packets import get_modelgridindex_from_velocity_expr
-from artistools.packets.packets import get_packets
-from artistools.packets.packets import get_virtual_packets
+from artistools.packets import bin_and_sum
+from artistools.packets import filter_packets_dirbin
+from artistools.packets import get_emission_velocity_expr
+from artistools.packets import get_emission_velocity_lineofsight_expr
+from artistools.packets import get_modelgridindex_expr
+from artistools.packets import get_modelgridindex_from_velocity_expr
+from artistools.packets import get_packets
+from artistools.packets import get_virtual_packets
 
 
 class FluxContributionTuple(t.NamedTuple):

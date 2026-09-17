@@ -47,7 +47,7 @@ from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
-from artistools.spectra.spectra import get_spectra
+from artistools.spectra import get_spectra
 
 
 def read_files(

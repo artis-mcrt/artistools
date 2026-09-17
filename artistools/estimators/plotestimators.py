@@ -90,7 +90,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
-from artistools.nltepops.nltepops import texifyconfiguration
+from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_yvalues
 from artistools.plottools import make_frame_figure
 from artistools.plottools import prune_log_ticks
