@@ -20,13 +20,27 @@ from types import MappingProxyType
 import polars as pl
 from polars import selectors as cs
 
-import artistools as at
+from artistools.atomic import decode_roman_numeral
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbolset
+from artistools.atomic import get_levels
+from artistools.atomic import roman_numerals
+from artistools.codecomparison import read_reference_estimators
 from artistools.constants import K_B_ev_per_K
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.misc import get_file_identity
+from artistools.misc import get_mpiranklist
+from artistools.misc import get_mpirankofcell
+from artistools.misc import get_runfolders
+from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
+from artistools.misc import write_parquet_atomic
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
+from artistools.rustext import estimparse
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -174,16 +188,16 @@ def get_variablelongunits(key: str) -> str | None:
 def parse_species(suffix: str) -> str | None:
     """Return the species that the suffix names, or None when it names no element, ion, or isotope."""
     elsymbol, sep, rest = suffix.partition("_")
-    if elsymbol not in at.get_elsymbolset():
+    if elsymbol not in get_elsymbolset():
         # an isotope joins the mass number to the symbol, e.g. Ni56
         stem = suffix.rstrip(string.digits)
-        return suffix if not sep and stem != suffix and stem in at.get_elsymbolset() else None
+        return suffix if not sep and stem != suffix and stem in get_elsymbolset() else None
 
     if not sep:
         return elsymbol
 
     # an ion stage takes a space, e.g. nnion_Fe_II names the ion "Fe II"
-    if at.decode_roman_numeral(rest) > 0:
+    if decode_roman_numeral(rest) > 0:
         return f"{elsymbol} {rest}"
 
     # any other suffix keeps its underscore, because that is how the column name joins it
@@ -225,12 +239,12 @@ def summarise_ions(species: Collection[str]) -> str:
     stages: dict[str, list[int]] = defaultdict(list)
     for name in species:
         elsymbol, _, stage = name.partition(" ")
-        stagenumber = at.decode_roman_numeral(stage)
+        stagenumber = decode_roman_numeral(stage)
         if stagenumber < 1:
             return ", ".join(sorted(species))
         stages[elsymbol].append(stagenumber)
 
-    romans = at.roman_numerals
+    romans = roman_numerals
     parts = []
     for elsymbol in sorted(stages):
         # a gap must break the range, e.g. Fe I and Fe III without Fe II give "Fe I, Fe III". One range
@@ -264,7 +278,7 @@ def species_placeholder(species: Collection[str]) -> str:
     The family init_X_ takes the mass fraction of an element such as init_X_Fe, and also of one nuclide
     such as init_X_Fe52, thus one word cannot name what it takes.
     """
-    kinds = {"ion" if " " in name else "element" if name in at.get_elsymbolset() else "nuclide" for name in species}
+    kinds = {"ion" if " " in name else "element" if name in get_elsymbolset() else "nuclide" for name in species}
 
     return " or ".join(sorted(kinds))
 
@@ -272,12 +286,12 @@ def species_placeholder(species: Collection[str]) -> str:
 def summarise_nuclides(species: Collection[str]) -> str:
     """Return one line that counts the species of a family and names the elements that they cover."""
     symbols = {name.removesuffix("_otherstable").rstrip(string.digits) for name in species}
-    known = sorted((one for one in symbols if one in at.get_elsymbolset()), key=at.get_atomic_number)
+    known = sorted((one for one in symbols if one in get_elsymbolset()), key=get_atomic_number)
     across = f", {known[0]} to {known[-1]}" if known else ""
 
     # a family that names an element as well as a nuclide counts both, and the count of the elements
     # then makes the phrase "of N elements" repeat itself
-    bare = sum(name in at.get_elsymbolset() for name in species)
+    bare = sum(name in get_elsymbolset() for name in species)
     counts = (
         f"{bare} elements and {len(species) - bare} nuclides"
         if bare
@@ -353,7 +367,7 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
         # summarise_ions gives back the plain names when the species are nuclides and not ions, thus a
         # family of thousands of nuclides would fill the terminal. A family of bare element symbols stays
         # whole, because 83 of them take three lines and no name of them is a nuclide
-        nuclides = [one for one in species if one not in at.get_elsymbolset()]
+        nuclides = [one for one in species if one not in get_elsymbolset()]
         if not fullnuclides and nuclides and len(species) > MAXSPECIES_LISTED and listing == ", ".join(sorted(species)):
             listing = summarise_nuclides(species)
 
@@ -528,7 +542,7 @@ def get_estimators_rankbatch_parquetfile(
 
         print(f"    reading {len(batch_mpiranks)} estimator files in {folderpath.name}...", end="", flush=True)
 
-        pldf_batch = at.rustext.estimparse(folderpath, min(batch_mpiranks), max(batch_mpiranks))
+        pldf_batch = estimparse(folderpath, min(batch_mpiranks), max(batch_mpiranks))
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
@@ -540,7 +554,7 @@ def get_estimators_rankbatch_parquetfile(
         time_start = time.perf_counter()
 
         assert pldf_batch is not None
-        at.write_parquet_atomic(
+        write_parquet_atomic(
             pldf_batch,
             parquetfilepath,
             metadata={
@@ -571,16 +585,15 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        at
-        .get_timesteps(modelpath)
+        get_timesteps(modelpath)
         .select("timestep", "tmid_days", "twidth_days")
         .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         maintain_order="left",
     )
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+    dfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
     dfmodel = dfmodel.rename({
         colname: f"init_{colname}"
@@ -676,7 +689,7 @@ def scan_estimators(
     is_codecomparison = path_is_codecomparison(modelpath)
 
     if is_codecomparison:
-        pldflazy = lazyframe_from_estimator_dict(at.codecomparison.read_reference_estimators(modelpath))
+        pldflazy = lazyframe_from_estimator_dict(read_reference_estimators(modelpath))
     elif classicartis:
         from artistools.estimators.estimators_classic import read_classic_estimators
 
@@ -706,9 +719,9 @@ def scan_artis_estimators(
     modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
 ) -> pl.LazyFrame:
     """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none."""
-    mpiranklist = at.get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+    mpiranklist = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
     mpiranks_matched = (
-        {at.get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
+        {get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
         if match_modelgridindex
         else set(mpiranklist)
     )
@@ -718,7 +731,7 @@ def scan_artis_estimators(
         if mpiranks_matched.intersection(mpiranks)
     ]
 
-    runfolders = at.get_runfolders(modelpath, timesteps=match_timestep)
+    runfolders = get_runfolders(modelpath, timesteps=match_timestep)
     if runfolders:
         pairs = [
             (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
@@ -740,7 +753,7 @@ def scan_artis_estimators(
         # each identity comes from before the freshness check of its own file. A fresh cache that a rival
         # process installs after that check then keeps its place, because a rewrite replaces only the
         # file that the check saw
-        outdatedparquets = [at.get_file_identity(cachepath) for cachepath in cachepaths]
+        outdatedparquets = [get_file_identity(cachepath) for cachepath in cachepaths]
         stalereasons = [
             rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
             for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
@@ -814,7 +827,7 @@ def scan_artis_estimators(
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached
-        if match_timestep is not None and at.get_runfolders(modelpath):
+        if match_timestep is not None and get_runfolders(modelpath):
             msg = (
                 f"The run folders of {modelpath} hold none of the timesteps"
                 f" {min(match_timestep)} to {max(match_timestep)}."
@@ -825,12 +838,9 @@ def scan_artis_estimators(
             f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )
         pldflazy = (
-            at
-            .get_timesteps(modelpath)
+            get_timesteps(modelpath)
             .select("timestep", "tmid_days", "twidth_days")
-            .join(
-                at.inputmodel.get_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left"
-            )
+            .join(get_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left")
         )
 
     return pldflazy
@@ -869,7 +879,7 @@ def get_averageexcitation(
     """
     dfpops = dfnltepops.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
 
-    adata = at.atomic.get_levels(modelpath)
+    adata = get_levels(modelpath)
     dfionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))["levels"].item()
     if dfionlevels is None:
         msg = f"No level data for Z={atomic_number} ion_stage={ion_stage}"

@@ -9,26 +9,32 @@ from pathlib import Path
 
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.inputmodel_misc import save_initelemabundances
+from artistools.inputmodel.inputmodel_misc import save_modeldata
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
+from artistools.misc import read_wsv
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
-    at.addarg_output(parser, kind="folder", default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert Shen et al. 2018 models to ARTIS format."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    datain = at.read_wsv(args.inputpath).drop_nulls()
+    datain = read_wsv(args.inputpath).drop_nulls()
 
     isotopesofelem: dict[int, list[str]] = {}
     for species in datain.columns[5:]:
-        atomic_number = at.get_atomic_number(species.rstrip(string.digits))
+        atomic_number = get_atomic_number(species.rstrip(string.digits))
         isotopesofelem.setdefault(atomic_number, []).append(species)
 
     t_model_init_seconds = 10.0
@@ -78,7 +84,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         pl.col("cellid").alias("inputcellid"),
         *(
             pl.sum_horizontal([pl.col(species) for species in isotopesofelem[atomic_number]]).alias(
-                f"X_{at.get_elsymbol(atomic_number)}"
+                f"X_{get_elsymbol(atomic_number)}"
             )
             for atomic_number in range(1, 31)
         ),
@@ -87,8 +93,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"M_tot  = {m_enc_outer / Msun_to_g:.3f} solMass")
     print(f"M_Ni56 = {tot_ni56mass / Msun_to_g:.3f} solMass")
 
-    at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputfile)
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
+    save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputfile)
+    save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
 
 
 if __name__ == "__main__":

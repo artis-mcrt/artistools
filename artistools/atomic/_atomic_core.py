@@ -14,14 +14,17 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-import artistools as at
+from artistools import misc
 from artistools.commands import get_path
 from artistools.constants import hc_in_ev_angstrom
+from artistools.misc import firstexisting_or_none
+from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
+from artistools.rustext import read_transitiondata
 
 # The version of the line list parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
@@ -100,7 +103,7 @@ def parse_phixsdata(
 ) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]]:
     firstlevelnumber = 1
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
-    with at.zopen(phixs_filename) as fphixs:
+    with misc.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
         phixsnuincrement = float(fphixs.readline())
         xgrid = np.linspace(
@@ -222,13 +225,13 @@ def get_transitiondata_cached(
     Do not change the dictionary that this function returns.
     """
     ionset = set(ionlist) if ionlist else None
-    transition_filename = at.firstexisting("transitiondata.txt", folder=modelpath)
+    transition_filename = misc.firstexisting("transitiondata.txt", folder=modelpath)
 
     time_start = time.perf_counter()
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = at.rustext.read_transitiondata(transition_filename, ionlist=ionset)
+    transitionsdict = read_transitiondata(transition_filename, ionlist=ionset)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -312,7 +315,7 @@ def get_levels_cached(
 
     level_lists: list[IonTuple] = []
 
-    with at.zopen(adatafilename) as fadata:
+    with misc.zopen(adatafilename) as fadata:
         if not quiet:
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
@@ -728,14 +731,14 @@ def get_ionstring(
 
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
-    filepath = at.firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True, search_subfolders=False)
+    filepath = firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True, search_subfolders=False)
     if filepath is None:
         msg = f"File nuclides.out not found in {modelpath}"
         raise FileNotFoundError(msg)
 
     dfnuclides = (
         pl
-        .scan_csv(at.polars_source(filepath), separator=" ", has_header=True)
+        .scan_csv(polars_source(filepath), separator=" ", has_header=True)
         .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
         .join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left")
         .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
@@ -779,7 +782,7 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
 
     dfboundfree = (
         pl.scan_csv(
-            at.polars_source(bflistpath),
+            polars_source(bflistpath),
             skip_rows=1,
             has_header=False,
             separator=" ",

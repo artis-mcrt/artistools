@@ -7,9 +7,9 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
-import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -33,7 +33,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
-    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)

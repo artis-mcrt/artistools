@@ -450,7 +450,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel.inputmodel_misc import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax = modelmeta["vmax_cmps"]  # max velocity component for a single axis [cm/s]

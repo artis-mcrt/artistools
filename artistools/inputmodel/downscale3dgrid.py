@@ -7,8 +7,9 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
 from artistools.constants import day_to_s
+from artistools.inputmodel.inputmodel_misc import get_initelemabundances
+from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.inputmodel.inputmodel_misc import save_initelemabundances
 from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.plottools import save_figure
@@ -40,9 +41,9 @@ def make_downscaled_3d_grid(
     """
     modelpath = Path(modelpath)
 
-    pldfmodel, modelmeta = at.get_modeldata(modelpath)
+    pldfmodel, modelmeta = get_modeldata(modelpath)
     dfmodel = pldfmodel.select("rho", cs.starts_with("X_")).collect()
-    dfelemabund = at.inputmodel.get_initelemabundances(modelpath=modelpath).collect()
+    dfelemabund = get_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize

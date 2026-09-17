@@ -8,9 +8,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-if t.TYPE_CHECKING:
-    from collections.abc import Mapping
-
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -25,6 +22,9 @@ from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
+
+if t.TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -92,7 +92,7 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        from artistools.inputmodel import get_modeldata
+        from artistools.inputmodel.inputmodel_misc import get_modeldata
 
         _, modelmeta = get_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3

@@ -1439,7 +1439,7 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: mock.MagicMock) ->
     })
 
     with mock.patch.object(
-        at.lightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
     ) as mockread:
         at.lightcurve.plot(
             argsraw=[],
@@ -1456,7 +1456,8 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: mock.MagicMock) ->
     assert {tuple(np.asarray(callargs[0][1])) for callargs in reflines} == {(260.0, 280.0)}
 
 
-@mock.patch.object(at.plottools, "get_next_color", side_effect=at.plottools.get_next_color, autospec=True)
+# no autospec: on Python 3.15 the imported name is a lazy proxy until its first use, and a spec of it is not callable
+@mock.patch.object(at.lightcurve.plotlightcurve, "get_next_color", wraps=at.plottools.get_next_color)
 def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: mock.MagicMock) -> None:
     """A colour taken but not drawn steps every later series along the cycle for nothing."""
     for plotalphadeposition, expected_extra in ((False, 0), (True, 1)):

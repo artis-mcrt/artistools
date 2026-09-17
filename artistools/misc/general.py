@@ -4,10 +4,6 @@ import contextlib
 import functools
 import sys
 import typing as t
-
-if t.TYPE_CHECKING:
-    from concurrent.futures import Executor
-    from types import ModuleType
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -15,6 +11,10 @@ from collections.abc import Sequence
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+
+if t.TYPE_CHECKING:
+    from concurrent.futures import Executor
+    from types import ModuleType
 
 
 def df_filter_minmax_bracketed(

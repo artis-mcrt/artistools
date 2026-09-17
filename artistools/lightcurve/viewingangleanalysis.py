@@ -12,20 +12,36 @@ import numpy.typing as npt
 import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
-import artistools as at
+from artistools.lightcurve import lightcurve
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.lightcurve.lightcurve import find_lightcurve_file
+from artistools.lightcurve.lightcurve import generate_band_lightcurve_data
+from artistools.lightcurve.lightcurve import get_band_lightcurve
+from artistools.lightcurve.lightcurve import get_phillips_relation_data
+from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
+from artistools.misc import get_costhetabin_phibin_labels
+from artistools.misc import get_dirbin_definitions
+from artistools.misc import get_dirbins
+from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import match_closest_time
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
+from artistools.plottools import set_plot_title
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
-    at.check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
+    check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
 
     viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
     if isinstance(args.plotviewingangle, int):
@@ -34,7 +50,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
-        dirbins = at.get_dirbins(
+        dirbins = get_dirbins(
             average_over_phi=args.average_over_phi_angle, average_over_theta=args.average_over_theta_angle
         )
     elif args.plotviewingangle and viewing_angle_data_exists:
@@ -42,7 +58,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     else:
         dirbins = [-1]
 
-    dirbin_definition = at.get_dirbin_definitions(
+    dirbin_definition = get_dirbin_definitions(
         modelpath,
         dirbins,
         vpkt_observers=bool(args.plotvspecpol),
@@ -54,12 +70,12 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     if not args.plotvspecpol:
         if args.average_over_phi_angle:
             for dirbin in dirbin_definition:
-                assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
+                assert dirbin % get_viewingdirection_phibincount() == 0 or dirbin == -1
 
         if args.average_over_theta_angle:
             # averaging over theta leaves one bin per phi index
             for dirbin in dirbin_definition:
-                assert dirbin < at.get_viewingdirection_phibincount() or dirbin == -1
+                assert dirbin < get_viewingdirection_phibincount() or dirbin == -1
 
     return dirbins, dirbin_definition
 
@@ -76,7 +92,7 @@ def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
 def save_viewing_angle_data_for_plotting(band_name: str, modelname: str, args: argparse.Namespace) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-        outputfolder = at.resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
+        outputfolder = resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
         columns = [args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit]
         header = "peak_mag_polyfit risetime_polyfit deltam15_polyfit"
         if args.include_delta_m40:
@@ -276,6 +292,8 @@ def make_plot_test_viewing_angle_fit(
     args: argparse.Namespace,
 ) -> None:
     """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
+    from artistools.lightcurve.plotlightcurve import invert_magnitude_yaxis
+
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
     axis.plot(time, magnitude)
@@ -285,8 +303,8 @@ def make_plot_test_viewing_angle_fit(
 
     axis.set_xlabel("Time Since Explosion [d]")
     # -ymin and -ymax can already give the limits in the order of a magnitude axis, and invert_yaxis() toggles them back
-    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
-    at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
+    set_axis_properties(axis, args, xlimits=(args.timemin / 1.05, args.timemax * 1.05, "-timemin"))
+    invert_magnitude_yaxis(axis)
     axis.axhline(y=min(fxfit), color="black", linestyle="--")
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
@@ -319,15 +337,16 @@ def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
     """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
-    scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
+    from artistools.lightcurve.plotlightcurve import get_viewinganglecolor_for_colorbar
+    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
 
-    angles = list(range(at.get_viewingdirectionbincount()))
+    scaledmap = make_colorbar_viewingangles_colormap()
+
+    angles = list(range(get_viewingdirectionbincount()))
     colors = []
     for angle in angles:
         colorindex: t.Any
-        _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle, scaledmap, plotkwargsviewingangles, args
-        )
+        _, colorindex = get_viewinganglecolor_for_colorbar(angle, scaledmap, plotkwargsviewingangles, args)
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles["color"] = colors
     return plotkwargsviewingangles
@@ -335,16 +354,20 @@ def update_plotkwargs_for_viewingangle_colorbar(
 
 def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> None:
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
+    from artistools.lightcurve.plotlightcurve import invert_magnitude_yaxis
+    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles
+    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
+
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
-    at.plottools.set_axis_properties(axis, args, xlimits=(None, None, "-xmin"))
+    set_axis_properties(axis, args, xlimits=(None, None, "-xmin"))
     if not args.colouratpeak:
         # after the limits: set_ylim re-sorts the pair it is given, so an inversion applied first is lost
-        at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
+        invert_magnitude_yaxis(axis)
 
     if args.colorbarcostheta or args.colorbarphi:
-        scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
-        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, ax=axis)
+        scaledmap = make_colorbar_viewingangles_colormap()
+        make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
@@ -355,7 +378,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     ax = axesgrid[0][0]
 
     for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = at.read_wsv(f"{key}band_{modelname!s}_viewing_angle_data.txt")
+        viewing_angle_plot_data = read_wsv(f"{key}band_{modelname!s}_viewing_angle_data.txt")
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].cast(pl.Float64).to_numpy()
@@ -428,12 +451,12 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     ax = axesgrid[0][0]
 
     for modelnumber, modelpath in enumerate(args.modelpath):
-        modelname = at.get_model_name(modelpath)
+        modelname = get_model_name(modelpath)
 
         bands = [args.filter[0], args.filter[1]]
 
         datafilename = f"{bands[0]}band_{modelname}_viewing_angle_data.txt"
-        viewing_angle_plot_data = at.read_wsv(datafilename)
+        viewing_angle_plot_data = read_wsv(datafilename)
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
 
@@ -455,7 +478,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         plotkwargsviewingangles["label"] = modelname
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
 
-    sn_data, label = at.lightcurve.get_phillips_relation_data()
+    sn_data, label = get_phillips_relation_data()
     ax.errorbar(
         x=sn_data["(B-V)Bmax"],
         y=sn_data["MB"],
@@ -484,8 +507,8 @@ def second_band_brightness_at_peak_first_band(
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = at.lightcurve.generate_band_lightcurve_data(modelpath, args, anglenumber)
-        time, brightness_in_mag = at.lightcurve.get_band_lightcurve(lightcurve_data, bands[1], args)
+        lightcurve_data = generate_band_lightcurve_data(modelpath, args, anglenumber)
+        time, brightness_in_mag = get_band_lightcurve(lightcurve_data, bands[1], args)
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
 
@@ -537,7 +560,7 @@ def peakmag_risetime_declinerate_init(
     plottinglist: list[str] = list(args.filter) if args.filter else ["lightcurve"]
 
     for modelpath in modelpaths:
-        modelname = at.get_model_name(modelpath)
+        modelname = get_model_name(modelpath)
         # one entry per model, matching the per-model style lists and the one data file written per model
         modelnames.append(modelname)
         lcdataframes: dict[int, pl.LazyFrame] = {}
@@ -554,17 +577,17 @@ def peakmag_risetime_declinerate_init(
             # dirbin -1 is the angle-averaged light curve, which only light_curve.out holds. The
             # direction-resolved bins come from light_curve_res.out
             directionresolved = list(dirbins) != [-1]
-            lcpath = at.lightcurve.find_lightcurve_file(modelpath, directionresolved=directionresolved)
+            lcpath = find_lightcurve_file(modelpath, directionresolved=directionresolved)
             # a mode that averages over the angles groups several direction bins, and dirbins then
             # names the first bin of each group. Thus the reader must average in the same way
             lcdataframes = (
-                at.lightcurve.readfile(
+                lightcurve.readfile(
                     lcpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                 )
                 if directionresolved
-                else at.lightcurve.readfile(lcpath)
+                else lightcurve.readfile(lcpath)
             )
             # readfile slices one scan of the file. Thus one collect_all parses it one time for
             # every direction bin, in place of one parse for each bin
@@ -584,7 +607,7 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {modelname}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {dirbin: at.lightcurve.generate_band_lightcurve_data(modelpath, args, dirbin) for dirbin in dirbins}
+            {dirbin: generate_band_lightcurve_data(modelpath, args, dirbin) for dirbin in dirbins}
             if args.filter
             else {}
         )
@@ -593,9 +616,7 @@ def peakmag_risetime_declinerate_init(
         for band_name in plottinglist:
             for dirbin in dirbins:
                 if args.filter:
-                    time, brightness = at.lightcurve.get_band_lightcurve(
-                        lightcurve_data_filters_of_dirbin[dirbin], band_name, args
-                    )
+                    time, brightness = get_band_lightcurve(lightcurve_data_filters_of_dirbin[dirbin], band_name, args)
                 else:
                     lightcurve_data = dfbolo_of_dirbin[dirbin]
                     brightness = lightcurve_data["mag"].to_numpy()
@@ -618,29 +639,31 @@ def peakmag_risetime_declinerate_init(
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the luminosity of each direction bin at one time, to show the angular brightness variation."""
+    from artistools.lightcurve.plotlightcurve import get_viewinganglecolor_for_colorbar
+    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles
+    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
+
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
-    nphibins = at.get_viewingdirection_phibincount()
-    scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
+    nphibins = get_viewingdirection_phibincount()
+    scaledmap = make_colorbar_viewingangles_colormap()
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes_lazy = at.lightcurve.readfile(at.lightcurve.find_lightcurve_file(modelpath, directionresolved=True))
+    lcdataframes_lazy = lightcurve.readfile(find_lightcurve_file(modelpath, directionresolved=True))
 
     # one collect_all call parses light_curve_res.out one time for all the direction bins
     lcdataframes = dict(zip(lcdataframes_lazy.keys(), pl.collect_all(list(lcdataframes_lazy.values())), strict=True))
 
-    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time_days"].to_list())
+    timetoplot = match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time_days"].to_list())
     print(timetoplot)
 
     # the colorbar shows one angle, thus the x axis shows the other one
     xlabels = phi_viewing_angle_bins if args.colorbarcostheta else costheta_viewing_angle_bins
     for angleindex, lcdata in lcdataframes.items():
-        plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angleindex, scaledmap, plotkwargs, args
-        )
+        plotkwargs, _ = get_viewinganglecolor_for_colorbar(angleindex, scaledmap, plotkwargs, args)
 
         # readfile derives the erg/s column, so it does not have to be converted here again
         brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").item(0, 0)
@@ -651,12 +674,12 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     axis.set_xticks(ticks=np.arange(len(xlabels)), labels=xlabels, rotation=30, ha="right")
 
-    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(scaledmap, args, fig, axis)
+    make_colorbar_viewingangles(scaledmap, args, fig, axis)
 
     axis.set_xlabel("Angle bin")
     axis.set_ylabel("erg/s")
     axis.set_yscale("log")
 
-    at.plottools.set_plot_title(axis, f"time = {args.timedays} days", args)
+    set_plot_title(axis, f"time = {args.timedays} days", args)
     plotname = f"plotviewinganglebrightnessat{args.timedays}days.pdf"
     save_figure(fig, plotname, format="pdf", args=args)

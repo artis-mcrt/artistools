@@ -10,23 +10,36 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.constants import c_ang_per_s
+from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_unsupported
+from artistools.misc import exit_with_error
+from artistools.misc import get_model_name
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_vpkt_config
+from artistools.misc import match_closest_time
+from artistools.misc import parse_cli_args
+from artistools.misc import read_wsv
 from artistools.misc import require_action
+from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 from artistools.plottools import set_legend
+from artistools.spectra.spectra import get_specpol_data
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
     """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes."""
-    hesma_spec = at.read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
+    hesma_spec = read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
 
     searchtimes = [float(x) for x in hesma_spec.columns[1:]]
 
-    closest_time = f"{at.match_closest_time(timeavg, searchtimes):.2f}"
+    closest_time = f"{match_closest_time(timeavg, searchtimes):.2f}"
     print(closest_time)
 
     # Scale distance to 1 Mpc
@@ -40,9 +53,9 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
 def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
     """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
     for specfilename in specfiles:
-        specdata = at.read_wsv(specfilename, has_header=False).cast(pl.Float64)
+        specdata = read_wsv(specfilename, has_header=False).cast(pl.Float64)
 
-        res_specdata = {dirbin: pldf.collect() for dirbin, pldf in at.split_multitable_dataframe(specdata).items()}
+        res_specdata = {dirbin: pldf.collect() for dirbin, pldf in split_multitable_dataframe(specdata).items()}
 
         # the first row of each table holds the time of each spectrum column
         new_column_names = ["lambda", *(str(time) for time in res_specdata[0].row(0)[1:])]
@@ -66,9 +79,9 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
     """Write the virtual packet spectra of the first five direction bins in HESMA format."""
     if not outpath:
         outpath = modelpath
-    modelname = at.get_model_name(modelpath)
+    modelname = get_model_name(modelpath)
     angles = [0, 1, 2, 3, 4]
-    vpkt_config = at.get_vpkt_config(modelpath)
+    vpkt_config = get_vpkt_config(modelpath)
     angle_names = [rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}" for dirbin in angles]
 
     with (outpath / f"{modelname}_vspec_res.dat").open("w", encoding="utf-8") as fout:
@@ -81,13 +94,13 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         for dirbin, angle_name in zip(angles, angle_names, strict=True):
             print(angle_name)
-            vspecdata = at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
+            vspecdata = get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
 
             timearray = vspecdata.columns[1:]
             vspecdata = (
                 vspecdata
                 .sort("nu", descending=True)
-                .with_columns(lambda_angstroms=at.constants.c_ang_per_s / pl.col("nu"))
+                .with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu"))
                 .with_columns(
                     # scale to 10 pc with the factor (1 Mpc / 10 pc) ** 2
                     pl.col(time) * pl.col("nu") / pl.col("lambda_angstroms") * 100000.0**2
@@ -101,11 +114,11 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
 def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, timemax: float) -> None:
     """UVOIR bolometric light curve (angle-averaged)."""
-    lightcurvedataframe = at.lightcurve.get_bol_lc_from_lightcurveout(modelpath)
+    lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
     lightcurvedataframe = lightcurvedataframe.filter((pl.col("time") > timemin) & (pl.col("time") < timemax))
 
-    modelname = at.get_model_name(modelpath)
+    modelname = get_model_name(modelpath)
     outfilename = f"doubledet_2021_{modelname}.dat"
 
     lightcurvedataframe.write_csv(outpath / outfilename, separator=" ", include_header=False)
@@ -116,20 +129,20 @@ def make_hesma_peakmag_dm15_dm40(
 ) -> None:
     """Write a HESMA-format file of peak magnitude, rise time, and decline rate per viewing angle."""
     dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    dm15data = at.read_wsv(
+    dm15data = read_wsv(
         pathtofiles / dm15filename, has_header=False, new_columns=["peakmag", "risetime", "dm15"], skip_rows=1
     )
 
     if dm40:
         dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
-        dm40data = at.read_wsv(
+        dm40data = read_wsv(
             pathtofiles / dm40filename, has_header=False, new_columns=["peakmag", "risetime", "dm40"], skip_rows=1
         )
 
     outdata = {
         "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
         "dm15": dm15data["dm15"],
-        "angle_bin": np.arange(at.get_viewingdirectionbincount()),
+        "angle_bin": np.arange(get_viewingdirectionbincount()),
     }
     if dm40:
         outdata["dm40"] = dm40data["dm40"]
@@ -144,7 +157,7 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
     axis = axesgrid[0][0]
     for filepath in sorted(Path(pathtofiles).iterdir()):
         print(f"Reading {filepath}")
-        dfwidthlum = at.read_wsv(filepath)
+        dfwidthlum = read_wsv(filepath)
         axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)
 
     axis.invert_yaxis()
@@ -175,11 +188,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " plotspectrum/plotresspec: plot a HESMA reference spectrum file"
         ),
     )
-    at.addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
-    at.addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
+    addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
+    addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
     # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
-    at.addarg_timeminmax(parser)
+    addarg_timeminmax(parser)
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )
@@ -198,14 +211,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def require(value: t.Any, argname: str, action: str) -> t.Any:
     """Return value, or exit with a message naming the argument the action needs."""
     if value is None:
-        at.exit_with_error(f"{action} requires {argname}")
+        exit_with_error(f"{action} requires {argname}")
 
     return value
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert ARTIS output to the file formats used by the HESMA model archive."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     require_action(args)
 

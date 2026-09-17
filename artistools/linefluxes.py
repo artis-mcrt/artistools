@@ -18,11 +18,17 @@ import polars as pl
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
-import artistools as at
+from artistools import nltepops
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
+from artistools.atomic import get_linelist_pldf
 from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
+from artistools.estimators.estimators import scan_estimators
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
@@ -32,7 +38,18 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
+from artistools.misc import get_model_name
+from artistools.misc import get_series_label
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_times
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import print_heading
 from artistools.misc import print_warning
+from artistools.misc import resolve_outputfile
+from artistools.misc import trim_or_pad
+from artistools.packets.packets import add_derived_columns_lazy
+from artistools.packets.packets import get_packets
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -93,8 +110,8 @@ def get_timebins(
     logarithmic. A bin that the caller gives covers no single timestep, thus it takes the mean of
     its own two edges.
     """
-    arr_tstart_model = at.get_timestep_times(modelpath, loc="start")
-    arr_tend_model = at.get_timestep_times(modelpath, loc="end")
+    arr_tstart_model = get_timestep_times(modelpath, loc="start")
+    arr_tend_model = get_timestep_times(modelpath, loc="end")
     if arr_tstart is None:
         arr_tstart = arr_tstart_model
     if arr_tend is None:
@@ -102,7 +119,7 @@ def get_timebins(
 
     ismodeltimesteps = list(arr_tstart) == arr_tstart_model and list(arr_tend) == arr_tend_model
     arr_tmid = (
-        np.array(at.get_timestep_times(modelpath, loc="mid"))
+        np.array(get_timestep_times(modelpath, loc="mid"))
         if ismodeltimesteps
         else (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
     )
@@ -156,7 +173,7 @@ def get_line_luminosities_from_packets(
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
-    nprocs_read, dfpackets = at.packets.get_packets(
+    nprocs_read, dfpackets = get_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -207,26 +224,23 @@ def get_line_luminosities_from_pops(
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
     _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
-    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    lzmodel, modelmeta = get_modeldata(modelpath)
     modeldata = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .select("vel_r_min_kmps", "vel_r_max_kmps")
-        .collect()
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select("vel_r_min_kmps", "vel_r_max_kmps").collect()
     )
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
-    adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
+    adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
     # read_files is uncached, so read every rank's nlte output once rather than once per feature
-    dfnltepops_allions = at.nltepops.read_files(modelpath)
+    dfnltepops_allions = nltepops.read_files(modelpath)
 
     # the shell velocities do not change with time, thus the volume of a shell scales with t^3
     v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
     v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
     shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
 
-    timesteps = [at.get_timestep_of_timedays(modelpath, float(timedays)) for timedays in arr_tmid]
+    timesteps = [get_timestep_of_timedays(modelpath, float(timedays)) for timedays in arr_tmid]
     dftimes = pl.DataFrame({
         "timeindex": range(len(arr_tmid)),
         "timestep": timesteps,
@@ -356,8 +370,7 @@ def get_closelines(
 ) -> FeatureTuple:
     """Return the feature made up of one ion's lines matching the given wavelength range and level indices."""
     lzdflinelistclosematches = (
-        at.atomic
-        .get_linelist_pldf(modelpath)
+        get_linelist_pldf(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
     )
@@ -373,8 +386,8 @@ def get_closelines(
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
 
-    colname = f"lum_{at.get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
-    featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
+    colname = f"lum_{get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
+    featurelabel = f"{get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
     lowestlambda = dflinelistclosematches["lambda_angstroms"].min()
     assert isinstance(lowestlambda, float | np.floating)
     highestlambda = dflinelistclosematches["lambda_angstroms"].max()
@@ -474,7 +487,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmax = -math.inf
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
-        at.print_heading(modellabel)
+        print_heading(modellabel)
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
@@ -541,7 +554,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         ax.set_xlabel(r"Time [days]")
         set_legend(ax, args, loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1)
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, "linefluxes.pdf")
+    args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
     save_figure(fig, args.outputfile, format="pdf", args=args)
 
@@ -606,7 +619,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     Tedata_all: dict[int, dict[int, list[float]]] = {}
 
     # data is collected, now make plots
-    args.outputfile = at.resolve_outputfile(args.outputfile, "emittingregions.pdf")
+    args.outputfile = resolve_outputfile(args.outputfile, "emittingregions.pdf")
 
     args.modelpath.append(None)
     args.label.append(f"All models: {', '.join(args.label)}")
@@ -629,20 +642,19 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
-            _nprocs_read, dfpackets = at.packets.get_packets(
+            _nprocs_read, dfpackets = get_packets(
                 modelpath=modelpath,
                 maxpacketfiles=args.maxpacketfiles,
                 packet_type="TYPE_ESCAPE",
                 escape_type="TYPE_RPKT",
             )
 
-            dfpackets = at.packets.add_derived_columns_lazy(
+            dfpackets = add_derived_columns_lazy(
                 dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
             )
 
             dfestimators = (
-                at.estimators
-                .scan_estimators(modelpath=modelpath, verbose=args.verbose)
+                scan_estimators(modelpath=modelpath, verbose=args.verbose)
                 .select(["timestep", "modelgridindex", "Te", "nne"])
                 .drop_nulls()
                 .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
@@ -669,8 +681,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     }
 
             dfestimators_collected = dfestimators.select("em_timestep", "em_Te", "em_log10nne").collect()
-            tstartlist = at.get_timestep_times(modelpath, loc="start")
-            tendlist = at.get_timestep_times(modelpath, loc="end")
+            tstartlist = get_timestep_times(modelpath, loc="start")
+            tendlist = get_timestep_times(modelpath, loc="end")
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
@@ -882,11 +894,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line flux ratios for comparisons to Floers."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
-    args.label, args.modeltag, args.color = at.trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
+    args.label, args.modeltag, args.color = trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
 
@@ -920,12 +932,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # this plot needs concrete time bins, so fall back to the first model's timesteps. The flux ratio plot
         # leaves them as None, which makes each model use its own timesteps
         # copy the lists, because get_timestep_times() is lru_cached
-        args.timebins_tstart = list(at.get_timestep_times(args.modelpath[0], loc="start"))
-        args.timebins_tend = list(at.get_timestep_times(args.modelpath[0], loc="end"))
+        args.timebins_tstart = list(get_timestep_times(args.modelpath[0], loc="start"))
+        args.timebins_tend = list(get_timestep_times(args.modelpath[0], loc="end"))
 
     args.label = [
-        at.get_series_label(args.label, index, at.get_model_name(modelpath))
-        for index, modelpath in enumerate(args.modelpath)
+        get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]
 
     if args.plotemittingregions:

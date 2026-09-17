@@ -13,12 +13,19 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.misc import addarg_modelpath
+from artistools.misc import get_grid_mapping
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import print_heading
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
@@ -28,7 +35,7 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
         species = column.removeprefix("X_")
         elsymb = species.rstrip(string.digits)
-        atomic_number = at.get_atomic_number(elsymb)
+        atomic_number = get_atomic_number(elsymb)
         if atomic_number == 0:
             continue
         mass_number = float(species.removeprefix(elsymb))
@@ -51,13 +58,11 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
 
 def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
-    at.print_heading(str(modelpath))
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        modelpath, get_elemabundances=not args.noabund, printwarningsonly=False
-    )
+    print_heading(str(modelpath))
+    dfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=not args.noabund, printwarningsonly=False)
 
     # the collect below puts the dataframe in memory. Thus the select keeps only the derived columns that the steps read
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
         cs.by_name(dfmodel.collect_schema().names()) | cs.by_name("rho", "mass_g", "vel_r_mid", "kinetic_en_erg")
     )
     # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
@@ -109,7 +114,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             print(dfmodel.collect())
 
     try:
-        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = at.get_grid_mapping(modelpath)
+        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
         print(f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
         print("  no cell mapping file found")
@@ -239,7 +244,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
 
         species_mass_msun = speciesabund_g / Msun_to_g
 
-        atomic_number = at.get_atomic_number(species.rstrip(string.digits))
+        atomic_number = get_atomic_number(species.rstrip(string.digits))
 
         if species[-1].isdigit():
             # isotopic species
@@ -299,10 +304,10 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             )
             massnumber = int(strmassnumber) if strmassnumber else -1
             if args.sort == "z":
-                return (at.get_atomic_number(species), massnumber, species)
+                return (get_atomic_number(species), massnumber, species)
 
             if args.sort == "a":
-                return (massnumber, at.get_atomic_number(species), species)
+                return (massnumber, get_atomic_number(species), species)
 
         return (-mass_g, species)
 
@@ -316,7 +321,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         species_mass_msun = mass_g / Msun_to_g
         massfrac = species_mass_msun / mass_msun_rho
         strcomment = ""
-        atomic_number = at.get_atomic_number(species)
+        atomic_number = get_atomic_number(species)
         if species.endswith("_isosum"):
             elsymb = species.removesuffix("_isosum")
             elem_mass = speciesmasses.get(elsymb, 0.0)
@@ -339,7 +344,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_modelpath(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -365,10 +370,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     assert args is not None
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     for modelpath in args.modelpath:
         describe_model(modelpath, args)

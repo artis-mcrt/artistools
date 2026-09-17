@@ -4,8 +4,13 @@ import typing as t
 from functools import lru_cache
 from pathlib import Path
 
-import artistools as at
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.misc import firstexisting_or_none
+from artistools.misc import get_inputparams
 from artistools.misc import print_warning
+from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 
@@ -20,7 +25,7 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
     """
     atomic_composition = {}
 
-    with at.zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
+    with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
         ioncount = 0
         Z = None
         for row in foutput:
@@ -45,11 +50,11 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
     for atomic_number in elements:
         for ion_stage in range(1, atomic_composition[atomic_number] + 1):
             value_thision = float(row[i])
-            ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_")
+            ionstr = get_ionstring(atomic_number, ion_stage, sep="_")
             outdict[f"nnion_{ionstr}"] = value_thision
             i += 1
 
-            elsymbol = at.get_elsymbol(atomic_number)
+            elsymbol = get_elsymbol(atomic_number)
             elpop = outdict.get(f"nnelement_{elsymbol}", 0)
             outdict[f"nnelement_{elsymbol}"] = elpop + value_thision
 
@@ -61,9 +66,9 @@ def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     first_timesteps_in_dir = {}
 
     for folder in folderlist_all:
-        outputfile = at.firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
+        outputfile = firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
         if outputfile is not None:
-            with at.zopen(outputfile, encoding="utf-8") as output_0:
+            with zopen(outputfile, encoding="utf-8") as output_0:
                 timesteps_in_dir = [
                     line.strip(".\n").split(" ")[-1]
                     for line in output_0
@@ -123,13 +128,11 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
     atomic_composition = get_atomic_composition(modelpath)
 
-    inputparams = at.get_inputparams(modelpath)
+    inputparams = get_inputparams(modelpath)
     ndimensions = inputparams["n_dimensions"]
     # only a 1D model gives the outer velocity of each cell
     vel_r_max_kmps = (
-        at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect().to_series()
-        if ndimensions == 1
-        else None
+        get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect().to_series() if ndimensions == 1 else None
     )
 
     estimators: dict[tuple[int, int], t.Any] = {}
@@ -144,7 +147,7 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
         else:
             print_warning(f"no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
             timestep = 0
-        with at.zopen(estfilepath) as estfile:
+        with zopen(estfilepath) as estfile:
             modelgridindex = -1
             for line in estfile:
                 row = line.split()

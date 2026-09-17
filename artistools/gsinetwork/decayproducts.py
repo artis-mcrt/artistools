@@ -13,7 +13,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_elsymbol
 from artistools.commands import get_path
 from artistools.constants import amu_g
 from artistools.constants import day_to_s
@@ -21,8 +21,15 @@ from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_output
+from artistools.misc import get_file_identity
+from artistools.misc import parallel_map
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.misc import write_parquet_atomic
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -72,7 +79,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--trajparquet", action="store_true", help="Writes individual parquet files for all trajectories"
     )
 
-    at.addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
+    addarg_output(parser, kind="folder", default=Path(), helptext="Path for output PDF and parquet files")
 
     addarg_figscale(parser)
 
@@ -128,7 +135,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
         for hrow in hotokezaka_betaminus.iter_rows(named=True):
             atomic_number = hrow["Z"]
             A = hrow["A"]
-            elsymb = at.get_elsymbol(atomic_number)
+            elsymb = get_elsymbol(atomic_number)
             print(f"Element: Z={atomic_number} {elsymb} A={A}")
             isot_str = f"{A}{elsymb.lower()}"
             request = urllib.request.Request(
@@ -202,8 +209,7 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     dfheatingthermo = (
-        at
-        .read_wsv(
+        read_wsv(
             get_tar_member_extracted_path(
                 traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
             )
@@ -211,7 +217,7 @@ def process_trajectory(
         .select("#count", "hbeta", "htot")
         .with_columns(fix_fortran_exponents(pl.Float64))
         .join(
-            at.read_wsv(
+            read_wsv(
                 get_tar_member_extracted_path(
                     traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
                 )
@@ -264,7 +270,7 @@ def process_trajectory(
     # two plot times can use the same network step, thus the code reads each file one time
     networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
     if networksteps:
-        dftrajnucabund, _networktimes = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+        dftrajnucabund, _networktimes = get_trajectory_timestepfiles_nuc_abund(
             traj_root=traj_root,
             particleid=traj_ID,
             memberfilenames=[f"./Run_rprocess/nz-plane{nts:05d}" for nts in networksteps],
@@ -356,13 +362,13 @@ def process_trajectory(
 
         # an output file overwrites whatever a previous run left at the path
         trajparquetpath = traj_parquet_dir / f"decay_powers_{traj_ID}.parquet"
-        at.write_parquet_atomic(traj_df, trajparquetpath, replaces=at.get_file_identity(trajparquetpath))
+        write_parquet_atomic(traj_df, trajparquetpath, replaces=get_file_identity(trajparquetpath))
     return decay_powers
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Comparison to constant beta decay splitup factors."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     nuc_dataset = "Hotokezaka" if args.nucdata == "hotokezaka" else "ENSDF"
 
@@ -394,7 +400,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")
-    traj_summ_data = at.read_wsv(summarypath, comment_prefix="#", header_from_comment=True)
+    traj_summ_data = read_wsv(summarypath, comment_prefix="#", header_from_comment=True)
     if "Ye" not in traj_summ_data.collect_schema().names():
         msg = f"{summarypath} has no Ye column. The first line must be a header line that starts with #."
         raise ValueError(msg)
@@ -409,7 +415,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {int(trajid): mass * Msun_to_g for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = at.parallel_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = parallel_map(
         partial(
             process_trajectory,
             nuc_data,
@@ -478,7 +484,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             traj_set_df = pl.DataFrame(decay_powers)
             # an output file overwrites whatever a previous run left at the path
             setparquetpath = parquet_dir / f"decay_powers_{labelfull}.parquet"
-            at.write_parquet_atomic(traj_set_df, setparquetpath, replaces=at.get_file_identity(setparquetpath))
+            write_parquet_atomic(traj_set_df, setparquetpath, replaces=get_file_identity(setparquetpath))
 
         plot_decay_powers(
             args,

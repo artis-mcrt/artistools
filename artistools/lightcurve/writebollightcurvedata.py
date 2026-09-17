@@ -9,13 +9,21 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.lightcurve import lightcurve
+from artistools.lightcurve.lightcurve import find_lightcurve_file
 from artistools.lightcurve.lightcurve import get_bolometric_luminosities
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import get_model_name
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
+from artistools.spectra.spectra import read_spec_res
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     """Return log10(bolometric luminosity) per direction bin between 5 and 80 days, integrated from the spectra."""
-    res_specdata = at.spectra.read_spec_res(modelpath)
+    res_specdata = read_spec_res(modelpath)
     timearray = res_specdata[0].collect_schema().names()[1:]
     # one pass gives both the time labels and the timesteps they came from, so the two cannot drift apart
     selected = [(ts, timestr) for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
@@ -34,7 +42,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
 def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
     """Return the spherically averaged bolometric luminosity against time, read from light_curve.out."""
     # readfile keys the spherically averaged light curve as dirbin -1, and light_curve.out has no other bins
-    lcdata = at.lightcurve.readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1].collect()
+    lcdata = lightcurve.readfile(find_lightcurve_file(modelpath))[-1].collect()
 
     lightcurvedata = {"time": lcdata["time_days"], "lum (erg/s)": lcdata["luminosity_erg/s"]}
 
@@ -43,18 +51,18 @@ def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
     parser.add_argument(
         "--fromspectra",
         action="store_true",
         help="Integrate the direction-resolved spectra instead of reading light_curve.out",
     )
-    at.addarg_output(parser, kind="folder", default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write bolometric light curve data out as a plain text file for each model."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     header = (
         "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle"
@@ -65,8 +73,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
 
-    for modelpath in at.normalize_path_list(args.modelpath):
-        modelname = at.get_model_name(modelpath)
+    for modelpath in normalize_path_list(args.modelpath):
+        modelname = get_model_name(modelpath)
         lightcurvedataframe = (
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
@@ -76,7 +84,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             f.write(f"{header}\n")
             lightcurvedataframe.write_csv(f, separator=" ", include_header=False)
 
-        at.print_saved(outfilepath)
+        print_saved(outfilepath)
 
 
 if __name__ == "__main__":

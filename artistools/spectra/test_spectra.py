@@ -377,7 +377,7 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
-    with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+    with mock.patch("artistools.inputmodel.inputmodel_misc.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
         edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
@@ -409,7 +409,7 @@ def test_spectra_ye_shell_contributions() -> None:
         dfmodel, modelmeta = realgetmodeldata(*args, **kwargs)
         return dfmodel.with_columns(Ye=0.2 + 0.2 * (pl.col("inputcellid") % 2 == 0).cast(pl.Float32)), modelmeta
 
-    with mock.patch("artistools.inputmodel.get_modeldata", side_effect=get_modeldata_with_ye):
+    with mock.patch("artistools.inputmodel.inputmodel_misc.get_modeldata", side_effect=get_modeldata_with_ye):
         contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
             groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6]
         )
@@ -655,7 +655,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
 @pytest.mark.parametrize(
     ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
 )
-@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_spectra_contribution_plot_forwards_packet_time(
     mockgetcontributions: mock.MagicMock,
     tmp_path: Path,
@@ -694,7 +694,7 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
     def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
-    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
     dfspectrum = atspectra.get_from_packets(
         modelpath=Path(),
         timelowdays=0.5,
@@ -734,7 +734,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, 
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
-    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
     monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
 
@@ -1180,7 +1180,7 @@ def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -
         )
 
 
-@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     mockgetcontributions: mock.MagicMock, tmp_path: Path
 ) -> None:

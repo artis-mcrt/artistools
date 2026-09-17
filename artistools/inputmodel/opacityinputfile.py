@@ -9,8 +9,12 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_action
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import require_action
 
 
@@ -65,7 +69,7 @@ def all_cells_same_opacity(modelpath: str | Path, ngrid: int, kappa: float = 0.1
         fopacity.write(f"{ngrid}\n")
         fopacity.writelines(f"{cellid + 1}    {kappa}\n" for cellid in range(ngrid))
 
-    at.print_saved(Path(modelpath, "opacity.txt"))
+    print_saved(Path(modelpath, "opacity.txt"))
 
 
 def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
@@ -86,21 +90,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " describe: report the opacities in an existing opacity.txt"
         ),
     )
-    at.addarg_modelpath(parser, default=Path())
-    at.addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write opacity.txt into (uniform)")
+    addarg_modelpath(parser, default=Path())
+    addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write opacity.txt into (uniform)")
     parser.add_argument("-kappa", type=float, default=0.1, help="Grey opacity for every cell [cm2/g] (uniform)")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write or inspect an ARTIS grey opacity.txt."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     require_action(args)
 
     modelpath = Path(args.modelpath)
 
     if args.action == "uniform":
-        _, modelmeta = at.inputmodel.get_modeldata(modelpath)
+        _, modelmeta = get_modeldata(modelpath)
         all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)

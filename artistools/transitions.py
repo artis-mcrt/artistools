@@ -12,11 +12,17 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools import nltepops
+from artistools.atomic import add_transition_columns
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
 from artistools.constants import C_cm_per_s
 from artistools.constants import hc_in_ev_cm
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
+from artistools.estimators.estimators import read_estimators
+from artistools.inputmodel.inputmodel_misc import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -26,6 +32,15 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import exit_with_error
+from artistools.misc import format_frame_path
+from artistools.misc import get_model_name
+from artistools.misc import get_single_modelgridindex
+from artistools.misc import get_single_timestep
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
+from artistools.misc import parse_cli_args
+from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -191,7 +206,7 @@ def make_plot(
             set_legend(axis, args, loc="upper left", handlelength=1)
 
     axislabels = [
-        f"{at.get_ionstring(Z, ion_stage, style='spectral')}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
+        f"{get_ionstring(Z, ion_stage, style='spectral')}\n(pop={ionpopdict[Z, ion_stage]:.1e}/cm³)"
         for (Z, ion_stage) in ionlist
     ]
 
@@ -337,24 +352,24 @@ def get_ionlist() -> list[tuple[int, int]]:
 def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellConditions:
     """Read the time, the velocity, and the estimators of the selected cell and timestep."""
     timestep = (
-        at.get_timestep_of_timedays(modelpath, args.timedays)
+        get_timestep_of_timedays(modelpath, args.timedays)
         if args.timedays
-        else at.get_single_timestep(args.timestep, modelpath)
+        else get_single_timestep(args.timestep, modelpath)
     )
     assert timestep is not None, "-timestep holds a default, thus it names a timestep"
 
-    modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
-    modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
-    estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+    modeldata = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
+    modelgridindex = get_single_modelgridindex(args.modelgridindex)
+    estimators_all = read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:
-        at.exit_with_error("no estimators")
+        exit_with_error("no estimators")
 
     assert modelgridindex is not None, "-modelgridindex holds a default, thus it names a cell"
 
     return CellConditions(
         modelgridindex=modelgridindex,
         timestep=timestep,
-        time_days=at.get_timestep_time(modelpath, timestep),
+        time_days=get_timestep_time(modelpath, timestep),
         velocity=modeldata["vel_r_max_kmps"][modelgridindex],
         estimators=estimators_all[timestep, modelgridindex],
     )
@@ -362,15 +377,15 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
 
 def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]]) -> PlotConditions:
     """Return the NLTE populations and the temperatures of one cell of a model."""
-    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
+    dfnltepops = nltepops.read_files(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
-        at.exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
+        exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
 
     T_e = float(cell.estimators["Te"])
     T_R = float(cell.estimators["TR"])
     figure_title = (
-        f"{at.get_model_name(modelpath)}\n"
+        f"{get_model_name(modelpath)}\n"
         f"Cell {cell.modelgridindex} ({cell.velocity} km/s) with Te = {T_e:.1f} K, "
         f"TR = {T_R:.1f} K at timestep {cell.timestep}"
     )
@@ -431,8 +446,7 @@ def get_ion_transitions(
 def add_artis_transition_columns(pldftransitions: pl.DataFrame, pldflevels: pl.DataFrame) -> pl.DataFrame:
     """Add the level energies, the wavelengths, and the statistical weights of an ARTIS transition list."""
     return (
-        at.atomic
-        .add_transition_columns(
+        add_transition_columns(
             pldftransitions,
             pldflevels,
             [
@@ -483,8 +497,8 @@ def get_ion_spectra(
         pldftransitions = get_ion_transitions(ion, dftransgfall, args)
 
         print()
-        at.print_heading(
-            f"{at.get_ionstring(ionid[0], ionid[1], style='spectral'):8s} "
+        print_heading(
+            f"{get_ionstring(ionid[0], ionid[1], style='spectral'):8s} "
             f"(pop={conditions.ionpopdict[ionid]:.2e} / cm3, {pldftransitions.height:6d} transitions)"
         )
 
@@ -599,14 +613,14 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
     estimators = cell.estimators
 
     def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
-        elsym = at.get_elsymbol(atomic_number)
+        elsym = get_elsymbol(atomic_number)
         est_ionfracs = [
-            estimators[f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
+            estimators[f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
             / estimators[f"nnelement_{elsym}"]
             for ion_stage in ion_stages
         ]
         ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
-        strions = " ".join([at.get_ionstring(atomic_number, ion_stage, sep="").rjust(6) for ion_stage in ion_stages])
+        strions = " ".join([get_ionstring(atomic_number, ion_stage, sep="").rjust(6) for ion_stage in ion_stages])
 
         return strions, ionfracs_str
 
@@ -634,7 +648,7 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot estimated spectra from bound-bound transitions."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     # with no model path the plot shows one fixed temperature, thus it reads the atomic data of the working folder
     from_model = bool(args.modelpath)
@@ -653,11 +667,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # resolution of the plot in Angstroms
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
-    adata = (
-        at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
-        if args.atomicdatabase == "artis"
-        else None
-    )
+    adata = get_levels(modelpath, tuple(ionlist), get_transitions=True) if args.atomicdatabase == "artis" else None
 
     conditions = (
         get_model_conditions(modelpath, cell, ionlist)
@@ -670,7 +680,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if cell is not None:
         print_ionisation_table(cell, depcoeffs)
-        outputfilename = at.format_frame_path(
+        outputfilename = format_frame_path(
             args.outputfile, cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days
         )
     else:

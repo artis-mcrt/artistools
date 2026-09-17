@@ -992,8 +992,8 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     def fake_get_path(key: str) -> Path:
         return tmp_path if key == "codecomparisondata1path" else realgetpath(key)
 
-    # codecomparison.py calls at.get_path, i.e. the top-level re-export rather than commands.get_path
-    monkeypatch.setattr(at, "get_path", fake_get_path)
+    # codecomparison.py holds its own import of the name
+    monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
 
     modelpath = "codecomparison/toymodel/toycode"
 
@@ -1042,8 +1042,8 @@ def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     import artistools.inputmodel.inputmodel_misc
 
-    # codecomparison.py calls at.get_path, and inputmodel_misc.py holds its own import of the name
-    monkeypatch.setattr(at, "get_path", fake_get_path)
+    # codecomparison.py and inputmodel_misc.py each hold their own import of the name
+    monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
     monkeypatch.setattr(artistools.inputmodel.inputmodel_misc, "get_path", fake_get_path)
 
     return "codecomparison/toymodel/toycode"

@@ -7,8 +7,9 @@ from pathlib import Path
 
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_ionstring
 from artistools.constants import K_B_ev_per_K
+from artistools.misc import read_rank_outputfiles
 
 
 def texifyterm(strterm: str) -> str:
@@ -119,7 +120,7 @@ def add_lte_pops(
             continue
 
         if not noprint:
-            ionstr = at.get_ionstring(Z, ion_stage, style="spectral")
+            ionstr = get_ionstring(Z, ion_stage, style="spectral")
             print(f"{ionstr} has a superlevel at level {levelnumber_sl}")
 
         if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
@@ -171,6 +172,4 @@ def read_files(
     modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
 ) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and one or more grid cells."""
-    return at.read_rank_outputfiles(
-        modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
-    )
+    return read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex)

@@ -20,15 +20,32 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-import artistools as at
+from artistools import misc
+from artistools.atomic import get_nuclides
+from artistools.commands import get_path
 from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.lightcurve import lightcurve
 from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
+from artistools.lightcurve.lightcurve import find_lightcurve_file
+from artistools.lightcurve.lightcurve import generate_band_lightcurve_data
+from artistools.lightcurve.lightcurve import get_band_lightcurve
+from artistools.lightcurve.lightcurve import get_colour_delta_mag
+from artistools.lightcurve.lightcurve import get_from_packets
 from artistools.lightcurve.lightcurve import lum_lsun_to_mag
 from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
+from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data
+from artistools.lightcurve.lightcurve import read_hesma_lightcurve
+from artistools.lightcurve.lightcurve import read_reflightcurve_band_data
+from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
+from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
+from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
+from artistools.lightcurve.viewingangleanalysis import plot_viewanglebrightness_at_fixed_time
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -43,28 +60,50 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
 from artistools.misc import apply_time_range_args
 from artistools.misc import color_arg
+from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting
+from artistools.misc import get_deposition
+from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_filterfunc
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_name
+from artistools.misc import get_phibin_rank_ascending
 from artistools.misc import get_series_label
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import makelist
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
+from artistools.misc import print_heading
 from artistools.misc import print_product
+from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
+from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.packets.packets import get_packets
 from artistools.plottools import add_cax_for_fixed_frames
 from artistools.plottools import AxesTree
+from artistools.plottools import get_next_color
 from artistools.plottools import get_unused_colors
 from artistools.plottools import iter_axes
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import save_figure
+from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_labels
+from artistools.plottools import set_axis_properties
+from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
+from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
 
 if t.TYPE_CHECKING:
@@ -159,7 +198,7 @@ def plot_bol_reflightcurve(
 
     Return the label used in the plot legend, which comes from the file metadata unless label is given.
     """
-    dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(lightcurvefilename)
+    dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
     plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
@@ -214,23 +253,21 @@ def plot_deposition_thermalisation(
     lumunit = get_plot_lum_unit(args)
 
     if args.plotthermalisation:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
-        dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        dfmodel, modelmeta = get_modeldata(modelpath)
+        dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
         # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
         model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
-    depdata = at.get_deposition(modelpath).collect()
+    depdata = get_deposition(modelpath).collect()
 
-    at.plottools.get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
-    color_gamma = at.plottools.get_next_color(axis)
-    color_beta = at.plottools.get_next_color(axis)
+    get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
+    color_gamma = get_next_color(axis)
+    color_beta = get_next_color(axis)
     # the alpha curves are drawn only on request, so their colour is taken only then: consuming it anyway
     # would step the next model's deposition curves along the cycle for a curve that is never drawn
-    color_alpha: str | None = (
-        at.plottools.get_next_color(axis) if args.plotalphadeposition or args.plotthermalisation else None
-    )
+    color_alpha: str | None = get_next_color(axis) if args.plotalphadeposition or args.plotthermalisation else None
 
     depositioncurves: list[tuple[str, str, str, str | None]] = [
         ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
@@ -348,25 +385,25 @@ def plot_artis_lightcurve(
 
     linelabel_is_custom = linelabel is not None
     assert "label" not in plotkwargs, "label is already set in plotkwargs"
-    linelabel = linelabel or at.get_model_name(modelpath)
+    linelabel = linelabel or get_model_name(modelpath)
     assert linelabel is not None
     if escape_type == "TYPE_GAMMA":
         linelabel += r" $\gamma$"
     if pellet_nucname is not None:
         linelabel = rf"$\;$ {pellet_nucname}"
 
-    at.print_heading(linelabel)
-    at.print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
+    print_heading(linelabel)
+    print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
-        at.plottools.set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
+        set_plot_title(axis, args.title if isinstance(args.title, str) else linelabel, args)
 
     # resolve the direction bins first, because "-plotviewingangle -2" expands to every bin. The
     # packet-derived data must hold the same bin keys that the plot loop reads.
-    dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+    dirbins, angle_definition = parse_directionbin_args(modelpath, args)
 
     if frompackets:
-        lcdataframes = at.lightcurve.get_from_packets(
+        lcdataframes = get_from_packets(
             modelpath,
             escape_type=escape_type,
             maxpacketfiles=maxpacketfiles,
@@ -389,9 +426,9 @@ def plot_artis_lightcurve(
             )
         try:
             lcpath = (
-                at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+                firstexisting(lcfilename, folder=modelpath, tryzipped=True)
                 if lcfilename is not None
-                else at.lightcurve.find_lightcurve_file(
+                else find_lightcurve_file(
                     modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
                 )
             )
@@ -399,7 +436,7 @@ def plot_artis_lightcurve(
             print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
-        lcdataframes = at.lightcurve.readfile(
+        lcdataframes = lightcurve.readfile(
             lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )
 
@@ -418,7 +455,7 @@ def plot_artis_lightcurve(
         zip(
             dirbins,
             pl.collect_all(
-                at.misc.df_filter_minmax_bracketed(
+                df_filter_minmax_bracketed(
                     lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
                 )
                 for dirbin in dirbins
@@ -434,9 +471,9 @@ def plot_artis_lightcurve(
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
-    at.print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
-        nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
+        nts_last, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
         print(
             " range of validity: could not determine due to missing files "
@@ -448,12 +485,12 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        at.print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
+        print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
 
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
     colorindex: t.Any = None
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
@@ -486,7 +523,7 @@ def plot_artis_lightcurve(
 
         if (
             args.average_over_phi_angle
-            and dirbin % at.get_viewingdirection_costhetabincount() == 0
+            and dirbin % get_viewingdirection_costhetabincount() == 0
             and (args.colorbarcostheta or args.colorbarphi)
         ):
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
@@ -507,9 +544,7 @@ def plot_artis_lightcurve(
             ),
             x=lcdata["time_s"],
         )
-        at.print_detail(
-            f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]"
-        )
+        print_detail(f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -544,7 +579,7 @@ def plot_artis_lightcurve(
             pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max")
         ).row(0)
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
-            at.print_detail(
+            print_detail(
                 f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
                 f" {energy_released:.3e} [erg]"
             )
@@ -624,7 +659,7 @@ def make_lightcurve_plot(
             lightcurvelabel = plot_bol_reflightcurve(
                 axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
             )
-            at.print_heading(lightcurvelabel)
+            print_heading(lightcurvelabel)
             plottedsomething = True
 
         else:
@@ -638,13 +673,12 @@ def make_lightcurve_plot(
                 pellet_nucnames: list[str | None] = [None]
                 if topnucs > 0:
                     try:
-                        dfnuclides = at.get_nuclides(modelpath=modelpath)
-                        _, dfpackets = at.packets.get_packets(
+                        dfnuclides = get_nuclides(modelpath=modelpath)
+                        _, dfpackets = get_packets(
                             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
                         )
                         top_nuclides = (
-                            at.misc
-                            .df_filter_minmax_bracketed(
+                            df_filter_minmax_bracketed(
                                 dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
                                 "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
                                 args.timemin,
@@ -692,7 +726,7 @@ def make_lightcurve_plot(
                     axis,
                     axistherm,
                     get_model_folder(modelpath),
-                    modelname=get_series_label(args.label, lcindex, at.get_model_name(modelpath)),
+                    modelname=get_series_label(args.label, lcindex, get_model_name(modelpath)),
                     args=args,
                     linewidth=args.linewidth[lcindex] or None,
                 )
@@ -715,7 +749,7 @@ def make_lightcurve_plot(
     # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
     # take a log scale. This follows the plot, because the drawn values give the answer
     if lumunit != "mag":
-        at.plottools.set_auto_yscale(axis, args)
+        set_auto_yscale(axis, args)
 
     axis.set_xlabel(r"Time [days]")
 
@@ -742,7 +776,7 @@ def make_lightcurve_plot(
         axis.set_ylabel(yvarname + str_units)
 
         if not args.logscaley:
-            at.plottools.set_exponent_label(axis)
+            set_exponent_label(axis)
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
@@ -750,7 +784,7 @@ def make_lightcurve_plot(
 
     # set the limits only now that the data is drawn: on an empty axes matplotlib turns autoscaling off, so a
     # one-sided limit would freeze the other side at the default 0-1 view instead of fitting the light curves
-    at.plottools.set_axis_properties(axis, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    set_axis_properties(axis, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     if lumunit == "mag":
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost
@@ -867,11 +901,11 @@ def get_viewinganglecolor_for_colorbar(
     angle: int, scaledmap: t.Any, plotkwargs: dict[str, t.Any], args: argparse.Namespace
 ) -> tuple[dict[str, t.Any], int]:
     """Set the series colour from the direction bin's cos(theta) or phi, and return the kwargs and the colour index."""
-    nphibins = at.get_viewingdirection_phibincount()
+    nphibins = get_viewingdirection_phibincount()
     costheta_index, phi_index = divmod(angle, nphibins)
     if args.colorbarphi:
         # the colour bar ticks ascend with phi, thus the colour index must be the rank and not the bin
-        colorindex = at.get_phibin_rank_ascending(phi_index)
+        colorindex = get_phibin_rank_ascending(phi_index)
     elif args.colorbarcostheta:
         colorindex = costheta_index
     else:
@@ -889,11 +923,11 @@ def make_colorbar_viewingangles(
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarphi:
         print("Reordered phi bins")
-        nbins = at.get_viewingdirection_phibincount()
+        nbins = get_viewingdirection_phibincount()
         ticklabels = ["0", "π/5", "2π/5", "3π/5", "4π/5", "π", "6π/5", "7π/5", "8π/5", "9π/5", "2π"]
         label = "ϕ bin"
     elif args.colorbarcostheta:
-        nbins = at.get_viewingdirection_costhetabincount()
+        nbins = get_viewingdirection_costhetabincount()
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         label = "cos θ"
     else:
@@ -949,26 +983,24 @@ def make_band_lightcurves_plot(
     # every model is asked for the same bands, so one list serves the loader, the reference curves, the
     # y axis label and the output file name. main() dispatches here only when -filter has a value
     bandnames: list[str] = list(args.filter)
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
-        dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+        dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
 
         for dirbin in dirbins:
-            modelname = at.get_model_name(modelpath)
+            modelname = get_model_name(modelpath)
             if args.verbose:
                 print(f"Reading spectra: {modelname} (angle {dirbin})")
-            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin, filternames=bandnames
-            )
+            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
-                hesma_model = at.lightcurve.read_hesma_lightcurve(args)
+                hesma_model = read_hesma_lightcurve(args)
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
-                time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
+                time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
                     txtlinesout = [f"# band: {band_name}", f"# model: {modelname}", "# time_days magnitude"]
@@ -980,7 +1012,7 @@ def make_band_lightcurves_plot(
                     )
                     with bandoutfile.open("w", encoding="utf-8") as f:
                         f.write(txtout)
-                    at.print_saved(bandoutfile)
+                    print_saved(bandoutfile)
                 if args.print_data:
                     print_product(args, txtout)
 
@@ -1031,7 +1063,7 @@ def make_band_lightcurves_plot(
             bandnames, reflightcurve, args.refspeccolors[refindex], args.refspecmarkers[refindex], ax
         )
 
-    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
 
@@ -1067,14 +1099,14 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
 
     # the filter pairs share bands, so integrate the bands of every pair once per direction bin
     bandnames = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelname = at.get_model_name(modelpath)
+        modelname = get_model_name(modelpath)
         if args.verbose:
             print(f"Reading spectra: {modelname}")
 
-        dirbins, dirbin_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+        dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
 
         for dirbin in dirbins:
             if len(dirbins) > 1:
@@ -1086,13 +1118,11 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
             else:
                 dirbincolor = args.color[modelnumber]
 
-            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
-                modelpath, args, dirbin=dirbin, filternames=bandnames
-            )
+            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin=dirbin, filternames=bandnames)
 
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
-                plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
+                plot_times, colour_delta_mag = get_colour_delta_mag(band_lightcurve_data, filter_names)
 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
@@ -1133,7 +1163,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
         )
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, colour_evolution=True)
-    ax = at.plottools.set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
+    ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     set_lightcurveplot_legend(ax, args)
 
     invert_magnitude_yaxis(ax)
@@ -1191,10 +1221,10 @@ def plot_lightcurve_from_refdata(
     ax: npt.NDArray[np.object_] | mplax.Axes,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
-    lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
+    lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
-    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    filterdir = Path(get_path("artistools_dir"), "data/filters/")
 
     axes = iter_axes(ax)
     for axnumber, filter_name_raw in enumerate(filter_names):
@@ -1224,8 +1254,8 @@ def plot_color_evolution_from_data(
     args: argparse.Namespace,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89."""
-    lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
+    filterdir = Path(get_path("artistools_dir"), "data/filters/")
 
     filter_data = [
         get_dereddened_band_data(lightcurve_from_data, metadata, filter_name_raw, filterdir)
@@ -1356,7 +1386,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plot hesma model on top of lightcurve plot. Enter model name saved in data/hesma directory",
     )
 
-    at.addarg_viewingangle(parser, allow_select_all=True)
+    addarg_viewingangle(parser, allow_select_all=True)
 
     addarg_axislimits(parser, include_x=False)
 
@@ -1511,13 +1541,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
 
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     modelpaths = args.modelpath
 
@@ -1564,7 +1594,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     defaultoutputfile = "plotlightcurves_colour.pdf" if args.colour_evolution else "plotlightcurves.pdf"
 
-    args.outputfile = at.resolve_outputfile(args.outputfile, defaultoutputfile)
+    args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
     outputfolder = args.outputfile.parent
 
     # determine if this will be a scatter plot or not
@@ -1574,23 +1604,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         or args.make_viewing_angle_peakmag_risetime_scatter_plot
         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
     ):
-        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, args)
+        peakmag_risetime_declinerate_init(modelpaths, args)
         return
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
-        at.lightcurve.make_peak_colour_viewing_angle_plot(args)
+        make_peak_colour_viewing_angle_plot(args)
         return
 
     if args.brightnessattime:
         if args.timedays is None:
-            at.exit_with_error("specify a single time with -timedays")
+            misc.exit_with_error("specify a single time with -timedays")
         # this plot takes one time rather than a range
         args.timedays = float(args.timedays)
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
             args.colorbarphi = True
-        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
+        plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
     if args.filter:

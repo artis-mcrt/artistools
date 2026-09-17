@@ -14,14 +14,33 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_atomic_number
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
+from artistools.estimators.estimators import scan_estimators
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
+from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
+from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import get_deposition
+from artistools.misc import get_grid_mapping
+from artistools.misc import get_model_name
+from artistools.misc import get_timesteps
+from artistools.misc import get_wid_init_at_tmodel
+from artistools.misc import parallel_map
+from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
+from artistools.misc import read_wsv
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -42,7 +61,7 @@ def get_abundance_correction_factors(
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
     try:
-        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = at.get_grid_mapping(modelpath)
+        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
         for mgi in mgiplotlist:
             assert mgi < 0 or assoc_cells.get(mgi, []), (
                 f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
@@ -61,7 +80,7 @@ def get_abundance_correction_factors(
         propcellcount = ncoordgridx**3
         print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
-        wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+        wid_init = get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
         dfpropcellcounts = pl.LazyFrame(
             {
@@ -126,7 +145,7 @@ def get_artis_abund_sequences(
     arr_abund_artis: dict[int, pl.DataFrame] = {}
 
     with contextlib.suppress(FileNotFoundError):
-        estimators_lazy = at.estimators.scan_estimators(
+        estimators_lazy = scan_estimators(
             modelpath=modelpath,
             modelgridindex=None if any(mgi < 0 for mgi in mgiplotlist) else mgiplotlist,
             timestep=dftimesteps["timestep"].to_list(),
@@ -231,9 +250,7 @@ def plot_qdot(
 ) -> None:
     """Plot the ARTIS radioactive heating rate against the rate from the nuclear network trajectories."""
     try:
-        depdata = at.misc.df_filter_minmax_bracketed(
-            at.get_deposition(modelpath=modelpath), "tmid_days", None, xmax
-        ).collect()
+        depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
@@ -422,7 +439,7 @@ def plot_cell_abund_evolution(
         axis.set_ymargin(0.05)
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
-    axes[0].set_title(f"{at.get_model_name(modelpath)} {strcell}")
+    axes[0].set_title(f"{get_model_name(modelpath)} {strcell}")
     save_figure(fig, pdfoutpath, format="pdf")
 
 
@@ -446,7 +463,7 @@ def get_particledata(
             traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
         )
         heatcols = ["hbeta", "halpha", "hspof"]
-        dfheating = at.read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
+        dfheating = read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
         dfheating = dfheating.with_columns(fix_fortran_exponents(pl.Float64))
 
         nstep_timesec: dict[int, float] = dict(dfheating.select("#count", "time/s").iter_rows())
@@ -462,24 +479,18 @@ def get_particledata(
         )
 
         if arr_strnuc_z_n:
-            ntslowers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="lessthan"
-            )
-            ntsuppers = at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(
+            ntslowers = get_closest_network_timesteps(traj_root, particleid, arr_time_s_incpremerger, cond="lessthan")
+            ntsuppers = get_closest_network_timesteps(
                 traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
             )
             nts_list = sorted(set(ntslowers + ntsuppers))
-            dftrajnucabund, traj_times_s = (
-                at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
-                    traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
-                )
+            dftrajnucabund, traj_times_s = get_trajectory_timestepfiles_nuc_abund(
+                traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
             )
             for nts, traj_time_s in zip(nts_list, traj_times_s, strict=True):
                 # nts is the exact network step, thus these two times come from the same step and
                 # agree to the precision of the file
-                at.inputmodel.rprocess_from_trajectory.check_traj_time_matches(
-                    particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0
-                )
+                check_traj_time_matches(particleid, traj_time_s, nstep_timesec[nts], rel_tol=1e-6, abs_tol=0.0)
 
             # one row for each network step, with the mass fraction of each species
             dfmassfracs = (
@@ -534,13 +545,12 @@ def get_dfcontribsparticledata(
 ) -> tuple[pl.LazyFrame, pl.DataFrame]:
     """Return the pairs of particle and cell for the network particles, and the frame of the particle data."""
     # times in artis are relative to merger, but NSM simulation time started earlier
-    mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
+    mergertime_geomunits = get_merger_time_geomunits(griddata_root)
     t_mergertime_s = mergertime_geomunits * 4.926e-6
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
     dfpartcontrib = (
-        at.inputmodel.rprocess_from_trajectory
-        .get_gridparticlecontributions(modelpath)
+        get_gridparticlecontributions(modelpath)
         .lazy()
         .with_columns(modelgridindex=pl.col("cellindex") - 1)
         .filter(pl.col("frac_of_cellmass") > 0)
@@ -565,14 +575,14 @@ def get_dfcontribsparticledata(
     print(f"Reading trajectories from {traj_root}")
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
-    list_particledata_withabund = at.parallel_map(fworkerwithabund, list_particleids_getabund)
+    list_particledata_withabund = parallel_map(fworkerwithabund, list_particleids_getabund)
     print("  done")
     particleids_getabund = set(list_particleids_getabund)
     list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
-    list_particledata_noabund = at.parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
+    list_particledata_noabund = parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
     print("  done")
 
     # each particle gives an eager frame of one row. A lazy concat of 1957 such frames took most of 198.5 s on
@@ -596,8 +606,8 @@ def plot_qdot_abund_modelcells(
     nogsinet: bool = False,
 ) -> None:
     """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
-    lzdfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+    lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True)
+    lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
@@ -623,7 +633,7 @@ def plot_qdot_abund_modelcells(
             print(f"model.txt traj_root {traj_root} is not a directory!")
         gsinet_available = False
 
-    arr_z = [at.get_atomic_number(species) for species in arr_species]
+    arr_z = [get_atomic_number(species) for species in arr_species]
     arr_a = [
         int(a) if a is not None else a
         for a in [species.lstrip(string.ascii_letters) or None for species in arr_species]
@@ -636,8 +646,8 @@ def plot_qdot_abund_modelcells(
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
     print(f"model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
-    dftimesteps = at.misc.df_filter_minmax_bracketed(
-        at.get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
+    dftimesteps = df_filter_minmax_bracketed(
+        get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
@@ -710,7 +720,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
     # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6
-    at.addarg_modelgridindex(parser, default=[], helptext="Model grid cell to plot, or a list such as 4,5,6")
+    addarg_modelgridindex(parser, default=[], helptext="Model grid cell to plot, or a list such as 4,5,6")
 
     parser.add_argument(
         "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
@@ -743,13 +753,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     print(f"Selected species: {' '.join(args.species)}")
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=at.parse_range_list(args.modelgridindex) if args.modelgridindex else [],
+        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex else [],
         arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,

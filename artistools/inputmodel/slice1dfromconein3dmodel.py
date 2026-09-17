@@ -11,11 +11,18 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.inputmodel_misc import save_initelemabundances
+from artistools.inputmodel.inputmodel_misc import save_modeldata
+from artistools.inputmodel.inputmodel_misc import savetologfile
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import get_model_name
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
 
 
 def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callable[..., None]) -> pl.DataFrame:
@@ -159,14 +166,14 @@ def get_cone_shells(
 
 def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.DataFrame:
     """Make 1D model from 3D model."""
-    modelpath = at.normalize_path_list(args.modelpath)[0]
-    logprint("Making 1D model from 3D model:", at.get_model_name(modelpath))
-    pldfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, get_elemabundances=True)
+    modelpath = normalize_path_list(args.modelpath)[0]
+    logprint("Making 1D model from 3D model:", get_model_name(modelpath))
+    pldfmodel, modelmeta = get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("from a cone")
         # the cone selection reads the mid-point positions and the mass of each cell
-        cone = make_cone(args, at.add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta), logprint)
+        cone = make_cone(args, add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta), logprint)
         N_shells = args.nshells
         # Max radius that still ensures a full shell as the cartesian grid means some
         # radius values will be greater than the max radius of the axis the cone is centred on
@@ -248,11 +255,9 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
     model_df = slice1d.drop(abundancecolumns).with_columns(inputcellid)
     abundances_df = slice1d.select(abundancecolumns).with_columns(inputcellid)
 
-    at.inputmodel.save_modeldata(
-        dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputfile, "model_1d.txt")
-    )
+    save_modeldata(dfmodel=model_df, t_model_init_days=args.t_model, outpath=Path(args.outputfile, "model_1d.txt"))
 
-    at.inputmodel.save_initelemabundances(abundances_df, outpath=Path(args.outputfile, "abundances_1d.txt"))
+    save_initelemabundances(abundances_df, outpath=Path(args.outputfile, "abundances_1d.txt"))
 
     print("Saved abundances_1d.txt and model_1d.txt")
 
@@ -306,9 +311,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     args.sliceaxis = args.axis[1]
     assert args.axis[0] in {"+", "-"}
@@ -322,9 +327,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
-    logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=Path(args.outputfile), logfilename="make1dmodellog.txt"
-    )
+    logprint = savetologfile(outputfolderpath=Path(args.outputfile), logfilename="make1dmodellog.txt")
 
     make_1d_model_files(args, logprint)
 

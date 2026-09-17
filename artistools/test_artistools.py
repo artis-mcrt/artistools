@@ -204,6 +204,26 @@ def test_module_entry_points_name_a_real_subcommand() -> None:
         assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
+def test_package_modules_import_no_package_alias() -> None:
+    """A package module must import each name from the module that defines it.
+
+    An alias of the top-level package hides an import cycle until a different module comes first. Python 3.15
+    binds "import artistools.spectra.spectra as atspectra" to the package, thus only a re-exported name resolves.
+    """
+    aliasimport = re.compile(r"^\s*import artistools(\.[\w.]+)? as \w+", re.MULTILINE)
+    packagedir = Path(at.__file__).parent
+    offenders = [
+        str(path.relative_to(packagedir))
+        for path in sorted(packagedir.rglob("*.py"))
+        # a test and a top-level script can use the alias, and a name with a space is an iCloud conflict copy
+        if not path.name.startswith("test_")
+        and path.name not in {"__main__.py", "conftest.py"}
+        and " " not in path.name
+        and aliasimport.search(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, f"these package modules import a package alias: {offenders}"
+
+
 def test_subcommandtree() -> None:
     """Every subcommand spec must name an importable module, callable functions, and non-empty help text."""
 
