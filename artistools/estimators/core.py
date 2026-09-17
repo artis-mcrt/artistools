@@ -27,8 +27,8 @@ from artistools.atomic import get_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
 from artistools.constants import K_B_ev_per_K
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import get_file_identity
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_mpirankofcell

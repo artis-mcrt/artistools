@@ -19,9 +19,9 @@ from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import km_to_cm
 from artistools.constants import megaparsec_to_cm
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex

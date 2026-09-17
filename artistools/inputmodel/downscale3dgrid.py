@@ -8,10 +8,10 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.inputmodel_misc import get_initelemabundances
-from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 

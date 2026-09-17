@@ -10,7 +10,7 @@ import numpy as np
 from artistools.atomic import get_atomic_masses
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
-from artistools.estimators.estimators import read_estimators
+from artistools.estimators.core import read_estimators
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output

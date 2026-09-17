@@ -15,9 +15,9 @@ from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args
 

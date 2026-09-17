@@ -16,11 +16,11 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
-from artistools.inputmodel.inputmodel_misc import dimension_reduce_model
-from artistools.inputmodel.inputmodel_misc import save_empty_abundance_file
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
-from artistools.inputmodel.inputmodel_misc import scale_model_to_time
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import save_empty_abundance_file
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scale_model_to_time
 from artistools.inputmodel.opacityinputfile import opacity_by_Ye
 from artistools.inputmodel.opacityinputfile import write_Ye_file
 from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontributions

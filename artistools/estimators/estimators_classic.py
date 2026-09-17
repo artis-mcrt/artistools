@@ -6,7 +6,7 @@ from pathlib import Path
 
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_inputparams
 from artistools.misc import print_warning

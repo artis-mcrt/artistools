@@ -208,7 +208,7 @@ def test_package_modules_import_no_package_alias() -> None:
     """A package module must import each name from the module that defines it.
 
     An alias of the top-level package hides an import cycle until a different module comes first. Python 3.15
-    binds "import artistools.spectra.spectra as atspectra" to the package, thus only a re-exported name resolves.
+    binds "import artistools.spectra.core as atspectra" to the package, thus only a re-exported name resolves.
     """
     aliasimport = re.compile(r"^\s*import artistools(\.[\w.]+)? as \w+", re.MULTILINE)
     packagedir = Path(at.__file__).parent

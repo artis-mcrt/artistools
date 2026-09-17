@@ -842,9 +842,9 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     The scan of the parquet files is lazy, thus a run whose caches were current showed a bar that
     came and went with no work behind it.
     """
-    from artistools.estimators.estimators import CACHEVERSION
-    from artistools.estimators.estimators import get_rankbatch_parquetpath
-    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.estimators.core import get_rankbatch_parquetpath
+    from artistools.estimators.core import rankbatch_parquet_is_current
     from artistools.misc.fileio import MTIME_TOLERANCE_S
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
@@ -879,7 +879,7 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
     artistools wrote with different columns, and the diagonal concat filled the difference with
     nulls.
     """
-    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.core import rankbatch_parquet_is_current
 
     mtime = 1000.0
 
@@ -907,8 +907,8 @@ def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
     One file, in the unspecified order of a glob, decided for the whole folder. Thus a restart that
     rewrote the file of a later rank kept the stale caches current.
     """
-    from artistools.estimators.estimators import get_batch_textsource_state
-    from artistools.estimators.estimators import get_textsource_mtimes
+    from artistools.estimators.core import get_batch_textsource_state
+    from artistools.estimators.core import get_textsource_mtimes
 
     for rank in range(3):
         (tmp_path / f"estimators_{rank:04d}.out").write_text("timestep 0\n")
@@ -935,7 +935,7 @@ def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
     The glob kept an arbitrary candidate of each rank. Thus a leftover sibling such as
     estimators_0000.out.bak could give the stamp while the parser read estimators_0000.out.
     """
-    from artistools.estimators.estimators import get_textsource_mtimes
+    from artistools.estimators.core import get_textsource_mtimes
 
     outfile = tmp_path / "estimators_0000.out"
     outfile.write_text("timestep 0\n")
@@ -1040,11 +1040,11 @@ def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
             return tmp_path / "ccmodel"
         return realgetpath(key)
 
-    import artistools.inputmodel.inputmodel_misc
+    import artistools.inputmodel.core
 
-    # codecomparison.py and inputmodel_misc.py each hold their own import of the name
+    # codecomparison.py and inputmodel/core.py each hold their own import of the name
     monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
-    monkeypatch.setattr(artistools.inputmodel.inputmodel_misc, "get_path", fake_get_path)
+    monkeypatch.setattr(artistools.inputmodel.core, "get_path", fake_get_path)
 
     return "codecomparison/toymodel/toycode"
 
@@ -1318,7 +1318,7 @@ def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> N
     In init_X_C the first reading takes X as the element and _C as the ion stage. That reading has to give
     way to the family init_X and the element C.
     """
-    from artistools.estimators.estimators import split_species_suffix
+    from artistools.estimators.core import split_species_suffix
 
     assert split_species_suffix("init_X_C") == ("init_X", "C")
     assert split_species_suffix("init_X_V") == ("init_X", "V")
@@ -1349,7 +1349,7 @@ def test_estimator_listvariables_describes_each_prefix_group(capsys: pytest.Capt
 
 def test_split_species_suffix_rebuilds_the_column_name() -> None:
     """Each family and species of the listing must join back into the column name that it came from."""
-    from artistools.estimators.estimators import split_species_suffix
+    from artistools.estimators.core import split_species_suffix
 
     for colname, expected in (
         ("nnion_Fe_II", ("nnion", "Fe II")),
@@ -1393,7 +1393,7 @@ def test_get_units_takes_a_column_name_or_a_prefix() -> None:
 
 def test_every_estimator_column_has_units_explained() -> None:
     """Each estimator column must give units, or say why it carries none."""
-    from artistools.estimators.estimators import get_variable
+    from artistools.estimators.core import get_variable
 
     columns = at.estimators.scan_estimators(modelpath).collect_schema().names()
     assert len(columns) > 50, "the test model must hold a representative set of columns"
@@ -1425,7 +1425,7 @@ def test_listvariables_names_the_units_of_a_group_whose_members_differ(capsys: p
 
 def test_listvariables_names_the_variants_when_every_base_has_them() -> None:
     """A group whose bases all carry the same variants names them one time, with the units of each."""
-    from artistools.estimators.estimators import summarise_columns
+    from artistools.estimators.core import summarise_columns
 
     # a complete grid: two bases, each with the plain form and the _on_c form
     complete = summarise_columns(["vel_r_mid", "vel_r_mid_on_c", "vel_x_mid", "vel_x_mid_on_c"])
@@ -1440,8 +1440,8 @@ def test_listvariables_names_the_variants_when_every_base_has_them() -> None:
 
 def test_summarise_nuclides_replaces_a_long_family() -> None:
     """A family of more than MAXSPECIES_LISTED nuclides gives a summary, and names the flag for the rest."""
-    from artistools.estimators.estimators import MAXSPECIES_LISTED
-    from artistools.estimators.estimators import summarise_columns
+    from artistools.estimators.core import MAXSPECIES_LISTED
+    from artistools.estimators.core import summarise_columns
 
     nuclides = [f"nniso_Fe{massnum}" for massnum in range(40, 40 + MAXSPECIES_LISTED + 5)]
     listing = summarise_columns(nuclides)
@@ -1457,8 +1457,8 @@ def test_summarise_nuclides_replaces_a_long_family() -> None:
 
 def test_summarise_columns_keeps_a_family_of_elements_whole() -> None:
     """A family of bare element symbols is short, thus it stays whole however many elements it holds."""
-    from artistools.estimators.estimators import MAXSPECIES_LISTED
-    from artistools.estimators.estimators import summarise_columns
+    from artistools.estimators.core import MAXSPECIES_LISTED
+    from artistools.estimators.core import summarise_columns
 
     elements = [f"nnelement_{sym}" for sym in at.get_elsymbolslist()[1 : MAXSPECIES_LISTED + 20]]
     listing = summarise_columns(elements)
@@ -1470,7 +1470,7 @@ def test_summarise_columns_keeps_a_family_of_elements_whole() -> None:
 
 def test_species_placeholder_names_what_a_family_takes() -> None:
     """The heading of a family must name what it takes, and a mixed family must name both kinds."""
-    from artistools.estimators.estimators import species_placeholder
+    from artistools.estimators.core import species_placeholder
 
     assert species_placeholder(["Fe", "Ni"]) == "element"
     assert species_placeholder(["Fe II", "Ni III"]) == "ion"
@@ -1490,14 +1490,14 @@ def test_listvariables_heading_names_the_kind_of_each_family(capsys: pytest.Capt
     assert "init_X_<element or nuclide>" in out
 
     # the test model holds no isotope columns, thus read that family from the summariser
-    from artistools.estimators.estimators import summarise_columns
+    from artistools.estimators.core import summarise_columns
 
     assert "nniso_<nuclide>" in summarise_columns(["nniso_Fe56", "nniso_Ni_otherstable"])
 
 
 def test_summarise_ions_breaks_a_range_at_a_gap() -> None:
     """A missing ion stage must break the range, so that the listing names no absent column."""
-    from artistools.estimators.estimators import summarise_ions
+    from artistools.estimators.core import summarise_ions
 
     # Fe I and Fe III without Fe II: one range would name nnion_Fe_II, which the model does not hold
     assert summarise_ions(["Fe I", "Fe III"]) == "Fe I, Fe III"
@@ -1511,14 +1511,11 @@ def test_summarise_ions_breaks_a_range_at_a_gap() -> None:
 def test_estimator_lookup_tables_are_read_only() -> None:
     """AGENTS.md forbids mutable state at module level, thus each lookup table is a read-only view."""
     import artistools.commands
-    from artistools.estimators import estimators
+    from artistools.estimators.core import PREFIX_GROUPS
+    from artistools.estimators.core import UNITS_BY_SUFFIX
+    from artistools.estimators.core import VARIABLES
 
-    for table in (
-        estimators.VARIABLES,
-        estimators.UNITS_BY_SUFFIX,
-        estimators.PREFIX_GROUPS,
-        artistools.commands.COMMANDGROUPS,
-    ):
+    for table in (VARIABLES, UNITS_BY_SUFFIX, PREFIX_GROUPS, artistools.commands.COMMANDGROUPS):
         with pytest.raises(TypeError):
             # the type forbids this too, which is the point: the table is read-only at run time as well
             table["newkey"] = "newvalue"  # ty:ignore[invalid-assignment]  # pyrefly: ignore[unsupported-operation]
@@ -2195,7 +2192,7 @@ def test_estimator_dict_keeps_a_column_that_a_late_row_adds() -> None:
         (0, mgi): {"Te": 5000.0} | ({"nnion_Fe_III": 1.0} if mgi >= firstrow_late else {}) for mgi in range(nrows)
     }
 
-    dfout = at.estimators.estimators.lazyframe_from_estimator_dict(estimators).collect()
+    dfout = at.estimators.core.lazyframe_from_estimator_dict(estimators).collect()
 
     assert "nnion_Fe_III" in dfout.columns
     assert dfout["nnion_Fe_III"].null_count() == firstrow_late
@@ -2230,9 +2227,9 @@ def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     No conversion can replace such a cache. A rejection made get_runfolder_timesteps() find no
     timesteps, thus get_runfolders() dropped the folder and the reader saw a run that holds no data.
     """
-    from artistools.estimators.estimators import CACHEVERSION
-    from artistools.estimators.estimators import rankbatch_cache_cannot_be_rebuilt
-    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.estimators.core import rankbatch_cache_cannot_be_rebuilt
+    from artistools.estimators.core import rankbatch_parquet_is_current
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
@@ -2290,11 +2287,11 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     thus its time did not match the stamp, the cache became stale, and no conversion could replace it
     because the other rank files were gone.
     """
-    from artistools.estimators.estimators import CACHEVERSION
-    from artistools.estimators.estimators import get_batch_textsource_state
-    from artistools.estimators.estimators import get_rankbatch_parquetpath
-    from artistools.estimators.estimators import get_textsource_mtimes
-    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.estimators.core import get_batch_textsource_state
+    from artistools.estimators.core import get_rankbatch_parquetpath
+    from artistools.estimators.core import get_textsource_mtimes
+    from artistools.estimators.core import rankbatch_parquet_is_current
 
     # rank 2 holds the newest file, thus the stamp of the cache holds its time
     for rank, mtime in ((0, 1000.0), (1, 1100.0), (2, 1200.0)):
@@ -2323,7 +2320,7 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     # a rewrite of the file that remains still proves that the cache is stale
     os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
     mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
-    from artistools.estimators.estimators import CACHEVERSION
+    from artistools.estimators.core import CACHEVERSION
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
     assert "after the cache stamp" in str(
@@ -2418,8 +2415,8 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     read the one text file that remains, thus it lost the timesteps that only the cache holds and it
     named a set that the scan cannot deliver.
     """
-    from artistools.estimators.estimators import CACHEVERSION
-    from artistools.estimators.estimators import rankbatch_parquet_is_current
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.estimators.core import rankbatch_parquet_is_current
     from artistools.misc.fileio import rankbatch_parquet_staleness
     from artistools.misc.modelinfo import get_runfolder_timesteps
 

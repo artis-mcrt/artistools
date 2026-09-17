@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output

@@ -22,8 +22,8 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import parse_cli_args
-from artistools.packets.packets import filter_packets_dirbin
-from artistools.packets.packets import get_packets
+from artistools.packets.core import filter_packets_dirbin
+from artistools.packets.core import get_packets
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 

@@ -13,7 +13,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.inputmodel_misc import savetologfile
+from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
 from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args

@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_output
 from artistools.misc import get_costheta_bins
 from artistools.misc import get_phi_bins

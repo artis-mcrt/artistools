@@ -13,8 +13,8 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath

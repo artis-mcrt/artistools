@@ -16,7 +16,7 @@ import polars.selectors as cs
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import extra_csv_columns_ignored
 from artistools.misc import firstexisting

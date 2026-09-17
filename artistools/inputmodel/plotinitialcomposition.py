@@ -18,8 +18,8 @@ from matplotlib.image import AxesImage
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show

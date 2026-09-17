@@ -9,14 +9,14 @@ from pathlib import Path
 import polars as pl
 
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import make_energy_files
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import dimension_reduce_model
-from artistools.inputmodel.inputmodel_misc import get_initelemabundances
-from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.misc import addarg_modelpath

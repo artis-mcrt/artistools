@@ -249,7 +249,7 @@ def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str
 
 def get_opacity_condition_label(z_exclude: int) -> str:
     """Return the label for a virtual packet opacity exclusion code, such as 'no-bb' or 'no-Fe'."""
-    from artistools.atomic._atomic_core import get_elsymbol
+    from artistools.atomic import get_elsymbol
 
     # codes match the opacityexclusions handling in read_vpktparameterfile() and trace_vpkt_direction()
     labels = {0: "", -1: "no-bb", -2: "no-bf", -3: "no-ff", -4: "no-es"}

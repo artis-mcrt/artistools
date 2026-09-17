@@ -11,8 +11,8 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_elsymbols_df
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output

@@ -12,12 +12,12 @@ import numpy.typing as npt
 import polars as pl
 from matplotlib.legend_handler import HandlerTuple
 
-from artistools.lightcurve import lightcurve
-from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
-from artistools.lightcurve.lightcurve import find_lightcurve_file
-from artistools.lightcurve.lightcurve import generate_band_lightcurve_data
-from artistools.lightcurve.lightcurve import get_band_lightcurve
-from artistools.lightcurve.lightcurve import get_phillips_relation_data
+from artistools.lightcurve.core import FILTERNAME_ALIASES
+from artistools.lightcurve.core import find_lightcurve_file
+from artistools.lightcurve.core import generate_band_lightcurve_data
+from artistools.lightcurve.core import get_band_lightcurve
+from artistools.lightcurve.core import get_phillips_relation_data
+from artistools.lightcurve.core import readfile
 from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
 from artistools.misc import get_costhetabin_phibin_labels
@@ -581,13 +581,13 @@ def peakmag_risetime_declinerate_init(
             # a mode that averages over the angles groups several direction bins, and dirbins then
             # names the first bin of each group. Thus the reader must average in the same way
             lcdataframes = (
-                lightcurve.readfile(
+                readfile(
                     lcpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                 )
                 if directionresolved
-                else lightcurve.readfile(lcpath)
+                else readfile(lcpath)
             )
             # readfile slices one scan of the file. Thus one collect_all parses it one time for
             # every direction bin, in place of one parse for each bin
@@ -652,7 +652,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes_lazy = lightcurve.readfile(find_lightcurve_file(modelpath, directionresolved=True))
+    lcdataframes_lazy = readfile(find_lightcurve_file(modelpath, directionresolved=True))
 
     # one collect_all call parses light_curve_res.out one time for all the direction bins
     lcdataframes = dict(zip(lcdataframes_lazy.keys(), pl.collect_all(list(lcdataframes_lazy.values())), strict=True))

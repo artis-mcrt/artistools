@@ -19,8 +19,8 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import get_grid_mapping
 from artistools.misc import normalize_path_list

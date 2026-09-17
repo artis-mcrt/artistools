@@ -489,7 +489,7 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
 @lru_cache(maxsize=16)
 def get_escape_surface_gamma(modelpath: Path | str) -> float:
     """Return the Lorentz factor correction at the outer model boundary."""
-    from artistools.inputmodel.inputmodel_misc import get_modeldata
+    from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
@@ -1283,7 +1283,7 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     packets from these cells. The labels take units of c when vmax is at least 0.2 c, e.g. for a
     kilonova, and km/s below that, e.g. for a supernova.
     """
-    from artistools.inputmodel.inputmodel_misc import get_modeldata
+    from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
@@ -1422,7 +1422,7 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
             column: get_emission_velocity_lineofsight_expr(position) for column, position in positions
         })
 
-    from artistools.inputmodel.inputmodel_misc import get_modeldata
+    from artistools.inputmodel import get_modeldata
 
     dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     if "Ye" not in dfmodel.collect_schema().names():

@@ -1,3 +1,5 @@
+"""Read the ARTIS atomic data files, and convert between the names of elements, ions, and nuclides."""
+
 import string
 import time
 import typing as t
@@ -101,6 +103,7 @@ def parse_adata(
 def parse_phixsdata(
     phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
 ) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]]:
+    """Return the photoionisation cross section tables of phixsdata_v2.txt, keyed by (Z, ion stage, level)."""
     firstlevelnumber = 1
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
     with misc.zopen(phixs_filename) as fphixs:

@@ -12,7 +12,7 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
-from artistools.spectra import spectra as atspectra
+from artistools.spectra import core as atspectra
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -377,7 +377,7 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
-    with mock.patch("artistools.inputmodel.inputmodel_misc.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+    with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
         edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
@@ -409,7 +409,7 @@ def test_spectra_ye_shell_contributions() -> None:
         dfmodel, modelmeta = realgetmodeldata(*args, **kwargs)
         return dfmodel.with_columns(Ye=0.2 + 0.2 * (pl.col("inputcellid") % 2 == 0).cast(pl.Float32)), modelmeta
 
-    with mock.patch("artistools.inputmodel.inputmodel_misc.get_modeldata", side_effect=get_modeldata_with_ye):
+    with mock.patch("artistools.inputmodel.get_modeldata", side_effect=get_modeldata_with_ye):
         contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
             groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6]
         )

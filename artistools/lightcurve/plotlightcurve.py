@@ -28,20 +28,20 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.lightcurve import lightcurve
-from artistools.lightcurve.lightcurve import FILTERNAME_ALIASES
-from artistools.lightcurve.lightcurve import find_lightcurve_file
-from artistools.lightcurve.lightcurve import generate_band_lightcurve_data
-from artistools.lightcurve.lightcurve import get_band_lightcurve
-from artistools.lightcurve.lightcurve import get_colour_delta_mag
-from artistools.lightcurve.lightcurve import get_from_packets
-from artistools.lightcurve.lightcurve import lum_lsun_to_mag
-from artistools.lightcurve.lightcurve import path_is_reference_lightcurve
-from artistools.lightcurve.lightcurve import read_bol_reflightcurve_data
-from artistools.lightcurve.lightcurve import read_hesma_lightcurve
-from artistools.lightcurve.lightcurve import read_reflightcurve_band_data
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
+from artistools.lightcurve.core import FILTERNAME_ALIASES
+from artistools.lightcurve.core import find_lightcurve_file
+from artistools.lightcurve.core import generate_band_lightcurve_data
+from artistools.lightcurve.core import get_band_lightcurve
+from artistools.lightcurve.core import get_colour_delta_mag
+from artistools.lightcurve.core import get_from_packets
+from artistools.lightcurve.core import lum_lsun_to_mag
+from artistools.lightcurve.core import path_is_reference_lightcurve
+from artistools.lightcurve.core import read_bol_reflightcurve_data
+from artistools.lightcurve.core import read_hesma_lightcurve
+from artistools.lightcurve.core import read_reflightcurve_band_data
+from artistools.lightcurve.core import readfile
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
@@ -436,9 +436,7 @@ def plot_artis_lightcurve(
             print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
-        lcdataframes = lightcurve.readfile(
-            lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta
-        )
+        lcdataframes = readfile(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
 
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)

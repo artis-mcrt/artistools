@@ -13,11 +13,11 @@ import polars.selectors as cs
 
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
-from artistools.inputmodel.inputmodel_misc import savetologfile
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import savetologfile
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import get_model_name

@@ -27,8 +27,8 @@ from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
 from artistools.estimators import scan_estimators
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles

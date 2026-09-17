@@ -39,15 +39,15 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
-from artistools.estimators.estimators import get_averageexcitation
-from artistools.estimators.estimators import get_units_string
-from artistools.estimators.estimators import get_variablelongunits
-from artistools.estimators.estimators import get_varname_formatted
-from artistools.estimators.estimators import join_cell_modeldata
-from artistools.estimators.estimators import scan_estimators
-from artistools.estimators.estimators import summarise_columns
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.estimators.core import get_averageexcitation
+from artistools.estimators.core import get_units_string
+from artistools.estimators.core import get_variablelongunits
+from artistools.estimators.core import get_varname_formatted
+from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import scan_estimators
+from artistools.estimators.core import summarise_columns
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
@@ -1483,8 +1483,8 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     """
     from argcomplete.completers import DirectoriesCompleter
 
-    from artistools.estimators.estimators import PREFIX_GROUPS
-    from artistools.estimators.estimators import VARIABLES
+    from artistools.estimators.core import PREFIX_GROUPS
+    from artistools.estimators.core import VARIABLES
 
     names = [
         *(key for key, info in VARIABLES.items() if not info.group),

@@ -25,9 +25,9 @@ from artistools.atomic import get_levels
 from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
-from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_labelfontsize
@@ -51,10 +51,10 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.nltepops import nltepops
-from artistools.nltepops.nltepops import add_lte_pops
-from artistools.nltepops.nltepops import texifyconfiguration
-from artistools.nltepops.nltepops import texifyterm
+from artistools.nltepops.core import add_lte_pops
+from artistools.nltepops.core import read_files
+from artistools.nltepops.core import texifyconfiguration
+from artistools.nltepops.core import texifyterm
 from artistools.plottools import get_next_color
 from artistools.plottools import iter_axes
 from artistools.plottools import make_frame_figure
@@ -582,9 +582,9 @@ def plot_populations_with_time_or_velocity(
 
         # the loop changes only the cell or only the timestep, thus one read with that filter supplies the whole loop
         dfpop_all = (
-            nltepops.read_files(modelpath, modelgridindex=modelgridindex_list[0])
+            read_files(modelpath, modelgridindex=modelgridindex_list[0])
             if args.x == "time"
-            else nltepops.read_files(modelpath, timestep=timesteps[0])
+            else read_files(modelpath, timestep=timesteps[0])
         )
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = dfpop_all.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == mgi))
@@ -645,7 +645,7 @@ def make_singletimestep_plot(
     time_days = get_timestep_time(modelpath, timestep)
 
     # one read of the ranks that own the cells in mgilist supplies the data for every cell
-    dfpop_allcells = nltepops.read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    dfpop_allcells = read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
     dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == mgilist[0])
 
     if dfpop.is_empty():

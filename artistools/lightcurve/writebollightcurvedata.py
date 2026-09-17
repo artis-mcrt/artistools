@@ -9,9 +9,9 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-from artistools.lightcurve import lightcurve
-from artistools.lightcurve.lightcurve import find_lightcurve_file
-from artistools.lightcurve.lightcurve import get_bolometric_luminosities
+from artistools.lightcurve.core import find_lightcurve_file
+from artistools.lightcurve.core import get_bolometric_luminosities
+from artistools.lightcurve.core import readfile
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import get_model_name
@@ -42,7 +42,7 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
 def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
     """Return the spherically averaged bolometric luminosity against time, read from light_curve.out."""
     # readfile keys the spherically averaged light curve as dirbin -1, and light_curve.out has no other bins
-    lcdata = lightcurve.readfile(find_lightcurve_file(modelpath))[-1].collect()
+    lcdata = readfile(find_lightcurve_file(modelpath))[-1].collect()
 
     lightcurvedata = {"time": lcdata["time_days"], "lum (erg/s)": lcdata["luminosity_erg/s"]}
 

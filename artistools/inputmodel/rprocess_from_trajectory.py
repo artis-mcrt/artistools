@@ -26,9 +26,9 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.inputmodel_misc import backup_existing_file
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
+from artistools.inputmodel.core import backup_existing_file
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_output
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none

@@ -18,13 +18,13 @@ from artistools.atomic import get_elsymbol
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
-from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
-from artistools.inputmodel.inputmodel_misc import dimension_reduce_model
-from artistools.inputmodel.inputmodel_misc import get_initelemabundances
-from artistools.inputmodel.inputmodel_misc import get_modeldata
-from artistools.inputmodel.inputmodel_misc import remap_gridcontributions
-from artistools.inputmodel.inputmodel_misc import save_initelemabundances
-from artistools.inputmodel.inputmodel_misc import save_modeldata
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import remap_gridcontributions
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args

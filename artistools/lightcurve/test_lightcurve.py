@@ -20,8 +20,8 @@ from pytest_codspeed.plugin import BenchmarkFixture
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
-from artistools.lightcurve import lightcurve
 from artistools.lightcurve import viewingangleanalysis
+from artistools.lightcurve.core import bracket_spectrum_to_band
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -142,7 +142,7 @@ def test_spectrum_filter_range_includes_bracketing_points() -> None:
     """Band integration must retain the spectrum point on each side of the filter range."""
     spectrum = pl.DataFrame({"lambda_angstroms": [1000.0, 2000.0, 3000.0, 4000.0], "f_lambda": [1.0, 2.0, 4.0, 8.0]})
 
-    wavelength, flux = lightcurve.bracket_spectrum_to_band(spectrum, wavefilter_min=2200.0, wavefilter_max=2800.0)
+    wavelength, flux = bracket_spectrum_to_band(spectrum, wavefilter_min=2200.0, wavefilter_max=2800.0)
 
     assert np.allclose(wavelength, np.array([2000.0, 3000.0]))
     assert np.allclose(flux, np.array([2.0, 4.0]))

@@ -126,7 +126,7 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     phixsfile = tmp_path / "phixsdata_v2.txt"
     phixsfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    from artistools.atomic._atomic_core import parse_phixsdata
+    from artistools.atomic.core import parse_phixsdata
 
     phixsdict = parse_phixsdata(phixsfile)
 
@@ -145,7 +145,7 @@ def test_get_levels_photoionisation_level_alignment() -> None:
     the file's level number attached every level the cross-sections of the level above it, and left the highest
     level with none at all. Neither mismatch raises, so compare against the parsed file directly.
     """
-    from artistools.atomic._atomic_core import parse_phixsdata
+    from artistools.atomic.core import parse_phixsdata
 
     phixsdict = parse_phixsdata(modelpath / "phixsdata_v2.txt", ionlist=[(26, 1)])
     dflevels = at.atomic.get_levels(modelpath, ionlist=[(26, 1)], get_photoionisations=True)
