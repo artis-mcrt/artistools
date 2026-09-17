@@ -9,14 +9,14 @@ outputpath = at.get_path("testoutput")
 
 
 def test_spencerfano() -> None:
-    at.nonthermal.solvespencerfanocmd.main(
+    at.nonthermal.spencerfano.main(
         argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath
     )
 
 
 def test_spencerfano_excitation() -> None:
     """Solve with the excitation path. The solver reads the derived transition columns, e.g. epsilon_trans_ev."""
-    at.nonthermal.solvespencerfanocmd.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200)
+    at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200)
 
 
 def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
@@ -25,7 +25,7 @@ def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
     The file named the ions of the first step, and a later step with another list stopped the command.
     """
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.solvespencerfanocmd.main(
+    at.nonthermal.spencerfano.main(
         argsraw=[], composition="Fe", x_e=0.001, vary="x_e", npts=50, noexcitation=True, ostat=str(ostatfile)
     )
 
@@ -45,7 +45,7 @@ def test_ionpops_for_electronfraction(x_e: float) -> None:
     doubly-ionised plasma. Splitting the nuclei only between the neutral and singly-ionised stages could not
     represent that, and gave a negative neutral population for x_e > 1.
     """
-    from artistools.nonthermal.solvespencerfanocmd import ionpops_for_electronfraction
+    from artistools.nonthermal.spencerfano import ionpops_for_electronfraction
 
     atomic_number = 26
     nntot = 3.0
@@ -61,7 +61,7 @@ def test_ionpops_for_electronfraction(x_e: float) -> None:
 
 def test_ionpops_for_electronfraction_rejects_impossible_values() -> None:
     """An element cannot release more electrons than it has, nor a negative number."""
-    from artistools.nonthermal.solvespencerfanocmd import ionpops_for_electronfraction
+    from artistools.nonthermal.spencerfano import ionpops_for_electronfraction
 
     with pytest.raises(ValueError, match="negative"):
         ionpops_for_electronfraction(26, -0.1, 1.0)
@@ -121,7 +121,7 @@ def test_spencerfano_makeplot_with_element_composition(tmp_path: Path) -> None:
     The default file name holds a timestep field and a time field, which stay None without an
     ARTIS model. Thus the format stopped with TypeError before this test existed.
     """
-    at.nonthermal.solvespencerfanocmd.main(
+    at.nonthermal.spencerfano.main(
         argsraw=[], composition="He", x_e=0.5, makeplot=True, npts=200, noexcitation=True, outputfile=tmp_path
     )
 

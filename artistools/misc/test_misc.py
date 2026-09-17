@@ -1879,14 +1879,14 @@ def test_a_keyword_that_the_command_does_not_take_raises() -> None:
     a message. Such a marker gave argparse a dest, thus the test for an unknown keyword took it for an
     argument of this command and a wrong keyword passed without a word.
     """
-    import artistools.showtimesteps
+    import artistools.timesteps
 
     testmodel = at.get_path("testdata") / "testmodel"
     with pytest.raises(ValueError, match="Unknown argument names"):
-        artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
+        artistools.timesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
 
     # a real argument of the command still reaches it
-    artistools.showtimesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
+    artistools.timesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
 
 
 def test_a_range_keeps_a_negative_number_whole() -> None:

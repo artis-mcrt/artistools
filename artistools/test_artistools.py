@@ -311,7 +311,7 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args([]).atomicdatabase == "artis"
 
     parser = argparse.ArgumentParser()
-    at.macroatom.addargs(parser)
+    at.plotmacroatom.addargs(parser)
     assert parser.parse_args(["--modelpath", "amodel"]).modelpath == Path("amodel")
     assert parser.parse_args(["-modelpath", "amodel"]).modelpath == Path("amodel")
 
@@ -322,7 +322,7 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args([]).figwidthscale == 1.0
 
     parser = argparse.ArgumentParser()
-    at.viewing_angles_visualization.addargs(parser)
+    at.plotviewingangles.addargs(parser)
     for rawargs in (
         ["model.txt", "--outfile", "vis.html", "--opacity", "0.5", "-s", "10"],
         ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
@@ -507,7 +507,7 @@ def test_get_inputparams() -> None:
 
 
 def test_macroatom() -> None:
-    at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
+    at.plotmacroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
 def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
@@ -524,7 +524,7 @@ def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
     )
     dfrank0.head(7).write_csv(tmp_path / "macroatom_0001.out", separator=" ")
 
-    dfallranks = at.macroatom.read_files(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
+    dfallranks = at.plotmacroatom.read_files(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
     assert dfallranks.height == dfrank0.height + 7
 
 
@@ -534,7 +534,7 @@ def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
 def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
 
     plot_calls = {
         label.strip(): call for call in mockplot.call_args_list if isinstance((label := call.kwargs.get("label")), str)
@@ -607,7 +607,7 @@ def test_plotspherical_gif() -> None:
 @pytest.mark.benchmark
 def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
-    logfilepaths = at.logfiles.read_logfiles(modelpath_classic_3d)
+    logfilepaths = at.plotlogfiles.read_logfiles(modelpath_classic_3d)
     # compressed log files must be read too, not skipped
     assert sorted(path.name for path in logfilepaths) == [
         "output_0-0.txt",
@@ -616,7 +616,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
         "output_1-0.txt.zst",
     ]
 
-    timetaken = at.logfiles.read_time_taken(logfilepaths)
+    timetaken = at.plotlogfiles.read_time_taken(logfilepaths)
     assert set(timetaken) == {"update_grid", "update_packets", "write_estimators"}
     for stage, bytimestep in timetaken.items():
         assert len(bytimestep) == 30, f"expected 30 timesteps of {stage} timings"
@@ -628,7 +628,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
 
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.logfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
+    at.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
 
     # one line per stage on each of the 30 per-timestep pages
     assert len(mockplot.call_args_list) == 3 * 30
@@ -1148,7 +1148,7 @@ def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) 
     })
 
     fig, ax = plt.subplots()
-    at.radfield.plot_line_estimators(ax, radfielddata, modelgridindex=0, timestep=0)
+    at.plotradfield.plot_line_estimators(ax, radfielddata, modelgridindex=0, timestep=0)
     plt.close(fig)
 
     assert mockscatter.call_count == 1
@@ -1221,7 +1221,7 @@ def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
 def test_linefluxes_emfeaturesearch_parsing() -> None:
     """Emission features given on the command line must arrive as tuples of ints, not as raw strings."""
     parser = argparse.ArgumentParser()
-    at.linefluxes.addargs(parser)
+    at.plotlinefluxes.addargs(parser)
 
     args = parser.parse_args(["-emfeaturesearch", "(26, 2, 7155, 7150, 7160)", "(28, 2, 7378, 7373, 7383)"])
     assert args.emfeaturesearch == [(26, 2, 7155, 7150, 7160), (28, 2, 7378, 7373, 7383)]
@@ -1251,8 +1251,8 @@ def test_linefluxes_emfeaturesearch_parsing() -> None:
 
 def test_linefluxes_default_timebins_use_each_models_timesteps() -> None:
     """With no explicit time bins, the packet binning must fall back to the model's own timestep grid."""
-    from artistools.linefluxes import get_closelines
-    from artistools.linefluxes import get_line_luminosities_from_packets
+    from artistools.plotlinefluxes import get_closelines
+    from artistools.plotlinefluxes import get_line_luminosities_from_packets
 
     emfeatures = [get_closelines(modelpath_classic_3d, 26, 2, 7155, 7100, 7200)]
 
@@ -1274,7 +1274,7 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
     Each bin was [tstart, tstart + twidth), and timesteps.out gives six significant figures. A packet in the
     rounding gap before the next start then had no bin, and the sums did not include it.
     """
-    from artistools.linefluxes import get_timebin_expr
+    from artistools.plotlinefluxes import get_timebin_expr
 
     dftimes = pl.DataFrame({"t": [0.9, 1.0, 1.999995, 2.0, 2.9999, 3.0, 3.5, 4.0, 5.0, 5.1]})
     timebins = dftimes.select(get_timebin_expr(pl.col("t"), [1.0, 2.0, 4.0], [1.99999, 3.0, 5.0]))
@@ -1283,8 +1283,8 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
 
 def test_linefluxes_from_pops_reads_the_shell_velocities() -> None:
     """The luminosity from the populations needs the inner and the outer velocity of each shell of a 1D model."""
-    from artistools.linefluxes import FeatureTuple
-    from artistools.linefluxes import get_line_luminosities_from_pops
+    from artistools.plotlinefluxes import FeatureTuple
+    from artistools.plotlinefluxes import get_line_luminosities_from_pops
 
     # the test model has no linestat.out, thus the feature names its one Fe II transition directly
     emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
@@ -1305,7 +1305,7 @@ def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
     A cell without population data gives its volume to the next cell outward that has data, and the
     outermost empty cells give their volume to no cell. The loop here is the former algorithm.
     """
-    from artistools.linefluxes import sum_line_luminosities
+    from artistools.plotlinefluxes import sum_line_luminosities
 
     rng = np.random.default_rng(seed=3)
     ncells = 6
@@ -1352,20 +1352,20 @@ def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
 def test_linefluxes_rejects_lone_timebin_argument() -> None:
     """Giving only one of the two time bin edge lists must be rejected before any data is read."""
     with pytest.raises(ValueError, match="must be given together"):
-        at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
+        at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
 
 
 def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
     """More models than the default palette must be rejected up front, not crash inside the colour conversion."""
     with pytest.raises(ValueError, match="needs a colour for each"):
-        at.linefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d] * 11, plotemittingregions=True)
+        at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d] * 11, plotemittingregions=True)
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:
     """The line flux ratio plot must run with no arguments beyond the model path."""
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.linefluxes.main(
+    at.plotlinefluxes.main(
         argsraw=[],
         modelpath=[modelpath_classic_3d],
         emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
@@ -1647,7 +1647,9 @@ def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
 @mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
 def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) -> None:
     """Plotradfield adds -ymin, thus the axis must start there and not at the hard-coded zero."""
-    at.radfield.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14)
+    at.plotradfield.main(
+        argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14
+    )
 
     bottoms = [callargs.kwargs["bottom"] for callargs in mocksetylim.call_args_list if "bottom" in callargs.kwargs]
     assert bottoms, "the command must set the bottom of the axis"
@@ -1890,7 +1892,7 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     Before this command, the mapping from a timestep to its days appeared only inside the error message
     for a wrong value.
     """
-    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath)])
+    at.timesteps.main(argsraw=["-modelpath", str(modelpath)])
     table = capsys.readouterr().out
 
     lines = table.splitlines()
@@ -2008,10 +2010,10 @@ def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
 
 def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixture[str]) -> None:
     """-timedays names the timestep that covers a time, and -timestep gives the days of one timestep."""
-    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
+    at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
     assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
 
-    at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
+    at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
     assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"
 
 
@@ -2346,11 +2348,11 @@ def test_timesteps_command_refuses_a_timestep_outside_the_model() -> None:
     """
     for timestep in ("999", "-1"):
         with pytest.raises(ValueError, match=r"is not in this model\. It has 100 timesteps, 0 to 99"):
-            at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+            at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
 
     # the timesteps at each end of the model are in it
     for timestep in ("0", "99", "last"):
-        at.showtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+        at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
 
 
 def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
@@ -2381,7 +2383,7 @@ def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
     """
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
-        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
+        at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
 
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"one file must open, not {len(opened)}"
@@ -2397,7 +2399,7 @@ def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
     # the test model holds no radiation field data before timestep 10
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
-        at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
+        at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
 
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"the one plot must open, not {len(opened)} files"
@@ -2605,14 +2607,14 @@ def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
     "plotradfield -timestep 40-41 -o merged.pdf" stopped before it drew anything.
     """
     merged = tmp_path / "merged.pdf"
-    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
 
     assert merged.is_file(), f"the merged pdf must keep its name, but {list(tmp_path.iterdir())}"
     assert not list(tmp_path.glob("plotradfield_*.pdf")), "the merge takes the frames away"
 
     # a -o path that names a folder still gives the merged pdf the name of its frames
     outfolder = tmp_path / "rf"
-    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
     assert list(outfolder.glob("plotradfield_*-plotradfield_*.pdf")), f"no merged pdf in {list(outfolder.iterdir())}"
 
 
@@ -2625,12 +2627,12 @@ def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) ->
     """
     # the test model holds no radiation field data before timestep 10, thus one frame comes of the two
     merged = tmp_path / "merged.pdf"
-    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
     assert merged.is_file(), f"the product must keep its name, but {list(tmp_path.iterdir())}"
 
     # the name of the product can be the name that a frame would take
     likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
-    at.radfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
     assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
 
 
@@ -2645,7 +2647,7 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
     def raise_missing(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
         at.import_optional("nosuchpackage")
 
-    with mock.patch.object(at.showtimesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
+    with mock.patch.object(at.timesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
         artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath)])
 
     assert exitinfo.value.code == 1
