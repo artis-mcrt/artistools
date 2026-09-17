@@ -31,6 +31,10 @@ from artistools.misc import match_closest_time
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.plottools import get_viewinganglecolor_for_colorbar
+from artistools.plottools import invert_magnitude_yaxis
+from artistools.plottools import make_colorbar_viewingangles
+from artistools.plottools import make_colorbar_viewingangles_colormap
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -292,8 +296,6 @@ def make_plot_test_viewing_angle_fit(
     args: argparse.Namespace,
 ) -> None:
     """Plot a band light curve against its fit, so the quality of the fit can be checked by eye."""
-    from artistools.lightcurve.plotlightcurve import invert_magnitude_yaxis
-
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
     axis.plot(time, magnitude)
@@ -337,9 +339,6 @@ def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
     """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
-    from artistools.lightcurve.plotlightcurve import get_viewinganglecolor_for_colorbar
-    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
-
     scaledmap = make_colorbar_viewingangles_colormap()
 
     angles = list(range(get_viewingdirectionbincount()))
@@ -354,10 +353,6 @@ def update_plotkwargs_for_viewingangle_colorbar(
 
 def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> None:
     """Set the axis limits, labels, and legend shared by the viewing angle scatter plots."""
-    from artistools.lightcurve.plotlightcurve import invert_magnitude_yaxis
-    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles
-    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
-
     # the x axis here is a rise time or a decline rate, not a time since explosion, so it takes no limit
     # from the command line: this parser spells -xmin/-xmax as aliases of the -timemin/-timemax time range
     set_axis_properties(axis, args, xlimits=(None, None, "-xmin"))
@@ -639,10 +634,6 @@ def peakmag_risetime_declinerate_init(
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the luminosity of each direction bin at one time, to show the angular brightness variation."""
-    from artistools.lightcurve.plotlightcurve import get_viewinganglecolor_for_colorbar
-    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles
-    from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles_colormap
-
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 

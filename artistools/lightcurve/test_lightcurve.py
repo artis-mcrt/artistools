@@ -868,7 +868,7 @@ def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow
 
     _fig, axis = plt.subplots()
     at.lightcurve.plotlightcurve.plot_bol_reflightcurve(axis, reffile, "mag", color="0.0")
-    at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
+    at.plottools.invert_magnitude_yaxis(axis)
 
     barcall, arrowcall = mockerrorbar.call_args_list
     yerr = barcall[1]["yerr"]

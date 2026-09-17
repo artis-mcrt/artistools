@@ -10,6 +10,7 @@ from functools import cache
 
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
+import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
@@ -17,6 +18,9 @@ import matplotlib.ticker as mplticker
 import polars as pl
 
 from artistools.commands import get_path
+from artistools.misc import get_phibin_rank_ascending
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
@@ -944,3 +948,93 @@ def set_axis_labels(
         assert isinstance(ax, mplax.Axes)
         ax.set_xlabel(xlabel, fontsize=labelfontsize)
         ax.set_ylabel(ylabel, fontsize=labelfontsize)
+
+
+def invert_magnitude_yaxis(ax: AxesTree) -> None:
+    """Point the magnitude axis downwards, so that a brighter series is drawn higher.
+
+    invert_yaxis() toggles rather than sets, so calling it once per plotted series flips the axis back and
+    forth instead of inverting it. Inverting a shared y axis already inverts the rest of the grid, which the
+    check per axes skips over rather than undoing, so this does not rely on the subplots sharing one axis.
+    """
+    for axis in iter_axes(ax):
+        ymin, ymax = axis.get_ylim()
+        if ymin < ymax:
+            axis.invert_yaxis()
+
+
+def make_colorbar_viewingangles_colormap() -> t.Any:
+    """Return a tab10 scalar mappable covering the ten viewing angle bins."""
+    norm = mplcolors.Normalize(vmin=0, vmax=9)
+    scaledmap = mplcm.ScalarMappable(cmap="tab10", norm=norm)
+    scaledmap.set_array([])
+    return scaledmap
+
+
+def get_viewinganglecolor_for_colorbar(
+    angle: int, scaledmap: t.Any, plotkwargs: dict[str, t.Any], args: argparse.Namespace
+) -> tuple[dict[str, t.Any], int]:
+    """Set the series colour from the direction bin's cos(theta) or phi, and return the kwargs and the colour index."""
+    nphibins = get_viewingdirection_phibincount()
+    costheta_index, phi_index = divmod(angle, nphibins)
+    if args.colorbarphi:
+        # the colour bar ticks ascend with phi, thus the colour index must be the rank and not the bin
+        colorindex = get_phibin_rank_ascending(phi_index)
+    elif args.colorbarcostheta:
+        colorindex = costheta_index
+    else:
+        msg = "give --colorbarcostheta or --colorbarphi to colour the series by the viewing angle"
+        raise ValueError(msg)
+
+    plotkwargs["color"] = scaledmap.to_rgba(colorindex)
+
+    return plotkwargs, colorindex
+
+
+def make_colorbar_viewingangles(
+    scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
+) -> None:
+    """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
+    import numpy as np
+
+    if args.colorbarphi:
+        print("Reordered phi bins")
+        nbins = get_viewingdirection_phibincount()
+        ticklabels = ["0", "π/5", "2π/5", "3π/5", "4π/5", "π", "6π/5", "7π/5", "8π/5", "9π/5", "2π"]
+        label = "ϕ bin"
+    elif args.colorbarcostheta:
+        nbins = get_viewingdirection_costhetabincount()
+        ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
+        label = "cos θ"
+    else:
+        msg = "give --colorbarcostheta or --colorbarphi to add a viewing angle colorbar"
+        raise ValueError(msg)
+
+    # one tick at each bin boundary, on the scale of the colour map that has one colour per bin
+    ticklocs = list(np.linspace(0, nbins - 1, num=nbins + 1, dtype=float))
+    assert len(ticklabels) == len(ticklocs), f"{len(ticklabels)} labels for {len(ticklocs)} ticks of {nbins} bins"
+
+    # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
+    axeslist = iter_axes(ax) if ax is not None else None
+    targetfig = fig
+    if targetfig is None:
+        assert axeslist is not None
+        targetfig = axeslist[0].get_figure()
+    assert isinstance(targetfig, mplfig.Figure)
+    if any(axis.get_axes_locator() is not None for axis in targetfig.axes):
+        # a frame that a Divider places takes back the space that colorbar steals, thus the
+        # colorbar gets its own axes on a grown page
+        cax = add_cax_for_fixed_frames(targetfig, horizontal=fig is not None)
+        cbar = targetfig.colorbar(scaledmap, cax=cax, orientation="horizontal" if fig is not None else "vertical")
+        if fig is not None:
+            cbar.ax.xaxis.set_ticks_position("top")
+            cbar.ax.xaxis.set_label_position("top")
+    elif fig:
+        cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=axeslist, shrink=0.95)
+    else:
+        assert axeslist is not None
+        cbar = targetfig.colorbar(scaledmap, ax=axeslist)
+    cbar.set_label(label, rotation=0)
+    cbar.locator = mplticker.FixedLocator(ticklocs)
+    cbar.formatter = mplticker.FixedFormatter(ticklabels)
+    cbar.update_ticks()
