@@ -47,6 +47,7 @@ from artistools import plotmacroatom as plotmacroatom
 from artistools import plotradfield as plotradfield
 from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools
+from artistools import plottransitions as plottransitions
 from artistools import plotviewingangles as plotviewingangles
 from artistools import rustext as rustext
 from artistools import spectra as spectra

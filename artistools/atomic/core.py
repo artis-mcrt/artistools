@@ -19,6 +19,7 @@ from polars import selectors as cs
 from artistools import misc
 from artistools.commands import get_path
 from artistools.constants import hc_in_ev_angstrom
+from artistools.constants import K_B_ev_per_K
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
@@ -240,6 +241,11 @@ def get_transitiondata_cached(
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
 
     return transitionsdict
+
+
+def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
+    """Return the LTE partition function of the ion at the excitation temperature."""
+    return float(pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item())
 
 
 def get_levels(

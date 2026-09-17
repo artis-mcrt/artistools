@@ -291,7 +291,7 @@ subcommandtree: CommandTree = {
     ),
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
     "plottransitions": CommandSpec(
-        "transitions",
+        "plottransitions",
         script="plotartistransitions",
         helptext="Plot the spectrum of the transitions.",
         note="The spectrum comes from the bound-bound transitions.",

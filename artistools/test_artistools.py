@@ -204,6 +204,16 @@ def test_module_entry_points_name_a_real_subcommand() -> None:
         assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
+def test_transitions_alias_of_the_partition_function_still_works() -> None:
+    """The package pynonthermal reads at.transitions.get_lte_partfunc, thus the old path gives the same value and a warning."""
+    dflevels = pl.DataFrame({"g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
+    expected = at.atomic.get_lte_partfunc(dflevels, 5000.0)
+    assert np.isclose(expected, 2.0 + 4.0 * math.exp(-1.0 / (at.constants.K_B_ev_per_K * 5000.0)))
+
+    with pytest.warns(DeprecationWarning, match="artistools.atomic.get_lte_partfunc"):
+        assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
+
+
 def test_package_modules_import_no_package_alias() -> None:
     """A package module must import each name from the module that defines it.
 
@@ -305,7 +315,7 @@ def test_shared_cli_args_consistent() -> None:
 def test_deprecated_flag_spellings_still_work() -> None:
     """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
     parser = argparse.ArgumentParser()
-    at.transitions.addargs(parser)
+    at.plottransitions.addargs(parser)
     assert parser.parse_args(["--atomicdatabase", "kurucz"]).atomicdatabase == "kurucz"
     assert parser.parse_args(["-atomicdatabase", "nist"]).atomicdatabase == "nist"
     assert parser.parse_args([]).atomicdatabase == "artis"
@@ -637,7 +647,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_transitions(mockplot: mock.MagicMock) -> None:
-    at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
     assert len(mockplot.call_args_list) == 7
     expected_integrals = [
@@ -1185,7 +1195,7 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     (tmp_path / "gfall.dat").write_text(line, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    dftransitions, ionlist = at.transitions.get_kurucz_transitions()
+    dftransitions, ionlist = at.plottransitions.get_kurucz_transitions()
 
     assert ionlist == [(44, 1)]
     assert len(dftransitions) == 1

@@ -17,6 +17,7 @@ from artistools.atomic.core import get_ionrecombratecalibration as get_ionrecomb
 from artistools.atomic.core import get_ionstring as get_ionstring
 from artistools.atomic.core import get_levels as get_levels
 from artistools.atomic.core import get_linelist_pldf as get_linelist_pldf
+from artistools.atomic.core import get_lte_partfunc as get_lte_partfunc
 from artistools.atomic.core import get_nuclides as get_nuclides
 from artistools.atomic.core import get_z_a_nucname as get_z_a_nucname
 from artistools.atomic.core import roman_numerals as roman_numerals
