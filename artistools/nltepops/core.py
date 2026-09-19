@@ -168,7 +168,7 @@ def add_lte_pops(
     )
 
 
-def read_files(
+def read_nltepops(
     modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
 ) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and one or more grid cells."""

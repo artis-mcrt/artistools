@@ -51,7 +51,7 @@ from artistools.plottools import set_plot_title
 from artistools.spectra import get_spectra
 
 
-def read_files(
+def read_radfield(
     modelpath: Path | str, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
 ) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
@@ -447,8 +447,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         combines=len(modelgridindexlist) * len(timesteplist) > 1,
     )
 
-    # read_files parses a rank file on each call, thus one read of all the cells serves each cell and timestep
-    radfielddata_allcells = read_files(modelpath, modelgridindex=modelgridindexlist)
+    # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
+    radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)

@@ -1260,7 +1260,7 @@ def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -
     )
 
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
-    averaged = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+    averaged = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
     lum_lsun_by_time = dict(zip(averaged["time_days"], averaged["luminosity_Lsun"], strict=True))
     meanofmags_by_time = dict(zip(averaged["time_days"], averaged["mag"], strict=True))
 
@@ -1344,8 +1344,8 @@ def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
     """
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
 
-    averaged = at.lightcurve.readfile(lcpath, average_over_phi=True)[0].collect()
-    stalemean = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+    averaged = at.lightcurve.scan_lightcurve(lcpath, average_over_phi=True)[0].collect()
+    stalemean = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
 
     with np.errstate(divide="ignore"):
         magofmeanlum = Mbol_sun - 2.5 * np.log10(averaged["luminosity_Lsun"].to_numpy())

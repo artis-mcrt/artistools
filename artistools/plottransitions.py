@@ -373,7 +373,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
 
 def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]]) -> PlotConditions:
     """Return the NLTE populations and the temperatures of one cell of a model."""
-    dfnltepops = nltepops.read_files(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
+    dfnltepops = nltepops.read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
         exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")

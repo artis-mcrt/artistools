@@ -233,8 +233,8 @@ def get_line_luminosities_from_pops(
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
-    # read_files is uncached, so read every rank's nlte output once rather than once per feature
-    dfnltepops_allions = nltepops.read_files(modelpath)
+    # read_nltepops is uncached, so read every rank's nlte output once rather than once per feature
+    dfnltepops_allions = nltepops.read_nltepops(modelpath)
 
     # the shell velocities do not change with time, thus the volume of a shell scales with t^3
     v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm

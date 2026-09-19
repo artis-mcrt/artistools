@@ -24,7 +24,7 @@ Review only these:
 
 These are outside the rules. A report about one of them is a false positive:
 
-- An identifier in the code. Examples are `at.normalize_path_list`,
+- An identifier in the code. Examples are `at.misc.normalize_path_list`,
   `get_timestep_times`, `modelpath`, and `nts`. Keep the conventions of the
   file.
 - The name of a column or a key in an ARTIS file that artistools reads or

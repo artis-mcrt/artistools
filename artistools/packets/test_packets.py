@@ -14,8 +14,8 @@ import artistools as at
 def test_directionbins() -> None:
     nphibins = 10
     ncosthetabins = 10
-    costhetabinlowers, costhetabinuppers, _ = at.get_costheta_bins(usedegrees=False)
-    phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
+    costhetabinlowers, costhetabinuppers, _ = at.misc.get_costheta_bins(usedegrees=False)
+    phibinlowers, phibinuppers, _ = at.misc.get_phi_bins(usedegrees=False)
 
     testdirections = pl.DataFrame({
         "phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False).tolist()
@@ -251,7 +251,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     cachefolder = tmp_path / packetkind
     cachefolder.mkdir()
     cachepath = cachefolder / f"{packetkind}batch00_0000_0031.out.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"number": [0]}),
         cachepath,
         metadata={

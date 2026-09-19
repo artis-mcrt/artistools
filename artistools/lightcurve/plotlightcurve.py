@@ -38,7 +38,7 @@ from artistools.lightcurve.core import path_is_reference_lightcurve
 from artistools.lightcurve.core import read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve
 from artistools.lightcurve.core import read_reflightcurve_band_data
-from artistools.lightcurve.core import readfile
+from artistools.lightcurve.core import scan_lightcurve
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
@@ -435,7 +435,7 @@ def plot_artis_lightcurve(
             print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
-        lcdataframes = readfile(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+        lcdataframes = scan_lightcurve(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
 
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)

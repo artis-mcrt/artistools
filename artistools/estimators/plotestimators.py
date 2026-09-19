@@ -458,8 +458,8 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every ion
-    dfnltepops_allions = nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every ion
+    dfnltepops_allions = nltepops.read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:
@@ -540,8 +540,8 @@ def plot_levelpop(
         )
     xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every param
-    dfnltepops_allions = nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every param
+    dfnltepops_allions = nltepops.read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:

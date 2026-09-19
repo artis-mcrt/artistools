@@ -75,7 +75,7 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
-def readfile(
+def scan_lightcurve(
     filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:
     """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.

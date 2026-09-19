@@ -236,7 +236,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        if nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
+        if nltepops.read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
             exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]

@@ -170,14 +170,14 @@ def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> 
     shutil.copy(modelpath_classic_3d / "compositiondata.txt", tmp_path)
     (tmp_path / "bflist.out").write_text(bflistcontents, encoding="utf-8")
 
-    dfbflist = at.get_bflist(tmp_path).collect()
+    dfbflist = at.atomic.get_bflist(tmp_path).collect()
     assert dfbflist.is_empty()
     assert {"bfindex", "lowerlevel", "upperionlevel", "atomic_number", "ion_stage", "ion_str"} <= set(dfbflist.columns)
 
 
 def test_get_bflist_reads_transitions() -> None:
     """The populated case must be unaffected by the empty-file handling."""
-    dfbflist = at.get_bflist(modelpath_classic_3d).collect()
+    dfbflist = at.atomic.get_bflist(modelpath_classic_3d).collect()
 
     assert len(dfbflist) == 10780
     assert dfbflist["atomic_number"].sum() == 289060
