@@ -38,6 +38,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_timestep_of_timedays
@@ -487,7 +488,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmax = -math.inf
 
     for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
-        print_heading(modellabel)
+        print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
@@ -630,7 +631,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         print(f"ARTIS model: '{modellabel}'")
 
         if modelpath is not None:
-            print(f"Getting packets/nne/Te data for ARTIS model: '{modellabel}'")
+            print(f"Getting packets/nne/Te data for ARTIS model: '{get_model_logname(modelpath, modellabel)}'")
 
             emdata_all[modelindex] = {}
 

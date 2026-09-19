@@ -53,6 +53,7 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
@@ -1182,7 +1183,7 @@ def make_emissionabsorption_plot(
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
-    print_heading(modelname)
+    print_heading(get_model_logname(modelpath, modelname))
     clamp_to_timesteps = not args.notimeclamp
 
     # locals, not a write-back onto args, for the reason given in plot_artis_spectrum
@@ -1191,7 +1192,7 @@ def make_emissionabsorption_plot(
     )
 
     if timestepmin == timestepmax == -1:
-        print(f"Can't plot {modelname}...skipping")
+        print(f"Can't plot {get_model_logname(modelpath, modelname)}...skipping")
         return [], [], pl.DataFrame()
 
     check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)

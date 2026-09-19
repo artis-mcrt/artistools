@@ -1906,7 +1906,7 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     table = capsys.readouterr().out
 
     lines = table.splitlines()
-    assert lines[0] == "TEST MODEL: 100 timesteps from 250.000 to 350.000 days"
+    assert lines[0] == "TEST MODEL (folder testmodel): 100 timesteps from 250.000 to 350.000 days"
     assert lines[1].split() == ["timestep", "start_days", "mid_days", "end_days", "width_days"]
     assert len(lines) == 103, "a header, a column line, 100 rows, and a closing hint"
 

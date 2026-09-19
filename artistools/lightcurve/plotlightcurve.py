@@ -68,6 +68,7 @@ from artistools.misc import get_deposition
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_costhetabincount
@@ -899,7 +900,7 @@ def make_band_lightcurves_plot(
         for dirbin in dirbins:
             modelname = get_model_name(modelpath)
             if args.verbose:
-                print(f"Reading spectra: {modelname} (angle {dirbin})")
+                print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
             band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
 
             if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
@@ -1012,7 +1013,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = get_model_name(modelpath)
         if args.verbose:
-            print(f"Reading spectra: {modelname}")
+            print(f"Reading spectra: {get_model_logname(modelpath)}")
 
         dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
 
