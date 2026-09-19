@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from artistools import nltepops
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolslist
@@ -34,6 +33,7 @@ from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -236,7 +236,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        if nltepops.read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
+        if read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
             exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]

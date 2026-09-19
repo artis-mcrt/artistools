@@ -12,7 +12,6 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-from artistools import nltepops
 from artistools.atomic import add_transition_columns
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
@@ -43,6 +42,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
+from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -373,7 +373,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
 
 def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]]) -> PlotConditions:
     """Return the NLTE populations and the temperatures of one cell of a model."""
-    dfnltepops = nltepops.read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
+    dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
         exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")

@@ -70,7 +70,7 @@ dftemperature = at.scan_estimators(modelpath).filter(pl.col("timestep") == 40).s
 dfspectrum = at.spectra.get_spectra(modelpath, timestepmin=40, timestepmax=45)[-1].collect()
 ```
 
-A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin, and reads nothing until `.collect()`. A function with the prefix `read_` reads at once. The direction bin -1 is the average over all directions.
+A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin, and reads nothing until `.collect()`. A function with the prefix `read_` reads at once. A function with the prefix `get_` can do either, and the tables below say which one returns a LazyFrame. The direction bin -1 is the average over all directions.
 
 ### Names at the top level
 

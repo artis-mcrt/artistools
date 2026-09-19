@@ -18,7 +18,6 @@ import polars as pl
 from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
-from artistools import nltepops
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.atomic import get_linelist_pldf
@@ -49,6 +48,7 @@ from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
+from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
 from artistools.plottools import make_frame_figure
@@ -234,7 +234,7 @@ def get_line_luminosities_from_pops(
     adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
     # read_nltepops is uncached, so read every rank's nlte output once rather than once per feature
-    dfnltepops_allions = nltepops.read_nltepops(modelpath)
+    dfnltepops_allions = read_nltepops(modelpath)
 
     # the shell velocities do not change with time, thus the volume of a shell scales with t^3
     v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm

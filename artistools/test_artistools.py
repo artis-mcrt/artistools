@@ -244,12 +244,21 @@ def test_top_level_api_is_the_documented_list() -> None:
     if readme.is_file():
         readmetext = readme.read_text(encoding="utf-8")
         assert not [name for name in sorted(TOPLEVEL_API) if f"`at.{name}`" not in readmetext]
+        # a row of a name that left the top level tells the user to call a name that does not exist
+        readmenames = {
+            name
+            for name in re.findall(r"`at\.(\w+)`", readmetext)
+            if not isinstance(getattr(at, name, None), types.ModuleType)
+        }
+        assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
 
 
 def test_each_package_command_is_named_plot() -> None:
     """A package that has a plot command gives it as plot, thus a user finds it under one name."""
     for package in (at.estimators, at.gsinetwork, at.lightcurve, at.nltepops, at.nonthermal, at.packets, at.spectra):
-        assert callable(package.plot), package.__name__
+        # the main function of a module of the package, and not a different callable with that name
+        assert package.plot.__name__ == "main", package.__name__
+        assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
 def test_package_modules_import_no_package_alias() -> None:

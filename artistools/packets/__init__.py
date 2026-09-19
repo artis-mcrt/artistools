@@ -18,5 +18,4 @@ from artistools.packets.core import get_virtual_packets as get_virtual_packets
 
 # isort: split
 from artistools.packets import plotlastpacketinteraction as plotlastpacketinteraction
-from artistools.packets.plotlastpacketinteraction import addargs as addargs
 from artistools.packets.plotlastpacketinteraction import main as plot
