@@ -10,7 +10,6 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from artistools import lightcurve
 from artistools.atomic import get_composition_data
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
@@ -22,6 +21,7 @@ from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import find_lightcurve_file
+from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import firstexisting
@@ -198,8 +198,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     # light_curve.out has one row per timestep in order, and deposition.out names its timesteps, so join on the
     # light curve's row index. The columns are time_days and luminosity_Lsun, not the time and lum this used to read
     dflightcurve = (
-        lightcurve
-        .readfile(find_lightcurve_file(modelpath))[-1]
+        scan_lightcurve(find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
         .join(get_deposition(modelpath), on="timestep", how="inner")

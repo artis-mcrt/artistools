@@ -58,7 +58,7 @@ def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
         membersize = tarfilehandle.getmember(memberfilename).size
 
     readsize = partial(trajectory_member_size, traj_root, memberfilename)
-    # at.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
+    # at.misc.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
     # the filesystem. Spawn for the same reason parallel_map does: forking with polars/rayon threads live is unsafe.
     with ProcessPoolExecutor(max_workers=nworkers, mp_context=multiprocessing.get_context("spawn")) as executor:
         # start the workers up front so that each trial races on the extraction rather than on process startup
@@ -147,7 +147,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
     )
 
@@ -1638,7 +1638,7 @@ def test_save_load_3d_model() -> None:
     )
 
     dfelements = (
-        at
+        at.atomic
         .get_elsymbols_df()
         .filter(
             pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
@@ -2379,7 +2379,7 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
 
     # a cache whose stamps are current, thus only the malformed json can reject it
     parquetfile = tmp_path / "model.txt.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         dfmodel_expected.collect(),
         parquetfile,
         metadata={

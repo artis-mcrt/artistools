@@ -75,10 +75,10 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
-def readfile(
+def scan_lightcurve(
     filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:
-    """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.
+    """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
     bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the

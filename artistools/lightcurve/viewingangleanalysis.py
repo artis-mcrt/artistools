@@ -17,7 +17,7 @@ from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_phillips_relation_data
-from artistools.lightcurve.core import readfile
+from artistools.lightcurve.core import scan_lightcurve
 from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
 from artistools.misc import get_costhetabin_phibin_labels
@@ -577,15 +577,15 @@ def peakmag_risetime_declinerate_init(
             # a mode that averages over the angles groups several direction bins, and dirbins then
             # names the first bin of each group. Thus the reader must average in the same way
             lcdataframes = (
-                readfile(
+                scan_lightcurve(
                     lcpath,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                 )
                 if directionresolved
-                else readfile(lcpath)
+                else scan_lightcurve(lcpath)
             )
-            # readfile slices one scan of the file. Thus one collect_all parses it one time for
+            # scan_lightcurve slices one scan of the file. Thus one collect_all parses it one time for
             # every direction bin, in place of one parse for each bin
             lazyplans = [
                 lcdataframes[dirbin]
@@ -644,7 +644,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes_lazy = readfile(find_lightcurve_file(modelpath, directionresolved=True))
+    lcdataframes_lazy = scan_lightcurve(find_lightcurve_file(modelpath, directionresolved=True))
 
     # one collect_all call parses light_curve_res.out one time for all the direction bins
     lcdataframes = dict(zip(lcdataframes_lazy.keys(), pl.collect_all(list(lcdataframes_lazy.values())), strict=True))
@@ -657,7 +657,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     for angleindex, lcdata in lcdataframes.items():
         plotkwargs, _ = get_viewinganglecolor_for_colorbar(angleindex, scaledmap, plotkwargs, args)
 
-        # readfile derives the erg/s column, so it does not have to be converted here again
+        # scan_lightcurve derives the erg/s column, so it does not have to be converted here again
         brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").item(0, 0)
         costhetaindex, phiindex = divmod(angleindex, nphibins)
         xvalues = phiindex if args.colorbarcostheta else costhetaindex

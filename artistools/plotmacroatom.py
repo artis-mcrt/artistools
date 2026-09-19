@@ -77,7 +77,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_days_min = get_timestep_time(modelpath, timestepmin)
     time_days_max = get_timestep_time(modelpath, timestepmax)
 
-    dfmacroatom = read_files(modelpath, modelgridindex, timestepmin, timestepmax, atomic_number)
+    dfmacroatom = read_macroatom(modelpath, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axesgrid = make_frame_figure(args, aspect=1.059)
@@ -112,7 +112,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     save_figure(fig, outputfile, args=args, format="pdf")
 
 
-def read_files(
+def read_macroatom(
     modelpath: Path | str,
     modelgridindex: int | None = None,
     timestepmin: int | None = None,

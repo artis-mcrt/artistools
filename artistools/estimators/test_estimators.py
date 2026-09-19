@@ -735,7 +735,7 @@ def test_estimator_levelpopulation_dn_on_dvel(mockplot: mock.MagicMock) -> None:
 
 def test_get_averageexcitation() -> None:
     """The average excitation energy must be the population-weighted mean level energy of the ion."""
-    dfpops = at.nltepops.read_files(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))
+    dfpops = at.nltepops.read_nltepops(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))
     timestep = min(dfpops["timestep"].to_list())
     dftexc = pl.LazyFrame({"timestep": [timestep], "modelgridindex": [0], "T_exc": [6000.0]})
 
@@ -858,7 +858,7 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     )
 
     mtime = 1000.0
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         parquetfilepath,
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(mtime)},
@@ -885,12 +885,12 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
 
     # a cache that holds no version stamp counts as version 1, thus a matching time keeps it
     unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
+    at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
     assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
 
     # a matching text source time but a different cache version
     oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
     assert not rankbatch_parquet_is_current(oldversion, mtime, textsource_complete=True)
@@ -1460,7 +1460,7 @@ def test_summarise_columns_keeps_a_family_of_elements_whole() -> None:
     from artistools.estimators.core import MAXSPECIES_LISTED
     from artistools.estimators.core import summarise_columns
 
-    elements = [f"nnelement_{sym}" for sym in at.get_elsymbolslist()[1 : MAXSPECIES_LISTED + 20]]
+    elements = [f"nnelement_{sym}" for sym in at.atomic.get_elsymbolslist()[1 : MAXSPECIES_LISTED + 20]]
     listing = summarise_columns(elements)
 
     assert "nuclides" not in listing
@@ -2233,7 +2233,7 @@ def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": "1000.0"}
     )
 
@@ -2271,7 +2271,7 @@ def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
     os.utime(textfile, (1000.0, 1000.0))
 
     # the cache of an archived run holds neither stamp, because a version before the stamps wrote it
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
         runfolder / "estimbatch00_0000_0002.out.parquet.tmp",
     )
@@ -2302,7 +2302,7 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     stamp, complete = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
     assert complete
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         parquetfilepath,
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(stamp)},
@@ -2428,7 +2428,7 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     os.utime(textfile, (1000.0, 1000.0))
 
     parquetfilepath = runfolder / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
         parquetfilepath,
         metadata={"cacheversion": "0", "textsource_mtime": "1000.0"},
@@ -2449,7 +2449,7 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
 
 def parse_estimator_args(argsraw: list[str]) -> argparse.Namespace:
     """Parse a plotestimators command line and resolve its positional arguments."""
-    args = at.parse_cli_args(at.estimators.plotestimators.addargs, None, None, argsraw)
+    args = at.misc.parse_cli_args(at.estimators.plotestimators.addargs, None, None, argsraw)
     at.estimators.plotestimators.resolve_positional_args(args)
 
     return args

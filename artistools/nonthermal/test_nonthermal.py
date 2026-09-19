@@ -29,7 +29,7 @@ def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
         argsraw=[], composition="Fe", x_e=0.001, vary="x_e", npts=50, noexcitation=True, ostat=str(ostatfile)
     )
 
-    dfstats = at.read_wsv(ostatfile, comment_prefix="#", header_from_comment=True)
+    dfstats = at.misc.read_wsv(ostatfile, comment_prefix="#", header_from_comment=True)
     assert dfstats.height == 9
     assert {"frac_ionization_FeI", "frac_ionization_FeII", "frac_ionization_FeXI"} <= set(dfstats.columns)
     # an ion that a step does not hold takes zero, e.g. Fe I at the highest electron fraction

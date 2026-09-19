@@ -24,7 +24,6 @@ import numpy as np
 import polars as pl
 from polars import selectors as cs
 
-from artistools import nltepops
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
@@ -90,6 +89,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_yvalues
 from artistools.plottools import make_frame_figure
@@ -458,8 +458,8 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every ion
-    dfnltepops_allions = nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every ion
+    dfnltepops_allions = read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:
@@ -540,8 +540,8 @@ def plot_levelpop(
         )
     xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every param
-    dfnltepops_allions = nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every param
+    dfnltepops_allions = read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:

@@ -52,7 +52,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.nltepops.core import add_lte_pops
-from artistools.nltepops.core import read_files
+from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
 from artistools.nltepops.core import texifyterm
 from artistools.plottools import get_next_color
@@ -582,9 +582,9 @@ def plot_populations_with_time_or_velocity(
 
         # the loop changes only the cell or only the timestep, thus one read with that filter supplies the whole loop
         dfpop_all = (
-            read_files(modelpath, modelgridindex=modelgridindex_list[0])
+            read_nltepops(modelpath, modelgridindex=modelgridindex_list[0])
             if args.x == "time"
-            else read_files(modelpath, timestep=timesteps[0])
+            else read_nltepops(modelpath, timestep=timesteps[0])
         )
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = dfpop_all.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == mgi))
@@ -645,7 +645,7 @@ def make_singletimestep_plot(
     time_days = get_timestep_time(modelpath, timestep)
 
     # one read of the ranks that own the cells in mgilist supplies the data for every cell
-    dfpop_allcells = read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    dfpop_allcells = read_nltepops(modelpath, timestep=timestep, modelgridindex=list(mgilist))
     dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == mgilist[0])
 
     if dfpop.is_empty():

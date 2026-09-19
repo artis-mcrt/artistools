@@ -214,10 +214,51 @@ def test_transitions_alias_of_the_partition_function_still_works() -> None:
         assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
 
 
-def test_top_level_aliases_that_a_user_script_reads() -> None:
-    """A user script reads these names from the top level, thus a prune of the re-exports must keep them."""
-    assert at.scan_estimators is at.estimators.core.scan_estimators
-    assert at.get_deposition is at.misc.timesteps.get_deposition
+TOPLEVEL_API: t.Final[frozenset[str]] = frozenset({
+    "add_derived_cols_to_modeldata", "decode_roman_numeral", "firstexisting", "get_atomic_number", "get_deposition",
+    "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring", "get_model_name", "get_modeldata",
+    "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times", "get_z_a_nucname", "read_estimators",
+    "scan_estimators", "set_mpl_style", "zopen",
+})  # fmt: skip
+
+
+def test_top_level_api_is_the_documented_list() -> None:
+    """The top level holds the names that a user types in a script, and the README lists each of them.
+
+    A different name stays in its package, e.g. at.misc.addarg_modelpath. To add a name to the top level,
+    add it here and to the table in the README.
+    """
+    import types
+
+    # getattr and not vars: on Python 3.15 an entry of vars is a lazy proxy until its first use
+    public = {
+        name
+        for name in vars(at)
+        if not name.startswith("_")
+        and not isinstance(getattr(at, name), types.ModuleType)
+        and getattr(getattr(at, name), "__module__", "") != "artistools._polarscompat"
+    }
+    assert public == TOPLEVEL_API
+
+    readme = Path(at.__file__).parent.parent / "README.md"
+    if readme.is_file():
+        readmetext = readme.read_text(encoding="utf-8")
+        assert not [name for name in sorted(TOPLEVEL_API) if f"`at.{name}`" not in readmetext]
+        # a row of a name that left the top level tells the user to call a name that does not exist
+        readmenames = {
+            name
+            for name in re.findall(r"`at\.(\w+)`", readmetext)
+            if not isinstance(getattr(at, name, None), types.ModuleType)
+        }
+        assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
+
+
+def test_each_package_command_is_named_plot() -> None:
+    """A package that has a plot command gives it as plot, thus a user finds it under one name."""
+    for package in (at.estimators, at.gsinetwork, at.lightcurve, at.nltepops, at.nonthermal, at.packets, at.spectra):
+        # the main function of a module of the package, and not a different callable with that name
+        assert package.plot.__name__ == "main", package.__name__
+        assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
 def test_package_modules_import_no_package_alias() -> None:
@@ -315,7 +356,7 @@ def test_shared_cli_args_consistent() -> None:
                 assert {"-outputfile", "-o"} <= flags, label
             elif dest == "filtersavgol":
                 assert action.nargs == 2, label
-                assert "filtermovingavg" in actions, label  # the contract read by at.get_filterfunc
+                assert "filtermovingavg" in actions, label  # the contract read by at.misc.get_filterfunc
 
 
 def test_deprecated_flag_spellings_still_work() -> None:
@@ -535,12 +576,12 @@ def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
     inputlines[21] = "2"
     (tmp_path / "input.txt").write_text("\n".join(inputlines), encoding="utf-8")
 
-    dfrank0 = at.read_wsv(modelpath / "macroatom_0000.out.xz").filter(
+    dfrank0 = at.misc.read_wsv(modelpath / "macroatom_0000.out.xz").filter(
         (pl.col("modelgridindex") == 0) & (pl.col("timestep") == 10)
     )
     dfrank0.head(7).write_csv(tmp_path / "macroatom_0001.out", separator=" ")
 
-    dfallranks = at.plotmacroatom.read_files(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
+    dfallranks = at.plotmacroatom.read_macroatom(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
     assert dfallranks.height == dfrank0.height + 7
 
 
@@ -783,12 +824,12 @@ def test_get_ion_tuple_no_separator() -> None:
 
 
 def test_parse_range_list() -> None:
-    assert at.parse_range_list("5") == [5]
-    assert at.parse_range_list("3-5") == [3, 4, 5]
-    assert at.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
-    assert at.parse_range_list([3, 5, 7]) == [3, 5, 7]
-    assert at.parse_range_list(42) == [42]
-    assert at.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
+    assert at.misc.parse_range_list("5") == [5]
+    assert at.misc.parse_range_list("3-5") == [3, 4, 5]
+    assert at.misc.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
+    assert at.misc.parse_range_list([3, 5, 7]) == [3, 5, 7]
+    assert at.misc.parse_range_list(42) == [42]
+    assert at.misc.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
 
 
 def test_make_vpkt_input_default_contents() -> None:
@@ -995,7 +1036,7 @@ def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
 
     widthlumfile = tmp_path / "testmodel_width-luminosity.dat"
     assert widthlumfile.is_file()
-    dfwidthlum = at.read_wsv(widthlumfile)
+    dfwidthlum = at.misc.read_wsv(widthlumfile)
     assert dfwidthlum.columns == ["peakmag", "dm15", "angle_bin"]
     assert dfwidthlum.height == 100
 
@@ -1039,50 +1080,50 @@ def test_make_vpkt_input_rejects_bad_arguments() -> None:
 
 
 def test_makelist() -> None:
-    assert at.makelist(None) == []
-    assert at.makelist("hello") == ["hello"]
-    assert at.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
-    assert at.makelist([1, 2, 3]) == [1, 2, 3]
-    assert at.makelist((1, 2)) == [1, 2]
+    assert at.misc.makelist(None) == []
+    assert at.misc.makelist("hello") == ["hello"]
+    assert at.misc.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
+    assert at.misc.makelist([1, 2, 3]) == [1, 2, 3]
+    assert at.misc.makelist((1, 2)) == [1, 2]
 
 
 def test_flatten_list() -> None:
-    assert at.flatten_list([[1, 2], [3, 4]]) == [1, 2, 3, 4]
-    assert at.flatten_list([1, [2, 3], 4]) == [1, 2, 3, 4]
-    assert at.flatten_list([]) == []
-    assert at.flatten_list([1, 2, 3]) == [1, 2, 3]
+    assert at.misc.flatten_list([[1, 2], [3, 4]]) == [1, 2, 3, 4]
+    assert at.misc.flatten_list([1, [2, 3], 4]) == [1, 2, 3, 4]
+    assert at.misc.flatten_list([]) == []
+    assert at.misc.flatten_list([1, 2, 3]) == [1, 2, 3]
 
 
 def test_trim_or_pad() -> None:
-    result = at.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
+    result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
     assert list(result[0]) == [1, 2, 3]
     assert list(result[1]) == [10, 20, None]
 
-    result2 = at.trim_or_pad(2, "single_string")
+    result2 = at.misc.trim_or_pad(2, "single_string")
     assert list(result2[0]) == ["single_string", None]
 
 
 def test_vec_len() -> None:
-    assert math.isclose(at.vec_len([3.0, 4.0, 0.0]), 5.0)
-    assert math.isclose(at.vec_len([1.0, 0.0, 0.0]), 1.0)
-    assert math.isclose(at.vec_len([0.0, 0.0, 0.0]), 0.0)
-    assert math.isclose(at.vec_len([1.0, 1.0, 1.0]), math.sqrt(3.0))
+    assert math.isclose(at.misc.vec_len([3.0, 4.0, 0.0]), 5.0)
+    assert math.isclose(at.misc.vec_len([1.0, 0.0, 0.0]), 1.0)
+    assert math.isclose(at.misc.vec_len([0.0, 0.0, 0.0]), 0.0)
+    assert math.isclose(at.misc.vec_len([1.0, 1.0, 1.0]), math.sqrt(3.0))
 
 
 def test_stripallsuffixes() -> None:
-    assert at.stripallsuffixes(Path("packets00_0000.out.gz")) == Path("packets00_0000")
-    assert at.stripallsuffixes(Path("model.txt.xz")) == Path("model")
-    assert at.stripallsuffixes(Path("noextension")) == Path("noextension")
-    assert at.stripallsuffixes(Path("single.txt")) == Path("single")
+    assert at.misc.stripallsuffixes(Path("packets00_0000.out.gz")) == Path("packets00_0000")
+    assert at.misc.stripallsuffixes(Path("model.txt.xz")) == Path("model")
+    assert at.misc.stripallsuffixes(Path("noextension")) == Path("noextension")
+    assert at.misc.stripallsuffixes(Path("single.txt")) == Path("single")
 
 
 def test_match_closest_time() -> None:
     times = [100.0, 200.0, 300.0, 400.0]
-    assert at.match_closest_time(250.0, times) == 200.0
-    assert at.match_closest_time(310.0, times) == 300.0
-    assert at.match_closest_time(99.0, times) == 100.0
-    assert at.match_closest_time(400.0, times) == 400.0
-    assert at.match_closest_time(310.0, ["100", "300.5", "400"]) == 300.5
+    assert at.misc.match_closest_time(250.0, times) == 200.0
+    assert at.misc.match_closest_time(310.0, times) == 300.0
+    assert at.misc.match_closest_time(99.0, times) == 100.0
+    assert at.misc.match_closest_time(400.0, times) == 400.0
+    assert at.misc.match_closest_time(310.0, ["100", "300.5", "400"]) == 300.5
 
 
 def test_get_npts_model(tmp_path: Path) -> None:
@@ -1121,7 +1162,7 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
         all_cells: list[int] = []
         cells_per_rank = []
         for rank in range(nprocs):
-            cells = list(at.get_cellsofmpirank(rank, subdir))
+            cells = list(at.misc.get_cellsofmpirank(rank, subdir))
             cells_per_rank.append(cells)
             all_cells.extend(cells)
 
@@ -1140,16 +1181,16 @@ def test_get_cellsofmpirank(tmp_path: Path) -> None:
     even_dir = tmp_path / "even"
     even_dir.mkdir()
     make_model(even_dir, npts=20, nprocs=4)
-    assert list(at.get_cellsofmpirank(0, even_dir)) == list(range(5))
-    assert list(at.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
+    assert list(at.misc.get_cellsofmpirank(0, even_dir)) == list(range(5))
+    assert list(at.misc.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
 
     # Verify specific assignments for uneven case (npts=21, nprocs=4):
     # rank 0 gets one extra cell (leftover), ranks 1-3 get the base count
     uneven_dir = tmp_path / "uneven"
     uneven_dir.mkdir()
     make_model(uneven_dir, npts=21, nprocs=4)
-    assert list(at.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
-    assert list(at.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+    assert list(at.misc.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
+    assert list(at.misc.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
@@ -1226,7 +1267,7 @@ def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
         plt.close(fig)
         pdfpaths.append(str(pdfpath))
 
-    at.merge_pdf_files(pdfpaths)
+    at.misc.merge_pdf_files(pdfpaths)
 
     merged = tmp_path / "page0-page1.pdf"
     assert merged.is_file()
@@ -1656,8 +1697,8 @@ def test_iter_axes_flattens_a_subplot_grid() -> None:
 
 def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
     """A compressed ARTIS output file is a model, and not a reference data file."""
-    assert all(at.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
-    assert not at.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
+    assert all(at.misc.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
+    assert not at.misc.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
 
 
 @mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
@@ -2151,19 +2192,22 @@ def test_an_output_template_takes_the_older_name_of_a_field() -> None:
     -o "plot_{modelgridindex}.pdf" and -o "plot_{time_days}d.pdf" each stopped with an error, because
     the commands renamed those fields to {cell} and {timedays}. A script holds the older names.
     """
-    assert at.format_frame_path("p_{modelgridindex:03d}_ts{timestep:03d}.pdf", cell=7, timestep=22) == "p_007_ts022.pdf"
-    assert at.format_frame_path("p_{time_days:.0f}d.pdf", timedays=300.4) == "p_300d.pdf"
+    assert (
+        at.misc.format_frame_path("p_{modelgridindex:03d}_ts{timestep:03d}.pdf", cell=7, timestep=22)
+        == "p_007_ts022.pdf"
+    )
+    assert at.misc.format_frame_path("p_{time_days:.0f}d.pdf", timedays=300.4) == "p_300d.pdf"
 
     # the new name of each field works as well, and both names give one value
-    assert at.format_frame_path("p_{cell}_{timedays}.pdf", cell=7, timedays=300.4) == "p_7_300.4.pdf"
+    assert at.misc.format_frame_path("p_{cell}_{timedays}.pdf", cell=7, timedays=300.4) == "p_7_300.4.pdf"
 
     # the message names the fields of the command, and it leaves out the older names
     with pytest.raises(ValueError, match=r"gives \{cell\}, \{timedays\}"):
-        at.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
+        at.misc.format_frame_path("p_{nosuch}.pdf", cell=1, timedays=2.0)
 
     # a field with no name gets a message as well, not a raw IndexError
     with pytest.raises(ValueError, match=r"field with no name.*\{cell\}, \{timedays\}"):
-        at.format_frame_path("p_{}.pdf", cell=1, timedays=2.0)
+        at.misc.format_frame_path("p_{}.pdf", cell=1, timedays=2.0)
 
 
 def test_a_wavelength_range_takes_both_spellings() -> None:
@@ -2208,14 +2252,14 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
     import artistools.__main__
 
     # the text names one cell, a range of cells, or a list of them, whatever command reads it
-    assert at.get_single_modelgridindex("12") == 12
-    assert at.get_single_modelgridindex(None) is None
-    assert at.parse_range_list("3-7") == [3, 4, 5, 6, 7]
-    assert at.parse_range_list("4,5,6") == [4, 5, 6]
+    assert at.misc.get_single_modelgridindex("12") == 12
+    assert at.misc.get_single_modelgridindex(None) is None
+    assert at.misc.parse_range_list("3-7") == [3, 4, 5, 6, 7]
+    assert at.misc.parse_range_list("4,5,6") == [4, 5, 6]
 
     # a command that reads one cell says so, in place of taking a cell that the text does not name
     with pytest.raises(ValueError, match=r"names 5 cells, and this command reads one"):
-        at.get_single_modelgridindex("3-7")
+        at.misc.get_single_modelgridindex("3-7")
 
     parser = artistools.__main__.build_parser()
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -2661,7 +2705,7 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
     import artistools.__main__
 
     def raise_missing(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
-        at.import_optional("nosuchpackage")
+        at.misc.import_optional("nosuchpackage")
 
     with mock.patch.object(at.timesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
         artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath)])
@@ -2690,7 +2734,7 @@ def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
     ionfracfiles = sorted(tmp_path.glob("ionfrac_*_artisnebular.txt"))
     assert ionfracfiles, "the run wrote no ion fraction file"
 
-    elementlist = at.get_composition_data(modelpath)
+    elementlist = at.atomic.get_composition_data(modelpath)
     lowermost_of_elsymbol = {
         at.get_elsymbol(row["Z"]).lower(): row["lowermost_ion_stage"] for row in elementlist.iter_rows(named=True)
     }

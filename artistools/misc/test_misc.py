@@ -185,21 +185,25 @@ def test_one_rule_finds_the_reference_data_of_each_kind(tmp_path: Path) -> None:
     compressed name", thus a change to that rule reached one command and not the other.
     """
     # the folder of the package holds the reference data of both kinds
-    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/refspectra") is not None
-    assert at.find_reference_data_file("AT2017gfo_smarttetal2017.txt", "data/lightcurves/bollightcurves") is not None
+    assert at.misc.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/refspectra") is not None
+    assert (
+        at.misc.find_reference_data_file("AT2017gfo_smarttetal2017.txt", "data/lightcurves/bollightcurves") is not None
+    )
 
     # a name that no folder holds gives None, and the kind of the data selects the folder
-    assert at.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/lightcurves/bollightcurves") is None
-    assert at.find_reference_data_file("nosuchfile.txt", "data/refspectra") is None
+    assert (
+        at.misc.find_reference_data_file("2003du_20031213_3219_8822_00.txt", "data/lightcurves/bollightcurves") is None
+    )
+    assert at.misc.find_reference_data_file("nosuchfile.txt", "data/refspectra") is None
 
     # a file of the working folder comes first, and a compressed name of it counts
     reffile = tmp_path / "myref.txt.xz"
     reffile.write_bytes(b"")
-    assert at.find_reference_data_file(tmp_path / "myref.txt", "data/refspectra") == reffile
+    assert at.misc.find_reference_data_file(tmp_path / "myref.txt", "data/refspectra") == reffile
 
     # a folder is no file of reference data, and neither is a name that no folder holds
-    assert not at.path_is_reference_data(tmp_path, "data/refspectra")
-    assert not at.path_is_reference_data(tmp_path / "nosuchfile.txt", "data/refspectra")
+    assert not at.misc.path_is_reference_data(tmp_path, "data/refspectra")
+    assert not at.misc.path_is_reference_data(tmp_path / "nosuchfile.txt", "data/refspectra")
 
 
 def test_reference_data_search_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -215,13 +219,13 @@ def test_reference_data_search_follows_the_working_folder(tmp_path: Path, monkey
     empty_folder.mkdir()
 
     monkeypatch.chdir(empty_folder)
-    assert at.find_reference_data_file("myref.txt", "data/refspectra") is None
+    assert at.misc.find_reference_data_file("myref.txt", "data/refspectra") is None
 
     monkeypatch.chdir(folder_with_file)
-    assert at.find_reference_data_file("myref.txt", "data/refspectra") == Path("myref.txt")
+    assert at.misc.find_reference_data_file("myref.txt", "data/refspectra") == Path("myref.txt")
 
     monkeypatch.chdir(empty_folder)
-    assert at.find_reference_data_file("myref.txt", "data/refspectra") is None
+    assert at.misc.find_reference_data_file("myref.txt", "data/refspectra") is None
 
 
 def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
@@ -236,17 +240,17 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     mtime = 1000.0
 
     current = tmp_path / "current.parquet"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current,
         metadata={"cacheversion": str(cacheversion), "textsource_mtime": str(mtime)},
     )
-    pqmetadata, stalereason = at.read_parquet_cache_metadata(current, cacheversion, mtime)
+    pqmetadata, stalereason = at.misc.read_parquet_cache_metadata(current, cacheversion, mtime)
     assert stalereason is None
     assert pqmetadata is not None
 
     def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
-        pqmetadata, stalereason = at.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
+        pqmetadata, stalereason = at.misc.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
         assert pqmetadata is None
         assert stalereason is not None
         return stalereason
@@ -261,12 +265,12 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     # a cache that holds no stamp is stale by default, because a rebuild of a cheap cache costs less
     # than a wrong number. Only a reader that gives accept_unstamped keeps it
     unstamped = tmp_path / "unstamped.parquet"
-    at.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
+    at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
     assert "no cacheversion stamp" in get_reason(unstamped, mtime)
-    assert at.read_parquet_cache_metadata(unstamped, cacheversion, mtime, accept_unstamped=True)[1] is None
+    assert at.misc.read_parquet_cache_metadata(unstamped, cacheversion, mtime, accept_unstamped=True)[1] is None
 
     oldversion = tmp_path / "oldversion.parquet"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
     assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime)
@@ -290,7 +294,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     stale_folder = tmp_path / "stale"
     stale_folder.mkdir()
     (stale_folder / "estimators_0000.out").write_text("timestep 0 header\ntimestep 1 header\n")
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         stale_folder / "estimbatch00_0000_0000.out.parquet.tmp",
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1.0"},
@@ -301,7 +305,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     current_folder.mkdir()
     textfile = current_folder / "estimators_0000.out"
     textfile.write_text("timestep 0 header\ntimestep 1 header\n")
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current_folder / "estimbatch00_0000_0000.out.parquet.tmp",
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfile.stat().st_mtime)},
@@ -313,16 +317,16 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
 def test_add_cli_arg_helpers() -> None:
     """The shared argument helpers must define the standard flags, types, and defaults."""
     parser = argparse.ArgumentParser()
-    at.addarg_modelpath(parser, multiplepaths=True, default=[])
-    at.addarg_output(parser, kind="file", default=Path("out.pdf"))
-    at.addarg_timestep(parser)
-    at.addarg_timedays(parser)
-    at.addarg_timeminmax(parser)
-    at.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
-    at.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
-    at.addarg_figscale(parser, include_figwidthscale=True)
-    at.addarg_filter(parser)
-    at.addarg_maxpacketfiles(parser)
+    at.misc.addarg_modelpath(parser, multiplepaths=True, default=[])
+    at.misc.addarg_output(parser, kind="file", default=Path("out.pdf"))
+    at.misc.addarg_timestep(parser)
+    at.misc.addarg_timedays(parser)
+    at.misc.addarg_timeminmax(parser)
+    at.misc.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
+    at.misc.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
+    at.misc.addarg_figscale(parser, include_figwidthscale=True)
+    at.misc.addarg_filter(parser)
+    at.misc.addarg_maxpacketfiles(parser)
 
     args = parser.parse_args([])
     assert args.modelpath == []
@@ -372,10 +376,10 @@ def test_add_cli_arg_helpers() -> None:
 def test_add_cli_arg_helper_variants() -> None:
     """The non-default helper modes must reproduce the per-command argument shapes."""
     parser = argparse.ArgumentParser()
-    at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
-    at.addarg_timestep(parser, default=70)
-    at.addarg_timedays(parser, kind="float")
-    at.addarg_output(parser, kind="folder", default=Path())
+    at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+    at.misc.addarg_timestep(parser, default=70)
+    at.misc.addarg_timedays(parser, kind="float")
+    at.misc.addarg_output(parser, kind="folder", default=Path())
     args = parser.parse_args(["model1", "-timestep", "12", "-timedays", "45.5"])
     assert args.modelpath == [Path("model1")]
     # -timestep holds the text that the user wrote, and get_single_timestep reads one timestep
@@ -387,17 +391,17 @@ def test_add_cli_arg_helper_variants() -> None:
 
     # a repeated flag joins with a comma, thus no occurrence takes the place of an earlier one
     parserrepeat = argparse.ArgumentParser()
-    at.addarg_timestep(parserrepeat, default=70)
-    at.addarg_modelgridindex(parserrepeat)
+    at.misc.addarg_timestep(parserrepeat, default=70)
+    at.misc.addarg_modelgridindex(parserrepeat)
     argsrepeat = parserrepeat.parse_args(["-ts", "5", "-ts", "6", "-mgi", "3", "-mgi", "5-7"])
     assert argsrepeat.timestep == "5,6"
     assert argsrepeat.modelgridindex == "3,5-7"
-    assert at.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
+    assert at.misc.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
     # one occurrence replaces the default and does not join to it
     assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
 
     parserrequired = argparse.ArgumentParser()
-    at.addarg_modelpath(parserrequired, required=True)
+    at.misc.addarg_modelpath(parserrequired, required=True)
     with pytest.raises(SystemExit):
         parserrequired.parse_args([])
 
@@ -406,12 +410,12 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-outputfile", "-o", type=Path)
     kwargs = {"o": "somefile.pdf"}
-    at.set_args_from_dict(parser, kwargs)
+    at.misc.set_args_from_dict(parser, kwargs)
     assert kwargs == {"o": "somefile.pdf"}
     assert parser.parse_args([]).outputfile == Path("somefile.pdf")
 
     with pytest.raises(ValueError, match="badargname"):
-        at.set_args_from_dict(parser, {"badargname": 1})
+        at.misc.set_args_from_dict(parser, {"badargname": 1})
 
 
 # --- fileio.py (print_saved) -------------------------------------------------------------------
@@ -421,17 +425,17 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     """print_saved must emit a runnable open command with a path relative to the working directory."""
     monkeypatch.chdir(tmp_path)
 
-    at.print_saved(tmp_path / "subdir" / "out.pdf")
+    at.misc.print_saved(tmp_path / "subdir" / "out.pdf")
     opencommand = "open" if sys.platform == "darwin" else "xdg-open"
     assert capsys.readouterr().out == f"{opencommand} subdir/out.pdf\n"
 
-    at.print_saved("out.pdf")
+    at.misc.print_saved("out.pdf")
     assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
-    at.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
+    at.misc.print_saved(tmp_path / "subdir" / ".." / "out.pdf")
     assert capsys.readouterr().out == f"{opencommand} out.pdf\n"
 
-    at.print_saved(tmp_path / "with space.pdf")
+    at.misc.print_saved(tmp_path / "with space.pdf")
     assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
 
     # each platform gets its own verb, thus a run on one of them covers the lines of the others.
@@ -444,16 +448,16 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     ):
         monkeypatch.setattr(sys, "platform", platform)
         assert at.misc.fileio.get_open_command() == verb
-        at.print_saved("out.pdf")
+        at.misc.print_saved("out.pdf")
         assert capsys.readouterr().out == f"{line}\n"
 
     # a name that holds a space takes the quotation marks that the platform reads
     monkeypatch.setattr(sys, "platform", "win32")
-    at.print_saved("with space.pdf")
+    at.misc.print_saved("with space.pdf")
     assert capsys.readouterr().out == 'start "" "with space.pdf"\n'
 
     monkeypatch.setattr(sys, "platform", "linux")
-    at.print_saved("with space.pdf")
+    at.misc.print_saved("with space.pdf")
     assert capsys.readouterr().out == "xdg-open 'with space.pdf'\n"
 
 
@@ -481,10 +485,10 @@ def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPat
 
     def parse(argsraw: list[str]) -> argparse.Namespace:
         parser = argparse.ArgumentParser()
-        at.addarg_positional_items(parser, dest="items", metavar="item", helptext="items")
-        at.addarg_modelpath(parser)  # the default of None shows that the user named no folder
+        at.misc.addarg_positional_items(parser, dest="items", metavar="item", helptext="items")
+        at.misc.addarg_modelpath(parser)  # the default of None shows that the user named no folder
         args = parser.parse_args(argsraw)
-        at.resolve_positional_modelpath(args, "items")
+        at.misc.resolve_positional_modelpath(args, "items")
 
         return args
 
@@ -524,10 +528,10 @@ def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
         (tmp_path / name / "input.txt").write_text("", encoding="utf-8")
     (tmp_path / "notarun").mkdir()
 
-    assert at.artis_subfolders(tmp_path) == ["run1", "run2"]
-    assert at.artis_subfolders(tmp_path / "absent") == []
-    assert at.folder_is_artis_run(tmp_path / "run1")
-    assert not at.folder_is_artis_run(tmp_path / "notarun")
+    assert at.misc.artis_subfolders(tmp_path) == ["run1", "run2"]
+    assert at.misc.artis_subfolders(tmp_path / "absent") == []
+    assert at.misc.folder_is_artis_run(tmp_path / "run1")
+    assert not at.misc.folder_is_artis_run(tmp_path / "notarun")
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------
@@ -564,10 +568,10 @@ def test_zopen_zopenpl(tmp_path: Path) -> None:
         assert f.read() == "xz contents\n"
 
     # zopenpl returns a Path for formats polars can read directly (uncompressed and .gz)...
-    assert at.zopenpl(tmp_path / "plain.txt") == tmp_path / "plain.txt"
-    assert at.zopenpl(tmp_path / "gz.txt") == tmp_path / "gz.txt.gz"
+    assert at.misc.zopenpl(tmp_path / "plain.txt") == tmp_path / "plain.txt"
+    assert at.misc.zopenpl(tmp_path / "gz.txt") == tmp_path / "gz.txt.gz"
     # ...but an opened file object for .xz
-    result_xz = at.zopenpl(tmp_path / "xz.txt")
+    result_xz = at.misc.zopenpl(tmp_path / "xz.txt")
     assert not isinstance(result_xz, Path)
     with result_xz as f:
         assert f.read().decode("utf-8") == "xz contents\n"
@@ -584,13 +588,13 @@ def test_zopen_does_not_let_a_stale_compressed_sibling_shadow_a_named_file(tmp_p
         assert f.read() == "fresh contents\n"
 
     # zopenpl applies the same precedence, so the two readers never disagree about which file to read
-    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt"
+    assert at.misc.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt"
 
     # with the plain file gone, the compressed sibling is used after all
     (tmp_path / "both.txt").unlink()
     with at.zopen(tmp_path / "both.txt") as f:
         assert f.read() == "stale contents\n"
-    assert at.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt.gz"
+    assert at.misc.zopenpl(tmp_path / "both.txt") == tmp_path / "both.txt.gz"
 
     # a compressed file addressed by its own name is decompressed, not opened raw
     with at.zopen(tmp_path / "both.txt.gz") as f:
@@ -606,25 +610,29 @@ def test_read_wsv(tmp_path: Path) -> None:
     filepath = tmp_path / "aligned.txt"
     filepath.write_text("# file header comment\n  colA   colB  colC\n1    2.5  x # inline comment\n\n 4\t5\ty\n")
 
-    df = at.read_wsv(filepath, comment_prefix="#")
+    df = at.misc.read_wsv(filepath, comment_prefix="#")
     pltest.assert_frame_equal(df, pl.DataFrame({"colA": [1, 4], "colB": [2.5, 5.0], "colC": ["x", "y"]}))
 
     # skip_rows applies before comment handling, and new_columns names a headerless read
-    df_noheader = at.read_wsv(filepath, has_header=False, skip_rows=2, new_columns=["a", "b", "c"], comment_prefix="#")
+    df_noheader = at.misc.read_wsv(
+        filepath, has_header=False, skip_rows=2, new_columns=["a", "b", "c"], comment_prefix="#"
+    )
     assert df_noheader.columns == ["a", "b", "c"]
     assert df_noheader.height == 2
 
     # a compressed file is read transparently
     with gzip.open(tmp_path / "data.txt.gz", "wt", encoding="utf-8") as f:
         f.write("p   q\n1   2\n")
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "data.txt"), pl.DataFrame({"p": [1], "q": [2]}))
+    pltest.assert_frame_equal(at.misc.read_wsv(tmp_path / "data.txt"), pl.DataFrame({"p": [1], "q": [2]}))
 
     # trailing whitespace on every line must not become a trailing null column
     (tmp_path / "trailing.txt").write_text("colA colB  \n1 2 \n3 4 \t\n", encoding="utf-8")
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "trailing.txt"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]}))
+    pltest.assert_frame_equal(
+        at.misc.read_wsv(tmp_path / "trailing.txt"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
+    )
 
     # a name-based projection parses only the requested columns, in the requested order
-    dfprojected = at.read_wsv(
+    dfprojected = at.misc.read_wsv(
         tmp_path / "aligned.txt",
         has_header=False,
         skip_rows=2,
@@ -643,19 +651,19 @@ def test_read_wsv_whitespace_runs(tmp_path: Path) -> None:
     # line 3 holds whitespace only, and line 5 holds a carriage return between two fields
     filepath.write_bytes(b"a\t\tb   c\r\n 1 \t 2\t\t\t3 \r\n\t \r\n4\t5     6\r\n7 8\r9\n")
 
-    df = at.read_wsv(filepath)
+    df = at.misc.read_wsv(filepath)
     pltest.assert_frame_equal(df, pl.DataFrame({"a": [1, 4, 7], "b": [2, 5, 8], "c": [3, 6, 9]}))
 
     # a no-break space is not ASCII whitespace, thus it must stay inside its field
     (tmp_path / "nbsp.txt").write_bytes("ion pop\nFe\u00a0II 1.0\n".encode())
-    dfnbsp = at.read_wsv(tmp_path / "nbsp.txt")
+    dfnbsp = at.misc.read_wsv(tmp_path / "nbsp.txt")
     assert dfnbsp.columns == ["ion", "pop"]
     assert dfnbsp["ion"].to_list() == ["Fe\u00a0II"]
 
     # a compressed file gives the same result, including an xz file, which polars cannot read itself
     with lzma.open(tmp_path / "whitespace_xz.txt.xz", "wb") as f:
         f.write(filepath.read_bytes())
-    pltest.assert_frame_equal(at.read_wsv(tmp_path / "whitespace_xz.txt"), df)
+    pltest.assert_frame_equal(at.misc.read_wsv(tmp_path / "whitespace_xz.txt"), df)
 
 
 def test_read_wsv_invalid_utf8(tmp_path: Path) -> None:
@@ -663,24 +671,25 @@ def test_read_wsv_invalid_utf8(tmp_path: Path) -> None:
     # a comment of a file from a different source can hold e.g. a degree sign in Latin-1
     (tmp_path / "latin1comment.txt").write_bytes(b"colA colB\n1 2   # 30\xb0C\n3 4\n")
     pltest.assert_frame_equal(
-        at.read_wsv(tmp_path / "latin1comment.txt", comment_prefix="#"), pl.DataFrame({"colA": [1, 3], "colB": [2, 4]})
+        at.misc.read_wsv(tmp_path / "latin1comment.txt", comment_prefix="#"),
+        pl.DataFrame({"colA": [1, 3], "colB": [2, 4]}),
     )
 
     # the header comment holds the column names, thus it must take a bad byte as the other comments do
     (tmp_path / "latin1header.txt").write_bytes(b"# t_days mag_30\xb0C\n1.0 2.0\n")
-    dfheader = at.read_wsv(tmp_path / "latin1header.txt", header_from_comment=True, comment_prefix="#")
+    dfheader = at.misc.read_wsv(tmp_path / "latin1header.txt", header_from_comment=True, comment_prefix="#")
     assert dfheader.columns == ["t_days", "mag_30\ufffdC"]
     assert dfheader["t_days"].to_list() == [1.0]
 
     # the same byte in the data of a column gives an error, and not a value that holds bad text
     (tmp_path / "latin1data.txt").write_bytes(b"colA colB\n1 2\n3 4\xb0\n")
     with pytest.raises(pl.exceptions.ComputeError):
-        at.read_wsv(tmp_path / "latin1data.txt", comment_prefix="#")
+        at.misc.read_wsv(tmp_path / "latin1data.txt", comment_prefix="#")
 
     # a column can hold the replacement character as data, even when a comment holds a bad byte. The
     # check reads the bytes, thus it tells the two apart
     (tmp_path / "mixed.txt").write_bytes("colA name\n1 x\ufffdy  # 30".encode() + b"\xb0C\n2 z\n")
-    dfmixed = at.read_wsv(tmp_path / "mixed.txt", comment_prefix="#")
+    dfmixed = at.misc.read_wsv(tmp_path / "mixed.txt", comment_prefix="#")
     assert dfmixed["name"].to_list() == ["x\ufffdy", "z"]
 
 
@@ -691,7 +700,7 @@ def test_read_wsv_no_data(tmp_path: Path) -> None:
         filepath.write_bytes(contents)
 
         with pytest.raises(pl.exceptions.PolarsError) as excinfo:
-            at.read_wsv(filepath, comment_prefix="#")
+            at.misc.read_wsv(filepath, comment_prefix="#")
 
         assert any(str(filepath) in note for note in excinfo.value.__notes__ or [])
 
@@ -702,7 +711,7 @@ def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
     with gzip.open(tmp_path / "f.txt.gz", "wt", encoding="utf-8") as f:
         f.write("v\n1\n")
 
-    assert at.read_wsv(tmp_path / "f.txt")["v"].to_list() == [2]
+    assert at.misc.read_wsv(tmp_path / "f.txt")["v"].to_list() == [2]
 
     # the header comment is read through a second open, which must apply the same precedence: reading it
     # from the stale sibling would label the fresh data with the stale column names
@@ -710,7 +719,7 @@ def test_read_wsv_prefers_uncompressed_file(tmp_path: Path) -> None:
     with gzip.open(tmp_path / "h.txt.gz", "wt", encoding="utf-8") as f:
         f.write("# staleX staleY\n9 9\n")
 
-    dfheader = at.read_wsv(tmp_path / "h.txt", header_from_comment=True, comment_prefix="#")
+    dfheader = at.misc.read_wsv(tmp_path / "h.txt", header_from_comment=True, comment_prefix="#")
     pltest.assert_frame_equal(dfheader, pl.DataFrame({"freshA": [1], "freshB": [2]}))
 
 
@@ -720,7 +729,7 @@ def test_read_wsv_all_null_inference_sample(tmp_path: Path) -> None:
     nnullrows = 12000  # more rows than the schema inference sample
     filepath.write_text("a b\n" + "".join(f"{i} nan\n" for i in range(nnullrows)) + f"{nnullrows} 3.5\n")
 
-    df = at.read_wsv(filepath)
+    df = at.misc.read_wsv(filepath)
     assert df["b"].dtype == pl.Float64
     assert df["b"].item(-1) == pytest.approx(3.5)
     assert df["b"].null_count() == nnullrows
@@ -732,7 +741,7 @@ def test_read_wsv_late_type_change(tmp_path: Path) -> None:
     nintrows = 20000  # more rows than the schema inference sample
     filepath.write_text("a b\n" + "".join(f"{i} 1\n" for i in range(nintrows)) + f"{nintrows} 2.5\n")
 
-    df = at.read_wsv(filepath)
+    df = at.misc.read_wsv(filepath)
     assert df["b"].dtype == pl.Float64
     assert df["b"].item(-1) == pytest.approx(2.5)
     assert df.height == nintrows + 1
@@ -764,8 +773,8 @@ def test_firstexisting_anyexist(tmp_path: Path) -> None:
         at.firstexisting(["nope.txt"], folder=zipdir)
 
     # firstexisting_or_none returns the path if found, else None
-    assert at.firstexisting_or_none(["a.txt"], folder=firstdir) == firstdir / "a.txt"
-    assert at.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
+    assert at.misc.firstexisting_or_none(["a.txt"], folder=firstdir) == firstdir / "a.txt"
+    assert at.misc.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
 
 
 def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
@@ -777,37 +786,37 @@ def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match=str(missingpath)):
         at.firstexisting(missingpath)
 
-    assert at.firstexisting_or_none(missingpath) is None
+    assert at.misc.firstexisting_or_none(missingpath) is None
 
 
 def test_readnoncommentline() -> None:
     stream = io.StringIO("\n# a comment\n   # indented comment\nreal data line\nsecond\n")
-    assert at.readnoncommentline(stream) == "real data line\n"
+    assert at.misc.readnoncommentline(stream) == "real data line\n"
     # the next call continues from where the last one stopped
-    assert at.readnoncommentline(stream) == "second\n"
+    assert at.misc.readnoncommentline(stream) == "second\n"
 
     # reaching EOF without a data line raises rather than looping forever
     with pytest.raises(EOFError, match="end of file"):
-        at.readnoncommentline(io.StringIO(""))
+        at.misc.readnoncommentline(io.StringIO(""))
     with pytest.raises(EOFError, match="end of file"):
-        at.readnoncommentline(io.StringIO("\n# only comments\n   \n"))
+        at.misc.readnoncommentline(io.StringIO("\n# only comments\n   \n"))
 
 
 def test_get_file_metadata(tmp_path: Path) -> None:
     # r_v is derived from a_v and e_bminusv
     (tmp_path / "rv.txt").write_text("data")
     (tmp_path / "rv.txt.meta.yml").write_text("a_v: 1.0\ne_bminusv: 0.5\n")
-    assert at.get_file_metadata(tmp_path / "rv.txt")["r_v"] == pytest.approx(2.0)
+    assert at.misc.get_file_metadata(tmp_path / "rv.txt")["r_v"] == pytest.approx(2.0)
 
     # a_v is derived from e_bminusv and r_v
     (tmp_path / "av.txt").write_text("data")
     (tmp_path / "av.txt.meta.yml").write_text("e_bminusv: 0.4\nr_v: 3.0\n")
-    assert at.get_file_metadata(tmp_path / "av.txt")["a_v"] == pytest.approx(1.2)
+    assert at.misc.get_file_metadata(tmp_path / "av.txt")["a_v"] == pytest.approx(1.2)
 
     # e_bminusv is derived from a_v and r_v
     (tmp_path / "ebv.txt").write_text("data")
     (tmp_path / "ebv.txt.meta.yml").write_text("a_v: 2.0\nr_v: 4.0\n")
-    assert at.get_file_metadata(tmp_path / "ebv.txt")["e_bminusv"] == pytest.approx(0.5)
+    assert at.misc.get_file_metadata(tmp_path / "ebv.txt")["e_bminusv"] == pytest.approx(0.5)
 
     # metadata can also come from a combined metadata.yml keyed by the file path
     combineddir = tmp_path / "combined"
@@ -815,19 +824,19 @@ def test_get_file_metadata(tmp_path: Path) -> None:
     combinedfile = combineddir / "spectrum.txt"
     combinedfile.write_text("data")
     (combineddir / "metadata.yml").write_text(yaml.safe_dump({str(combinedfile): {"a_v": 1.0, "e_bminusv": 0.25}}))
-    combined_metadata = at.get_file_metadata(combinedfile)
+    combined_metadata = at.misc.get_file_metadata(combinedfile)
     assert combined_metadata["r_v"] == pytest.approx(4.0)
 
     # no metadata file present -> empty dict
     (tmp_path / "nometa.txt").write_text("data")
-    assert at.get_file_metadata(tmp_path / "nometa.txt") == {}
+    assert at.misc.get_file_metadata(tmp_path / "nometa.txt") == {}
 
 
 def test_write_parquet_atomic(tmp_path: Path) -> None:
     df = pl.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
     parquetpath = tmp_path / "out.parquet"
 
-    at.write_parquet_atomic(df, parquetpath)
+    at.misc.write_parquet_atomic(df, parquetpath)
 
     assert parquetpath.exists()
     pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
@@ -848,7 +857,7 @@ def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) ->
         return real_sink_parquet(self, path, **kwargs)
 
     with mock.patch.object(pl.LazyFrame, "sink_parquet", spy_sink_parquet):
-        at.write_parquet_atomic(pl.DataFrame({"timestep": [0, 1]}), parquetpath)
+        at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0, 1]}), parquetpath)
 
     assert not seen_midwrite, f"a concurrent reader would have globbed the in-flight temporary file {seen_midwrite}"
     assert pl.read_parquet(parquetpath)["timestep"].to_list() == [0, 1]
@@ -861,7 +870,7 @@ def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) 
     shared.chmod(0o775)  # chmod, not mkdir(mode=...), which the process umask would mask off
     parquetpath = shared / "out.parquet"
 
-    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), parquetpath)
+    at.misc.write_parquet_atomic(pl.DataFrame({"a": [1]}), parquetpath)
     assert parquetpath.stat().st_mode & 0o777 == 0o664
 
     # a private directory must stay private, and rewriting keeps whatever mode the destination already had
@@ -869,11 +878,11 @@ def test_write_parquet_atomic_is_readable_in_a_shared_directory(tmp_path: Path) 
     private.mkdir()
     private.chmod(0o700)
     privatepath = private / "out.parquet"
-    at.write_parquet_atomic(pl.DataFrame({"a": [1]}), privatepath)
+    at.misc.write_parquet_atomic(pl.DataFrame({"a": [1]}), privatepath)
     assert privatepath.stat().st_mode & 0o777 == 0o600
 
     privatepath.chmod(0o640)
-    at.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath, replaces=at.get_file_identity(privatepath))
+    at.misc.write_parquet_atomic(pl.DataFrame({"a": [2]}), privatepath, replaces=at.misc.get_file_identity(privatepath))
     assert privatepath.stat().st_mode & 0o777 == 0o640
     assert pl.read_parquet(privatepath)["a"].item() == 2
 
@@ -897,7 +906,7 @@ def test_write_parquet_atomic_keeps_a_concurrently_written_file(tmp_path: Path) 
         return result
 
     with mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished):
-        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+        at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
 
     assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
     assert list(tmp_path.glob("*.partial*")) == []
@@ -908,13 +917,15 @@ def test_write_parquet_atomic_replaces_an_outdated_file(tmp_path: Path) -> None:
     parquetpath = tmp_path / "batch.out.parquet.tmp"
     pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
 
-    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=at.get_file_identity(parquetpath))
+    at.misc.write_parquet_atomic(
+        pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=at.misc.get_file_identity(parquetpath)
+    )
 
     assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
     assert list(tmp_path.glob("*.partial*")) == []
 
     # without replaces, an existing file is kept: this write does not claim to supersede anything
-    at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath)
+    at.misc.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath)
     assert pl.read_parquet(parquetpath)["a"].to_list() == [4, 5, 6]
 
 
@@ -927,15 +938,15 @@ def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Pa
     """
     parquetpath = tmp_path / "batch.out.parquet.tmp"
     pl.DataFrame({"a": [1, 2, 3]}).write_parquet(parquetpath)
-    outdated = at.get_file_identity(parquetpath)
+    outdated = at.misc.get_file_identity(parquetpath)
 
     # the rival reads the same inputs and finishes its replacement first
     pl.DataFrame({"a": [4, 5, 6]}).write_parquet(tmp_path / "rival")
     (tmp_path / "rival").replace(parquetpath)
 
-    at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=outdated)
+    at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=outdated)
 
-    assert at.get_file_identity(parquetpath) != outdated, "the rival's file must still be in place"
+    assert at.misc.get_file_identity(parquetpath) != outdated, "the rival's file must still be in place"
     assert list(tmp_path.glob("*.partial*")) == []
 
 
@@ -1019,13 +1030,15 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
         mock.patch.object(fileio.os, "link", side_effect=OSError),
         mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished),
     ):
-        at.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
+        at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
 
     assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
 
     # the fallback still replaces the file the caller found out of date
     with mock.patch.object(fileio.os, "link", side_effect=OSError):
-        at.write_parquet_atomic(pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.get_file_identity(parquetpath))
+        at.misc.write_parquet_atomic(
+            pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.misc.get_file_identity(parquetpath)
+        )
     assert pl.read_parquet(parquetpath)["a"].to_list() == [7, 8, 9]
 
 
@@ -1097,38 +1110,38 @@ def test_df_filter_minmax_bracketed() -> None:
 
 
 def test_parse_range() -> None:
-    assert list(at.parse_range("3-5", {})) == [3, 4, 5]
-    assert list(at.parse_range("5", {})) == [5]
-    assert list(at.parse_range("5-3", {})) == [3, 4, 5]  # reversed range is sorted
-    assert list(at.parse_range("start-end", {"start": 2, "end": 4})) == [2, 3, 4]
+    assert list(at.misc.parse_range("3-5", {})) == [3, 4, 5]
+    assert list(at.misc.parse_range("5", {})) == [5]
+    assert list(at.misc.parse_range("5-3", {})) == [3, 4, 5]  # reversed range is sorted
+    assert list(at.misc.parse_range("start-end", {"start": 2, "end": 4})) == [2, 3, 4]
 
     with pytest.raises(ValueError, match="Bad range"):
-        at.parse_range("1-2-3", {})
+        at.misc.parse_range("1-2-3", {})
 
 
 def test_normalize_path_list() -> None:
-    assert at.normalize_path_list("a/b") == [Path("a/b")]
-    assert at.normalize_path_list(Path("a/b")) == [Path("a/b")]
-    assert at.normalize_path_list([["x"], "y"]) == [Path("x"), Path("y")]
-    assert at.normalize_path_list([]) == [Path()]
-    assert at.normalize_path_list(None, default="fallback") == [Path("fallback")]
+    assert at.misc.normalize_path_list("a/b") == [Path("a/b")]
+    assert at.misc.normalize_path_list(Path("a/b")) == [Path("a/b")]
+    assert at.misc.normalize_path_list([["x"], "y"]) == [Path("x"), Path("y")]
+    assert at.misc.normalize_path_list([]) == [Path()]
+    assert at.misc.normalize_path_list(None, default="fallback") == [Path("fallback")]
 
 
 def test_resolve_outputfile(tmp_path: Path) -> None:
     # no outputfile falls back to the default filename
-    assert at.resolve_outputfile(None, "default.pdf") == Path("default.pdf")
+    assert at.misc.resolve_outputfile(None, "default.pdf") == Path("default.pdf")
 
     # an existing directory gets the default filename appended
     existingdir = tmp_path / "existing"
     existingdir.mkdir()
-    assert at.resolve_outputfile(existingdir, "default.pdf") == existingdir / "default.pdf"
+    assert at.misc.resolve_outputfile(existingdir, "default.pdf") == existingdir / "default.pdf"
 
     # a path with a file extension is returned unchanged
-    assert at.resolve_outputfile(tmp_path / "chosen.pdf", "default.pdf") == tmp_path / "chosen.pdf"
+    assert at.misc.resolve_outputfile(tmp_path / "chosen.pdf", "default.pdf") == tmp_path / "chosen.pdf"
 
     # a suffixless path is treated as a folder, created, and the default filename appended
     newdir = tmp_path / "newfolder"
-    assert at.resolve_outputfile(newdir, "default.pdf") == newdir / "default.pdf"
+    assert at.misc.resolve_outputfile(newdir, "default.pdf") == newdir / "default.pdf"
     assert newdir.is_dir()
 
 
@@ -1138,21 +1151,21 @@ def test_set_args_from_dict() -> None:
     parser.add_argument("-o", "--output", dest="outputfile", default="z")
 
     # defaults can be overridden by dest name ("foo") or by an option string whose dest differs ("output")
-    at.set_args_from_dict(parser, {"foo": 5, "output": "y"})
+    at.misc.set_args_from_dict(parser, {"foo": 5, "output": "y"})
     args = parser.parse_args([])
     assert args.foo == 5
     assert args.outputfile == "y"
 
     with pytest.raises(ValueError, match="Unknown argument names"):
-        at.set_args_from_dict(parser, {"nonexistent": 1})
+        at.misc.set_args_from_dict(parser, {"nonexistent": 1})
 
 
 def test_get_filterfunc() -> None:
     # no filter arguments -> no filter function
-    assert at.get_filterfunc(argparse.Namespace()) is None
+    assert at.misc.get_filterfunc(argparse.Namespace()) is None
 
     # a moving-average filter reproduces a windowed mean (with edge padding)
-    filterfunc = at.get_filterfunc(argparse.Namespace(filtermovingavg=3))
+    filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtermovingavg=3))
     assert filterfunc is not None
     assert filterfunc([1.0, 2.0, 3.0, 4.0, 5.0]) == pytest.approx([4 / 3, 2.0, 3.0, 4.0, 14 / 3])
 
@@ -1161,9 +1174,9 @@ def test_get_filterfunc() -> None:
     # each filter argument selects one filter, thus a command line that gives both is a user error
     # and not an internal fault
     with pytest.raises(ValueError, match="only one of -filtermovingavg and -filtersavgol"):
-        at.get_filterfunc(argparse.Namespace(filtermovingavg=3, filtersavgol=["5", "3"]))
+        at.misc.get_filterfunc(argparse.Namespace(filtermovingavg=3, filtersavgol=["5", "3"]))
 
-    filterfunc = at.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
+    filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
     assert filterfunc is not None
     yvalues = np.sin(np.linspace(0.0, 3.0, num=12)) + np.linspace(0.0, 0.5, num=12) ** 2
     expected = [
@@ -1184,15 +1197,15 @@ def test_get_filterfunc() -> None:
 
     # invalid parameters are rejected
     with pytest.raises(ValueError, match="must be an odd number"):
-        at.savgol_filter(yvalues, window_length=4, polyorder=3)
+        at.misc.savgol_filter(yvalues, window_length=4, polyorder=3)
     with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
-        at.savgol_filter(yvalues, window_length=5, polyorder=7)
+        at.misc.savgol_filter(yvalues, window_length=5, polyorder=7)
     with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
-        at.savgol_filter(yvalues, window_length=5, polyorder=-1)
+        at.misc.savgol_filter(yvalues, window_length=5, polyorder=-1)
     with pytest.raises(ValueError, match="exceeds the data length"):
-        at.savgol_filter(yvalues[:3], window_length=5, polyorder=3)
+        at.misc.savgol_filter(yvalues[:3], window_length=5, polyorder=3)
     with pytest.raises(ValueError, match="needs a 1D array"):
-        at.savgol_filter(np.tile(yvalues, (2, 1)), window_length=5, polyorder=3)
+        at.misc.savgol_filter(np.tile(yvalues, (2, 1)), window_length=5, polyorder=3)
 
 
 def test_gaussian_filter_wrap() -> None:
@@ -1232,12 +1245,12 @@ def test_gaussian_filter_wrap() -> None:
             0.08166693402018685,
         ],
     ])
-    assert np.allclose(at.gaussian_filter_wrap(data, sigma=1.2), expected, rtol=1e-10, atol=1e-12)
+    assert np.allclose(at.misc.gaussian_filter_wrap(data, sigma=1.2), expected, rtol=1e-10, atol=1e-12)
 
     with pytest.raises(ValueError, match="must be greater than zero"):
-        at.gaussian_filter_wrap(data, sigma=0.0)
+        at.misc.gaussian_filter_wrap(data, sigma=0.0)
     with pytest.raises(ValueError, match="needs a 2D array"):
-        at.gaussian_filter_wrap(data[0], sigma=1.2)
+        at.misc.gaussian_filter_wrap(data[0], sigma=1.2)
 
 
 # --- timesteps.py ------------------------------------------------------------------------------
@@ -1330,7 +1343,7 @@ def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatc
 def test_average_direction_bins_averages_every_column(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every column is averaged, so a column that is not linear in the bins must be derived afterwards.
 
-    This is why readfile() derives the magnitude only once the bins are averaged: the mean of the
+    This is why scan_lightcurve() derives the magnitude only once the bins are averaged: the mean of the
     magnitudes of the bins is not the magnitude of their mean luminosity.
     """
     nphibins = 4
@@ -1383,7 +1396,7 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
     write_timesteps_out(tmp_path)
 
     for clamp in (True, False):
-        timestepmin, timestepmax, tlow, thigh = at.get_time_range(
+        timestepmin, timestepmax, tlow, thigh = at.misc.get_time_range(
             tmp_path, timestep_range_str="1-3", clamp_to_timesteps=clamp
         )
         assert (timestepmin, timestepmax) == (1, 3)
@@ -1394,16 +1407,16 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
 def test_check_averaging_angles() -> None:
     """Averaging over phi and theta at once must be rejected wherever the values arrive."""
     for phi, theta in ((False, False), (True, False), (False, True)):
-        at.check_averaging_angles(phi, theta)
+        at.misc.check_averaging_angles(phi, theta)
 
     with pytest.raises(ValueError, match="both the phi and theta"):
-        at.check_averaging_angles(average_over_phi=True, average_over_theta=True)
+        at.misc.check_averaging_angles(average_over_phi=True, average_over_theta=True)
 
 
 def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
     """The two averaging flags are rejected by argparse itself, for every command that defines them."""
     parser = argparse.ArgumentParser()
-    at.addarg_viewingangle(parser)
+    at.misc.addarg_viewingangle(parser)
 
     assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
     assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
@@ -1449,7 +1462,7 @@ if __name__ == "__main__":
     # a bar starts no process, thus the default start method of the caller stands
     assert mp.get_start_method() == "fork", mp.get_start_method()
 
-    assert at.parallel_map(square, range(4)) == [0, 1, 4, 9]
+    assert at.misc.parallel_map(square, range(4)) == [0, 1, 4, 9]
 
     # a free-threading build takes the thread pool for this call as well, thus it starts no process
     if sys._is_gil_enabled():
@@ -1479,37 +1492,37 @@ def test_drop_trailing_null_column() -> None:
     real column and no longer match the schema of its sibling rank files.
     """
     # a genuine trailing null column, as a line-ending space produces
-    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, None]})).columns == ["a"]
-    assert at.drop_trailing_null_column(pl.LazyFrame({"a": [1, 2], "b": [None, None]})).collect_schema().names() == [
-        "a"
-    ]
+    assert at.misc.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, None]})).columns == ["a"]
+    assert at.misc.drop_trailing_null_column(
+        pl.LazyFrame({"a": [1, 2], "b": [None, None]})
+    ).collect_schema().names() == ["a"]
 
     # a real last column, including one that is only partly null, must stay
-    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [3, 4]})).columns == ["a", "b"]
-    assert at.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, 4]})).columns == ["a", "b"]
+    assert at.misc.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [3, 4]})).columns == ["a", "b"]
+    assert at.misc.drop_trailing_null_column(pl.DataFrame({"a": [1, 2], "b": [None, 4]})).columns == ["a", "b"]
 
     # no rows means nothing to judge, so keep every column
     emptyschema = {"a": pl.Int64, "b": pl.Float64}
-    assert at.drop_trailing_null_column(pl.DataFrame({"a": [], "b": []}, schema=emptyschema)).columns == ["a", "b"]
-    assert at.drop_trailing_null_column(
+    assert at.misc.drop_trailing_null_column(pl.DataFrame({"a": [], "b": []}, schema=emptyschema)).columns == ["a", "b"]
+    assert at.misc.drop_trailing_null_column(
         pl.LazyFrame({"a": [], "b": []}, schema=emptyschema)
     ).collect_schema().names() == ["a", "b"]
 
 
 def test_get_series_label() -> None:
     """A series is named by its -label entry, or by the fallback when the user gave none for it."""
-    assert at.get_series_label(["A", "B"], 1, "modelname") == "B"
-    assert at.get_series_label([None, "B"], 0, "modelname") == "modelname"
+    assert at.misc.get_series_label(["A", "B"], 1, "modelname") == "B"
+    assert at.misc.get_series_label([None, "B"], 0, "modelname") == "modelname"
 
     # trim_or_pad sizes the list to the model paths, so a per-series index can run off the end
-    assert at.get_series_label(["A"], 3, "modelname") == "modelname"
+    assert at.misc.get_series_label(["A"], 3, "modelname") == "modelname"
 
     # a sentinel index such as the -1 this codebase uses for a direction bin must not wrap to the last label
-    assert at.get_series_label(["A", "B"], -1, "modelname") == "modelname"
+    assert at.misc.get_series_label(["A", "B"], -1, "modelname") == "modelname"
 
     # an empty label is a series deliberately left out of the legend, not a missing one
     # the return type is str, so falsy is the empty string rather than the model name
-    assert not at.get_series_label([""], 0, "modelname")
+    assert not at.misc.get_series_label([""], 0, "modelname")
 
 
 def test_shorten_middle_keeps_both_ends() -> None:
@@ -1636,7 +1649,7 @@ def test_addarg_modelpath_positional_also_takes_the_option() -> None:
 
     def build() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
-        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
         return parser
 
     assert build().parse_args([]).modelpath == []
@@ -1651,7 +1664,7 @@ def test_addarg_modelpath_positional_also_takes_the_option() -> None:
     # default as the value of the positional, thus plotinitialabundances read "." for every -modelpath
     def buildwithdefault() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
-        at.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
         return parser
 
     assert buildwithdefault().parse_args([]).modelpath == [Path()]
@@ -1688,8 +1701,8 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
 
     def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
         parser = at.commands.SuggestingArgumentParser()
-        at.addarg_timedays(parser, kind="str")
-        at.addarg_timestep(parser, default=70)
+        at.misc.addarg_timedays(parser, kind="str")
+        at.misc.addarg_timestep(parser, default=70)
         return parser, parser.parse_args(argsraw)
 
     # each spelling of the timestep names the range beside -t, and the value is the default here
@@ -1726,10 +1739,10 @@ def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(builtins, "__import__", failing_import)
     with pytest.raises(ModuleNotFoundError, match=r"needs pyvista.*artistools\[extras\]"):
-        at.import_optional("pyvista")
+        at.misc.import_optional("pyvista")
 
     # an installed module comes back as the import statement gives it
-    assert at.import_optional("math").sqrt(4.0) == 2.0
+    assert at.misc.import_optional("math").sqrt(4.0) == 2.0
 
 
 def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1794,7 +1807,7 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     framename = "plot_{timestep:03d}.png"
 
     # a -o path with no file extension names a folder, which holds the frames and the product
-    frameset = at.resolve_frameset_paths(
+    frameset = at.misc.resolve_frameset_paths(
         tmp_path / "frames", framecount=3, framename=framename, productname="movie.gif"
     )
     assert frameset.frametemplate == tmp_path / "frames" / framename
@@ -1802,35 +1815,35 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     assert (tmp_path / "frames").is_dir(), "the folder of the frames must exist"
 
     # a -o path that has a file extension names the product, thus the frames go beside it
-    frameset = at.resolve_frameset_paths(
+    frameset = at.misc.resolve_frameset_paths(
         tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
     )
     assert frameset.productpath == tmp_path / "out" / "movie.gif"
     assert frameset.frametemplate == tmp_path / "out" / framename
 
     # the folder of the product can carry a suffix of its own
-    frameset = at.resolve_frameset_paths(
+    frameset = at.misc.resolve_frameset_paths(
         tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
     )
     assert frameset.productpath == tmp_path / "results.v1" / "movie.gif"
     assert (tmp_path / "results.v1").is_dir()
 
     # a merge names its own product, thus a folder gives no name to it
-    frameset = at.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename, combines=True)
+    frameset = at.misc.resolve_frameset_paths(tmp_path / "m", framecount=2, framename=framename, combines=True)
     assert frameset.productpath is None
     assert frameset.frametemplate == tmp_path / "m" / framename
 
     # a -o path that has a file extension names the merged product, and the frames go beside it
-    frameset = at.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
+    frameset = at.misc.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
     assert frameset.productpath == tmp_path / "merged.pdf"
     assert frameset.frametemplate == tmp_path / framename
 
     # a name that holds no field cannot take more than one frame
     with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):
-        at.resolve_frameset_paths(tmp_path / "one.png", framecount=3, framename=framename)
+        at.misc.resolve_frameset_paths(tmp_path / "one.png", framecount=3, framename=framename)
 
     # one frame alone may take such a name
-    frameset = at.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
+    frameset = at.misc.resolve_frameset_paths(tmp_path / "one.png", framecount=1, framename=framename)
     assert frameset.frametemplate == tmp_path / "one.png"
 
 
@@ -1894,13 +1907,13 @@ def test_a_range_keeps_a_negative_number_whole() -> None:
 
     "-timestep -1" split into an empty text and "1", thus it raised "invalid literal for int()".
     """
-    assert at.parse_range_list("40-42") == [40, 41, 42]
-    assert at.parse_range_list("-1") == [-1]
-    assert at.parse_range_list("last", dictvars={"last": 99}) == [99]
-    assert at.parse_range_list("40-last", dictvars={"last": 42}) == [40, 41, 42]
+    assert at.misc.parse_range_list("40-42") == [40, 41, 42]
+    assert at.misc.parse_range_list("-1") == [-1]
+    assert at.misc.parse_range_list("last", dictvars={"last": 99}) == [99]
+    assert at.misc.parse_range_list("40-last", dictvars={"last": 42}) == [40, 41, 42]
 
     with pytest.raises(ValueError, match="Bad range"):
-        at.parse_range_list("10-20-30")
+        at.misc.parse_range_list("10-20-30")
 
 
 def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
@@ -1917,7 +1930,7 @@ def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
         framepaths.append(str(framepath))
 
     # the product carries the name of a frame, and the caller gives it as an absolute path
-    product = at.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
+    product = at.misc.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
     assert Path(product).is_file(), "the merge must keep the file that it wrote"
 
 
@@ -1957,20 +1970,20 @@ def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
     withnan = data.copy()
     withnan[1, 2] = np.nan
 
-    smoothed = at.gaussian_filter_wrap(withnan, sigma=1.2)
+    smoothed = at.misc.gaussian_filter_wrap(withnan, sigma=1.2)
     assert np.isfinite(smoothed).all()
 
     # an element that holds data keeps a value close to the smoothing of the array without the NaN
-    assert np.allclose(smoothed[0, 0], at.gaussian_filter_wrap(data, sigma=1.2)[0, 0], rtol=0.2)
+    assert np.allclose(smoothed[0, 0], at.misc.gaussian_filter_wrap(data, sigma=1.2)[0, 0], rtol=0.2)
 
     # an infinite element holds no data either, thus it takes the mean of its neighbours
     withinf = data.copy()
     withinf[1, 2] = np.inf
-    assert np.isfinite(at.gaussian_filter_wrap(withinf, sigma=1.2)).all()
+    assert np.isfinite(at.misc.gaussian_filter_wrap(withinf, sigma=1.2)).all()
 
     # an element that has no neighbour with data stays a NaN
     allnan = np.full_like(data, np.nan)
-    assert np.isnan(at.gaussian_filter_wrap(allnan, sigma=1.2)).all()
+    assert np.isnan(at.misc.gaussian_filter_wrap(allnan, sigma=1.2)).all()
 
 
 def test_get_model_name_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1994,12 +2007,12 @@ def test_phibin_rank_ascends_with_phi() -> None:
 
     A colour bar that ascends with phi gave every series the label of the mirrored phi bin.
     """
-    nphibins = at.get_viewingdirection_phibincount()
-    ranks = [at.get_phibin_rank_ascending(phibin) for phibin in range(nphibins)]
+    nphibins = at.misc.get_viewingdirection_phibincount()
+    ranks = [at.misc.get_phibin_rank_ascending(phibin) for phibin in range(nphibins)]
     assert sorted(ranks) == list(range(nphibins))
 
-    phi_lower, _, _ = at.get_phi_bins(usedegrees=False)
-    binsbyrank = sorted(range(nphibins), key=at.get_phibin_rank_ascending)
+    phi_lower, _, _ = at.misc.get_phi_bins(usedegrees=False)
+    binsbyrank = sorted(range(nphibins), key=at.misc.get_phibin_rank_ascending)
     assert [phi_lower[phibin] for phibin in binsbyrank] == sorted(phi_lower)
 
 
@@ -2010,17 +2023,17 @@ def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: 
     and the columns that the schema lacked became zero without a warning.
     """
     parquetfilepath = tmp_path / "cache.parquet"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"a": [1]}), parquetfilepath, metadata={"cacheversion": "1", "textsource_mtime": "100.0"}
     )
 
     # no text source: the modification time gives no comparison, but the version still applies
-    assert at.read_parquet_cache_metadata(parquetfilepath, 1, None)[1] is None
-    assert "cache format version" in str(at.read_parquet_cache_metadata(parquetfilepath, 2, None)[1])
+    assert at.misc.read_parquet_cache_metadata(parquetfilepath, 1, None)[1] is None
+    assert "cache format version" in str(at.misc.read_parquet_cache_metadata(parquetfilepath, 2, None)[1])
 
     # a text source that changed still makes the cache stale
-    assert at.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
-    assert "text source changed" in str(at.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])
+    assert at.misc.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
+    assert "text source changed" in str(at.misc.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])
 
 
 def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
@@ -2038,17 +2051,17 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
 
     # a real cache of this kind holds only the arrow schema
     legacy = tmp_path / "legacy.parquet"
-    at.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
+    at.misc.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
     assert "cacheversion" not in pl.read_parquet_metadata(legacy)
     assert "textsource_mtime" not in pl.read_parquet_metadata(legacy)
 
-    assert at.read_parquet_cache_metadata(legacy, 1, 1760711077.0, accept_unstamped=True)[1] is None
-    assert "no cacheversion stamp" in str(at.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1])
+    assert at.misc.read_parquet_cache_metadata(legacy, 1, 1760711077.0, accept_unstamped=True)[1] is None
+    assert "no cacheversion stamp" in str(at.misc.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1])
 
     # a cache that holds a stamp keeps the strict comparison
     stamped = tmp_path / "stamped.parquet"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"number": [0]}), stamped, metadata={"cacheversion": "1", "textsource_mtime": "1000.0"}
     )
-    assert at.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
-    assert "text source changed" in str(at.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])
+    assert at.misc.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
+    assert "text source changed" in str(at.misc.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])
