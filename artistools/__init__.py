@@ -61,7 +61,6 @@ from artistools.atomic import get_ion_tuple as get_ion_tuple
 from artistools.atomic import get_ionstring as get_ionstring
 from artistools.atomic import get_z_a_nucname as get_z_a_nucname
 from artistools.commands import get_path as get_path
-from artistools.estimators import read_estimators as read_estimators
 from artistools.estimators import scan_estimators as scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata as get_modeldata
@@ -73,4 +72,3 @@ from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_times as get_timestep_times
 from artistools.misc import zopen as zopen
-from artistools.plottools import set_mpl_style as set_mpl_style

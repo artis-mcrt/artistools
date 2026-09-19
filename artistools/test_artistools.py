@@ -217,8 +217,8 @@ def test_transitions_alias_of_the_partition_function_still_works() -> None:
 TOPLEVEL_API: t.Final[frozenset[str]] = frozenset({
     "add_derived_cols_to_modeldata", "decode_roman_numeral", "firstexisting", "get_atomic_number", "get_deposition",
     "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring", "get_model_name", "get_modeldata",
-    "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times", "get_z_a_nucname", "read_estimators",
-    "scan_estimators", "set_mpl_style", "zopen",
+    "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times", "get_z_a_nucname", "scan_estimators",
+    "zopen",
 })  # fmt: skip
 
 
@@ -1586,7 +1586,7 @@ def test_get_series_colors_keeps_the_colours_of_the_user() -> None:
 
 def test_get_series_colors_knows_the_value_of_a_cycle_colour() -> None:
     """A colour value of the cycle that the user asked for must go out of the cycle, like the name CN."""
-    at.set_mpl_style()
+    at.plottools.set_mpl_style()
     cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     assert at.plottools.get_series_colors([False, False], [cyclecolors[0]]) == [cyclecolors[0], "C1"]
@@ -1595,7 +1595,7 @@ def test_get_series_colors_knows_the_value_of_a_cycle_colour() -> None:
 
 def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
     """A cycle colour must leave the cycle whatever name the user gave it, not only its exact hex string."""
-    at.set_mpl_style()
+    at.plottools.set_mpl_style()
     firstcyclecolor = mplcolors.to_hex(plt.rcParams["axes.prop_cycle"].by_key()["color"][0])
     assert firstcyclecolor == mplcolors.to_hex("tab:blue")
 
