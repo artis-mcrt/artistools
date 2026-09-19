@@ -214,6 +214,12 @@ def test_transitions_alias_of_the_partition_function_still_works() -> None:
         assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
 
 
+def test_top_level_aliases_that_a_user_script_reads() -> None:
+    """A user script reads these names from the top level, thus a prune of the re-exports must keep them."""
+    assert at.scan_estimators is at.estimators.core.scan_estimators
+    assert at.get_deposition is at.misc.timesteps.get_deposition
+
+
 def test_package_modules_import_no_package_alias() -> None:
     """A package module must import each name from the module that defines it.
 

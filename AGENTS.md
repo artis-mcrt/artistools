@@ -114,7 +114,7 @@ The configuration gives each ruff rule by **name** and not by code (`"any-type"`
 - Import a large or optional dependency in the function that uses it. Examples are pyvista, plotly, imageio, pynonthermal, and argcomplete. The rule `import-outside-top-level` is off for this reason, because the CLI must start quickly.
 - flake8-type-checking runs in `strict` mode. Put an import that only the annotations use in an `if t.TYPE_CHECKING:` block after the usual imports. This also decreases the start time. If the code then uses that name at run time, move the import out of the block.
 - Pyrefly reports `missing-import` as an error. Thus CI fails if you rename a module or make an error in its name. A plain `uv sync` does not install an optional dependency. Put such a dependency in `ignore-missing-imports` in `[tool.pyrefly]`.
-- The option `implicit_reexport` is off. Re-export a name in the parent `__init__.py` only when a test or a top-level script reads it through the package, e.g. `at.spectra.get_spectra`. Use the form `from module import name as name`. Keep the alphabetical order of the other lines. A package module does not need a re-export, because it imports the name from the module that defines it.
+- The option `implicit_reexport` is off. Re-export a name in the parent `__init__.py` only when a test or a top-level script reads it through the package, e.g. `at.spectra.get_spectra`. Use the form `from module import name as name`. Keep the alphabetical order of the other lines. A package module does not need a re-export, because it imports the name from the module that defines it. Keep the top-level aliases `at.scan_estimators` and `at.get_deposition`, which a user script reads. A test guards them.
 
 ## Polars
 
