@@ -9,7 +9,7 @@ from pathlib import Path
 import polars as pl
 
 from artistools.constants import EV_to_erg
-from artistools.estimators.estimators import scan_estimators
+from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelpath
@@ -17,6 +17,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
@@ -309,7 +310,7 @@ def warn_about_gaps(
     timesteps in front of that one alone. A complete run then gives no warning, and a run that
     stopped early still gives one.
     """
-    modelname = get_model_name(modelpath)
+    modelname = get_model_logname(modelpath)
     gotrows = set(dftable["timestep"].to_list())
     wanted = set(timesteps) if timesteps is not None else set(range(lasttimestep))
     if missing := sorted(wanted - gotrows):

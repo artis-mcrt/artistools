@@ -16,13 +16,40 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_nuclides
+from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
+from artistools.constants import megaparsec_to_cm
+from artistools.misc import average_direction_bins
+from artistools.misc import check_averaging_angles
+from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import find_reference_data_file
+from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
+from artistools.misc import get_file_metadata
+from artistools.misc import get_timesteps
+from artistools.misc import get_vpkt_config
+from artistools.misc import path_is_reference_data
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.misc import split_multitable_dataframe
+from artistools.misc import zopen
+from artistools.misc import zopenpl
+from artistools.packets import bin_and_sum
+from artistools.packets import filter_packets_dirbin
+from artistools.packets import get_packets
+from artistools.packets import get_virtual_packets
+from artistools.spectra import get_escape_surface_gamma
+from artistools.spectra import get_specpol_data
+from artistools.spectra import get_spectra
+from artistools.spectra import get_spectrum_at_time
+from artistools.spectra import get_vspecpol_data
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -48,28 +75,28 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
-def readfile(
+def scan_lightcurve(
     filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:
-    """Read an ARTIS light curve file, optionally averaging its direction bins over phi or theta.
+    """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
     bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the
     magnitudes, where a single dark bin sends the whole averaged bin to inf.
     """
-    at.check_averaging_angles(average_over_phi, average_over_theta)
+    check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
         # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
-        at.zopenpl(filepath),
+        zopenpl(filepath),
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
-        lcdata = at.split_multitable_dataframe(lzdf)
+        lcdata = split_multitable_dataframe(lzdf)
     else:
         lcdata[-1] = lzdf
 
@@ -78,10 +105,10 @@ def readfile(
             lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
 
     if average_over_phi:
-        lcdata = at.average_direction_bins(lcdata, overangle="phi")
+        lcdata = average_direction_bins(lcdata, overangle="phi")
 
     if average_over_theta:
-        lcdata = at.average_direction_bins(lcdata, overangle="theta")
+        lcdata = average_direction_bins(lcdata, overangle="theta")
 
     # after the averaging, never before it: a magnitude is not linear in the bin contributions, so the mean
     # of the magnitudes of the bins is not the magnitude of their mean luminosity
@@ -110,8 +137,8 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    dftimesteps_selected = at.misc.df_filter_minmax_bracketed(
-        at.get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
+    dftimesteps_selected = df_filter_minmax_bracketed(
+        get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
     timebinstarts_plusend = [
@@ -119,30 +146,30 @@ def get_from_packets(
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
     ]
 
-    vpkt_config = at.get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
+    vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     # only set for real packets, where the escape times are measured at the model surface
     escapesurfacegamma: float | None = None
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = at.packets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = at.packets.get_packets(
+        nprocs_read, dfpackets = get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        escapesurfacegamma = at.spectra.get_escape_surface_gamma(modelpath)
+        escapesurfacegamma = get_escape_surface_gamma(modelpath)
         dfpackets = dfpackets.with_columns([
             (pl.col("escape_time") * escapesurfacegamma / day_to_s).alias("t_arrive_cmf_d")
         ])
 
     if pellet_nucname is not None:
-        atomic_number = at.get_atomic_number(pellet_nucname)
-        if at.get_elsymbol(atomic_number) == pellet_nucname:
+        atomic_number = get_atomic_number(pellet_nucname)
+        if get_elsymbol(atomic_number) == pellet_nucname:
             expr = pl.col("atomic_number") == atomic_number
         else:
             expr = pl.col("nucname") == pellet_nucname
         dfpackets = dfpackets.filter(
             pl.col("pellet_nucindex").is_in(
-                at.get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
+                get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
             )
         )
 
@@ -163,13 +190,12 @@ def get_from_packets(
             )
             inverse_solidangle_fraction = 4 * math.pi
         else:
-            pldfpackets_dirbin, inverse_solidangle_fraction = at.packets.filter_packets_dirbin(
+            pldfpackets_dirbin, inverse_solidangle_fraction = filter_packets_dirbin(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
 
         lcdata[dirbin] = (
-            at.packets
-            .bin_and_sum(
+            bin_and_sum(
                 pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
             )
             .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
@@ -196,8 +222,7 @@ def get_from_packets(
             lcdata[dirbin] = (
                 lcdata[dirbin]
                 .join(
-                    at.packets
-                    .bin_and_sum(
+                    bin_and_sum(
                         pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
                     )
                     .with_columns(
@@ -261,24 +286,24 @@ def generate_band_lightcurve_data(
     if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
-            at.spectra.get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
+            get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
             if dirbin >= 0
-            else at.spectra.get_specpol_data(dirbin=dirbin, modelpath=modelpath)
+            else get_specpol_data(dirbin=dirbin, modelpath=modelpath)
         )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.collect_schema().names()[1:]
     else:
         specfilename = (
-            at.firstexisting_or_none(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
+            firstexisting_or_none(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
             if args.plotviewingangle
             else None
         )
         if specfilename is None:
             if args.plotviewingangle:
                 print_warning("no direction-resolved spectra available. Using angle-averaged spectra.")
-            specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
+            specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
 
-        with at.zopen(specfilename) as fspec:
+        with zopen(specfilename) as fspec:
             # pol and res files repeat the time columns for the Stokes Q and U blocks, so keep the first of each
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
@@ -300,7 +325,7 @@ def generate_band_lightcurve_data(
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
     spectra = pl.collect_all([
-        at.spectra.get_spectrum_at_time(
+        get_spectrum_at_time(
             Path(modelpath),
             timestep=timestep,
             time=time,
@@ -313,7 +338,7 @@ def generate_band_lightcurve_data(
     ])
     times_spectra = list(zip((time for _, time in selectedtimes), spectra, strict=True))
 
-    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    filterdir = Path(get_path("artistools_dir"), "data/filters/")
     filters_dict: dict[str, list[tuple[float, float]]] = {}
 
     for filter_name in bandnames:
@@ -364,7 +389,7 @@ def generate_band_lightcurve_data(
 
 def spectrum_to_bolometric_lum(dfspectrum: pl.DataFrame) -> float:
     """Return the bolometric luminosity in erg/s of a spectrum, given as f_lambda at a distance of 1 Mpc."""
-    Mpc_to_cm = at.constants.megaparsec_to_cm
+    Mpc_to_cm = megaparsec_to_cm
     return float(
         np.trapezoid(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"]) * 4 * np.pi * np.power(Mpc_to_cm, 2)
     )
@@ -380,8 +405,7 @@ def get_bolometric_luminosities(
     the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
-        at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
-        for timestep in timesteps
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
     ]
 
     return {
@@ -429,8 +453,7 @@ def bracket_spectrum_to_band(
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the wavelengths and the fluxes of the spectrum rows that bracket a filter wavelength range."""
     spectrum_bracketed = (
-        at.misc
-        .df_filter_minmax_bracketed(spectrum, "lambda_angstroms", wavefilter_min, wavefilter_max)
+        df_filter_minmax_bracketed(spectrum, "lambda_angstroms", wavefilter_min, wavefilter_max)
         .select("lambda_angstroms", "f_lambda")
         .collect()
     )
@@ -480,12 +503,12 @@ def get_colour_delta_mag(
 
 def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
     """Read a HESMA model light curve, taking the column names from a leading comment line if there is one."""
-    return at.read_wsv(hesma_modelpath, comment_prefix="#", header_from_comment=True)
+    return read_wsv(hesma_modelpath, comment_prefix="#", header_from_comment=True)
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
     """Return the HESMA model light curve named by args.plot_hesma_model."""
-    return read_hesma_lightcurve_file(Path(at.get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
+    return read_hesma_lightcurve_file(Path(get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
 
 
 def luminosity_distance(H0: float, Om0: float, z: float) -> float:
@@ -595,16 +618,16 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from the bundled reference data, along with its metadata."""
-    filepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
+    filepath = Path(get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
     # a copy, because get_file_metadata is cached and this function adds a derived distance below
-    metadata = dict(at.get_file_metadata(filepath))
+    metadata = dict(get_file_metadata(filepath))
 
-    data_path = Path(at.get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
+    data_path = Path(get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
     # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
     csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in data_path.read_text(encoding="utf-8").splitlines())
     lightcurve_data = pl.read_csv(csvtext.encode())
     if lightcurve_data.width == 1:
-        lightcurve_data = at.read_wsv(data_path, comment_prefix="#")
+        lightcurve_data = read_wsv(data_path, comment_prefix="#")
 
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
@@ -628,7 +651,7 @@ def find_bol_reflightcurve_file(lightcurvefilename: str | Path) -> Path | None:
     The file is either at the given path, or in the bundled data/lightcurves/bollightcurves folder.
     A compressed file with the same name is also accepted.
     """
-    return at.find_reference_data_file(lightcurvefilename, "data/lightcurves/bollightcurves")
+    return find_reference_data_file(lightcurvefilename, "data/lightcurves/bollightcurves")
 
 
 def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = False, gamma: bool = False) -> Path:
@@ -651,12 +674,12 @@ def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = Fal
     else:
         lcfilename = "light_curve.out"
 
-    return at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+    return firstexisting(lcfilename, folder=modelpath, tryzipped=True)
 
 
 def path_is_reference_lightcurve(filepath: str | Path) -> bool:
     """Return whether the path is a bolometric reference light curve file and not an ARTIS model."""
-    return at.path_is_reference_data(filepath, "data/lightcurves/bollightcurves")
+    return path_is_reference_data(filepath, "data/lightcurves/bollightcurves")
 
 
 def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.DataFrame, dict[str, t.Any]]:
@@ -666,10 +689,10 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.Data
         msg = f"Reference light curve file not found: {lightcurvefilename}"
         raise FileNotFoundError(msg)
 
-    metadata = at.get_file_metadata(data_path)
+    metadata = get_file_metadata(data_path)
 
     # the column names come from a leading comment line if there is one
-    dflightcurve = at.read_wsv(data_path, has_header=False, comment_prefix="#", header_from_comment=True)
+    dflightcurve = read_wsv(data_path, has_header=False, comment_prefix="#", header_from_comment=True)
 
     if colrenames := {
         k: v
@@ -684,8 +707,8 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.Data
 
 def get_phillips_relation_data() -> tuple[pl.DataFrame, str]:
     """Return the observed dm15(B) against peak MB data of Hicken et al. (2009), and its plot label."""
-    datafilepath = Path(at.get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
-    sn_data = at.read_wsv(datafilepath, comment_prefix="#").with_columns(
+    datafilepath = Path(get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
+    sn_data = read_wsv(datafilepath, comment_prefix="#").with_columns(
         pl.col("dm15(B)").cast(pl.Float64), pl.col("MB").cast(pl.Float64)
     )
     print(sn_data)

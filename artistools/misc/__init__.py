@@ -35,9 +35,7 @@ from artistools.misc.cliutils import FrameSet as FrameSet
 from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex
-from artistools.misc.cliutils import get_template_fields as get_template_fields
 from artistools.misc.cliutils import item_names_a_folder as item_names_a_folder
-from artistools.misc.cliutils import item_names_a_path as item_names_a_path
 from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
@@ -67,7 +65,6 @@ from artistools.misc.dirbins import check_averaging_angles as check_averaging_an
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
-from artistools.misc.dirbins import get_dirbin_labels as get_dirbin_labels
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
 from artistools.misc.dirbins import get_phi_bin_steps as get_phi_bin_steps
@@ -76,7 +73,6 @@ from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
 from artistools.misc.dirbins import get_viewingdirection_phibincount as get_viewingdirection_phibincount
 from artistools.misc.dirbins import get_viewingdirectionbincount as get_viewingdirectionbincount
-from artistools.misc.dirbins import get_vspec_dir_labels as get_vspec_dir_labels
 from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc.fileio import combine_frames as combine_frames
@@ -91,7 +87,6 @@ from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
-from artistools.misc.fileio import parquet_is_readable as parquet_is_readable
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
 from artistools.misc.fileio import path_is_reference_data as path_is_reference_data
@@ -114,6 +109,7 @@ from artistools.misc.general import vec_len as vec_len
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
+from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
 from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
@@ -134,4 +130,3 @@ from artistools.misc.timesteps import get_timestep_time as get_timestep_time
 from artistools.misc.timesteps import get_timestep_times as get_timestep_times
 from artistools.misc.timesteps import get_timesteps as get_timesteps
 from artistools.misc.timesteps import match_closest_time as match_closest_time
-from artistools.misc.timesteps import parse_timedays_range as parse_timedays_range

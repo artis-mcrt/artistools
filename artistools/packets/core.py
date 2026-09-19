@@ -13,11 +13,24 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel import get_modeldata
+from artistools.misc import drop_trailing_null_column
+from artistools.misc import extra_csv_columns_ignored
+from artistools.misc import firstexisting
+from artistools.misc import get_file_identity
+from artistools.misc import get_nprocs
+from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import polars_source
 from artistools.misc import print_warning
+from artistools.misc import vec_len
+from artistools.misc import write_parquet_atomic
+from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
@@ -81,7 +94,7 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
         packet_properties: list[str] = []
-        inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
+        inputfilename = firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
         print(f"found {inputfilename}: getting packet column names from artis code:")
         with inputfilename.open(encoding="utf-8") as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
@@ -187,9 +200,9 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
     """
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
-    timebins = [tstart * day_to_s for tstart in at.get_timestep_times(modelpath, loc="start")] + [
-        at.get_timestep_times(modelpath, loc="end")[-1] * day_to_s
+    dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
+    timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
+        get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
     dfpackets = dfpackets.lazy().with_columns(
         (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep"),
@@ -217,7 +230,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
     """Return the column names of a packets file, from its header, the ARTIS source, or the historical defaults."""
     column_names: list[str] = []
-    with at.zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
+    with zopen(packetsfile, mode="rt", encoding="utf-8") as fpackets:
         firstline = fpackets.readline()
 
         if firstline.lstrip().startswith("#"):
@@ -289,12 +302,12 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
 
     try:
         dfpackets = pl.read_csv(
-            at.polars_source(packetsfiletext),
+            polars_source(packetsfiletext),
             separator=" ",
             has_header=False,
             comment_prefix="#",
             new_columns=column_names,
-            **at.extra_csv_columns_ignored(),
+            **extra_csv_columns_ignored(),
             infer_schema_length=20000,
             schema_overrides=dtype_overrides,
         )
@@ -303,7 +316,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         print(f"Error occurred in file {packetsfiletext}")
         raise
 
-    dfpackets = at.drop_trailing_null_column(dfpackets)
+    dfpackets = drop_trailing_null_column(dfpackets)
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
     dfpackets = dfpackets.drop(
@@ -342,12 +355,12 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
     # the caller resolves the path with tryzipped=True, thus polars_source only has to open the
     # .xz case, which polars cannot read from a path
     dfvpackets = pl.read_csv(
-        at.polars_source(vpacketsfiletext),
+        polars_source(vpacketsfiletext),
         separator=" ",
         has_header=False,
         comment_prefix="#",
         new_columns=column_names,
-        **at.extra_csv_columns_ignored(),
+        **extra_csv_columns_ignored(),
         schema_overrides={
             "emissiontype": pl.Int32,
             "trueemissiontype": pl.Int32,
@@ -358,12 +371,12 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
         | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
     )
 
-    return at.drop_trailing_null_column(dfvpackets).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+    return drop_trailing_null_column(dfvpackets).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
     """Return the column names from the header line of a virtual packets file."""
-    with at.zopen(vpacketsfiletext, mode="rt", encoding="utf-8") as f:
+    with zopen(vpacketsfiletext, mode="rt", encoding="utf-8") as f:
         firstline: str = f.readline()
     assert firstline.lstrip().startswith("#")
     return firstline.lstrip("#").split()
@@ -437,7 +450,7 @@ def get_packets_rankbatch_parquetfile(
         elif allranksfound:
             # the identity comes from the stat that showed the file is outdated, so only that exact
             # file can be replaced by this rank's rewrite
-            outdatedparquet = at.get_file_identity(parquetstat)
+            outdatedparquet = get_file_identity(parquetstat)
             # leave the outdated file in place: write_parquet_atomic() puts the new one at the path in
             # one step, so the path always resolves to a complete parquet. Deleting it first opens a
             # window in which a concurrent reader (another rank, or another pytest-xdist worker) finds
@@ -462,7 +475,7 @@ def get_packets_rankbatch_parquetfile(
         print(f"  generating {parquetfilepath.relative_to(modelpath)}...")
 
         text_file_paths = [
-            at.firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
+            firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
             for filename in text_filenames
         ]
 
@@ -513,8 +526,8 @@ def get_packets_rankbatch_parquetfile(
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
             pldf_batch = bin_packet_directions_polars(
                 pldf_batch,
-                nphibins=at.get_viewingdirection_phibincount(),
-                ncosthetabins=at.get_viewingdirection_costhetabincount(),
+                nphibins=get_viewingdirection_phibincount(),
+                ncosthetabins=get_viewingdirection_costhetabincount(),
                 phibintype="phibinhistoricaldescendingdiscont",
             )
 
@@ -522,7 +535,7 @@ def get_packets_rankbatch_parquetfile(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
-        at.write_parquet_atomic(
+        write_parquet_atomic(
             pldf_batch,
             parquetfilepath,
             metadata={
@@ -541,7 +554,7 @@ def get_packets_batch_parquet_paths(
     modelpath: str | Path, maxpacketfiles: int | None = None, virtual: bool = False
 ) -> tuple[int, list[Path]]:
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
-    nprocs = at.get_nprocs(modelpath)
+    nprocs = get_nprocs(modelpath)
 
     mpirank_groups_all = list(enumerate(batched(range(nprocs), 100, strict=False)))
     mpirank_groups = [
@@ -649,13 +662,13 @@ def get_directionbin(
     costhetabin = min(int((costheta + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
 
     vec1 = np.cross(pkt_dir, syn_dir)
-    if at.vec_len(vec1) == 0.0:
+    if vec_len(vec1) == 0.0:
         # if the direction is parallel to the syn_dir, we cannot determine phi
         phibin = 0
     else:
         xhat = np.array([1.0, 0.0, 0.0])
         vec2 = np.cross(xhat, syn_dir)
-        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+        cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
 
         vec3 = np.cross(vec2, syn_dir)
         testphi = np.dot(vec1, vec3)
@@ -754,10 +767,10 @@ def bin_packet_directions_polars(
     """
     dfpackets = dfpackets.lazy()
     if nphibins is None:
-        nphibins = at.get_viewingdirection_phibincount()
+        nphibins = get_viewingdirection_phibincount()
 
     if ncosthetabins is None:
-        ncosthetabins = at.get_viewingdirection_costhetabincount()
+        ncosthetabins = get_viewingdirection_costhetabincount()
 
     dfpackets = dfpackets.with_columns(
         pl.min_horizontal(
@@ -805,16 +818,16 @@ def filter_packets_dirbin(
 
     if average_over_phi:
         assert not average_over_theta
-        nphibins = at.get_viewingdirection_phibincount()
+        nphibins = get_viewingdirection_phibincount()
         return (
             dfpackets.filter(pl.col("costhetabin") * nphibins == dirbin),
-            float(at.get_viewingdirection_costhetabincount()),
+            float(get_viewingdirection_costhetabincount()),
         )
 
     if average_over_theta:
-        return dfpackets.filter(pl.col("phibin") == dirbin), float(at.get_viewingdirection_phibincount())
+        return dfpackets.filter(pl.col("phibin") == dirbin), float(get_viewingdirection_phibincount())
 
-    return dfpackets.filter(pl.col("dirbin") == dirbin), float(at.get_viewingdirectionbincount())
+    return dfpackets.filter(pl.col("dirbin") == dirbin), float(get_viewingdirectionbincount())
 
 
 def bin_and_sum(

@@ -22,10 +22,20 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.inputmodel_misc import backup_existing_file
+from artistools.inputmodel.core import backup_existing_file
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_output
+from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
+from artistools.misc import parallel_map
+from artistools.misc import parse_cli_args
+from artistools.misc import polars_source
+from artistools.misc import read_wsv
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -34,7 +44,7 @@ def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
     assert isinstance(ZMAX, int)
     massfrac_of_z = dict(dfnucabund.group_by("Z").agg(pl.col("massfrac").sum()).iter_rows())
     return {
-        f"X_{at.get_elsymbol(atomic_number)}": float(massfrac_of_z.get(atomic_number, 0.0))
+        f"X_{get_elsymbol(atomic_number)}": float(massfrac_of_z.get(atomic_number, 0.0))
         for atomic_number in range(1, ZMAX + 1)
     }
 
@@ -47,7 +57,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     isoabundcolnames = [
         colname for colname in dfmodel.collect_schema().names() if colname.startswith("X_") and colname[-1].isdigit()
     ]
-    atomic_numbers = [at.get_atomic_number(colname[2:].rstrip(string.digits)) for colname in isoabundcolnames]
+    atomic_numbers = [get_atomic_number(colname[2:].rstrip(string.digits)) for colname in isoabundcolnames]
 
     elemisotopes: dict[int, list[str]] = {k: [] for k in set(atomic_numbers)}
 
@@ -57,7 +67,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     dfelabundances = dfmodel.select(
         "inputcellid",
         *[
-            pl.sum_horizontal(elemisotopes.get(atomic_number, pl.lit(0.0))).alias(f"X_{at.get_elsymbol(atomic_number)}")
+            pl.sum_horizontal(elemisotopes.get(atomic_number, pl.lit(0.0))).alias(f"X_{get_elsymbol(atomic_number)}")
             for atomic_number in range(1, max(atomic_numbers) + 1)
         ],
     )
@@ -161,7 +171,7 @@ def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame
     filepath = get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     )
-    return at.read_wsv(filepath, has_header=False, comment_prefix="#").select(
+    return read_wsv(filepath, has_header=False, comment_prefix="#").select(
         cs.by_index(0).cast(pl.Int32).alias("nstep"), cs.by_index(1).cast(pl.Float32).alias("timesec")
     )
 
@@ -290,7 +300,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     enthermofilepath = get_tar_member_extracted_path(
         traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
     )
-    dfthermo = at.read_wsv(enthermofilepath).select("time/s", "Qdot").rename({"time/s": "time_s"})
+    dfthermo = read_wsv(enthermofilepath).select("time/s", "Qdot").rename({"time/s": "time_s"})
     # the integration starts at one second. np.argmax would return 0 for a file that reaches no
     # such time, which names the first row rather than showing that no row matches
     rows_from_1s = (dfthermo["time_s"] >= 1).to_numpy().nonzero()[0]
@@ -357,7 +367,7 @@ def get_gridparticlecontributions_or_none(gridcontribpath: Path | str) -> pl.Dat
     A caller that tested for the plain file itself could not see a compressed one, and so skipped the
     loader that would have found it.
     """
-    contribfile = at.firstexisting_or_none("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)
+    contribfile = firstexisting_or_none("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)
 
     return None if contribfile is None else get_gridparticlecontributions(gridcontribpath)
 
@@ -365,7 +375,7 @@ def get_gridparticlecontributions_or_none(gridcontribpath: Path | str) -> pl.Dat
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
     """Return the mass fraction that each trajectory particle contributes to each grid cell."""
     return pl.read_csv(
-        at.polars_source(at.firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)),
+        polars_source(firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)),
         has_header=True,
         separator=" ",
         schema_overrides={
@@ -449,7 +459,7 @@ def get_dfnucabundances(
     grid. Thus each query joins a batch of 64 columns. The queries read tables in memory, thus none repeats a scan.
     """
     colname_of_key = {
-        key: key if isinstance(key, str) else f"X_{at.get_elsymbol(key[0])}{key[0] + key[1]}"
+        key: key if isinstance(key, str) else f"X_{get_elsymbol(key[0])}{key[0] + key[1]}"
         for key in dict.fromkeys(chain.from_iterable(list_traj_nuc_abund))
     }
     # one column for each nuclide and for the "q" energy, thus each batch query can select its columns
@@ -508,7 +518,7 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root), getqdotintegral=True)
 
-    list_traj_nuc_abund = at.parallel_map(trajworker, particleids, chunksize=16)
+    list_traj_nuc_abund = parallel_map(trajworker, particleids, chunksize=16)
 
     missing_particle_ids = [
         particleid for particleid, df in zip(particleids, list_traj_nuc_abund, strict=True) if not df
@@ -544,12 +554,12 @@ def add_abundancecontributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_output(parser, kind="folder", default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     traj_root = Path(
         Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
@@ -577,7 +587,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)
 
     dfelabundances = pl.DataFrame([dictelemabund | {"inputcellid": mgi + 1} for mgi in range(len(dfdensities))])
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
+    save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
 
     # write model.txt
 
@@ -593,7 +603,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for row in dfnucabund.filter(pl.col("radioactive")).iter_rows(named=True):
         A = row["N"] + row["Z"]
-        rowdict[f"X_{at.get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
+        rowdict[f"X_{get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
 
     dfmodel = pl.DataFrame(
         [
@@ -607,7 +617,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ],
         orient="row",
     )
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
+    save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
     with Path(args.outputfile, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
@@ -623,8 +633,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
     t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
 
     return (
-        at
-        .read_wsv(wollaeger_profilename, has_header=False, skip_rows=1, new_columns=["mgi", "vel_r_max_kmps", "rho"])
+        read_wsv(wollaeger_profilename, has_header=False, skip_rows=1, new_columns=["mgi", "vel_r_max_kmps", "rho"])
         .with_columns(pl.col("mgi").cast(pl.Int32))
         .with_columns(vel_r_min_kmps=pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0))
         .with_columns(

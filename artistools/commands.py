@@ -131,7 +131,7 @@ DESCRIBEINPUTMODEL = CommandSpec(
 
 subcommandtree: CommandTree = {
     "comparetogsinetwork": CommandSpec(
-        "gsinetwork.plotqdotabund",
+        "gsinetwork.comparetogsinetwork",
         helptext="Compare ARTIS to a GSI Network calculation.",
         note="The comparison covers the energy release and the abundances.",
     ),
@@ -244,7 +244,7 @@ subcommandtree: CommandTree = {
         helptext="Plot ARTIS input model composition.",
     ),
     "plotlastpacketinteraction": CommandSpec(
-        "packets.packetsplots",
+        "packets.plotlastpacketinteraction",
         helptext="Plot the last interaction of a packet.",
         note="The plot gives the properties of that interaction against the velocity of the ejecta.",
     ),
@@ -256,15 +256,19 @@ subcommandtree: CommandTree = {
         aliases=("lc", "plotlightcurve"),
     ),
     "plotlinefluxes": CommandSpec(
-        "linefluxes",
+        "plotlinefluxes",
         script="plotartislinefluxes",
         helptext="Plot the ratios of the line fluxes.",
         note="The ratios serve a comparison to Floers.",
     ),
     "plotlogfiles": CommandSpec(
-        "logfiles", helptext="Plot the time that each rank took.", note="The times come from the log files of a run."
+        "plotlogfiles",
+        helptext="Plot the time that each rank took.",
+        note="The times come from the log files of a run.",
     ),
-    "plotmacroatom": CommandSpec("macroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."),
+    "plotmacroatom": CommandSpec(
+        "plotmacroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."
+    ),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
         script="plotartisnltepops",
@@ -276,7 +280,7 @@ subcommandtree: CommandTree = {
         ),
     ),
     "plotradfield": CommandSpec(
-        "radfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
+        "plotradfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
     ),
     "plotspectra": CommandSpec(
         "spectra.plotspectra",
@@ -287,25 +291,25 @@ subcommandtree: CommandTree = {
     ),
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
     "plottransitions": CommandSpec(
-        "transitions",
+        "plottransitions",
         script="plotartistransitions",
         helptext="Plot the spectrum of the transitions.",
         note="The spectrum comes from the bound-bound transitions.",
     ),
     "plotviewingangles": CommandSpec(
-        "viewing_angles_visualization",
+        "plotviewingangles",
         script="plotartisviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
     ),
     "spencerfano": CommandSpec(
-        "nonthermal.solvespencerfanocmd",
+        "nonthermal.spencerfano",
         script="plotartisnonthermal",
         helptext="Solve the Spencer-Fano equation for a cell.",
         note="The data comes from one cell of an ARTIS run at one timestep.",
     ),
     "timesteps": CommandSpec(
-        "showtimesteps",
+        "timesteps",
         helptext="List the timesteps and their days.",
         note="The table gives the days that each timestep covers.",
     ),
@@ -969,7 +973,7 @@ def get_words_of_module(modulename: str) -> tuple[str, ...] | None:
 def run_module_as_subcommand(modulespec: "ModuleSpec | None") -> None:
     """Run the subcommand of a module through the dispatcher.
 
-    A module that runs as `python -m artistools.logfiles` gives its own __spec__, and the tree names
+    A module that runs as `python -m artistools.plotlogfiles` gives its own __spec__, and the tree names
     the module of each subcommand. Thus no module holds the name of its own subcommand, which can
     drift. A module that runs as a file path carries no spec, and it has no name to look up.
     """
@@ -988,7 +992,7 @@ def run_module_as_subcommand(modulespec: "ModuleSpec | None") -> None:
 def run_subcommand(*words: str) -> None:
     """Run one subcommand of the tree through the dispatcher.
 
-    A module that runs as `python -m artistools.radfield` calls its own main function, thus it read no
+    A module that runs as `python -m artistools.plotradfield` calls its own main function, thus it read no
     --quiet, and it reported a bad argument with a traceback. This gives it the path of a console
     script.
     """

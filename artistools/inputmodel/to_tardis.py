@@ -10,7 +10,13 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
+from artistools.misc import addarg_output
+from artistools.misc import get_model_name
+from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -30,24 +36,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-maxatomicnumber", type=int, default=92, help="Maximum atomic number for elemental abundances")
 
-    at.addarg_output(parser, kind="folder", helptext="Path of output TARDIS model file", default=Path())
+    addarg_output(parser, kind="folder", helptext="Path of output TARDIS model file", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert an ARTIS format model to TARDIS format."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     temperature = args.temperature
     dilution_factor = args.dilution_factor
 
     modelpath = Path(args.inputpath)
 
-    pldfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
+    pldfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     t_model_init_days = modelmeta["t_model_init_days"]
 
     dfmodel = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta)
         .select("vel_r_max_kmps", "rho", cs.starts_with("X_"))
         .collect()
     )
@@ -61,9 +66,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
 
     if args.maxatomicnumber and args.maxatomicnumber > 0:
-        listspecies = [species for species in listspecies if at.get_atomic_number(species) <= args.maxatomicnumber]
+        listspecies = [species for species in listspecies if get_atomic_number(species) <= args.maxatomicnumber]
 
-    modelname = at.get_model_name(modelpath)
+    modelname = get_model_name(modelpath)
     outputfilepath = Path(args.outputfile, f"{modelname}.csvy")
     dictmeta = {
         "name": modelname,
@@ -102,7 +107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fileout.flush()
         dfout.write_csv(fileout, separator=",", quote_style="never")
 
-    at.print_saved(outputfilepath)
+    print_saved(outputfilepath)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.constants import c_ang_per_s
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -16,6 +17,12 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timestep
+from artistools.misc import exit_with_error
+from artistools.misc import get_single_modelgridindex
+from artistools.misc import get_single_timestep
+from artistools.misc import get_timestep_time
+from artistools.misc import parse_cli_args
+from artistools.misc import read_rank_outputfiles
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 
@@ -48,14 +55,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
-    args = at.parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
+    args = parse_cli_args(addargs, "Plot ARTIS macroatom transitions.", args, argsraw, kwargs)
 
-    atomic_number = at.get_atomic_number(args.element)
+    atomic_number = get_atomic_number(args.element)
     if atomic_number < 1:
-        at.exit_with_error(f"could not find element '{args.element}'")
+        exit_with_error(f"could not find element '{args.element}'")
 
-    modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
-    timestepmin = at.get_single_timestep(args.timestep, args.modelpath)
+    modelgridindex = get_single_modelgridindex(args.modelgridindex)
+    timestepmin = get_single_timestep(args.timestep, args.modelpath)
     assert timestepmin is not None, "-timestep holds a default, thus it names a timestep"
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
@@ -67,10 +74,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = args.modelpath
     xmin = args.xmin
     xmax = args.xmax
-    time_days_min = at.get_timestep_time(modelpath, timestepmin)
-    time_days_max = at.get_timestep_time(modelpath, timestepmax)
+    time_days_min = get_timestep_time(modelpath, timestepmin)
+    time_days_max = get_timestep_time(modelpath, timestepmax)
 
-    dfmacroatom = read_files(modelpath, modelgridindex, timestepmin, timestepmax, atomic_number)
+    dfmacroatom = read_macroatom(modelpath, modelgridindex, timestepmin, timestepmax, atomic_number)
     print(f"Plotting {len(dfmacroatom)} transitions")
 
     fig, axesgrid = make_frame_figure(args, aspect=1.059)
@@ -86,8 +93,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     with np.errstate(divide="ignore"):
-        lambda_cmf_in = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_in"].to_numpy()
-        lambda_cmf_out = at.constants.c_ang_per_s / dfmacroatom["nu_cmf_out"].to_numpy()
+        lambda_cmf_in = c_ang_per_s / dfmacroatom["nu_cmf_in"].to_numpy()
+        lambda_cmf_out = c_ang_per_s / dfmacroatom["nu_cmf_out"].to_numpy()
     axis.plot(
         lambda_cmf_in,
         lambda_cmf_out,
@@ -105,7 +112,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     save_figure(fig, outputfile, args=args, format="pdf")
 
 
-def read_files(
+def read_macroatom(
     modelpath: Path | str,
     modelgridindex: int | None = None,
     timestepmin: int | None = None,
@@ -117,7 +124,7 @@ def read_files(
     Each rank writes the transitions of every cell that its own packets reach, thus this function reads the files
     of all ranks. The rank that updates a cell holds only part of the transitions of that cell.
     """
-    dfmacroatom = at.read_rank_outputfiles(modelpath, "macroatom_{mpirank:04d}.out")
+    dfmacroatom = read_rank_outputfiles(modelpath, "macroatom_{mpirank:04d}.out")
 
     if modelgridindex is not None and modelgridindex >= 0:
         dfmacroatom = dfmacroatom.filter(pl.col("modelgridindex") == modelgridindex)

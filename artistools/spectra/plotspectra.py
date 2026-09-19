@@ -22,7 +22,6 @@ from matplotlib import ticker
 from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
-import artistools.spectra.spectra as atspectra
 from artistools.commands import get_path
 from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
@@ -54,6 +53,7 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
@@ -88,6 +88,34 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
+from artistools.spectra.core import bin_spectrum
+from artistools.spectra.core import convert_angstroms_to_unit
+from artistools.spectra.core import convert_xlimits_to_lambda_range
+from artistools.spectra.core import convert_xunit_aliases_to_canonical
+from artistools.spectra.core import DEFAULT_YE_SHELLS
+from artistools.spectra.core import FluxContributionTuple
+from artistools.spectra.core import get_default_losvelocity_shells
+from artistools.spectra.core import get_default_velocity_shells
+from artistools.spectra.core import get_dfspectrum_x_y_with_units
+from artistools.spectra.core import get_flux_contributions
+from artistools.spectra.core import get_flux_contributions_from_packets
+from artistools.spectra.core import get_from_packets
+from artistools.spectra.core import get_lambda_bin_edges
+from artistools.spectra.core import get_reference_spectrum
+from artistools.spectra.core import get_shell_labels
+from artistools.spectra.core import get_specpol_data
+from artistools.spectra.core import get_spectra
+from artistools.spectra.core import get_vspecpol_data
+from artistools.spectra.core import get_vspecpol_spectrum
+from artistools.spectra.core import get_xunit
+from artistools.spectra.core import make_averaged_vspecfiles
+from artistools.spectra.core import make_virtual_spectra_summed_file
+from artistools.spectra.core import parse_velocity_argument
+from artistools.spectra.core import parse_xunit_argument
+from artistools.spectra.core import print_integrated_flux
+from artistools.spectra.core import SHELLCOLUMNS
+from artistools.spectra.core import sort_and_reduce_flux_contribution_list
+from artistools.spectra.core import timeshift_fluxscale_co56law
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -148,7 +176,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
-    xunit = atspectra.get_xunit(args.xunit)
+    xunit = get_xunit(args.xunit)
     xtype = {"wavelength": "Wavelength", "frequency": "Frequency", "energy": "Energy"}[xunit.kind]
     str_xunit = xunit.label
 
@@ -213,10 +241,10 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the Stokes parameter selected by args.stokesparam against wavelength."""
     if args.plotvspecpol:
         angle = args.plotvspecpol[0]
-        stokes_params = atspectra.get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
+        stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
     else:
         angle = args.plotviewingangle[0] if args.plotviewingangle else -1
-        stokes_params = atspectra.get_specpol_data(dirbin=angle, modelpath=modelpath)
+        stokes_params = get_specpol_data(dirbin=angle, modelpath=modelpath)
 
     dfspectrum = stokes_params[args.stokesparam].with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu")).collect()
 
@@ -255,7 +283,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis = axesgrid[0][0]
 
     if args.binflux:
-        dfbinned = atspectra.bin_spectrum(dfspectrum, 5, "lambda_angstroms", timecolname)
+        dfbinned = bin_spectrum(dfspectrum, 5, "lambda_angstroms", timecolname)
         axis.plot(dfbinned["lambda_angstroms"], dfbinned[timecolname])
     else:
         axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timecolname], label=linelabel)
@@ -308,7 +336,7 @@ def plot_reference_spectrum(
     plotkwargs.pop("label", None)
 
     print_heading(f"Reference spectrum '{label}'")
-    specdata = atspectra.get_reference_spectrum(filepath)
+    specdata = get_reference_spectrum(filepath)
     print_detail(f"file: {filepath}")
 
     # scale to flux at required distance
@@ -319,7 +347,7 @@ def plot_reference_spectrum(
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
 
     if scaletoreftime is not None:
-        timefactor = atspectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
+        timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print_detail(f"scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
@@ -347,11 +375,11 @@ def plot_reference_spectrum(
         "metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()])
     )
 
-    lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, xunit)
+    lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
 
     # the reported flux covers the range that the user asked for, thus it takes the rows inside it
     inrange = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
-    atspectra.print_integrated_flux(inrange["f_lambda"], inrange["lambda_angstroms"])
+    print_integrated_flux(inrange["f_lambda"], inrange["lambda_angstroms"])
 
     # the drawn line keeps the nearest row outside each bound, so that it reaches the edge of the axes
     # instead of stopping at the last point inside the range
@@ -363,7 +391,7 @@ def plot_reference_spectrum(
             cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
         )
 
-    specdata = atspectra.get_dfspectrum_x_y_with_units(
+    specdata = get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
     ).collect()
 
@@ -541,7 +569,7 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_bin_edges = atspectra.get_lambda_bin_edges(
+            lambda_bin_edges = get_lambda_bin_edges(
                 xmin,
                 xmax,
                 deltax=args.deltax,
@@ -552,7 +580,7 @@ def plot_artis_spectrum(
                 gamma=args.gamma,
             )
 
-            viewinganglespectra = atspectra.get_from_packets(
+            viewinganglespectra = get_from_packets(
                 modelpath,
                 timelowdays=timemin,
                 timehighdays=timemax,
@@ -580,14 +608,14 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: atspectra.get_vspecpol_spectrum(
+                dirbin: get_vspecpol_spectrum(
                     modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc, timemin=timemin, timemax=timemax
                 )
                 for dirbin in directionbins
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = atspectra.get_spectra(
+            viewinganglespectra = get_spectra(
                 modelpath=modelpath,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,
@@ -634,7 +662,7 @@ def plot_artis_spectrum(
             directionbins,
             pl.collect_all([
                 df_filter_minmax_bracketed(
-                    atspectra.get_dfspectrum_x_y_with_units(
+                    get_dfspectrum_x_y_with_units(
                         viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=args.distmpc
                     ),
                     colname="x",
@@ -652,7 +680,7 @@ def plot_artis_spectrum(
                 dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
             )
 
-            atspectra.print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
+            print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
             if scale_to_peak:
                 dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
@@ -662,8 +690,7 @@ def plot_artis_spectrum(
                 # bin f_lambda as well, because --write_data returns that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
-                    atspectra
-                    .bin_spectrum(dfspectrum, 5, "lambda_angstroms", ["y", "f_lambda"])
+                    bin_spectrum(dfspectrum, 5, "lambda_angstroms", ["y", "f_lambda"])
                     .rename({"lambda_angstroms": "x"})
                     .with_columns(lambda_angstroms=pl.col("x"))
                 )
@@ -796,7 +823,7 @@ def get_xy_spectrum(
     flambda_array: npt.NDArray[np.floating], arraylambda_angstroms: npt.NDArray[np.floating], args: argparse.Namespace
 ) -> pl.LazyFrame:
     """Return the x series and the y series of one flux array, in the units that the arguments name."""
-    return atspectra.get_dfspectrum_x_y_with_units(
+    return get_dfspectrum_x_y_with_units(
         pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
         xunit=args.xunit,
         yvariable=args.yvariable,
@@ -815,7 +842,7 @@ def get_emission_contributions(
     timemin: float,
     timemax: float,
     dirbin: int | None,
-) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
 
     A run with --frompackets reads the packets files. A run without it reads the emission file and the
@@ -823,9 +850,9 @@ def get_emission_contributions(
     """
     if not args.frompackets:
         assert not args.vpkt_match_emission_exclusion_to_opac
-        lambda_min, lambda_max = atspectra.convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
+        lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
 
-        return atspectra.get_flux_contributions(
+        return get_flux_contributions(
             modelpath,
             filterfunc,
             timestepmin,
@@ -848,8 +875,8 @@ def get_emission_contributions(
     else:
         use_time = "arrival"
 
-    if args.groupby in atspectra.SHELLCOLUMNS:
-        emtypecolumn = atspectra.SHELLCOLUMNS[args.groupby][1 if args.use_thermalemissiontype else 0]
+    if args.groupby in SHELLCOLUMNS:
+        emtypecolumn = SHELLCOLUMNS[args.groupby][1 if args.use_thermalemissiontype else 0]
     elif args.groupby in {"nuc", "nucmass"}:
         emtypecolumn = "pellet_nucindex"
     elif args.use_thermalemissiontype:
@@ -857,7 +884,7 @@ def get_emission_contributions(
     else:
         emtypecolumn = "emissiontype"
 
-    lambda_bin_edges = atspectra.get_lambda_bin_edges(
+    lambda_bin_edges = get_lambda_bin_edges(
         xmin,
         xmax,
         deltax=args.deltax,
@@ -868,7 +895,7 @@ def get_emission_contributions(
         gamma=args.gamma,
     )
 
-    return atspectra.get_flux_contributions_from_packets(
+    return get_flux_contributions_from_packets(
         modelpath,
         timelowdays=timemin,
         timehighdays=timemax,
@@ -894,10 +921,10 @@ def get_emission_contributions(
 
 
 def order_and_color_shells(
-    contributions: list[atspectra.FluxContributionTuple],
+    contributions: list[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
-) -> list[atspectra.FluxContributionTuple]:
+) -> list[FluxContributionTuple]:
     """Return the shells from the lowest edge to the highest one, with the colours of a sequential map.
 
     The order of the ions is the order of the flux. A reader expects the shells in the order of their
@@ -916,12 +943,10 @@ def order_and_color_shells(
             for contribution in sorted(named, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
         }
         args.fixedionlist = [
-            label
-            for label in (*atspectra.get_shell_labels(args.shelledges, args.shellunit), "NOT SET")
-            if label in keptlabels
+            label for label in (*get_shell_labels(args.shelledges, args.shellunit), "NOT SET") if label in keptlabels
         ]
 
-    contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+    contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
         contributions,
         args.maxseriescount,
         arraylambda_angstroms,
@@ -947,7 +972,7 @@ def order_and_color_shells(
 
 
 def collect_emission_and_absorption(
-    contributions: "Sequence[atspectra.FluxContributionTuple]",
+    contributions: "Sequence[FluxContributionTuple]",
     arraylambda_angstroms: "npt.NDArray[np.floating]",
     args: argparse.Namespace,
 ) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
@@ -980,7 +1005,7 @@ def collect_emission_and_absorption(
 
 def plot_contributions_unstacked(
     axis: mplax.Axes,
-    contributions: Sequence[atspectra.FluxContributionTuple],
+    contributions: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,
@@ -1026,7 +1051,7 @@ def plot_contributions_unstacked(
 
 def plot_contributions_stacked(
     axis: mplax.Axes,
-    contributions: Sequence[atspectra.FluxContributionTuple],
+    contributions: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
     scalefactor: float,
@@ -1158,7 +1183,7 @@ def make_emissionabsorption_plot(
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
-    print_heading(modelname)
+    print_heading(get_model_logname(modelpath, modelname))
     clamp_to_timesteps = not args.notimeclamp
 
     # locals, not a write-back onto args, for the reason given in plot_artis_spectrum
@@ -1167,7 +1192,7 @@ def make_emissionabsorption_plot(
     )
 
     if timestepmin == timestepmax == -1:
-        print(f"Can't plot {modelname}...skipping")
+        print(f"Can't plot {get_model_logname(modelpath, modelname)}...skipping")
         return [], [], pl.DataFrame()
 
     check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
@@ -1205,12 +1230,12 @@ def make_emissionabsorption_plot(
             f"the x range {xmin:g} to {xmax:g} holds no bin of the spectrum", "Give a wider range with -xmin and -xmax"
         )
 
-    atspectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+    print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
-    if args.groupby in atspectra.SHELLCOLUMNS:
+    if args.groupby in SHELLCOLUMNS:
         contributions_sorted_reduced = order_and_color_shells(contribution_list, arraylambda_angstroms, args)
     else:
-        contributions_sorted_reduced = atspectra.sort_and_reduce_flux_contribution_list(
+        contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
             contribution_list,
             args.maxseriescount,
             arraylambda_angstroms,
@@ -1501,13 +1526,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-xunit",
         dest="xunit",
         default=None,
-        type=atspectra.parse_xunit_argument,
+        type=parse_xunit_argument,
         help="X (horizontal) axis unit, e.g. angstrom, nm, micron, Hz, keV, MeV",
     )
     # deprecated spellings kept as hidden aliases. -x names the axis variable on plotestimators, but
     # each parser reads its own arguments, and a script holds the -x of this command.
-    parser.add_argument("-xunits", dest="xunit", type=atspectra.parse_xunit_argument, help=argparse.SUPPRESS)
-    parser.add_argument("-x", dest="xunit", type=atspectra.parse_xunit_argument, help=argparse.SUPPRESS)
+    parser.add_argument("-xunits", dest="xunit", type=parse_xunit_argument, help=argparse.SUPPRESS)
+    parser.add_argument("-x", dest="xunit", type=parse_xunit_argument, help=argparse.SUPPRESS)
 
     addarg_axislimits(
         parser,
@@ -1576,7 +1601,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-velocityshells",
-        type=atspectra.parse_velocity_argument,
+        type=parse_velocity_argument,
         nargs="+",
         default=None,
         metavar="velocity",
@@ -1701,20 +1726,16 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
     args.shelledges = None
     args.shellunit = "kmps"
     if args.groupby == "ye":
-        args.shelledges = list(args.yeshells) if args.yeshells is not None else list(atspectra.DEFAULT_YE_SHELLS)
+        args.shelledges = list(args.yeshells) if args.yeshells is not None else list(DEFAULT_YE_SHELLS)
         args.shellunit = "ye"
-    elif args.groupby in atspectra.SHELLCOLUMNS and args.velocityshells is None:
+    elif args.groupby in SHELLCOLUMNS and args.velocityshells is None:
         # the plot draws the model of the first path, thus the shells come from that model
-        getdefault = (
-            atspectra.get_default_losvelocity_shells
-            if args.groupby == "losvelocity"
-            else atspectra.get_default_velocity_shells
-        )
+        getdefault = get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
         args.shelledges, args.shellunit = getdefault(args.specpath[0])
     elif args.velocityshells is not None:
         # argparse gives a parsed pair, and a keyword argument of the API gives a text or a number
         parsedshells = [
-            atspectra.parse_velocity_argument(str(shell)) if not isinstance(shell, tuple) else shell
+            parse_velocity_argument(str(shell)) if not isinstance(shell, tuple) else shell
             for shell in args.velocityshells
         ]
         args.shellunit = "c" if any(unit == "c" for _, unit in parsedshells) else "kmps"
@@ -1731,12 +1752,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstroms"
-    args.xunit = atspectra.convert_xunit_aliases_to_canonical(args.xunit)
+    args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
 
     if args.xmin is None:
-        args.xmin = atspectra.convert_angstroms_to_unit(0.2 if args.gamma else 2500.0, args.xunit)
+        args.xmin = convert_angstroms_to_unit(0.2 if args.gamma else 2500.0, args.xunit)
     if args.xmax is None:
-        args.xmax = atspectra.convert_angstroms_to_unit(0.004 if args.gamma else 19000.0, args.xunit)
+        args.xmax = convert_angstroms_to_unit(0.004 if args.gamma else 19000.0, args.xunit)
 
     args.xmin, args.xmax = sorted([args.xmin, args.xmax])
 
@@ -1860,16 +1881,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby is not None:
         args.showemission = True
 
-    if args.groupby in {"line", "nuc", "nucmass", *atspectra.SHELLCOLUMNS}:
+    if args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS}:
         args.frompackets = True
 
-    if args.gamma and args.groupby in atspectra.SHELLCOLUMNS:
+    if args.gamma and args.groupby in SHELLCOLUMNS:
         # the shells are not tested on gamma packets, thus the command refuses the combination
         exit_with_error(
             f"-groupby {args.groupby} does not apply to a gamma-ray spectrum", "Give -groupby nuc or -groupby nucmass"
         )
 
-    if args.plotvspecpol and args.groupby in atspectra.SHELLCOLUMNS:
+    if args.plotvspecpol and args.groupby in SHELLCOLUMNS:
         exit_with_error(
             f"a virtual packet holds no emission position, thus -groupby {args.groupby} does not apply to -plotvspecpol",
             "Give -plotviewingangle for a direction bin of the real packets",
@@ -1892,11 +1913,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print("Enabling --frompackets, since custom bin width was specified")
 
     if args.makevspecpol:
-        atspectra.make_virtual_spectra_summed_file(args.specpath[0])
+        make_virtual_spectra_summed_file(args.specpath[0])
         return
 
     if args.averagevspecpolfiles:
-        atspectra.make_averaged_vspecfiles(args.specpath)
+        make_averaged_vspecfiles(args.specpath)
         return
 
     if "/" in args.stokesparam:

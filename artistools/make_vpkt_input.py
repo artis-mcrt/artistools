@@ -7,8 +7,9 @@ import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
 
-import artistools as at
 from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
@@ -477,7 +478,7 @@ def apply_args_to_config(config: VpktConfig, args: argparse.Namespace) -> VpktCo
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create or interactively edit a vpkt.txt virtual packet configuration file for an ARTIS simulation."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
@@ -503,7 +504,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print_warning(f"{warning}. ARTIS will abort unless it was built with matching constants.")
 
     outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
-    at.print_saved(outputfile)
+    print_saved(outputfile)
 
 
 if __name__ == "__main__":

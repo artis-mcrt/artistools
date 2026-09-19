@@ -14,7 +14,12 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.commands import get_path
+from artistools.constants import megaparsec_to_cm
+from artistools.misc import read_wsv
 
 
 def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
@@ -22,7 +27,7 @@ def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
     virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
 
-    return Path(at.get_path("codecomparisondata1path"), inputmodel), inputmodel, codename
+    return Path(get_path("codecomparisondata1path"), inputmodel), inputmodel, codename
 
 
 def read_header_int(fileobj: t.TextIO, key: str) -> int:
@@ -152,7 +157,7 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     iontuples = []
                     ion_startnumber = None
                     for ionstr in row[1:]:
-                        atomic_number = at.get_atomic_number(ionstr.strip().rstrip(" 0123456789").title())
+                        atomic_number = get_atomic_number(ionstr.strip().rstrip(" 0123456789").title())
                         ion_number = int(ionstr.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ "))
 
                         # there is unfortunately an inconsistency between codes for
@@ -172,8 +177,8 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     assert len(row) == nstages + 1
                     assert len(iontuples) == nstages
                     for (atomic_number, ion_stage), strionfrac in zip(iontuples, row[1:], strict=False):
-                        elsym = at.get_elsymbol(atomic_number)
-                        ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+                        elsym = get_elsymbol(atomic_number)
+                        ionstr = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
                         try:
                             ionfrac = float(strionfrac)
                         except ValueError:
@@ -203,7 +208,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 
-    dfspectra = at.read_wsv(
+    dfspectra = read_wsv(
         specfilepath,
         has_header=False,
         skip_rows=3,
@@ -225,6 +230,6 @@ def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes
     assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
     label = str(modelpath).lstrip("_") + f" {timedays_found}d"
 
-    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (at.constants.megaparsec_to_cm**2)
+    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
 
     axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)

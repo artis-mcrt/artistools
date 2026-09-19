@@ -12,13 +12,16 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
 from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import km_to_cm
+from artistools.constants import megaparsec_to_cm
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -30,17 +33,29 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import firstexisting
+from artistools.misc import format_frame_path
+from artistools.misc import get_model_logname
+from artistools.misc import get_model_name
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_times
+from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
+from artistools.misc import read_rank_outputfiles
+from artistools.misc import resolve_frameset_paths
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
+from artistools.spectra import get_spectra
 
 
-def read_files(
+def read_radfield(
     modelpath: Path | str, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
 ) -> pl.DataFrame:
     """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
-    return at.read_rank_outputfiles(
+    return read_rank_outputfiles(
         modelpath, "radfield_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
     )
 
@@ -220,7 +235,7 @@ def plot_specout(
     elif specfilename.is_file():
         modelpath = Path(specfilename).parent
 
-    dfspectrum = at.spectra.get_spectra(modelpath=modelpath, timestepmin=timestep)[-1].collect()
+    dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep)[-1].collect()
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
@@ -263,9 +278,9 @@ def plot_celltimestep(
         print(f"No data for timestep {timestep:d} modelgridindex {modelgridindex:d}")
         return False
 
-    modelname = at.get_model_name(modelpath)
-    time_days = at.get_timestep_times(modelpath)[timestep]
-    print(f"Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)")
+    modelname = get_model_name(modelpath)
+    time_days = get_timestep_times(modelpath)[timestep]
+    print(f"Plotting {get_model_logname(modelpath)} timestep {timestep:d} (t={time_days:.3f}d)")
     T_R = radfielddata.filter(pl.col("bin_num") == -1).select("T_R").item()
     print(f"T_R = {T_R}")
 
@@ -302,13 +317,13 @@ def plot_celltimestep(
 
     ymax = args.ymax if args.ymax is not None else max(ymax, ymax3)
     try:
-        specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
+        specfilename = firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
         print("Could not find spec.out")
         args.nospec = True
 
-    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
-    modeldata = at.inputmodel.add_derived_cols_to_modeldata(modeldata, modelmeta=modelmeta)
+    modeldata, modelmeta = get_modeldata(modelpath)
+    modeldata = add_derived_cols_to_modeldata(modeldata, modelmeta=modelmeta)
 
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
@@ -316,7 +331,7 @@ def plot_celltimestep(
             # outer velocity
             v_surface = modelmeta["vmax_cmps"]
             r_surface = time_days * day_to_s * v_surface
-            r_observer = at.constants.megaparsec_to_cm
+            r_observer = megaparsec_to_cm
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(
                 "Scaling emergent spectrum flux at 1 Mpc to specific intensity "
@@ -350,7 +365,7 @@ def plot_celltimestep(
     # field is not negative, thus zero is the default bottom
     axis.set_ylim(bottom=args.ymin if args.ymin is not None else 0.0, top=args.ymax if args.ymax is not None else ymax)
 
-    at.plottools.set_exponent_label(axis)
+    set_exponent_label(axis)
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
@@ -399,7 +414,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radiation field estimators."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpath = args.modelpath
 
@@ -407,38 +422,38 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelgridindexlist: list[int] = []
 
     if args.velocity >= 0.0:
-        mgi = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+        mgi = get_mgi_of_velocity_kms(modelpath, args.velocity)
         assert mgi is not None, f"Could not find a cell with velocity {args.velocity:.3f} km/s"
         modelgridindexlist = [mgi]
     elif args.modelgridindex is None:
         modelgridindexlist = [0]
     else:
-        modelgridindexlist = at.parse_range_list(args.modelgridindex)
+        modelgridindexlist = parse_range_list(args.modelgridindex)
 
-    timesteplast = len(at.get_timestep_times(modelpath)) - 1
+    timesteplast = len(get_timestep_times(modelpath)) - 1
     if args.timedays:
-        timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
+        timesteplist = [get_timestep_of_timedays(modelpath, args.timedays)]
     elif args.timestep:
-        timesteplist = at.parse_range_list(args.timestep, dictvars={"last": timesteplast})
+        timesteplist = parse_range_list(args.timestep, dictvars={"last": timesteplast})
     else:
         print("Using last timestep.")
         timesteplist = [timesteplast]
 
     # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
-    frameset = at.resolve_frameset_paths(
+    frameset = resolve_frameset_paths(
         args.outputfile,
         framecount=len(modelgridindexlist) * len(timesteplist),
         framename="plotradfield_cell{cell:05d}_ts{timestep:03d}.pdf",
         combines=len(modelgridindexlist) * len(timesteplist) > 1,
     )
 
-    # read_files parses a rank file on each call, thus one read of all the cells serves each cell and timestep
-    radfielddata_allcells = read_files(modelpath, modelgridindex=modelgridindexlist)
+    # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
+    radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)
         for timestep in timesteplist:
-            outputfile = at.format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)
+            outputfile = format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)
             if plot_celltimestep(
                 modelpath,
                 radfielddata_cell,

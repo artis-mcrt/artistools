@@ -9,13 +9,31 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_elsymbolslist
+from artistools.atomic import get_ion_tuple
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
 from artistools.constants import EV_to_erg
+from artistools.estimators import read_estimators
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import exit_with_error
+from artistools.misc import get_single_modelgridindex
+from artistools.misc import get_single_timestep
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
+from artistools.misc import import_optional
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -51,7 +69,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
     ax = axesgrid[0][0]
 
     # the header line was written as a "#" comment
-    dfstats = at.read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
+    dfstats = read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
 
     with pl.Config(tbl_cols=-1, tbl_rows=50):
         print(dfstats)
@@ -91,7 +109,7 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
     if x_e > atomic_number:
         msg = (
             f"Electron fraction x_e={x_e} exceeds the atomic number {atomic_number} of"
-            f" {at.get_elsymbol(atomic_number)}, which cannot supply that many free electrons"
+            f" {get_elsymbol(atomic_number)}, which cannot supply that many free electrons"
         )
         raise ValueError(msg)
 
@@ -137,7 +155,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-composition",
         action="store",
         default="artis",
-        choices=["artis", *at.get_elsymbolslist()[1:]],
+        choices=["artis", *get_elsymbolslist()[1:]],
         help="Composition comes from artis or specific an element to use",
     )
 
@@ -167,7 +185,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections",
     )
 
-    at.addarg_output(
+    addarg_output(
         parser,
         kind="file",
         defaultname=defaultoutputfile,
@@ -186,7 +204,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.plotstats:
         # this plot reads a stats file that a former run wrote, thus it calls no solver
@@ -194,46 +212,42 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     # the import stands in front of the work, thus a missing module stops the command at once
-    pynt = at.import_optional("pynonthermal")
+    pynt = import_optional("pynonthermal")
 
     modelpath = Path(args.modelpath)
 
     ionpopdict: dict[tuple[int, int] | int, float]
     if args.composition == "artis":
         if args.timedays:
-            args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+            args.timestep = get_timestep_of_timedays(modelpath, args.timedays)
         else:
-            args.timestep = at.get_single_timestep(args.timestep, modelpath)
+            args.timestep = get_single_timestep(args.timestep, modelpath)
             if args.timestep is None:
-                at.exit_with_error(
-                    "no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last"
-                )
+                exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
 
-        modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
+        modeldata = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
         if args.velocity >= 0.0:
-            args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+            args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
-            args.modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
+            args.modelgridindex = get_single_modelgridindex(args.modelgridindex)
         assert isinstance(args.modelgridindex, int)
-        estimators = at.estimators.read_estimators(
-            modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
-        )
+        estimators = read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
         assert isinstance(args.timestep, int)
         assert isinstance(args.modelgridindex, int)
         estim = estimators[args.timestep, args.modelgridindex]
 
-        if at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
-            at.exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
+        if read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
+            exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
 
         nntot = estim["nntot"]
         x_e = estim["nne"] / nntot
         T_e = estim["Te"]
         print_warning("Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / EV_to_erg
-        ionpopdict = {at.get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
+        ionpopdict = {get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
         velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
-        args.timedays = at.get_timestep_time(modelpath, args.timestep)
+        args.timedays = get_timestep_time(modelpath, args.timestep)
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 
     stepcount = 9 if args.vary else 1
@@ -256,7 +270,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             assert args.composition != "artis"
         if args.composition != "artis":
             compelement = args.composition
-            compelement_atomicnumber = at.get_atomic_number(compelement)
+            compelement_atomicnumber = get_atomic_number(compelement)
             deposition_density_ev = 5.0e3
             nntot = 1.0
             x_e = (args.x_e * 10 ** (0.5 * step)) if args.vary == "x_e" else args.x_e
@@ -272,7 +286,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             adata = None
         else:
             # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
-            adata = at.atomic.get_levels(
+            adata = get_levels(
                 modelpath,
                 get_transitions=True,
                 ionlist=tuple(ions),
@@ -320,7 +334,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                         "frac_heating": sf.get_frac_heating(),
                     }
                     | {
-                        f"frac_ionization_{at.get_ionstring(atomic_number, ion_stage, sep='')}": (
+                        f"frac_ionization_{get_ionstring(atomic_number, ion_stage, sep='')}": (
                             sf.get_frac_ionisation_ion(atomic_number, ion_stage)
                             if ionpopdict[atomic_number, ion_stage] > 0.0
                             else 0.0

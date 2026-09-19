@@ -8,10 +8,22 @@ from pathlib import Path
 
 import polars as pl
 
-import artistools as at
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
+from artistools.inputmodel.energyinputfiles import make_energy_files
+from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import resolve_outputfile
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -61,12 +73,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
-        at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
+        make_downscaled_3d_grid(
             modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize, plot=args.downscaleplot
         )
         return
@@ -75,37 +87,35 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
         for modelpath in args.modelpath:
-            dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+            dfmodel, modelmeta = get_modeldata(modelpath)
             ndim_in = modelmeta["dimensions"]
             if ndim_in <= ndim_out:
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
                 raise ValueError(msg)
 
-            dfelabundances = at.inputmodel.get_initelemabundances(modelpath)
-            dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(
-                modelpath
-            )
+            dfelabundances = get_initelemabundances(modelpath)
+            dfgridcontributions = get_gridparticlecontributions_or_none(modelpath)
 
-            (dfmodel_out, dfelabundances_out, _, modelmeta_out) = at.inputmodel.dimension_reduce_model(
+            (dfmodel_out, dfelabundances_out, _, modelmeta_out) = dimension_reduce_model(
                 dfmodel=dfmodel,
                 outputdimensions=ndim_out,
                 dfelabundances=dfelabundances,
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = at.resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
+            outdir = resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
                 f"Dimension reduced from {ndim_in}-dimensional model",
             ]
             assert dfelabundances_out is not None
-            at.inputmodel.save_initelemabundances(dfelabundances_out, outpath=outdir)
-            at.inputmodel.save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
+            save_initelemabundances(dfelabundances_out, outpath=outdir)
+            save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
 
     if args.makemodelfromgriddata:
         print(args)
-        at.inputmodel.modelfromhydro.makemodelfromgriddata(
+        makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
             outputpath=args.modelpath[0],
             fillcentralhole=args.fillcentralhole,
@@ -113,16 +123,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.makeenergyinputfiles:
-        plmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0])
-        model = (
-            at.inputmodel.add_derived_cols_to_modeldata(plmodel, modelmeta=modelmeta).select("rho", "mass_g").collect()
-        )
+        plmodel, modelmeta = get_modeldata(args.modelpath[0])
+        model = add_derived_cols_to_modeldata(plmodel, modelmeta=modelmeta).select("rho", "mass_g").collect()
         rho = model["rho"].cast(pl.Float64).to_numpy()
         Mtot_grams = float(model["mass_g"].sum())
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
-        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
+        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
 
 
 if __name__ == "__main__":

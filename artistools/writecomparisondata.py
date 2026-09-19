@@ -10,30 +10,46 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_composition_data
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
+from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import megaparsec_to_cm
+from artistools.estimators import read_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
+from artistools.lightcurve import find_lightcurve_file
+from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import firstexisting
+from artistools.misc import get_deposition
+from artistools.misc import get_timestep_times
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import zopen
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    with at.zopen(at.firstexisting("spec.out", folder=modelpath, tryzipped=True)) as specfile:
+    with zopen(firstexisting("spec.out", folder=modelpath, tryzipped=True)) as specfile:
         spec_data = np.loadtxt(specfile)
 
     times = spec_data[0, 1:]
     freqs = spec_data[1:, 0]
-    lambdas = at.constants.c_ang_per_s / freqs
+    lambdas = c_ang_per_s / freqs
 
     fluxes_nu = spec_data[1:, 1:]
 
     # area in cm^2 of a sphere of radius 1 Mpc
-    area = 4.0 * math.pi * at.constants.megaparsec_to_cm**2
+    area = 4.0 * math.pi * megaparsec_to_cm**2
 
     # convert flux to power by multiplying by area
     lambdacolumn = lambdas[:, np.newaxis]
-    lum_lambda = fluxes_nu * at.constants.c_ang_per_s / lambdacolumn / lambdacolumn * area
+    lum_lambda = fluxes_nu * c_ang_per_s / lambdacolumn / lambdacolumn * area
 
     with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -49,8 +65,8 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 
 def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
     """Write the header lines giving the number of times, the number of cells, and the times themselves."""
-    times = at.get_timestep_times(modelpath)
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    times = get_timestep_times(modelpath)
+    _, modelmeta = get_modeldata(modelpath)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
     outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -61,10 +77,9 @@ def get_nonempty_cells(
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
     # write_phys reads logrho, which a 3D model.txt does not contain. The derivation calculates it from rho
-    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    lzmodeldata, modelmeta = get_modeldata(modelpath)
     return (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
         .filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
         .select("modelgridindex", "vel_r_mid", "logrho")
         .collect()
@@ -100,14 +115,14 @@ def write_ionfracts(
     outputpath: Path,
 ) -> None:
     """Write the ion fractions of every element in code comparison workshop format, one file per element."""
-    times = at.get_timestep_times(modelpath)
+    times = get_timestep_times(modelpath)
     modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
-    elementlist = at.get_composition_data(modelpath)
+    elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
     cellrows = modeldata.select("modelgridindex", "vel_r_mid").rows()
     for elementindex in range(nelements):
         atomic_number = elementlist["Z"].item(elementindex)
-        elsymb = at.get_elsymbol(atomic_number)
+        elsymb = get_elsymbol(atomic_number)
         nions = elementlist["nions"].item(elementindex)
         lowermost_ion_stage = elementlist["lowermost_ion_stage"].item(elementindex)
         # the format labels the neutral stage 0 and needs a column for each stage up to the highest one. ARTIS
@@ -115,7 +130,7 @@ def write_ionfracts(
         nstages = lowermost_ion_stage + nions - 1
         nstagesbelowlowermost = lowermost_ion_stage - 1
         ionstrs = [
-            at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+            get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             for ion_stage in range(lowermost_ion_stage, nstages + 1)
         ]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
@@ -154,7 +169,7 @@ def write_phys(
     outputpath: Path,
 ) -> None:
     """Write the physical conditions of every cell in code comparison workshop format."""
-    times = at.get_timestep_times(modelpath)
+    times = get_timestep_times(modelpath)
     modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -183,11 +198,10 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     # light_curve.out has one row per timestep in order, and deposition.out names its timesteps, so join on the
     # light curve's row index. The columns are time_days and luminosity_Lsun, not the time and lum this used to read
     dflightcurve = (
-        at.lightcurve
-        .readfile(at.lightcurve.find_lightcurve_file(modelpath))[-1]
+        scan_lightcurve(find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
-        .join(at.get_deposition(modelpath), on="timestep", how="inner")
+        .join(get_deposition(modelpath), on="timestep", how="inner")
         .filter(pl.col("timestep").is_in(list(selected_timesteps)))
         .sort("timestep")
         .select("timestep", "time_days", "luminosity_Lsun", "total_dep_Lsun")
@@ -205,8 +219,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
         for time_days, luminosity_Lsun, total_dep_Lsun in dflightcurve.drop("timestep").iter_rows():
             f.write(
-                f"{time_days:.2f} {luminosity_Lsun * at.constants.Lsun_to_erg_per_s:.4e}"
-                f" {total_dep_Lsun * at.constants.Lsun_to_erg_per_s:.4e}\n"
+                f"{time_days:.2f} {luminosity_Lsun * Lsun_to_erg_per_s:.4e} {total_dep_Lsun * Lsun_to_erg_per_s:.4e}\n"
             )
 
 
@@ -221,9 +234,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    args.modelpath = at.normalize_path_list(args.modelpath)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps
@@ -238,7 +251,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         model_id = Path(modelpath).name.split("_")[0]
         print(f"{model_id=}")
 
-        estimators = at.estimators.read_estimators(modelpath=modelpath, timestep=tuple(selected_timesteps))
+        estimators = read_estimators(modelpath=modelpath, timestep=tuple(selected_timesteps))
         allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators if ts == selected_timesteps[0]})
 
         try:

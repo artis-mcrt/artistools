@@ -126,7 +126,7 @@ def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
     phixsfile = tmp_path / "phixsdata_v2.txt"
     phixsfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    from artistools.atomic._atomic_core import parse_phixsdata
+    from artistools.atomic.core import parse_phixsdata
 
     phixsdict = parse_phixsdata(phixsfile)
 
@@ -145,7 +145,7 @@ def test_get_levels_photoionisation_level_alignment() -> None:
     the file's level number attached every level the cross-sections of the level above it, and left the highest
     level with none at all. Neither mismatch raises, so compare against the parsed file directly.
     """
-    from artistools.atomic._atomic_core import parse_phixsdata
+    from artistools.atomic.core import parse_phixsdata
 
     phixsdict = parse_phixsdata(modelpath / "phixsdata_v2.txt", ionlist=[(26, 1)])
     dflevels = at.atomic.get_levels(modelpath, ionlist=[(26, 1)], get_photoionisations=True)
@@ -170,14 +170,14 @@ def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> 
     shutil.copy(modelpath_classic_3d / "compositiondata.txt", tmp_path)
     (tmp_path / "bflist.out").write_text(bflistcontents, encoding="utf-8")
 
-    dfbflist = at.get_bflist(tmp_path).collect()
+    dfbflist = at.atomic.get_bflist(tmp_path).collect()
     assert dfbflist.is_empty()
     assert {"bfindex", "lowerlevel", "upperionlevel", "atomic_number", "ion_stage", "ion_str"} <= set(dfbflist.columns)
 
 
 def test_get_bflist_reads_transitions() -> None:
     """The populated case must be unaffected by the empty-file handling."""
-    dfbflist = at.get_bflist(modelpath_classic_3d).collect()
+    dfbflist = at.atomic.get_bflist(modelpath_classic_3d).collect()
 
     assert len(dfbflist) == 10780
     assert dfbflist["atomic_number"].sum() == 289060

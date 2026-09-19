@@ -10,11 +10,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-import artistools as at
+from artistools.atomic import decode_roman_numeral
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_linelist_pldf
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import parse_cli_args
+from artistools.packets.core import filter_packets_dirbin
+from artistools.packets.core import get_packets
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 
@@ -28,7 +37,7 @@ def get_required_packets(
     """
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
 
-    linelist_lazyframe = at.atomic.get_linelist_pldf(modelpath)
+    linelist_lazyframe = get_linelist_pldf(modelpath)
     if srII_triplet:
         linelist_lazyframe = linelist_lazyframe.filter(
             (pl.col("atomic_number") == 38)
@@ -45,7 +54,7 @@ def get_required_packets(
         if ion_stage_list is not None:
             linelist_lazyframe = linelist_lazyframe.filter(pl.col("ion_stage").is_in(ion_stage_list))
     lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
-    nprocs_read, dfpackets = at.packets.get_packets(
+    nprocs_read, dfpackets = get_packets(
         modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets_selected = dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
@@ -80,7 +89,7 @@ def get_reduced_packet_set(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
     if dirbin >= 0:
-        dfpackets_selected, _ = at.packets.filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
+        dfpackets_selected, _ = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
 
     return nprocs_read, dfpackets_selected
 
@@ -106,16 +115,16 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     # Step 1) collect packets IDs and select according to arrival time. None selects every element or ion stage
     Z_list = [Z] if Z else None
-    ion_stage_list = [at.decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
+    ion_stage_list = [decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
 
     nprocs_read, dfpackets = get_reduced_packet_set(
         modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
     )
 
     start_of_filename += f"t_arrive_d_{tdays}_"
-    timeminarray = at.misc.get_timestep_times(modelpath=modelpath, loc="start")
-    timemaxarray = at.misc.get_timestep_times(modelpath=modelpath, loc="end")
-    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    timeminarray = get_timestep_times(modelpath=modelpath, loc="start")
+    timemaxarray = get_timestep_times(modelpath=modelpath, loc="end")
+    timestep = get_timestep_of_timedays(modelpath, tdays)
     t_min = timeminarray[timestep]
     t_max = timemaxarray[timestep]
     Delta_t_secs = (t_max - t_min) * day_to_s
@@ -158,7 +167,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * pl.col(f"{pos_type_str}em_time")
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    inverse_solidangle_fraction = at.get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
+    inverse_solidangle_fraction = get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(
         f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
@@ -231,13 +240,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot last packet interaction properties versus ejecta velocity for selected packets."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if (args.wavelen is None) != (args.binwidth is None):
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
         raise ValueError(message)
 
-    assert args.dirbin == -1 or (args.dirbin % at.get_viewingdirection_phibincount()) == 0, (
+    assert args.dirbin == -1 or (args.dirbin % get_viewingdirection_phibincount()) == 0, (
         "dirbin needs to be -1 (isotropic) or a multiple of 10 (to be improved)"
     )
 
@@ -247,7 +256,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.srIItriplet,
         args.colorlogscale,
         dirbin=args.dirbin,
-        Z=at.get_atomic_number(args.element) if args.element else None,
+        Z=get_atomic_number(args.element) if args.element else None,
         trueem=args.use_thermalemissiontype,
         ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
