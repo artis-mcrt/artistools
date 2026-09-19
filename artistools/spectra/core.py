@@ -18,14 +18,18 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools.constants as const
-import artistools.packets as atpackets
+from artistools import constants
 from artistools.atomic import add_ion_str_column
 from artistools.atomic import get_bflist
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
+from artistools.constants import EV_to_erg
+from artistools.constants import km_to_cm
+from artistools.constants import MEV_to_erg
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
@@ -46,6 +50,14 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.packets import bin_and_sum
+from artistools.packets import filter_packets_dirbin
+from artistools.packets import get_emission_velocity_expr
+from artistools.packets import get_emission_velocity_lineofsight_expr
+from artistools.packets import get_modelgridindex_expr
+from artistools.packets import get_modelgridindex_from_velocity_expr
+from artistools.packets import get_packets
+from artistools.packets import get_virtual_packets
 
 
 class FluxContributionTuple(t.NamedTuple):
@@ -80,7 +92,7 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum = dfspectrum.lazy()
 
     if "nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns((const.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu"))
+        dfspectrum = dfspectrum.with_columns((constants.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu"))
     if "f_nu" not in dfspectrum.collect_schema().names():
         dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
 
@@ -152,9 +164,9 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
         mnubins = 1000
         if gamma:
             min_mev_on_h = 0.05
-            nu_min_r = min_mev_on_h * const.MEV_to_erg / const.h_erg_s
+            nu_min_r = min_mev_on_h * MEV_to_erg / constants.h_erg_s
             max_mev_on_h = 4.0
-            nu_max_r = max_mev_on_h * const.MEV_to_erg / const.h_erg_s
+            nu_max_r = max_mev_on_h * MEV_to_erg / constants.h_erg_s
             print(
                 f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
             )
@@ -181,7 +193,7 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
     nu_bin_edges = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins + 1)])
 
     # np.flip is used to get an ascending wavelength array from an ascending nu array
-    return const.c_ang_per_s / np.flip(nu_bin_edges)
+    return constants.c_ang_per_s / np.flip(nu_bin_edges)
 
 
 def get_lambda_bin_edges(
@@ -274,7 +286,7 @@ XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
     "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
     "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
     "hz": XUnit("frequency", 1.0, "Hz", ()),
-    "erg": XUnit("energy", 1.0 / const.EV_to_erg, "erg", ("ergs",)),
+    "erg": XUnit("energy", 1.0 / EV_to_erg, "erg", ("ergs",)),
     "ev": XUnit("energy", 1.0, "eV", ("electronvolt",)),
     "kev": XUnit("energy", 1.0e3, "keV", ("kiloelectronvolt",)),
     "mev": XUnit("energy", 1.0e6, "MeV", ("megaelectronvolt",)),
@@ -340,9 +352,9 @@ def convert_angstroms_to_unit(
     if unit.kind == "wavelength":
         return value_angstroms / unit.unit_in_base_units
     if unit.kind == "frequency":
-        return const.c_ang_per_s / value_angstroms
+        return constants.c_ang_per_s / value_angstroms
 
-    hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
+    hc_ev_angstroms = constants.h_ev_s * constants.c_ang_per_s  # [eV angstroms]
     return hc_ev_angstroms / value_angstroms / unit.unit_in_base_units
 
 
@@ -362,9 +374,9 @@ def convert_unit_to_angstroms(
     if unit.kind == "wavelength":
         return value * unit.unit_in_base_units
     if unit.kind == "frequency":
-        return const.c_ang_per_s / value
+        return constants.c_ang_per_s / value
 
-    hc_ev_angstroms = const.h_ev_s * const.c_ang_per_s  # [eV angstroms]
+    hc_ev_angstroms = constants.h_ev_s * constants.c_ang_per_s  # [eV angstroms]
     return hc_ev_angstroms / value / unit.unit_in_base_units
 
 
@@ -447,7 +459,7 @@ def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) ->
             "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
         })
         .with_row_index("lambda_binindex")
-        .with_columns(nu=(const.c_ang_per_s / pl.col("lambda_angstroms")))
+        .with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
         .lazy()
     )
 
@@ -480,7 +492,7 @@ def get_escape_surface_gamma(modelpath: Path | str) -> float:
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax_beta = float(modelmeta["vmax_cmps"]) / const.C_cm_per_s
+    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
     return math.sqrt(1 - vmax_beta**2)
 
 
@@ -499,14 +511,14 @@ def filter_packets_by_time(
     if use_time == "escape":
         escapesurfacegamma = get_escape_surface_gamma(modelpath)
         return dfpackets.filter(
-            (pl.col("escape_time") * escapesurfacegamma / const.day_to_s).is_between(timelowdays, timehighdays)
+            (pl.col("escape_time") * escapesurfacegamma / day_to_s).is_between(timelowdays, timehighdays)
         )
 
     col_emit_time = "tdecay" if gamma else "em_time"
-    mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * const.day_to_s).mean()
+    mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * day_to_s).mean()
     return dfpackets.filter(
         pl.col(col_emit_time).is_between(
-            timelowdays * const.day_to_s + mean_correction, timehighdays * const.day_to_s + mean_correction
+            timelowdays * day_to_s + mean_correction, timehighdays * day_to_s + mean_correction
         )
     )
 
@@ -543,15 +555,15 @@ def get_from_packets(
     if lambda_bin_edges is None:
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
     lambda_bin_edges = np.sort(lambda_bin_edges)
-    delta_time_s = (timehighdays - timelowdays) * const.day_to_s
+    delta_time_s = (timehighdays - timelowdays) * day_to_s
 
     if nprocs_read_dfpackets:
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
-        nprocs_read, dfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = atpackets.get_packets(
+        nprocs_read, dfpackets = get_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -559,7 +571,7 @@ def get_from_packets(
         )
 
     dfpackets = dfpackets.with_columns([
-        (const.c_ang_per_s / pl.col(colname)).alias(
+        (constants.c_ang_per_s / pl.col(colname)).alias(
             colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
         )
         for colname in dfpackets.collect_schema().names()
@@ -590,7 +602,7 @@ def get_from_packets(
                 lambda_column,
                 lambda_bin_edges,
                 energy_column,
-                pl.col(f"{energy_column}_sum") / delta_time_s / (const.megaparsec_to_cm**2) / nprocs_read,
+                pl.col(f"{energy_column}_sum") / delta_time_s / (constants.megaparsec_to_cm**2) / nprocs_read,
             )
 
     else:
@@ -604,7 +616,7 @@ def get_from_packets(
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         for dirbin in select_dirbins(alldirbins, directionbins):
-            pldfpackets_dirbin_lazy, inverse_solidangle_fraction = atpackets.filter_packets_dirbin(
+            pldfpackets_dirbin_lazy, inverse_solidangle_fraction = filter_packets_dirbin(
                 dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
             )
 
@@ -612,7 +624,7 @@ def get_from_packets(
                 pl.col(f"{energy_column}_sum")
                 / delta_time_s
                 * inverse_solidangle_fraction
-                / (4 * math.pi * const.megaparsec_to_cm**2)
+                / (4 * math.pi * constants.megaparsec_to_cm**2)
                 / nprocs_read
             )
 
@@ -658,7 +670,7 @@ def bin_packet_flux(
     fluxexpr gives the flux of a bin from the column {energy_column}_sum, which holds the sum of the
     packet energies in that bin.
     """
-    return atpackets.bin_and_sum(
+    return bin_and_sum(
         dfpackets, bincol=lambda_column, bins=lambda_bin_edges.tolist(), sumcols=[energy_column], getcounts=True
     ).select(lambda_binindex=pl.col(f"{lambda_column}_bin"), flux=fluxexpr, packetcount=pl.col("count"))
 
@@ -799,7 +811,7 @@ def get_spectra(
                     / sum(arr_tdelta[timestepmin : timestepmax + 1])
                 ).alias("f_nu"),
             )
-            .with_columns(lambda_angstroms=const.c_ang_per_s / pl.col("nu"))
+            .with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
         )
 
         if fluxfilterfunc:
@@ -999,7 +1011,7 @@ def get_vspecpol_spectrum(
             / sum(arr_tdelta[timestepmin : timestepmax + 1])
         ),
         nu=pl.col("nu"),
-    ).with_columns(lambda_angstroms=const.c_ang_per_s / pl.col("nu"))
+    ).with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -1052,7 +1064,7 @@ def get_flux_contributions(
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu_full = get_nu_grid(modelpath)
-    arraylambda_full = const.c_ang_per_s / arraynu_full
+    arraylambda_full = constants.c_ang_per_s / arraynu_full
     nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
@@ -1274,12 +1286,12 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax_kmps = modelmeta["vmax_cmps"] / const.km_to_cm
+    vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
     if modelmeta["dimensions"] > 1:
         edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
 
-    unit: t.Literal["kmps", "c"] = "c" if modelmeta["vmax_cmps"] / const.C_cm_per_s >= 0.2 else "kmps"
+    unit: t.Literal["kmps", "c"] = "c" if modelmeta["vmax_cmps"] / C_cm_per_s >= 0.2 else "kmps"
     return edges, unit
 
 
@@ -1317,7 +1329,7 @@ def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
         msg = f"'{value}' is not a finite velocity. Give a number in km/s, e.g. 5000, or a fraction of c, e.g. 0.1c"
         raise argparse.ArgumentTypeError(msg)
 
-    return (number * const.C_cm_per_s / const.km_to_cm if unit == "c" else number), unit
+    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
 
 
 def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> list[str]:
@@ -1333,7 +1345,7 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
         values = list(shelledges)
         formats = ["g"]
     else:
-        scale = const.C_cm_per_s / const.km_to_cm if unit == "c" else 1.0
+        scale = C_cm_per_s / km_to_cm if unit == "c" else 1.0
         values = [v / scale for v in shelledges]
         formats = [".3g", "g"]
 
@@ -1366,7 +1378,7 @@ def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["km
     is null, e.g. from an old cache with no thermal column, has no value either. Such a packet takes the
     label NOT SET, as the ion grouping gives it.
     """
-    scale = 1.0 if unit == "ye" else const.km_to_cm
+    scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
     labels = ["below", *get_shell_labels(shelledges, unit), "above"]
     value = pl.col(column)
@@ -1402,12 +1414,12 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
 
     if groupby == "velocity":
         return lzdfpackets.with_columns(**{
-            column: atpackets.get_emission_velocity_expr(position) for column, position in positions
+            column: get_emission_velocity_expr(position) for column, position in positions
         })
 
     if groupby == "losvelocity":
         return lzdfpackets.with_columns(**{
-            column: atpackets.get_emission_velocity_lineofsight_expr(position) for column, position in positions
+            column: get_emission_velocity_lineofsight_expr(position) for column, position in positions
         })
 
     from artistools.inputmodel import get_modeldata
@@ -1424,9 +1436,9 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
             if modelmeta["dimensions"] != 1:
                 msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
                 raise ValueError(msg)
-            indexexpr = atpackets.get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
+            indexexpr = get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
         else:
-            indexexpr = atpackets.get_modelgridindex_expr(position, modelmeta, dfmodel)
+            indexexpr = get_modelgridindex_expr(position, modelmeta, dfmodel)
         lzdfpackets = (
             lzdfpackets
             .with_columns(indexexpr.alias(indexcolumn))
@@ -1520,15 +1532,15 @@ def get_flux_contributions_from_packets(
     energy_column = "e_cmf" if use_time == "escape" else "e_rf"
     cols = {energy_column}
 
-    nu_min = const.c_ang_per_s / lambda_bin_edges[-1]
-    nu_max = const.c_ang_per_s / lambda_bin_edges[0]
+    nu_min = constants.c_ang_per_s / lambda_bin_edges[-1]
+    nu_max = constants.c_ang_per_s / lambda_bin_edges[0]
 
     vpkt_config = None
     opacchoiceindex = None
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
-        nprocs_read, lzdfpackets = atpackets.get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, lzdfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
         lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
 
@@ -1536,7 +1548,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
-        nprocs_read, lzdfpackets = atpackets.get_packets(
+        nprocs_read, lzdfpackets = get_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -1551,7 +1563,7 @@ def get_flux_contributions_from_packets(
 
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
-        lzdfpackets, _ = atpackets.filter_packets_dirbin(
+        lzdfpackets, _ = filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )
 

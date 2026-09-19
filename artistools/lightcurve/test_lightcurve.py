@@ -20,8 +20,8 @@ from pytest_codspeed.plugin import BenchmarkFixture
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
-from artistools.lightcurve import lightcurve
 from artistools.lightcurve import viewingangleanalysis
+from artistools.lightcurve.core import bracket_spectrum_to_band
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -142,7 +142,7 @@ def test_spectrum_filter_range_includes_bracketing_points() -> None:
     """Band integration must retain the spectrum point on each side of the filter range."""
     spectrum = pl.DataFrame({"lambda_angstroms": [1000.0, 2000.0, 3000.0, 4000.0], "f_lambda": [1.0, 2.0, 4.0, 8.0]})
 
-    wavelength, flux = lightcurve.bracket_spectrum_to_band(spectrum, wavefilter_min=2200.0, wavefilter_max=2800.0)
+    wavelength, flux = bracket_spectrum_to_band(spectrum, wavefilter_min=2200.0, wavefilter_max=2800.0)
 
     assert np.allclose(wavelength, np.array([2000.0, 3000.0]))
     assert np.allclose(flux, np.array([2.0, 4.0]))
@@ -868,7 +868,7 @@ def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow
 
     _fig, axis = plt.subplots()
     at.lightcurve.plotlightcurve.plot_bol_reflightcurve(axis, reffile, "mag", color="0.0")
-    at.lightcurve.plotlightcurve.invert_magnitude_yaxis(axis)
+    at.plottools.invert_magnitude_yaxis(axis)
 
     barcall, arrowcall = mockerrorbar.call_args_list
     yerr = barcall[1]["yerr"]
@@ -1260,7 +1260,7 @@ def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -
     )
 
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
-    averaged = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+    averaged = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
     lum_lsun_by_time = dict(zip(averaged["time_days"], averaged["luminosity_Lsun"], strict=True))
     meanofmags_by_time = dict(zip(averaged["time_days"], averaged["mag"], strict=True))
 
@@ -1344,8 +1344,8 @@ def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
     """
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
 
-    averaged = at.lightcurve.readfile(lcpath, average_over_phi=True)[0].collect()
-    stalemean = at.average_direction_bins(at.lightcurve.readfile(lcpath), overangle="phi")[0].collect()
+    averaged = at.lightcurve.scan_lightcurve(lcpath, average_over_phi=True)[0].collect()
+    stalemean = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
 
     with np.errstate(divide="ignore"):
         magofmeanlum = Mbol_sun - 2.5 * np.log10(averaged["luminosity_Lsun"].to_numpy())
@@ -1439,7 +1439,7 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: mock.MagicMock) ->
     })
 
     with mock.patch.object(
-        at.lightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
     ) as mockread:
         at.lightcurve.plot(
             argsraw=[],
@@ -1456,7 +1456,8 @@ def test_band_reflightcurve_is_drawn_once_per_panel(mockplot: mock.MagicMock) ->
     assert {tuple(np.asarray(callargs[0][1])) for callargs in reflines} == {(260.0, 280.0)}
 
 
-@mock.patch.object(at.plottools, "get_next_color", side_effect=at.plottools.get_next_color, autospec=True)
+# no autospec: on Python 3.15 the imported name is a lazy proxy until its first use, and a spec of it is not callable
+@mock.patch.object(at.lightcurve.plotlightcurve, "get_next_color", wraps=at.plottools.get_next_color)
 def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: mock.MagicMock) -> None:
     """A colour taken but not drawn steps every later series along the cycle for nothing."""
     for plotalphadeposition, expected_extra in ((False, 0), (True, 1)):

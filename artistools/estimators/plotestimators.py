@@ -24,16 +24,31 @@ import numpy as np
 import polars as pl
 from polars import selectors as cs
 
-import artistools as at
+from artistools.atomic import decode_roman_numeral
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_composition_data
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_elsymbolset
+from artistools.atomic import get_elsymbolslist
+from artistools.atomic import get_ion_tuple
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
 from artistools.commands import run_subcommand
-
-if t.TYPE_CHECKING:
-    import matplotlib.typing as mplt
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
-from artistools.estimators.estimators import summarise_columns
+from artistools.estimators.core import get_averageexcitation
+from artistools.estimators.core import get_units_string
+from artistools.estimators.core import get_variablelongunits
+from artistools.estimators.core import get_varname_formatted
+from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import scan_estimators
+from artistools.estimators.core import summarise_columns
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
+from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
+from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
@@ -52,18 +67,44 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
+from artistools.misc import flatten_list
+from artistools.misc import folder_is_artis_run
+from artistools.misc import format_frame_path
+from artistools.misc import get_filterfunc
+from artistools.misc import get_model_name
+from artistools.misc import get_time_range
+from artistools.misc import get_timestep_time
+from artistools.misc import get_timestep_times
+from artistools.misc import get_timesteps
 from artistools.misc import item_names_a_folder
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
+from artistools.misc import path_is_codecomparison
 from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc import resolve_frameset_paths
+from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.nltepops import read_nltepops
+from artistools.nltepops import texifyconfiguration
+from artistools.plottools import get_drawn_yvalues
 from artistools.plottools import make_frame_figure
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
+from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
+
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
+
+    from artistools.misc import FrameSet
+
 
 colors_tab10 = [
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
@@ -109,12 +150,12 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is None:
         assert elsymbol is not None
-        atomic_number = at.get_atomic_number(elsymbol)
+        atomic_number = get_atomic_number(elsymbol)
         if atomic_number < 0:
             msg = f"{elsymbol!r} is not an element symbol, so it has no colour"
             raise ValueError(msg)
     else:
-        elsymbol = at.get_elsymbol(atomic_number)
+        elsymbol = get_elsymbol(atomic_number)
 
     if elsymbol in elementcolors:
         return elementcolors[elsymbol]
@@ -142,7 +183,7 @@ def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
 
 def get_ylabel(variable: str) -> str:
     """Return the y-axis label for an estimator variable, preferring its long units over the short ones."""
-    return at.estimators.get_variablelongunits(variable) or at.estimators.get_units_string(variable)
+    return get_variablelongunits(variable) or get_units_string(variable)
 
 
 def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
@@ -205,7 +246,7 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
         .drop_nans()
     )
 
-    filterfunc = at.get_filterfunc(args)
+    filterfunc = get_filterfunc(args)
     if filterfunc is not None:
         dflinepoints = dflinepoints.with_columns(
             pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
@@ -330,7 +371,7 @@ def plot_init_abundances(
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
         elsymbol = splitvariablename[0].strip(string.digits)
-        atomic_number = at.get_atomic_number(elsymbol)
+        atomic_number = get_atomic_number(elsymbol)
 
         linestyle = "-"
         if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
@@ -376,10 +417,10 @@ def plot_average_ionisation(
     maxioncharge = 0
     for paramvalue in params:
         print(f"  plotting averageionisation {paramvalue}")
-        atomic_number = at.get_atomic_number(paramvalue)
+        atomic_number = get_atomic_number(paramvalue)
 
         color = get_elemcolor(atomic_number=atomic_number)
-        elsymb = at.get_elsymbol(atomic_number)
+        elsymb = get_elsymbol(atomic_number)
         if f"nnelement_{elsymb}" not in colnames:
             msg = f"ERROR: No element data found for {paramvalue}"
             raise ValueError(msg)
@@ -389,7 +430,7 @@ def plot_average_ionisation(
             msg = f"ERROR: No ion data found for {paramvalue}"
             raise ValueError(msg)
 
-        ioncharges = [at.decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+        ioncharges = [decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
         maxioncharge = max(maxioncharge, *ioncharges)
         expr_charge_per_nuc = pl.sum_horizontal([
             ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
@@ -417,25 +458,25 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every ion
-    dfnltepops_allions = at.nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every ion
+    dfnltepops_allions = read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:
         print(f"  plotting averageexcitation {paramvalue}")
-        iontuple = at.get_ion_tuple(paramvalue)
+        iontuple = get_ion_tuple(paramvalue)
         if isinstance(iontuple, int):
             msg = f"averageexcitation needs an ion such as 'Fe II', but got {paramvalue!r}"
             raise TypeError(msg)
         atomic_number, ion_stage = iontuple
 
-        dfavgexc = at.estimators.get_averageexcitation(
+        dfavgexc = get_averageexcitation(
             modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions.lazy()
         )
 
         # weight the average by the ion population where it is available, as plot_average_ionisation
         # weights by the element population
-        nnioncol = f"nnion_{at.get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
+        nnioncol = f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
 
         dfplotdata = (
@@ -474,20 +515,19 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    at.plottools.set_exponent_label(ax)
+    set_exponent_label(ax)
 
-    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    lzmodel, modelmeta = get_modeldata(modelpath)
     # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
     modeldata = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
         .collect()
     )
 
-    adata = at.atomic.get_levels(modelpath)
+    adata = get_levels(modelpath)
 
-    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
+    arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
     # this series draws one point for each cell, thus the horizontal axis must give one value for
     # each cell. A time axis gives one value for each timestep instead
@@ -500,14 +540,14 @@ def plot_levelpop(
         )
     xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
-    # read_files has no cache, thus one read of the NLTE output of every rank serves every param
-    dfnltepops_allions = at.nltepops.read_files(modelpath)
+    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every param
+    dfnltepops_allions = read_nltepops(modelpath)
 
     plans = []
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
-        atomic_number = at.get_atomic_number(paramsplit[0])
-        ion_stage = at.decode_roman_numeral(paramsplit[1])
+        atomic_number = get_atomic_number(paramsplit[0])
+        ion_stage = decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
 
         ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(
@@ -515,8 +555,8 @@ def plot_levelpop(
         )["levels"]
         levelname = ionlevels["levelname"].item(levelindex)
         label = (
-            f"{at.get_ionstring(atomic_number, ion_stage, style='chargelatex')} level {levelindex}:"
-            f" {at.nltepops.texifyconfiguration(levelname)}"
+            f"{get_ionstring(atomic_number, ion_stage, style='chargelatex')} level {levelindex}:"
+            f" {texifyconfiguration(levelname)}"
         )
 
         print(f"plot_levelpop {label}")
@@ -633,15 +673,15 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     Ni_stable, because the column name of the estimators holds that name. Every other name goes to
     get_ion_tuple.
     """
-    elsymbols = at.get_elsymbolset()
+    elsymbols = get_elsymbolset()
     if ionstr not in elsymbols and not ionstr.isdigit():
         stem = ionstr.rstrip("-0123456789")
         if stem in elsymbols:
-            return (at.get_atomic_number(stem), ionstr)
+            return (get_atomic_number(stem), ionstr)
 
         elsymbol, _, suffix = ionstr.partition("_")
-        if suffix and elsymbol in elsymbols and at.decode_roman_numeral(suffix) < 0:
-            return (at.get_atomic_number(elsymbol), ionstr)
+        if suffix and elsymbol in elsymbols and decode_roman_numeral(suffix) < 0:
+            return (get_atomic_number(elsymbol), ionstr)
 
     # get_ion_tuple strips an X_, nnelement_, or nnion_ prefix. Such a prefix names a column and not
     # an ion, thus a name that holds one goes to the fallback below and the caller then rejects it
@@ -650,12 +690,12 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
             return get_element_or_ion_tuple(ionstr)
 
     # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
-    return (at.get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
+    return (get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
 
 
 def get_element_or_ion_tuple(ionstr: str) -> tuple[int, str | int]:
     """Return the atomic number and the ion stage of a name that get_ion_tuple reads, or "ALL" for an element."""
-    iontuple = at.get_ion_tuple(ionstr)
+    iontuple = get_ion_tuple(ionstr)
     return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
 
 
@@ -672,7 +712,7 @@ def is_valid_ion(ionstr: str) -> bool:
     if isinstance(param, int):
         return param >= 1
 
-    elsymbols = at.get_elsymbolset()
+    elsymbols = get_elsymbolset()
 
     # get_column_name reads a suffix that joins the symbol, e.g. Fe_otherstable gives
     # nniso_Fe_otherstable, thus the first part of the name decides
@@ -708,8 +748,8 @@ def default_plotitem_has_data(
             return True
 
         atomic_number = get_iontuple(plotitems)[0]
-        if 1 <= atomic_number < len(at.get_elsymbolslist()):
-            return f"nnelement_{at.get_elsymbol(atomic_number)}" in estimatorcolumns
+        if 1 <= atomic_number < len(get_elsymbolslist()):
+            return f"nnelement_{get_elsymbol(atomic_number)}" in estimatorcolumns
         return True
 
     if isinstance(plotitems, (list, tuple)):
@@ -720,7 +760,7 @@ def default_plotitem_has_data(
 
         # averageexcitation reads the NLTE population files, which a model need not have written
         if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
-            if at.firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
+            if firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
                 return False
             return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems[1])
 
@@ -786,12 +826,12 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
 
 def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
     """Return the estimator column name for one ion, element, or isotope, along with its plot label."""
-    ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+    ionstr = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     if seriestype == "populations":
         if ion_stage == "ALL":
-            elsymbol = at.get_elsymbol(atomic_number)
+            elsymbol = get_elsymbol(atomic_number)
             return f"nnelement_{elsymbol}", ionstr
-        if isinstance(ion_stage, str) and ion_stage.startswith(at.get_elsymbol(atomic_number)):
+        if isinstance(ion_stage, str) and ion_stage.startswith(get_elsymbol(atomic_number)):
             # not really an ion_stage but an isotope name
             return f"nniso_{ion_stage}", ionstr
         return f"nnion_{ionstr}", ionstr
@@ -820,7 +860,7 @@ def plot_multi_ion_series(
     missingions: set[tuple[int, str | int]] = set()
     try:
         if not args.classicartis:
-            compositiondata = at.get_composition_data(modelpath)
+            compositiondata = get_composition_data(modelpath)
             for atomic_number, ion_stage in iontuplelist:
                 if (
                     not hasattr(ion_stage, "lower")
@@ -837,7 +877,7 @@ def plot_multi_ion_series(
         print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
         estimatorcolumns = estimators.collect_schema().names()
         for atomic_number, ion_stage in iontuplelist:
-            ionstr = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+            ionstr = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             if f"nnion_{ionstr}" not in estimatorcolumns:
                 missingions.add((atomic_number, ion_stage))
 
@@ -866,7 +906,7 @@ def plot_multi_ion_series(
         if seriestype != "populations" or poptype == "absolute":
             expr_normfactor = pl.lit(1)
         elif poptype == "elpop":
-            elsymbol = at.get_elsymbol(atomic_number)
+            elsymbol = get_elsymbol(atomic_number)
             expr_normfactor = pl.col(f"nnelement_{elsymbol}")
         elif poptype == "totalpop":
             expr_normfactor = pl.col("nntot")
@@ -905,7 +945,7 @@ def plot_multi_ion_series(
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
-            else at.get_ionstring(atomic_number, ion_stage, style="chargelatex")
+            else get_ionstring(atomic_number, ion_stage, style="chargelatex")
         )
 
         color = get_elemcolor(atomic_number=atomic_number)
@@ -948,7 +988,7 @@ def plot_multi_ion_series(
             raise ValueError(msg)
         ax.set_ylabel(ylabel)
     else:
-        ax.set_ylabel(at.estimators.get_varname_formatted(seriestype))
+        ax.set_ylabel(get_varname_formatted(seriestype))
 
     def make_space_for_legend() -> None:
         """Clip the bottom of a log axis to ten decades below the top, and lift the top for the legend."""
@@ -986,8 +1026,8 @@ def plot_series(
 
     variablename = colexpr.meta.output_name()
 
-    serieslabel = at.estimators.get_varname_formatted(variablename)
-    units_string = at.estimators.get_units_string(variablename)
+    serieslabel = get_varname_formatted(variablename)
+    units_string = get_units_string(variablename)
 
     if showlegend:
         linelabel = serieslabel
@@ -1144,7 +1184,7 @@ def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
     The vertical range of the axes carries a margin above and below the data, thus a test against that
     range accepts a limit that leaves every point out of view.
     """
-    drawn = at.plottools.get_drawn_yvalues(ax)
+    drawn = get_drawn_yvalues(ax)
     finite = drawn[np.isfinite(drawn)]
 
     return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
@@ -1333,7 +1373,7 @@ def make_figure(
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
-    frameset: "at.FrameSet | None" = None,
+    frameset: "FrameSet | None" = None,
     **plotkwargs: t.Any,
 ) -> str:
     """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
@@ -1341,7 +1381,7 @@ def make_figure(
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
     and --open leave it alone. The caller opens the file that holds every frame.
     """
-    modelname = at.get_model_name(modelpath)
+    modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
     fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True)
@@ -1350,9 +1390,7 @@ def make_figure(
     assert isinstance(axes, np.ndarray)
 
     if not args.hidexlabel:
-        axes[-1].set_xlabel(
-            f"{at.estimators.get_varname_formatted(xvariable)}{at.estimators.get_units_string(xvariable)}"
-        )
+        axes[-1].set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
@@ -1387,15 +1425,15 @@ def make_figure(
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         # a plot of one cell against time is no frame of a set, thus it names itself
-        outpath = at.resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
-        outfilename = at.format_frame_path(outpath, cell=mgilist[0], format=args.format)
+        outpath = resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
+        outfilename = format_frame_path(outpath, cell=mgilist[0], format=args.format)
 
     else:
         if args.multiplot:
             strtimestep = f"ts{timestepslist[0]:03d}"
-            strtimedays = f"{at.get_timestep_time(modelpath, timestepslist[0]):.2f}d"
+            strtimedays = f"{get_timestep_time(modelpath, timestepslist[0]):.2f}d"
         else:
-            timesteps_flat = at.flatten_list(timestepslist)
+            timesteps_flat = flatten_list(timestepslist)
             timestepmin = min(timesteps_flat)
             timestepmax = max(timesteps_flat)
 
@@ -1403,8 +1441,7 @@ def make_figure(
                 f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
             )
             timelow_days, timehigh_days = (
-                at
-                .get_timesteps(modelpath)
+                get_timesteps(modelpath)
                 .select(
                     pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
                     pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
@@ -1420,11 +1457,9 @@ def make_figure(
         assert isinstance(timestepslist, list)
         # the caller of a set of frames gives the frameset, thus every frame lands beside its product
         outpath = (
-            frameset.frametemplate
-            if frameset is not None
-            else at.resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
+            frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
         )
-        outfilename = at.format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
+        outfilename = format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
 
     set_plot_title(axes[0], figure_title, args)
 
@@ -1448,8 +1483,8 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     """
     from argcomplete.completers import DirectoriesCompleter
 
-    from artistools.estimators.estimators import PREFIX_GROUPS
-    from artistools.estimators.estimators import VARIABLES
+    from artistools.estimators.core import PREFIX_GROUPS
+    from artistools.estimators.core import VARIABLES
 
     names = [
         *(key for key, info in VARIABLES.items() if not info.group),
@@ -1482,7 +1517,7 @@ def print_modelpath(modelpath: Path | str) -> None:
     The name of a model says nothing about the folder that holds it, and a user runs a command over
     many folders. The full path answers that, because "." says nothing on a run inside the model.
     """
-    folder = Path(modelpath) if at.path_is_codecomparison(modelpath) else Path(modelpath).resolve()
+    folder = Path(modelpath) if path_is_codecomparison(modelpath) else Path(modelpath).resolve()
     print_detail(f"modelpath: {folder}")
 
 
@@ -1501,7 +1536,7 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
 
     # the heading and the folder are progress, thus --quiet leaves the listing alone
     print(
-        f"Estimator variables of '{at.get_model_name(args.modelpath)}'"
+        f"Estimator variables of '{get_model_name(args.modelpath)}'"
         + (f" that hold {' or '.join(searchterms)}" if searchterms else "")
     )
     print_modelpath(args.modelpath)
@@ -1674,7 +1709,7 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
     notimegiven = all(value is None for value in timeargs)
     if notimegiven and (args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
-        args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
+        args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
         if args.x is None:
             # a gif holds one snapshot for each timestep, thus it plots against a spatial variable
             args.x = "velocity" if getattr(args, "makegif", False) else "time"
@@ -1683,7 +1718,7 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
         args.x = "velocity"
         print(f"Setting x variable to {args.x}")
 
-    timestepmin, timestepmax, args.timemin, args.timemax = at.get_time_range(
+    timestepmin, timestepmax, args.timemin, args.timemax = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
@@ -1701,22 +1736,19 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
-    modelpath = at.normalize_path_list(args.modelpath)[0]
+    modelpath = normalize_path_list(args.modelpath)[0]
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = (
-            at.inputmodel
-            .get_modeldata(modelpath)[0]
-            .select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min")
-            .collect()
+            get_modeldata(modelpath)[0].select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
         )
-        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(dfmodel, args)
+        dfselectedcells = get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around {args.axis} axis")
-        lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+        lzmodel, modelmeta = get_modeldata(modelpath)
         # the cone selection reads the mid-point positions, which are derived columns
-        lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        dfselectedcells = at.inputmodel.slice1dfromconein3dmodel.make_cone(args, lzmodel, logprint=print)
+        lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        dfselectedcells = make_cone(args, lzmodel, logprint=print)
     else:
         msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
         raise ValueError(msg)
@@ -1729,8 +1761,7 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
     cells, timesteps = (
-        at.estimators
-        .scan_estimators(modelpath=modelpath, classicartis=classicartis)
+        scan_estimators(modelpath=modelpath, classicartis=classicartis)
         .select(pl.col("modelgridindex").unique().sort().implode(), pl.col("timestep").unique().sort().implode())
         .collect()
         .row(0)
@@ -1846,7 +1877,7 @@ def write_snapshot_figures(
 
         # a gif or a merged pdf holds every frame, thus one product comes out of many figures
         firstts, lastts = timesteps_included[0], timesteps_included[-1]
-        frameset = at.resolve_frameset_paths(
+        frameset = resolve_frameset_paths(
             args.outputfile,
             framecount=len(frames),
             framename=SNAPSHOTFRAMENAME,
@@ -1899,7 +1930,7 @@ def require_artis_folder(modelpath: Path) -> None:
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
     """
-    if at.path_is_codecomparison(modelpath) or at.folder_is_artis_run(modelpath):
+    if path_is_codecomparison(modelpath) or folder_is_artis_run(modelpath):
         return
 
     # a user often runs the command one level above the runs, thus name the folders that are near
@@ -1920,20 +1951,20 @@ def require_artis_folder(modelpath: Path) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS estimators."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath)
     # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
     if args.modelgridindex is not None:
-        args.modelgridindex = at.parse_range_list(args.modelgridindex)
+        args.modelgridindex = parse_range_list(args.modelgridindex)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 
     if not wantslisting:
         print(
-            f"Plotting estimators for '{at.get_model_name(modelpath)}' timesteps {timestepmin} to "
+            f"Plotting estimators for '{get_model_name(modelpath)}' timesteps {timestepmin} to "
             f"{timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)"
         )
         print_modelpath(modelpath)
@@ -1942,16 +1973,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         select_cells_along_axis(args)
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))
-    estimators = at.estimators.scan_estimators(
+    estimators = scan_estimators(
         modelpath=modelpath,
         modelgridindex=args.modelgridindex,
         timestep=tuple(timesteps_included),
         classicartis=args.classicartis,
         verbose=args.verbose,
     )
-    estimators, modelmeta = at.estimators.join_cell_modeldata(
-        estimators=estimators, modelpath=modelpath, verbose=args.verbose
-    )
+    estimators, modelmeta = join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=args.verbose)
 
     # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise

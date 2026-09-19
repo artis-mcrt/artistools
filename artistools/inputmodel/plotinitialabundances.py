@@ -10,9 +10,17 @@ from pathlib import Path
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_elsymbols_df
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import get_model_name
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -85,12 +93,12 @@ def get_nuclide_massfractions(
     thetamax: float | None = None,
 ) -> pl.DataFrame:
     """Return the mass-weighted mass fraction and number abundance of each nuclide in the selected cells."""
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath=modelpath)
+    dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
     if modelmeta["dimensions"] == 1 and (thetamin is not None or thetamax is not None):
         msg = f"A polar angle range needs a 2D or 3D model, but {modelpath} is 1D"
         raise ValueError(msg)
 
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
     # A weight of zero in place of a row filter prevents a copy of every nuclide column. One collect gives
     # the mass-weighted sums, the total mass, and the cell count in one scan of the model.
@@ -118,7 +126,7 @@ def get_nuclide_massfractions(
         # split X_Ni56 into its element symbol and mass number, then a join with the element table gives Z
         .with_columns(pl.col("nuclide").str.extract_groups(r"^X_(?<elsymbol>[A-Z][a-z]?)(?<A>\d+)$").struct.unnest())
         .with_columns(pl.col("A").cast(pl.Int32))
-        .join(at.get_elsymbols_df().collect(), on="elsymbol", how="left", maintain_order="left")
+        .join(get_elsymbols_df().collect(), on="elsymbol", how="left", maintain_order="left")
         .rename({"atomic_number": "Z"})
         .with_columns(abundance=pl.col("massfraction") / pl.col("A"))
     )
@@ -163,7 +171,7 @@ def make_plot(args: argparse.Namespace) -> None:
             .sort("xvalue")
         )
 
-        ax.plot(df["xvalue"], df["yvalue"], label=at.get_model_name(model_path))
+        ax.plot(df["xvalue"], df["yvalue"], label=get_model_name(model_path))
 
     ax.set_xlabel("Mass number" if args.xaxis == "massnumber" else "Atomic number")
     ax.set_ylabel("Mass fraction" if args.yaxis == "massfraction" else "Number abundance")
@@ -184,16 +192,16 @@ def make_plot(args: argparse.Namespace) -> None:
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     # the default file name records the selection, thus a second run with a range keeps the earlier figure
     namesuffix = "".join(f"_{label.replace('=', '')}" for label in selectionlabels)
-    outpath = at.resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}{namesuffix}.pdf")
+    outpath = resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}{namesuffix}.pdf")
     save_figure(fig, outpath, args=args, dpi=300)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_output(parser, kind="file", default=Path())
+    addarg_output(parser, kind="file", default=Path())
 
     addarg_figscale(parser)
-    at.addarg_modelpath(
+    addarg_modelpath(
         parser,
         positional=True,
         multiplepaths=True,
@@ -226,12 +234,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-thetamax", type=float, default=None, help="Maximum polar angle of a cell from the z axis [degrees]"
     )
 
-    at.addarg_show(parser)
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot initial abundances or mass fractions from one or more ARTIS models."""
-    args = at.parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     make_plot(args)
 

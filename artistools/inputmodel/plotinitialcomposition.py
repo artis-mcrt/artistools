@@ -16,9 +16,16 @@ import polars.selectors as cs
 from matplotlib import gridspec
 from matplotlib.image import AxesImage
 
-import artistools as at
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import import_optional
+from artistools.misc import parse_cli_args
+from artistools.misc import resolve_outputfile
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -142,12 +149,11 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     assert modelmeta["dimensions"] > 1
     # the plot reads the cell edges, which are derived columns in 2D. The other derived columns stay out of memory
     dfmodel = (
-        at
-        .add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
         .select(
             cs.by_name(lzdfmodel.collect_schema().names()) | (cs.starts_with("pos_") & cs.ends_with("_min", "_max"))
         )
@@ -205,14 +211,14 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
-    outfilename = at.resolve_outputfile(args.outputfile, defaultfilename)
+    outfilename = resolve_outputfile(args.outputfile, defaultfilename)
 
     save_figure(fig, outfilename, args=args, format="pdf")
 
 
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
-    pv = at.import_optional("pyvista")
+    pv = import_optional("pyvista")
 
     # set white background
     pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
@@ -228,7 +234,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         coloursurfaceby = f"X_{args.plotvars}"
         get_elemabundances = True
 
-    plmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
     vmax = modelmeta["vmax_cmps"]
     # the model file can hold no Ye column, and then the Ye.txt file below gives it
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
@@ -296,9 +302,9 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, default=Path())
 
-    at.addarg_output(parser, kind="file", helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
     parser.add_argument(
         "plotvars",
@@ -327,12 +333,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
         help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
-    at.addarg_show(parser)
+    addarg_show(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS input model composition."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.axis[0] in {"+", "-"}:
         args.positive_axis = args.axis[0] == "+"

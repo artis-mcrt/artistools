@@ -58,7 +58,7 @@ def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
         membersize = tarfilehandle.getmember(memberfilename).size
 
     readsize = partial(trajectory_member_size, traj_root, memberfilename)
-    # at.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
+    # at.misc.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
     # the filesystem. Spawn for the same reason parallel_map does: forking with polars/rayon threads live is unsafe.
     with ProcessPoolExecutor(max_workers=nworkers, mp_context=multiprocessing.get_context("spawn")) as executor:
         # start the workers up front so that each trial races on the extraction rather than on process startup
@@ -147,7 +147,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
     )
 
@@ -157,7 +157,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
 
 def test_get_cell_angle() -> None:
     lzmodeldata, _ = get_derived_modeldata(modelpath_3d)
-    modeldata = at.inputmodel.inputmodel_misc.get_cell_angle(lzmodeldata).collect()
+    modeldata = at.inputmodel.core.get_cell_angle(lzmodeldata).collect()
     assert "cos_bin" in modeldata.columns
     assert "phi_bin" in modeldata.columns
 
@@ -1638,7 +1638,7 @@ def test_save_load_3d_model() -> None:
     )
 
     dfelements = (
-        at
+        at.atomic
         .get_elsymbols_df()
         .filter(
             pl.col("atomic_number").is_between(1, 50) | (pl.col("atomic_number") == 113)
@@ -1784,7 +1784,7 @@ def test_pos_r_min_straddling_cells() -> None:
 def test_min_abs_coordinate() -> None:
     dfpos = pl.DataFrame({"pos_x_min": [-3.0, 1.0, -5.0, 0.0], "pos_x_max": [-1.0, 4.0, 2.0, 3.0]})
 
-    result = dfpos.select(at.inputmodel.inputmodel_misc.min_abs_coordinate("x")).to_series().to_list()
+    result = dfpos.select(at.inputmodel.core.min_abs_coordinate("x")).to_series().to_list()
 
     # entirely negative -> 1, entirely positive -> 1, straddling -> 0, touching the plane -> 0
     assert result == pytest.approx([1.0, 1.0, 0.0, 0.0])
@@ -2303,7 +2303,7 @@ def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     The reader deleted an unreadable file with a bare unlink, outside the identity rule of
     write_parquet_atomic. That unlink can remove the fresh cache that a rival process installed.
     """
-    from artistools.inputmodel.inputmodel_misc import read_parquet_cache
+    from artistools.inputmodel.core import read_parquet_cache
 
     parquetfilepath = tmp_path / "model.txt.parquet.tmp"
     parquetfilepath.write_bytes(b"not parquet")
@@ -2379,11 +2379,11 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
 
     # a cache whose stamps are current, thus only the malformed json can reject it
     parquetfile = tmp_path / "model.txt.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         dfmodel_expected.collect(),
         parquetfile,
         metadata={
-            "cacheversion": str(at.inputmodel.inputmodel_misc.CACHEVERSION),
+            "cacheversion": str(at.inputmodel.core.CACHEVERSION),
             "textsource_mtime": str(modelfile.stat().st_mtime),
             "modelmeta_json": "{this is not json",
         },
@@ -2487,7 +2487,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
 def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
     """Give only the file columns. A change to a file column then keeps each derived column current."""
-    lzdfmodel_file, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, _ = at.inputmodel.get_modeldata(sourcemodelpath)
     assert lzdfmodel.collect_schema().names() == [*lzdfmodel_file.collect_schema().names(), "modelgridindex"]
 
@@ -2559,7 +2559,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
 
     The dataframe also holds rho and logrho, and pos_ and vel_ columns of other dimensions.
     """
-    lzdfmodel_file, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, modelmeta = get_derived_modeldata(sourcemodelpath)
     lzdfmodel_allderived = lzdfmodel.with_columns(
         pl.lit(1.0).alias(col) for col in ("pos_rcyl_mid", "pos_x_mid", "vel_x_mid_on_c", "kinetic_en_erg_x")
@@ -2571,7 +2571,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
         outpath = tmp_path / label
         outpath.mkdir()
         at.inputmodel.save_modeldata(dfmodel.collect(), outpath=outpath, modelmeta=modelmeta.copy())
-        dfmodel_written[label] = at.inputmodel.inputmodel_misc.read_modelfile_text(outpath / "model.txt")[0].collect()
+        dfmodel_written[label] = at.inputmodel.core.read_modelfile_text(outpath / "model.txt")[0].collect()
 
     pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
@@ -2603,15 +2603,15 @@ def test_save_modeldata_writes_the_extra_columns(
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
     )
 
-    lzdfmodel_written, _ = at.inputmodel.inputmodel_misc.read_modelfile_text(tmp_path / "model.txt")
-    standardcols = at.inputmodel.inputmodel_misc.get_standard_columns(1)
+    lzdfmodel_written, _ = at.inputmodel.core.read_modelfile_text(tmp_path / "model.txt")
+    standardcols = at.inputmodel.core.get_standard_columns(1)
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
 
 @pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
 def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, outputdimensions: int) -> None:
     """A model can give rho in place of logrho, or logrho in place of rho, and the reduction makes the other one."""
-    lzdfmodel, modelmeta = at.inputmodel.inputmodel_misc.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel, modelmeta = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
     dfmodel = lzdfmodel.collect()
     densitycol, otherdensitycol = ("rho", "logrho") if modelmeta["dimensions"] == 3 else ("logrho", "rho")
     dfmodel_otherdensity = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(

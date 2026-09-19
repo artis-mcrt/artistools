@@ -12,10 +12,15 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
 from artistools.constants import day_to_s
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
+from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
@@ -185,14 +190,10 @@ def energy_from_rprocess_calculation(
 
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
     """Plot the analytic nuclear heating power of the whole model against time."""
-    times_and_rate, _ = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    lzmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    times_and_rate, _ = rprocess_const_and_powerlaw()
+    lzmodel, modelmeta = get_modeldata(modelpath)
     Mtot_grams = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .select(pl.col("mass_g").sum())
-        .collect()
-        .item()
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(pl.col("mass_g").sum()).collect().item()
     )
     axis.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
@@ -201,7 +202,7 @@ def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
     """Return the total energy [erg] and the per-cell energies read from energydistribution.txt."""
-    energydistribution_data = at.read_wsv(
+    energydistribution_data = read_wsv(
         Path(modelpath) / "energydistribution.txt", has_header=False, skip_rows=1, new_columns=["cellid", "cell_energy"]
     )
     etot = float(energydistribution_data["cell_energy"].sum())
@@ -210,7 +211,7 @@ def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
 
 def get_energy_rate_fromfile(modelpath: str | Path) -> pl.DataFrame:
     """Return the cumulative energy release fraction against time read from energyrate.txt."""
-    return at.read_wsv(Path(modelpath) / "energyrate.txt", has_header=False, skip_rows=1, new_columns=["times", "rate"])
+    return read_wsv(Path(modelpath) / "energyrate.txt", has_header=False, skip_rows=1, new_columns=["times", "rate"])
 
 
 def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
@@ -219,7 +220,7 @@ def read_trajectory_thermo(trajthermofile: Path | str) -> pl.DataFrame:
     Times below one second are dropped, matching get_trajectory_qdotintegral: Qdot is negative there
     and integrating over it gives a negative total energy.
     """
-    dfthermo = at.read_wsv(trajthermofile).select("time/s", "Qdot")
+    dfthermo = read_wsv(trajthermofile).select("time/s", "Qdot")
 
     return dfthermo.filter(pl.col("time/s") >= 1.0)
 
@@ -235,8 +236,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),
     )
-    at.addarg_modelpath(parser, default=Path())
-    at.addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
+    addarg_modelpath(parser, default=Path())
+    addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
 
     addarg_figscale(parser)
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
@@ -244,7 +245,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot and inspect the ARTIS energy input files."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     require_action(args)
 

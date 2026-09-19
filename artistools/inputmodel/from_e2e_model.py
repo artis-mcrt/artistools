@@ -13,10 +13,21 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import remap_gridcontributions
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 
 t_model_init_s = 0.1 * day_to_s  # snapshot time is fixed by the npz files
@@ -558,7 +569,7 @@ def map_to_artis(
         else:
             flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
         if np.any(flat_isoabund):
-            elem_str = f"X_{at.get_elsymbol(isot_tuple[1])}"
+            elem_str = f"X_{get_elsymbol(isot_tuple[1])}"
             isotope_str = f"{elem_str}{isot_tuple[0] + isot_tuple[1]}"
             dictabunds[isotope_str] = flat_isoabund
             dictelabunds[elem_str] = (
@@ -596,16 +607,15 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        lzdyn_model, dyn_modelmeta_in = at.inputmodel.get_modeldata(modelpath=Path(replacedyn))
+        lzdyn_model, dyn_modelmeta_in = get_modeldata(modelpath=Path(replacedyn))
         # the merge below reads the volume and the mid-point velocity. The other derived columns stay out of memory
         dyn_model: pl.DataFrame = (
-            at.inputmodel
-            .add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
+            add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
             .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
             .collect()
         )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
-        dyn_abunds = at.inputmodel.get_initelemabundances(modelpath=Path(replacedyn))
+        dyn_abunds = get_initelemabundances(modelpath=Path(replacedyn))
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
 
         # Step 2) Model modification
@@ -662,7 +672,7 @@ def map_to_artis(
             dyn_model = dyn_model.join(
                 dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left", maintain_order="left"
             ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
-            at.inputmodel.save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
+            save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
             dyn_modelmeta = {
                 "dimensions": 3,
                 "ncoordgridx": grid_dims[0],
@@ -673,7 +683,7 @@ def map_to_artis(
             }
             # the files for the consistency check also hold bin_state, which selects the cells of the dynamical ejecta
             dyn_extracols = ("bin_state",)
-            at.inputmodel.save_modeldata(
+            save_modeldata(
                 dfmodel=dyn_model,
                 modelmeta=dyn_modelmeta,
                 outpath=Path("dyn_model_notrescaled.txt"),
@@ -681,7 +691,7 @@ def map_to_artis(
             )
             # 2) 3D dynamical ejecta weighted and scaled
             dyn_model = dyn_model.with_columns([pl.col("rho") * resc_factor])
-            at.inputmodel.save_modeldata(
+            save_modeldata(
                 dfmodel=dyn_model,
                 modelmeta=dyn_modelmeta,
                 outpath=Path("dyn_model_rescaled.txt"),
@@ -734,9 +744,9 @@ def map_to_artis(
             # determine elemental abundances for abundances.txt as before again (no interpolation)
             dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
             for isot_str in X_list:
-                Z = at.get_atomic_number(isot_str)
+                Z = get_atomic_number(isot_str)
                 interpol_X_iso = dfmodel[isot_str].to_numpy()
-                elem_str = f"X_{at.get_elsymbol(Z)}"
+                elem_str = f"X_{get_elsymbol(Z)}"
                 if elem_str in dictelabunds:
                     dictelabunds[elem_str] = dictelabunds[elem_str].copy()
                     dictelabunds[elem_str] += interpol_X_iso
@@ -945,8 +955,7 @@ def merge_neighbour_cells(
 
     # the merge reads mass_g and the columns of the model file
     dfmodel = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
         .select(cs.by_name(dfmodel.columns) | cs.by_name("mass_g"))
         .collect()
     )
@@ -983,7 +992,7 @@ def merge_neighbour_cells(
 
     # now map the abundances
     dictabunds = {}
-    element_abbrevs_list = [at.get_elsymbol(Z) for Z in range(1, 101)]  # Keep full list as in your code
+    element_abbrevs_list = [get_elsymbol(Z) for Z in range(1, 101)]  # Keep full list as in your code
     element_abbrevs_list_titled = [abbrev.title() for abbrev in element_abbrevs_list]
     el_mass_fracs = np.zeros((len(element_abbrevs_list), new_numb_cells))
     dictelabunds = {"inputcellid": np.array(range(1, new_numb_cells + 1))}
@@ -1039,7 +1048,7 @@ def merge_neighbour_cells(
             .filter(pl.col("out_inputcellid") > 0)
             .with_columns(out_mass_g=pl.col("mass_g").sum().over("out_inputcellid"))
         )
-        dfgridcontributions_out = at.inputmodel.remap_gridcontributions(dfgridcontributions, dfcellmap).collect()
+        dfgridcontributions_out = remap_gridcontributions(dfgridcontributions, dfcellmap).collect()
 
     print(f"Remapped model to {N_cell_r_new}x{N_cell_z_new} grid.")
     return dfmodel_out, dfelabundances, modelmeta_out, dfgridcontributions_out
@@ -1108,7 +1117,7 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_output(parser, kind="folder", default=None, helptext="Path of output ARTIS model file")
+    addarg_output(parser, kind="folder", default=None, helptext="Path of output ARTIS model file")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1219,7 +1228,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"
@@ -1345,7 +1354,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # add dimension reduce if 1D or 1-zone model wanted
     if args.dimensions is not None and args.dimensions < 2:
-        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_model(
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=args.dimensions,
             dfelabundances=dfelabundances,
@@ -1353,10 +1362,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions=dfgridcontributions,
         )
 
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
+    save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
+    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
     if dfgridcontributions is not None:
-        at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(dfgridcontributions, args.outputfile)
+        save_gridparticlecontributions(dfgridcontributions, args.outputfile)
 
 
 if __name__ == "__main__":

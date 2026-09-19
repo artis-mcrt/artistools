@@ -11,11 +11,15 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
 
 # CMFGEN abbreviates species rather than using element symbols, so get_atomic_number cannot read these
 CMFGEN_SPECIES_ATOMIC_NUMBER: t.Final[Mapping[str, int]] = MappingProxyType({
@@ -51,7 +55,7 @@ CMFGEN_SPECIES_ATOMIC_NUMBER: t.Final[Mapping[str, int]] = MappingProxyType({
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
-    at.addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write model.txt/abundances.txt to")
+    addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write model.txt/abundances.txt to")
 
 
 def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
@@ -90,7 +94,7 @@ def get_isotope_massfracs(
         raise ValueError(msg)
 
     return {
-        f"X_{at.get_elsymbol(CMFGEN_SPECIES_ATOMIC_NUMBER[specname])}{massnumber}": isofrac[
+        f"X_{get_elsymbol(CMFGEN_SPECIES_ATOMIC_NUMBER[specname])}{massnumber}": isofrac[
             :, colof_nuclide[specname, massnumber]
         ]
         for specname, massnumber in nuclides
@@ -103,7 +107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     The output describes the same time as the input snapshot: abundances are written as they appear in the
     file, with no decay or reverse evolution applied.
     """
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
@@ -145,15 +149,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfelabundances = pl.DataFrame({
         "inputcellid": inputcellid,
         **{
-            f"X_{at.get_elsymbol(Z)}": a["specfrac"][:, i]
+            f"X_{get_elsymbol(Z)}": a["specfrac"][:, i]
             for i, Z in enumerate(atomic_numbers)
             # Ba is folded into X_Fegroup above and has no element column in an ARTIS abundances.txt
             if Z <= 30
         },
     })
 
-    at.inputmodel.save_modeldata(dfmodel, outpath=outputpath, t_model_init_days=a["time"], dimensions=1)
-    at.inputmodel.save_initelemabundances(dfelabundances, outpath=outputpath)
+    save_modeldata(dfmodel, outpath=outputpath, t_model_init_days=a["time"], dimensions=1)
+    save_initelemabundances(dfelabundances, outpath=outputpath)
 
 
 if __name__ == "__main__":

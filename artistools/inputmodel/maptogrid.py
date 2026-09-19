@@ -13,7 +13,10 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-import artistools as at
+from artistools.inputmodel.core import savetologfile
+from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
@@ -79,9 +82,7 @@ def maptogrid(
         outputfolderpath.mkdir(parents=True)
 
     # save the printed output to a log file
-    logprint = at.inputmodel.inputmodel_misc.savetologfile(
-        outputfolderpath=outputfolderpath, logfilename="maptogridlog.txt"
-    )
+    logprint = savetologfile(outputfolderpath=outputfolderpath, logfilename="maptogridlog.txt")
 
     wij = get_wij()
 
@@ -89,7 +90,7 @@ def maptogrid(
 
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
-    dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
+    dfsnapshot = read_ejectasnapshot(
         ejectasnapshotpath, usecols=snapshot_columns_used, downsamplefactor=downsamplefactor
     )
 
@@ -430,12 +431,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h",
     )
 
-    at.addarg_output(parser, kind="folder", default=Path())
+    addarg_output(parser, kind="folder", default=Path())
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Map tracer particle trajectories to a Cartesian grid."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
 

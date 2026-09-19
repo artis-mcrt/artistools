@@ -9,8 +9,18 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-import artistools as at
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import firstexisting_or_none
+from artistools.misc import get_model_logname
+from artistools.misc import get_model_name
+from artistools.misc import get_mpiranklist
+from artistools.misc import get_runfolders
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc import zopen
 from artistools.plottools import make_frame_figure
 from artistools.plottools import set_legend
 
@@ -19,15 +29,15 @@ defaultoutputfile = "plotlogfiles_{0}.pdf"
 
 def read_logfiles(modelpath: Path | str) -> list[Path]:
     """Return the per-rank ARTIS log files of a model, including compressed ones."""
-    mpiranklist = at.get_mpiranklist(modelpath)
+    mpiranklist = get_mpiranklist(modelpath)
     # search_subfolders=False so a rank file missing from one run folder is skipped
     # rather than silently substituted by another folder's copy
     return [
         logfilepath
-        for folderpath in at.get_runfolders(modelpath)
+        for folderpath in get_runfolders(modelpath)
         for mpirank in mpiranklist
         if (
-            logfilepath := at.firstexisting_or_none(
+            logfilepath := firstexisting_or_none(
                 [f"output_{mpirank}-0.txt"], folder=folderpath, search_subfolders=False
             )
         )
@@ -56,7 +66,7 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
     for logfilepath in logfilepaths:
         # the rank that wrote the file, e.g. output_12-0.txt -> 12
         filerank = int(Path(logfilepath).name.split("-")[0].split("_")[-1])
-        with at.zopen(logfilepath, encoding="utf-8") as logfile:
+        with zopen(logfilepath, encoding="utf-8") as logfile:
             for line in logfile:
                 if "took" not in line:
                     continue
@@ -73,7 +83,12 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
     return timetaken
 
 
-def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Path | str, modelname: str = "") -> None:
+def make_plot(
+    logfiledict: dict[str, dict[int, dict[int, int]]],
+    outputfile: Path | str,
+    modelname: str = "",
+    modellogname: str = "",
+) -> None:
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
     from matplotlib.backends.backend_pdf import PdfPages
 
@@ -81,7 +96,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
     # missing one stage entirely still yields plots of the others
     timesteps = sorted(set().union(*(set(bytimestep) for bytimestep in logfiledict.values())))
     if not timesteps:
-        print(f"No timing data found in the log files of {modelname}")
+        print(f"No timing data found in the log files of {modellogname or modelname}")
         return
 
     with PdfPages(outputfile) as pdf:
@@ -101,30 +116,35 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
             pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
             plt.close(fig)
 
-    at.print_saved(outputfile)
+    print_saved(outputfile)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_modelpath(
+    addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
-    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot durations from log files."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    modelpaths = at.normalize_path_list(args.modelpath)
+    modelpaths = normalize_path_list(args.modelpath)
     outputfile = args.outputfile
     if len(modelpaths) > 1 and "{" not in str(outputfile):
         print_warning(f"output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
 
     for modelpath in modelpaths:
-        modelname = at.get_model_name(modelpath)
+        modelname = get_model_name(modelpath)
         logfiledict = read_time_taken(read_logfiles(modelpath))
-        make_plot(logfiledict, outputfile=str(outputfile).format(modelname), modelname=modelname)
+        make_plot(
+            logfiledict,
+            outputfile=str(outputfile).format(modelname),
+            modelname=modelname,
+            modellogname=get_model_logname(modelpath),
+        )
 
 
 if __name__ == "__main__":

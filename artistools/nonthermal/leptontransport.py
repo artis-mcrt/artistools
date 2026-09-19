@@ -5,9 +5,10 @@ import math
 import typing as t
 from collections.abc import Sequence
 
-import artistools as at
 from artistools.constants import K_B_ev_per_K as CONST_KB  # Boltzmann constant [eV / K]
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -99,14 +100,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nnebound", type=float, default=1e5 * 26, help="Number density of bound electrons in cm^-3")
     parser.add_argument("-nnefree", type=float, default=1e5, help="Number density of free electrons in cm^-3")
     parser.add_argument("-nsteps", type=int, default=1000000, help="Number of energy steps to integrate over")
-    at.addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
+    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
 
     addarg_figscale(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Integrate a fast lepton's energy loss over distance and plot the result."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputfile = args.outputfile
 

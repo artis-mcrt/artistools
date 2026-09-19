@@ -12,7 +12,7 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
-from artistools.spectra import spectra as atspectra
+from artistools.spectra import core as atspectra
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -655,7 +655,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
 @pytest.mark.parametrize(
     ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
 )
-@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_spectra_contribution_plot_forwards_packet_time(
     mockgetcontributions: mock.MagicMock,
     tmp_path: Path,
@@ -694,7 +694,7 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
     def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
-    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
     dfspectrum = atspectra.get_from_packets(
         modelpath=Path(),
         timelowdays=0.5,
@@ -734,7 +734,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, 
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
-    monkeypatch.setattr(atspectra.atpackets, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
     monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
 
@@ -1180,7 +1180,7 @@ def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -
         )
 
 
-@mock.patch("artistools.spectra.plotspectra.atspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     mockgetcontributions: mock.MagicMock, tmp_path: Path
 ) -> None:

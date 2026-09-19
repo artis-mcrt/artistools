@@ -4,6 +4,8 @@ Artistools is a toolkit that plots data, analyses data, and converts files for t
 
 The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
 
+One package outside this repository reads artistools: `pynonthermal` reads `at.get_ionstring`, `at.atomic.get_levels`, and `at.transitions.get_lte_partfunc`. Keep the first two names and their paths, because a release that moves one of them stops the installed `pynonthermal`. The third name is a deprecated alias of `at.atomic.get_lte_partfunc`, and `artistools/transitions.py` holds nothing else. This alias is the one permitted exception to the rule above. Delete that module after `pynonthermal` reads the new name.
+
 A command-line argument is different. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument
 as an alias, and give it `help=argparse.SUPPRESS`. The help text then gives one spelling, and a script
@@ -28,7 +30,7 @@ Use the British spellings that this repository uses, e.g. "normalise", "parallel
 
 These rules do not apply to:
 
-- Identifiers in the code, e.g. the names of variables, functions, and namespaces. Keep the conventions of the file that you change, e.g. `at.normalize_path_list`.
+- Identifiers in the code, e.g. the names of variables, functions, and namespaces. Keep the conventions of the file that you change, e.g. `at.misc.normalize_path_list`.
 - The names of the columns and the keys in the ARTIS files that artistools reads and writes.
 - A log string that a script reads. Do not change such a string.
 - Quoted text from an external source, e.g. a compiler message or a title of a publication.
@@ -104,11 +106,15 @@ The configuration gives each ruff rule by **name** and not by code (`"any-type"`
 - Use only absolute imports. A relative import is not permitted.
 - Write one import on each line (`force-single-line`). Do not write `from x import a, b`.
 - Use the aliases in `[tool.ruff.lint.flake8-import-conventions.extend-aliases]`, e.g. `artistools as at`, `polars as pl`, and `typing as t`. Ruff rejects a different alias.
-- In a package module, import the applicable submodule or function, e.g. `from artistools.misc import get_nu_grid`. This prevents an import cycle. Use `import artistools as at` only in a test or a top-level script.
+- Each package holds its shared functions in `core.py`, e.g. `artistools/lightcurve/core.py`. From a different package, import a name from the package, e.g. `from artistools.inputmodel import get_modeldata`. Inside the package, import it from the core module, e.g. `from artistools.inputmodel.core import get_modeldata`, because the package is not complete at that moment.
+- For a name that no core module holds, import it from the module that defines it, e.g. `from artistools.lightcurve.plotlightcurve import make_colorbar_viewingangles`.
+- The `__init__.py` of a package re-exports the core names first and imports its other modules after an `# isort: split` line. A plot module can import a module of a different package that imports from this package, thus a name must exist before that cycle comes back.
+- Use `import artistools as at` only in a test or a top-level script. Do not write `import artistools.x.y as z` in a package module, because Python 3.15 binds that alias to the package. A test enforces both rules.
+- If two modules need a name from each other, import the name in the function that uses it. First try to move the shared functions to a module that both can import, e.g. `artistools/plottools.py`.
 - Import a large or optional dependency in the function that uses it. Examples are pyvista, plotly, imageio, pynonthermal, and argcomplete. The rule `import-outside-top-level` is off for this reason, because the CLI must start quickly.
 - flake8-type-checking runs in `strict` mode. Put an import that only the annotations use in an `if t.TYPE_CHECKING:` block after the usual imports. This also decreases the start time. If the code then uses that name at run time, move the import out of the block.
 - Pyrefly reports `missing-import` as an error. Thus CI fails if you rename a module or make an error in its name. A plain `uv sync` does not install an optional dependency. Put such a dependency in `ignore-missing-imports` in `[tool.pyrefly]`.
-- The option `implicit_reexport` is off. Re-export a new public function in the parent `__init__.py`. Use the form `from module import name as name`. Keep the alphabetical order of the other lines.
+- The option `implicit_reexport` is off. Re-export a name in the parent `__init__.py` only when a test or a top-level script reads it through the package, e.g. `at.spectra.get_spectra`. Use the form `from module import name as name`. Keep the alphabetical order of the other lines. A package module does not need a re-export, because it imports the name from the module that defines it. The top level holds only the names that a user types in a script, e.g. `at.get_modeldata` and `at.scan_estimators`. The test `test_top_level_api_is_the_documented_list` holds that list, and the README gives a table of it. A different name stays in its package, e.g. `at.misc.addarg_modelpath`.
 
 ## Polars
 
@@ -129,12 +135,15 @@ Use polars (`import polars as pl`) for all dataframe code. The package has no pa
 A module that supplies a subcommand has this structure:
 
 ```python
+from artistools.misc import parse_cli_args
+
+
 def addargs(parser: argparse.ArgumentParser) -> None: ...
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Give a description of one line for the CLI help text."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 ```
 
 Add a new subcommand to `subcommandtree` in `artistools/commands.py`. Do not add a new console script. The CLI cannot find a module that has the `addargs` and `main` functions but no entry in `subcommandtree`. Such a module becomes incorrect, because no user and no test calls it. Add the entry or delete the module, but do not add more code to it.
@@ -143,11 +152,11 @@ Put the code that reads the data in functions that are separate from the plot co
 
 A `main` function can already contain the data code, the physics code, and the plot code. Move the part that you change into a new function. Do not add more code to `main`.
 
-Use the shared functions to build a parser and to find a path. Do not write this code again:
+Use the shared functions to build a parser and to find a path. Import them from `artistools.misc`, e.g. `from artistools.misc import addarg_modelpath`. Do not write this code again:
 
-- `at.addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
-- `at.addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `at.resolve_positional_modelpath(args, dest)` then removes the ARTIS folder from the end. Such a command adds `-modelpath` with the default of `at.addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
-- `at.normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
+- `addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
+- `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the ARTIS folder from the end. Such a command adds `-modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
+- `normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
 - `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
 - `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports only `set_mpl_style`. Read that module before you write new plot code.
 
@@ -169,9 +178,9 @@ A command that takes only paths as positional arguments reads them first, e.g. `
 ## Performance and data access
 
 - The code puts `@lru_cache` on a pure function that reads data for a given path or a given set of arguments. Each argument must be hashable. Do not change the object that a cached function returns. Make a copy first. For an example, see `artistools/misc/dirbins.py`.
-- Write the cache of a parsed text file as parquet with `at.write_parquet_atomic`. This function writes a temporary file, then changes its name. Thus a run that stops early cannot leave a corrupt cache.
-- Use `at.parallel_map`. Do not make a multiprocessing pool directly. This function selects threads or processes, because the GIL can be on or off.
-- Read a compressed ARTIS output file with `at.zopen` for text, or give polars a source with `at.polars_source`. `at.polars_source` takes the path of a file that exists, e.g. the path that `at.firstexisting` returns. Use `at.zopenpl` when the caller gives a name that can need a compressed sibling. Do not write your own code for the `.gz`, `.xz`, and `.zst` formats. A reader that is faster is permitted: give the measurements in the commit message.
+- Write the cache of a parsed text file as parquet with `write_parquet_atomic` from `artistools.misc`. This function writes a temporary file, then changes its name. Thus a run that stops early cannot leave a corrupt cache.
+- Use `parallel_map` from `artistools.misc`. Do not make a multiprocessing pool directly. This function selects threads or processes, because the GIL can be on or off.
+- Read a compressed ARTIS output file with `at.zopen` for text, or give polars a source with `polars_source` from `artistools.misc`. `polars_source` takes the path of a file that exists, e.g. the path that `at.firstexisting` returns. Use `zopenpl` from `artistools.misc` when the caller gives a name that can need a compressed sibling. Do not write your own code for the `.gz`, `.xz`, and `.zst` formats. A reader that is faster is permitted: give the measurements in the commit message.
 - Do not add rows to a dataframe in a loop. A repeated `pl.concat` call has a cost of O(n²) for n steps. Collect the parts in a list, then concatenate them one time after the loop.
 - Before you write a join or a reshape (`pivot`, `unpivot`, or `explode`), calculate the result size for a large model. A join on a key that repeats on both sides multiplies the rows. For example, a kilonova model on a 50³ grid has 125 000 cells, 2500 nuclides, and 500 000 pairs of particle and cell in `gridcontributions.txt`. Commit 3cc0d9fb joined these pairs with a dataframe in long format, which had approximately 800 nuclides for each particle. That join made approximately 400 million rows, thus `makeartismodelfromparticlegridmap` used more than 16 GB of memory until the operating system stopped it. The streaming engine did not prevent this, because the `group_by` after the join held one group for each pair of cell and nuclide.
 - If a dataframe in long format has too many rows, use the wide format, e.g. one column for each nuclide. If a join of all the columns is still too large, join one batch of columns in each query. A loop that calls `.collect()` for each batch is then permitted, because each query reads only dataframes in memory. For an example, see `get_dfnucabundances` in `artistools/inputmodel/rprocess_from_trajectory.py`.

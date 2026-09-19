@@ -11,12 +11,24 @@ from pathlib import Path
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
+from artistools.estimators import scan_estimators
+from artistools.misc import addarg_modelgridindex
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timestep
+from artistools.misc import exit_with_error
+from artistools.misc import get_single_modelgridindex
+from artistools.misc import get_single_timestep
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
+from artistools.misc import parse_cli_args
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 
@@ -124,7 +136,7 @@ def get_expansion_opacities(
     estimatorcolumns = dfestimators.columns
     ionframes = []
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
-        ionstr = at.get_ionstring(Z, ion_stage, sep="_")
+        ionstr = get_ionstring(Z, ion_stage, sep="_")
         if f"nnion_{ionstr}" not in estimatorcolumns:
             continue
 
@@ -161,15 +173,15 @@ def get_expansion_opacities(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    at.addarg_timestep(parser, helptext="Timestep number to select")
-    at.addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    at.addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
+    addarg_timestep(parser, helptext="Timestep number to select")
+    addarg_timedays(parser, kind="str", helptext="Time in days to select")
+    addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",
         help="Show the binned opacities for each cell (can be very large)",
     )
-    at.addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed")
+    addarg_modelgridindex(parser, helptext="Model grid cell to select. If not specified, all cells are processed")
 
     # every command that reads a range of wavelengths takes both spellings, thus -xmin reaches this
     # command as well. This one bins the opacities over that range, and it draws no plot
@@ -186,37 +198,36 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compute binned expansion opacities and Planck-mean opacities in postprocessing."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.timedays is not None:
         if args.timestep is not None:
-            at.exit_with_error("specify only one of -timestep and -timedays")
-        timestep = at.misc.get_timestep_of_timedays(args.modelpath, args.timedays)
+            exit_with_error("specify only one of -timestep and -timedays")
+        timestep = get_timestep_of_timedays(args.modelpath, args.timedays)
     else:
-        timestep = at.get_single_timestep(args.timestep, args.modelpath)
+        timestep = get_single_timestep(args.timestep, args.modelpath)
         if timestep is None:
-            at.exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+            exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 
     dfestimators = (
-        at.estimators
-        .scan_estimators(
+        scan_estimators(
             args.modelpath,
             timestep=timestep,
-            modelgridindex=at.get_single_modelgridindex(args.modelgridindex),
+            modelgridindex=get_single_modelgridindex(args.modelgridindex),
             join_modeldata=True,
         )
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
     ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))
 
-    time_days = at.misc.get_timestep_time(args.modelpath, timestep)
+    time_days = get_timestep_time(args.modelpath, timestep)
 
     print()
     print(f"timestep {timestep} T_days = {time_days:.2f}")
 
     # get_binned_opacities_ion() needs the statistical weights as well as the wavelength, and
     # add_transition_columns() drops every derived column that is not requested here
-    adata = at.atomic.get_levels(
+    adata = get_levels(
         args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
     )
 

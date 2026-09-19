@@ -12,10 +12,13 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_linelist_pldf
 from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.estimators import scan_estimators
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
@@ -26,10 +29,22 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import format_frame_path
 from artistools.misc import gaussian_filter_wrap
+from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_timestep_times
+from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
+from artistools.misc import resolve_frameset_paths
+from artistools.packets import add_derived_columns_lazy
+from artistools.packets import bin_packet_directions_polars
+from artistools.packets import get_packets
+from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure
+from artistools.plottools import set_mpl_style
 
 DEFAULT_PLOTVARS = ("luminosity", "emvelocityoverc", "emlosvelocityoverc")
 
@@ -43,7 +58,7 @@ def parse_plotvar(plotvar: str) -> str:
     stands in for them.
     """
     if plotvar in PLOTVARS or (
-        plotvar.startswith("nnelement_") and at.get_atomic_number(plotvar.removeprefix("nnelement_")) > 0
+        plotvar.startswith("nnelement_") and get_atomic_number(plotvar.removeprefix("nnelement_")) > 0
     ):
         return plotvar
 
@@ -55,7 +70,7 @@ def resolve_time_range(
     modelpath: str | Path, dfpackets: pl.LazyFrame, timemindays: float | None, timemaxdays: float | None
 ) -> tuple[float, float]:
     """Return the time range of one direction map, with the valid observable range as the default."""
-    _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
+    _, tmin_d_valid, tmax_d_valid = get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
         print_warning("The observer never gets light from the entire ejecta. Plotting all packets anyway")
         timemindays, timemaxdays = (
@@ -112,7 +127,7 @@ def bin_packets_by_direction(
 
     dfpackets = dfpackets.with_columns(rangebin=rangebinexpr).filter(pl.col("rangebin").is_not_null())
 
-    dfpackets = at.packets.bin_packet_directions_polars(
+    dfpackets = bin_packet_directions_polars(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="phibinmonotonicasc"
     )
 
@@ -166,8 +181,8 @@ def bin_packets_by_direction(
         aggs.append((pl.col("TR").std()).alias("temperature_sigma"))
 
     if atomic_number is not None or ion_stage is not None:
-        dflinelist = at.get_linelist_pldf(modelpath)
-        elem_cond = f"Z={atomic_number} {at.get_elsymbol(atomic_number)}" if atomic_number is not None else ""
+        dflinelist = get_linelist_pldf(modelpath)
+        elem_cond = f"Z={atomic_number} {get_elsymbol(atomic_number)}" if atomic_number is not None else ""
         ion_stage_cond = f"ion stage {ion_stage}" if ion_stage is not None else ""
         condition = f"last emitted/absorbed by {elem_cond} {ion_stage_cond}"
         print(f"Including only packets {condition}")
@@ -260,7 +275,7 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
-    xwidth = figscale * at.plottools.FIGWIDTH_INCHES
+    xwidth = figscale * FIGWIDTH_INCHES
     fig, axes = plt.subplots(
         len(plotvars),
         1,
@@ -311,7 +326,7 @@ def plot_spherical(
         cbar.ax.set_xlabel(colorbartitle)
         cbar.ax.xaxis.set_label_position("top")
         if r"{}" in colorbartitle:
-            cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle))
+            cbar.ax.xaxis.set_major_formatter(ExponentLabelFormatter(colorbartitle))
 
         ax.axis("off")
 
@@ -368,27 +383,27 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
     """Plot direction maps based on escaped packets."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.elem is not None:
         assert args.atomic_number is None
-        args.atomic_number = at.get_atomic_number(args.elem)
+        args.atomic_number = get_atomic_number(args.elem)
 
-    at.plottools.set_mpl_style()
+    set_mpl_style()
 
     dfestimators = (
-        at.estimators.scan_estimators(modelpath=args.modelpath, verbose=args.verbose)
+        scan_estimators(modelpath=args.modelpath, verbose=args.verbose)
         if any(var in {"temperature", "temperature_sigma"} or var.startswith("nnelement_") for var in args.plotvars)
         else None
     )
 
-    nprocs_read, dfpackets = at.packets.get_packets(
+    nprocs_read, dfpackets = get_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)
+    dfpackets = add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)
 
-    tstarts = at.get_timestep_times(args.modelpath, loc="start")
-    tends = at.get_timestep_times(args.modelpath, loc="end")
+    tstarts = get_timestep_times(args.modelpath, loc="start")
+    tends = get_timestep_times(args.modelpath, loc="end")
     if args.makegif:
         time_ranges = [
             (tstart, tend, f"timestep {ts}")
@@ -399,7 +414,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     elif args.timestep is not None:
         time_ranges = [
             (tstarts[ts], tends[ts], f"timestep {ts}")
-            for ts in at.parse_range_list(args.timestep, dictvars={"last": len(tstarts) - 1})
+            for ts in parse_range_list(args.timestep, dictvars={"last": len(tstarts) - 1})
         ]
         outformat = args.format or "pdf"
     else:
@@ -409,7 +424,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     print_theta_phi_definitions()
 
     # one product comes out of the frames of a gif, thus the frames land beside it
-    frameset = at.resolve_frameset_paths(
+    frameset = resolve_frameset_paths(
         args.outputfile,
         framecount=len(time_ranges),
         framename="plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}",
@@ -457,7 +472,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
                 f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
             )
 
-        outfilename = at.format_frame_path(
+        outfilename = format_frame_path(
             frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
         )
 

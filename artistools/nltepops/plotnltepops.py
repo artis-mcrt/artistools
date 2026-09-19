@@ -16,9 +16,18 @@ import numpy.typing as npt
 import polars as pl
 from matplotlib import ticker
 
-import artistools as at
+from artistools import misc
+from artistools import plottools
+from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
+from artistools.atomic import get_levels
 from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
+from artistools.estimators import read_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_labelfontsize
@@ -30,11 +39,30 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
+from artistools.misc import get_model_name
 from artistools.misc import get_npts_model
+from artistools.misc import get_single_modelgridindex
+from artistools.misc import get_time_range
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
+from artistools.misc import normalize_path_list
+from artistools.misc import parse_cli_args
+from artistools.misc import parse_range_list
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.misc import resolve_outputfile
+from artistools.nltepops.core import add_lte_pops
+from artistools.nltepops.core import read_nltepops
+from artistools.nltepops.core import texifyconfiguration
+from artistools.nltepops.core import texifyterm
+from artistools.plottools import get_next_color
+from artistools.plottools import iter_axes
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_axis_labels
+from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
+from artistools.plottools import set_plot_title
 
 defaultoutputfile = "plotnltepops_{elsymbol}_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
@@ -74,7 +102,7 @@ def plot_reference_data(
     """Overplot the CHIANTI level populations for the same conditions, when a level map file is available."""
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
-    elsym = at.get_elsymbol(atomic_number)
+    elsym = get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
     if Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").exists():
         with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r", encoding="utf-8") as levelmapfile:
@@ -149,7 +177,7 @@ def get_floers_data(
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
-            dffloers_levelpops = at.read_wsv(modelpath / floersfilename, comment_prefix="#").sort("energypercm")
+            dffloers_levelpops = read_wsv(modelpath / floersfilename, comment_prefix="#").sort("energypercm")
             floers_levelnums = list(range(dffloers_levelpops.height))
             floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
@@ -173,7 +201,7 @@ def get_floers_data(
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
-            modeldata = at.inputmodel.get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
+            modeldata = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
             vel_outer = modeldata["vel_r_max_kmps"].item(modelgridindex)
             print(f"  Reading {floersmultizonefilename} for vel_outer {vel_outer} and Te {T_e}")
             dffloers = pl.read_csv(floersmultizonefilename).filter((pl.col("vel_outer") - vel_outer).abs() < 0.5)
@@ -195,12 +223,12 @@ def get_config_labels(configlist: Sequence[str]) -> list[str]:
     A level that keeps the configuration of the level before it shows a mark and its term only. The
     axis labels then stay short.
     """
-    configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
+    configtexlist = [texifyconfiguration(configlist[0])]
     for prevconfig, config in itertools.pairwise(configlist):
         if config.rsplit("_", maxsplit=1)[0] == prevconfig.rsplit("_", maxsplit=1)[0]:
-            configtexlist.append('" ' + at.nltepops.texifyterm(config.rsplit("_", maxsplit=1)[1]))
+            configtexlist.append('" ' + texifyterm(config.rsplit("_", maxsplit=1)[1]))
         else:
-            configtexlist.append(at.nltepops.texifyconfiguration(config))
+            configtexlist.append(texifyconfiguration(config))
 
     return configtexlist
 
@@ -261,7 +289,7 @@ def plot_reference_populations(
         ax.set_ylabel("Departure coefficient")
 
         # this mode does not draw T_e, thus skip its colour to keep the colour of every other label
-        at.plottools.get_next_color(ax)
+        get_next_color(ax)
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
             ax.plot(
@@ -339,13 +367,13 @@ def make_ionsubplot(
     # largest resolved level in the file identifies a superlevel row
     maxresolvedlevel = dfpopthision["level"].max()
     assert isinstance(maxresolvedlevel, int)
-    dfpopthision = at.nltepops.add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
+    dfpopthision = add_lte_pops(dfpopthision, adata, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision = dfpopthision.filter(pl.col("level") <= args.maxlevel)
 
     ionpopulation = float(dfpopthision["n_NLTE"].sum())
-    ionkey = at.get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
+    ionkey = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
     ionpopulation_fromest = estimators.get((timestep, modelgridindex), {}).get(f"nnion_{ionkey}", 0.0)
 
     maxlevel_ion = dfpopthision["level"].max()
@@ -370,7 +398,7 @@ def make_ionsubplot(
     )
 
     print(
-        f"{at.get_ionstring(atomic_number, ion_stage, style='spectral')} has a summed "
+        f"{get_ionstring(atomic_number, ion_stage, style='spectral')} has a summed "
         f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
     )
 
@@ -427,7 +455,7 @@ def make_ionsubplot(
 
     # the ion names the subplot rather than every legend entry, thus the legend stays short
     ax.annotate(
-        at.get_ionstring(atomic_number, ion_stage, style="chargelatex"),
+        get_ionstring(atomic_number, ion_stage, style="chargelatex"),
         xy=(1.0, 1.0),
         xycoords="axes fraction",
         xytext=(-10, -10),
@@ -451,10 +479,10 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
 
     ionlevels = args.levels
 
-    Z = at.get_atomic_number(args.elements[0])
+    Z = get_atomic_number(args.elements[0])
     ion_stage = int(args.ion_stages[0])
 
-    adata = at.atomic.get_levels(modelpaths[0], get_transitions=True)
+    adata = get_levels(modelpaths[0], get_transitions=True)
 
     ion_data = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
     levelconfignames = ion_data["levels"]["levelname"].to_list()
@@ -465,7 +493,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         args.subplots = True
     else:
         rows = 1
-        timedayslist = [at.get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax + 1)]
+        timedayslist = [get_timestep_time(modelpaths[0], ts) for ts in range(args.timestepmin, args.timestepmax + 1)]
         args.subplots = False
 
     if args.x == "time" and not args.subplots:
@@ -492,7 +520,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
-    at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
+    set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
             axis.set_yscale("log")
@@ -500,22 +528,22 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
                 ymin, _ = axis.get_ylim()
                 _, xmax = axis.get_xlim()
                 axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
-        at.plottools.set_legend(ax[0], args, loc="best", frameon=True, fontsize="x-small", ncol=1)
+        plottools.set_legend(ax[0], args, loc="best", frameon=True, fontsize="x-small", ncol=1)
     else:
         assert isinstance(ax, mplax.Axes)
-        at.plottools.set_legend(ax, args, loc="best", frameon=True, fontsize="x-small", ncol=1)
+        plottools.set_legend(ax, args, loc="best", frameon=True, fontsize="x-small", ncol=1)
         ax.set_yscale("log")
 
     title = f"Z={Z}, ion_stage={ion_stage}"
     if args.x == "time":
-        title += f", mgi = {at.get_single_modelgridindex(args.modelgridindex)}"
+        title += f", mgi = {get_single_modelgridindex(args.modelgridindex)}"
     elif args.x == "velocity":
         title += f", {timedayslist} days"
-    at.plottools.set_plot_title(at.plottools.iter_axes(ax)[-1], title, args)
+    set_plot_title(iter_axes(ax)[-1], title, args)
 
-    at.plottools.set_axis_properties(ax, args)
+    set_axis_properties(ax, args)
 
-    outputfilename = str(args.outputfile).format(elsymbol=at.get_elsymbol(Z))
+    outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(Z))
     save_figure(fig, outputfilename, format="pdf", args=args)
 
 
@@ -537,16 +565,16 @@ def plot_populations_with_time_or_velocity(
             print("Please specify modelgridindex")
             sys.exit(1)
 
-        modelgridindex = at.get_single_modelgridindex(args.modelgridindex)
+        modelgridindex = get_single_modelgridindex(args.modelgridindex)
         assert modelgridindex is not None, "the branch above stops when no cell is given"
         modelgridindex_list = [modelgridindex] * len(timesteps)
 
     if args.x == "velocity":
-        modeldata = at.inputmodel.get_modeldata(modelpaths[0])[0].select("vel_r_max_kmps").collect()
+        modeldata = get_modeldata(modelpaths[0])[0].select("vel_r_max_kmps").collect()
         velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
-        timesteps = [at.get_timestep_of_timedays(modelpaths[0], timedays)] * len(modelgridindex_list)
+        timesteps = [get_timestep_of_timedays(modelpaths[0], timedays)] * len(modelgridindex_list)
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
@@ -554,9 +582,9 @@ def plot_populations_with_time_or_velocity(
 
         # the loop changes only the cell or only the timestep, thus one read with that filter supplies the whole loop
         dfpop_all = (
-            at.nltepops.read_files(modelpath, modelgridindex=modelgridindex_list[0])
+            read_nltepops(modelpath, modelgridindex=modelgridindex_list[0])
             if args.x == "time"
-            else at.nltepops.read_files(modelpath, timestep=timesteps[0])
+            else read_nltepops(modelpath, timestep=timesteps[0])
         )
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
             dfpop = dfpop_all.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == mgi))
@@ -574,7 +602,7 @@ def plot_populations_with_time_or_velocity(
 
         for ionlevel in ionlevels:
             plottimesteps = [ts for ts, level, _mgi in populations if level == ionlevel]
-            timedayslist = [at.get_timestep_time(modelpath, ts) for ts in plottimesteps]
+            timedayslist = [get_timestep_time(modelpath, ts) for ts in plottimesteps]
             plotpopulations = np.array([
                 populations[ts, level, mgi] for ts, level, mgi in populations if level == ionlevel
             ])
@@ -607,17 +635,17 @@ def make_singletimestep_plot(
     args: argparse.Namespace,
 ) -> None:
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
-    modelname = at.get_model_name(modelpath)
-    adata = at.atomic.get_levels(
+    modelname = get_model_name(modelpath)
+    adata = get_levels(
         modelpath,
         get_transitions=args.gettransitions,
         derived_transitions_columns=["epsilon_trans_ev", "lambda_angstroms"],
     )
 
-    time_days = at.get_timestep_time(modelpath, timestep)
+    time_days = get_timestep_time(modelpath, timestep)
 
     # one read of the ranks that own the cells in mgilist supplies the data for every cell
-    dfpop_allcells = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    dfpop_allcells = read_nltepops(modelpath, timestep=timestep, modelgridindex=list(mgilist))
     dfpop = dfpop_allcells.filter(pl.col("modelgridindex") == mgilist[0])
 
     if dfpop.is_empty():
@@ -648,9 +676,9 @@ def make_singletimestep_plot(
     assert mgilist
 
     # invariant to the cell loop, so read the estimators and the model once instead of once per cell
-    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
-    lzmodeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
-    lzmodeldata = at.inputmodel.add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
+    estimators = read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
+    lzmodeldata, modelmeta = get_modeldata(modelpath)
+    lzmodeldata = add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
     velocity_kmps_of_mgi = {
         mgi: vel_r_mid / km_to_cm
         for mgi, vel_r_mid in lzmodeldata
@@ -660,7 +688,7 @@ def make_singletimestep_plot(
         .iter_rows()
     }
 
-    elsymbol = at.get_elsymbol(atomic_number)
+    elsymbol = get_elsymbol(atomic_number)
     # the lowest panel that the loop draws shows the configuration names, and a cell without data draws no panel
     mgis_withdata = set(dfpop_allcells["modelgridindex"].to_list())
     lastmgi_withdata = next(mgi for mgi in reversed(mgilist) if mgi in mgis_withdata)
@@ -702,7 +730,7 @@ def make_singletimestep_plot(
         subplot_title += f" {velocity_kmps_of_mgi[modelgridindex]:.0f} km/s at {time_days:.0f}d"
         subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{{-3}}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
-        at.plottools.set_plot_title(axes[mgifirstaxindex], subplot_title, args)
+        set_plot_title(axes[mgifirstaxindex], subplot_title, args)
 
         for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
             lastsubplot = modelgridindex == lastmgi_withdata and ion_stage == ion_stage_list[-1]
@@ -729,7 +757,7 @@ def make_singletimestep_plot(
     # subplot. Reverse the order so that the entry of the first subplot wins for a repeated label
     handlesbylabel = {
         label: handle
-        for ax in reversed(at.plottools.iter_axes(axes))
+        for ax in reversed(iter_axes(axes))
         for handle, label in zip(*ax.get_legend_handles_labels(), strict=True)
     }
     set_legend(
@@ -748,14 +776,14 @@ def make_singletimestep_plot(
     if args.x == "index":
         axes[-1].set_xlabel(r"Level index")
 
-    at.plottools.set_axis_properties(axes, args)
+    set_axis_properties(axes, args)
     # after set_axis_properties, which turns the automatic minor ticks on: a level index axis wants one
     # minor tick for each level, thus it keeps its own locator
     for ax in axes:
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     outputfilename = format_frame_path(
-        args.outputfile, elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
+        args.outputfile, elsymbol=get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
     )
     save_figure(fig, outputfilename, format="pdf", args=args)
 
@@ -828,27 +856,25 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     modelpath = args.modelpath
     if args.x in {"time", "velocity"}:
-        args.modelpath = at.normalize_path_list(args.modelpath)
+        args.modelpath = normalize_path_list(args.modelpath)
 
         if not args.ion_stages:
-            at.exit_with_error("no ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
+            misc.exit_with_error("no ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
 
         if not args.levels:
-            at.exit_with_error("no levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
+            misc.exit_with_error("no levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
 
     timesteps_selected: list[int] | None = None
     if args.timedays:
         # a command line gives a string, and a keyword argument of the API gives a number
         if "-" in str(args.timedays):
-            args.timestepmin, args.timestepmax, _, _ = at.get_time_range(
-                modelpath, timedays_range_str=str(args.timedays)
-            )
+            args.timestepmin, args.timestepmax, _, _ = get_time_range(modelpath, timedays_range_str=str(args.timedays))
         else:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+            timestep = get_timestep_of_timedays(modelpath, args.timedays)
             args.timestep = timestep
             args.timestepmin, args.timestepmax = timestep, timestep
     elif args.timedayslist:
@@ -856,24 +882,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # the -x time path reads args.timestepmin and args.timestepmax, thus set them from the
         # listed times. The level-index loop below iterates only the listed timesteps, because a
         # range would add the timesteps between two non-adjacent list entries.
-        timesteps_selected = sorted({
-            at.get_timestep_of_timedays(modelpath, timedays) for timedays in args.timedayslist
-        })
+        timesteps_selected = sorted({get_timestep_of_timedays(modelpath, timedays) for timedays in args.timedayslist})
         args.timestepmin, args.timestepmax = timesteps_selected[0], timesteps_selected[-1]
     elif args.timestep is not None:
-        args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timestep_range_str=str(args.timestep))
+        args.timestepmin, args.timestepmax, _, _ = get_time_range(modelpath, timestep_range_str=str(args.timestep))
     elif args.x in {"time", "velocity"}:
-        args.timestepmin, args.timestepmax, _, _ = at.get_time_range(modelpath, timemin=0, timemax=math.inf)
+        args.timestepmin, args.timestepmax, _, _ = get_time_range(modelpath, timemin=0, timemax=math.inf)
     else:
         exit_with_error(
             "no time given. Use -timedays or -timestep. A model of more than one cell also needs -modelgridindex"
         )
 
-    args.outputfile = at.resolve_outputfile(
+    args.outputfile = resolve_outputfile(
         args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
     )
 
-    ion_stages_permitted = at.parse_range_list(args.ion_stages) if args.ion_stages else None
+    ion_stages_permitted = parse_range_list(args.ion_stages) if args.ion_stages else None
 
     if isinstance(args.modelgridindex, str | int):
         args.modelgridindex = [args.modelgridindex]
@@ -885,12 +909,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.velocity = [args.velocity]
 
     cellargs = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
-    mgilist = [mgi for cellarg in cellargs for mgi in at.parse_range_list(str(cellarg))]
-    mgilist.extend(
-        mgi
-        for mgi in [at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity]
-        if mgi is not None
-    )
+    mgilist = [mgi for cellarg in cellargs for mgi in parse_range_list(str(cellarg))]
+    mgilist.extend(mgi for mgi in [get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity] if mgi is not None)
     # the branches below read args.modelgridindex, thus give them the expanded cells and not "3-7"
     args.modelgridindex = mgilist
 
@@ -918,10 +938,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for el_in in args.elements:
         try:
             atomic_number = int(el_in)
-            elsymbol = at.get_elsymbol(atomic_number)
+            elsymbol = get_elsymbol(atomic_number)
         except ValueError:
             elsymbol = el_in
-            atomic_number = at.get_atomic_number(el_in)
+            atomic_number = get_atomic_number(el_in)
             if atomic_number < 1:
                 print(f"Could not find element '{elsymbol}'")
 

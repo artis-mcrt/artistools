@@ -14,8 +14,8 @@ import artistools as at
 def test_directionbins() -> None:
     nphibins = 10
     ncosthetabins = 10
-    costhetabinlowers, costhetabinuppers, _ = at.get_costheta_bins(usedegrees=False)
-    phibinlowers, phibinuppers, _ = at.get_phi_bins(usedegrees=False)
+    costhetabinlowers, costhetabinuppers, _ = at.misc.get_costheta_bins(usedegrees=False)
+    phibinlowers, phibinuppers, _ = at.misc.get_phi_bins(usedegrees=False)
 
     testdirections = pl.DataFrame({
         "phi_defined": np.linspace(0.1, 2 * math.pi, nphibins * 2, endpoint=False).tolist()
@@ -200,7 +200,7 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
     packetsfile = tmp_path / "packets00_0000.out"
     packetsfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    from artistools.packets.packets import readfile_text
+    from artistools.packets.core import readfile_text
 
     dfpackets = readfile_text(packetsfile, column_names=columns)
 
@@ -213,7 +213,7 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unr
     """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
     import shutil
 
-    from artistools.packets.packets import get_packets_rankbatch_parquetfile
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
 
     sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
     for rank in (0, 1):
@@ -238,8 +238,8 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unr
 @pytest.mark.parametrize("virtual", [False, True])
 def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> None:
     """Keep the number of directory scans independent of the number of ranks."""
-    from artistools.packets.packets import CACHEVERSION
-    from artistools.packets.packets import get_packets_rankbatch_parquetfile
+    from artistools.packets.core import CACHEVERSION
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
 
     sourcefolder = tmp_path / "run1"
     sourcefolder.mkdir()
@@ -251,7 +251,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     cachefolder = tmp_path / packetkind
     cachefolder.mkdir()
     cachepath = cachefolder / f"{packetkind}batch00_0000_0031.out.parquet.tmp"
-    at.write_parquet_atomic(
+    at.misc.write_parquet_atomic(
         pl.DataFrame({"number": [0]}),
         cachepath,
         metadata={

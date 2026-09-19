@@ -8,8 +8,15 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-import artistools as at
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_output
+from artistools.misc import get_costheta_bins
+from artistools.misc import get_phi_bins
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import import_optional
+from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
 
 
@@ -19,9 +26,9 @@ def get_theta_phi(anglebin: int) -> tuple[float, float]:
     The bin boundaries come from the shared definitions in artistools.misc.dirbins, so the arrows
     point where every other artistools plot puts the same bin.
     """
-    costhetabin, phibin = divmod(anglebin, at.get_viewingdirection_phibincount())
-    costheta_lower, costheta_upper, _ = at.get_costheta_bins(usedegrees=False)
-    phi_lower, phi_upper, _ = at.get_phi_bins(usedegrees=False)
+    costhetabin, phibin = divmod(anglebin, get_viewingdirection_phibincount())
+    costheta_lower, costheta_upper, _ = get_costheta_bins(usedegrees=False)
+    phi_lower, phi_upper, _ = get_phi_bins(usedegrees=False)
     theta = float(np.arccos((costheta_lower[costhetabin] + costheta_upper[costhetabin]) / 2))
     phi = float((phi_lower[phibin] + phi_upper[phibin]) / 2)
     return theta, phi
@@ -31,7 +38,7 @@ def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     """Return the Cartesian endpoint of a vector of the given length pointing into each viewing angle bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
-    for i in range(at.get_viewingdirectionbincount()):
+    for i in range(get_viewingdirectionbincount()):
         theta, phi = get_theta_phi(i)
         x_c = length * np.sin(theta) * np.cos(phi)
         y_c = length * np.sin(theta) * np.sin(phi)
@@ -94,14 +101,13 @@ def viewing_angles_visualisation(
     isomin, isomax : float | int, float
 
     """
-    px = at.import_optional("plotly.express")
-    go = at.import_optional("plotly.graph_objects")
+    px = import_optional("plotly.express")
+    go = import_optional("plotly.graph_objects")
 
     # Load model contents
-    lzmodel, modelmeta = at.get_modeldata(modelfile)
+    lzmodel, modelmeta = get_modeldata(modelfile)
     dfmodel = (
-        at
-        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")
         .collect()
     )
@@ -193,7 +199,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: Any) -> None:
     """Tool to generate a 3D visualization of an ARTIS model."""
-    args = at.parse_cli_args(addargs, "Generate a 3D visualization of an ARTIS model.", args, argsraw, kwargs)
+    args = parse_cli_args(addargs, "Generate a 3D visualization of an ARTIS model.", args, argsraw, kwargs)
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,

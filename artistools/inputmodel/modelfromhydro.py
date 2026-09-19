@@ -12,12 +12,25 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-import artistools as at
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
+from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import save_empty_abundance_file
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scale_model_to_time
+from artistools.inputmodel.opacityinputfile import opacity_by_Ye
+from artistools.inputmodel.opacityinputfile import write_Ye_file
+from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontributions
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_output
+from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
+from artistools.misc import zopen
 
 
 def read_ejectasnapshot(
@@ -57,7 +70,7 @@ def read_ejectasnapshot(
         "iwasequil(i, 2)",
         "iwasequil(i, 3)",
     ]
-    dfsnapshot = at.read_wsv(
+    dfsnapshot = read_wsv(
         Path(pathtosnapshot) / "ejectasnapshot.dat" if Path(pathtosnapshot).is_dir() else pathtosnapshot,
         has_header=False,
         new_columns=column_names,
@@ -101,7 +114,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
     if snapshotinfofile.is_file():
         # the glob above accepts a compressed info file, thus the read has to accept one too
-        with at.zopen(snapshotinfofile, encoding="utf-8") as fsnapshotinfo:
+        with zopen(snapshotinfofile, encoding="utf-8") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
@@ -132,13 +145,13 @@ def read_griddat_file(
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     factor_position = 1.478  # in km
-    with at.zopen(griddatfilepath) as gridfile:
+    with zopen(griddatfilepath) as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         extratime_geomunits = float(gridfile.readline().split()[0])
         xmax = abs(float(gridfile.readline().split()[0]))
         xmax = (xmax * factor_position) * km_to_cm
 
-    griddata = at.read_wsv(griddatfilepath, comment_prefix="#", skip_rows=3).rename(
+    griddata = read_wsv(griddatfilepath, comment_prefix="#", skip_rows=3).rename(
         {
             "gridindex": "inputcellid",
             "pos_x": "pos_x_min",
@@ -184,7 +197,7 @@ def read_griddat_file(
 
     if targetmodeltime_days is not None:
         # the metadata that this function builds below replaces the metadata of the scaled model
-        griddata, _ = at.inputmodel.scale_model_to_time(
+        griddata, _ = scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days
@@ -266,17 +279,17 @@ def makemodelfromgriddata(
     getcellopacityfromYe: bool = False,
 ) -> None:
     """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
-    dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
+    dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if fillcentralhole:
-        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days)
+        dfmodel = add_mass_to_center(dfmodel, t_model_days)
 
     if getcellopacityfromYe:
-        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
+        opacity_by_Ye(outputpath, dfmodel)
 
-    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions_or_none(gridfolderpath)
+    dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 
     dfmodel = dfmodel.sort("inputcellid")
     assert dfmodel.schema["inputcellid"].is_integer()
@@ -309,13 +322,11 @@ def makemodelfromgriddata(
         assert dfgridcontributions is not None, (
             "gridcontributions.txt is required to set abundances from trajectories. Run artistools maptogrid"
         )
-        (dfmodel, dfelabundances, dfgridcontributions) = (
-            at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-                dfgridcontributions=dfgridcontributions,
-                dfmodel=dfmodel,
-                t_model_days_incpremerger=t_model_days_incpremerger,
-                traj_root=traj_root,
-            )
+        (dfmodel, dfelabundances, dfgridcontributions) = add_abundancecontributions(
+            dfgridcontributions=dfgridcontributions,
+            dfmodel=dfmodel,
+            t_model_days_incpremerger=t_model_days_incpremerger,
+            traj_root=traj_root,
         )
     else:
         print_warning("No abundances will be set because no nuclear network trajectories folder was specified")
@@ -326,7 +337,7 @@ def makemodelfromgriddata(
         # test for None, thus an empty frame would write an empty gridcontributions.txt
         gave_elabundances = dfelabundances is not None
         gave_gridcontributions = dfgridcontributions is not None
-        dfmodel, dfelabundances_reduced, dfgridcontributions_reduced, modelmeta = at.inputmodel.dimension_reduce_model(
+        dfmodel, dfelabundances_reduced, dfgridcontributions_reduced, modelmeta = dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,
@@ -337,26 +348,24 @@ def makemodelfromgriddata(
         dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
 
     if "Ye" in dfmodel:
-        at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
+        write_Ye_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
-        at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
-            dfgridcontributions, Path(outputpath, "gridcontributions.txt")
-        )
+        save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))
 
     if dfelabundances is not None:
         print(f"Writing to {Path(outputpath) / 'abundances.txt'}...")
-        at.inputmodel.save_initelemabundances(
+        save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
     else:
-        at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
+        save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
 
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     print(f"Writing to {Path(outputpath) / 'model.txt'}...")
-    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -392,12 +401,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
-    at.addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
+    addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS format model from grid.dat."""
-    args = at.parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file():

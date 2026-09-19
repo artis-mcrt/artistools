@@ -8,9 +8,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-if t.TYPE_CHECKING:
-    from collections.abc import Mapping
-
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -25,6 +22,9 @@ from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
+
+if t.TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -167,6 +167,23 @@ def get_model_name_cached(abspath: Path) -> str:
         return shorten_middle(foldername, maxlen=50)
 
 
+def get_model_logname(path: Path | str, label: str | None = None) -> str:
+    """Return the label of an ARTIS model and the name of its folder, for a log message.
+
+    The label comes from the caller (e.g. the -label argument) or from get_model_name.
+    """
+    path = Path(path)
+    modelname = get_model_name(path)
+    label = label or modelname
+    if path_is_codecomparison(path):
+        return label
+
+    abspath = path.resolve()
+    foldername = (abspath if abspath.is_dir() else abspath.parent).name
+    # a label that is the folder name needs no second copy
+    return label if label == modelname == foldername else f"{label} (folder {foldername})"
+
+
 @lru_cache(maxsize=8)
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
@@ -235,7 +252,7 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):
         # this import runs at call time, because artistools.estimators imports artistools.misc
-        from artistools.estimators.estimators import estimbatch_parquet_is_current
+        from artistools.estimators import estimbatch_parquet_is_current
 
         # a stale cache can hold fewer timesteps than the text files, e.g. while ARTIS still runs.
         # Thus only a current cache answers. For a stale cache, the text files answer instead
