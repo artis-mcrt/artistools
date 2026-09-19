@@ -167,6 +167,23 @@ def get_model_name_cached(abspath: Path) -> str:
         return shorten_middle(foldername, maxlen=50)
 
 
+def get_model_logname(path: Path | str, label: str | None = None) -> str:
+    """Return the label of an ARTIS model and the name of its folder, for a log message.
+
+    The label comes from the caller (e.g. the -label argument) or from get_model_name.
+    """
+    path = Path(path)
+    modelname = get_model_name(path)
+    label = label or modelname
+    if path_is_codecomparison(path):
+        return label
+
+    abspath = path.resolve()
+    foldername = (abspath if abspath.is_dir() else abspath.parent).name
+    # a label that is the folder name needs no second copy
+    return label if label == modelname == foldername else f"{label} (folder {foldername})"
+
+
 @lru_cache(maxsize=8)
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""

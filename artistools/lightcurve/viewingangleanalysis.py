@@ -23,6 +23,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_costhetabin_phibin_labels
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_phibincount
@@ -599,7 +600,7 @@ def peakmag_risetime_declinerate_init(
             dfbolo_of_dirbin = dict(zip(dirbins, pl.collect_all(lazyplans), strict=True))
 
         if args.verbose:
-            print(f"Reading spectra: {modelname}")
+            print(f"Reading spectra: {get_model_logname(modelpath)}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
             {dirbin: generate_band_lightcurve_data(modelpath, args, dirbin) for dirbin in dirbins}

@@ -35,6 +35,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import firstexisting
 from artistools.misc import format_frame_path
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
@@ -279,7 +280,7 @@ def plot_celltimestep(
 
     modelname = get_model_name(modelpath)
     time_days = get_timestep_times(modelpath)[timestep]
-    print(f"Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)")
+    print(f"Plotting {get_model_logname(modelpath)} timestep {timestep:d} (t={time_days:.3f}d)")
     T_R = radfielddata.filter(pl.col("bin_num") == -1).select("T_R").item()
     print(f"T_R = {T_R}")
 

@@ -20,7 +20,7 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import get_model_name
+from artistools.misc import get_model_logname
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 
@@ -167,7 +167,7 @@ def get_cone_shells(
 def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> pl.DataFrame:
     """Make 1D model from 3D model."""
     modelpath = normalize_path_list(args.modelpath)[0]
-    logprint("Making 1D model from 3D model:", get_model_name(modelpath))
+    logprint("Making 1D model from 3D model:", get_model_logname(modelpath))
     pldfmodel, modelmeta = get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:

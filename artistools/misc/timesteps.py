@@ -26,7 +26,7 @@ from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.modelinfo import get_inputparams
-from artistools.misc.modelinfo import get_model_name
+from artistools.misc.modelinfo import get_model_logname
 
 
 def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
@@ -287,8 +287,8 @@ def apply_time_range_args(
                 if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
                     exit_with_error(
                         f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
-                        f"{get_model_name(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
-                        f"{get_model_name(otherpath)}, because their timestep grids differ. Give the "
+                        f"{get_model_logname(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
+                        f"{get_model_logname(otherpath)}, because their timestep grids differ. Give the "
                         "range in days with -timedays, which means the same for every model"
                     )
 
@@ -319,11 +319,13 @@ def get_time_range(
     user_timemin, user_timemax = timemin, timemax
 
     if timemin is not None and float(timemin) > tends[-1]:
-        print_warning(f"{get_model_name(modelpath)}: timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
+        print_warning(
+            f"{get_model_logname(modelpath)}: timemin {timemin} is after the last timestep at {tends[-1]:.1f}"
+        )
         return -1, -1, -math.inf, -math.inf
     if timemax is not None and float(timemax) < tstarts[0]:
         print_warning(
-            f"{get_model_name(modelpath)}: timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
+            f"{get_model_logname(modelpath)}: timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
         return -1, -1, -math.inf, -math.inf
 

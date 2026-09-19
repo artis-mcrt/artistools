@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_runfolders
@@ -82,7 +83,12 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
     return timetaken
 
 
-def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Path | str, modelname: str = "") -> None:
+def make_plot(
+    logfiledict: dict[str, dict[int, dict[int, int]]],
+    outputfile: Path | str,
+    modelname: str = "",
+    modellogname: str = "",
+) -> None:
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
     from matplotlib.backends.backend_pdf import PdfPages
 
@@ -90,7 +96,7 @@ def make_plot(logfiledict: dict[str, dict[int, dict[int, int]]], outputfile: Pat
     # missing one stage entirely still yields plots of the others
     timesteps = sorted(set().union(*(set(bytimestep) for bytimestep in logfiledict.values())))
     if not timesteps:
-        print(f"No timing data found in the log files of {modelname}")
+        print(f"No timing data found in the log files of {modellogname or modelname}")
         return
 
     with PdfPages(outputfile) as pdf:
@@ -133,7 +139,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for modelpath in modelpaths:
         modelname = get_model_name(modelpath)
         logfiledict = read_time_taken(read_logfiles(modelpath))
-        make_plot(logfiledict, outputfile=str(outputfile).format(modelname), modelname=modelname)
+        make_plot(
+            logfiledict,
+            outputfile=str(outputfile).format(modelname),
+            modelname=modelname,
+            modellogname=get_model_logname(modelpath),
+        )
 
 
 if __name__ == "__main__":

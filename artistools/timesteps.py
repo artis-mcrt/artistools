@@ -9,7 +9,7 @@ from pathlib import Path
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
-from artistools.misc import get_model_name
+from artistools.misc import get_model_logname
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -25,7 +25,7 @@ def get_timesteps_table(modelpath: Path | str) -> str:
     tends = get_timestep_times(modelpath, loc="end")
 
     lines = [
-        f"{get_model_name(modelpath)}: {len(tmids)} timesteps from {tstarts[0]:.3f} to {tends[-1]:.3f} days",
+        f"{get_model_logname(modelpath)}: {len(tmids)} timesteps from {tstarts[0]:.3f} to {tends[-1]:.3f} days",
         f"{'timestep':>8s} {'start_days':>11s} {'mid_days':>11s} {'end_days':>11s} {'width_days':>11s}",
     ]
     lines.extend(

@@ -109,6 +109,7 @@ from artistools.misc.general import vec_len as vec_len
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
+from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
 from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
