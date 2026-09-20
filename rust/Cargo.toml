@@ -18,7 +18,10 @@ path = "src/lib.rs"
 [dependencies]
 autocompress = { version = "0.6.0", features = ["gzip", "rayon", "xz", "zstd"] }
 polars = { version = "0.55.2", features = ["diagonal_concat", "performant"] }
-pyo3 = { version = "0.29.1", features = ["abi3-py313"] }
+# abi3-py313 gives one extension for each GIL-enabled Python from 3.13. abi3t-py315 gives one extension
+# for the free-threaded and the GIL-enabled Python from 3.15 (PEP 803). A free-threaded Python before
+# 3.15 has no stable ABI, thus its wheel is for one version
+pyo3 = { version = "0.29.1", features = ["abi3-py313", "abi3t-py315"] }
 pyo3-polars = { version = "0.28.0" }
 rayon = "1.10"
 
