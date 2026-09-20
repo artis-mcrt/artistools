@@ -135,6 +135,14 @@ before-all = [
     "rustup update stable",
 ]
 
+# abi3audit 0.0.26 is from before Python 3.15. It does not know PyModExport_<name>, the module export
+# hook of PEP 793 that each abi3t extension defines, and on Linux it reports that symbol as a
+# violation. The abi3 wheel keeps its audit on each platform, and the abi3t wheel keeps it on macOS.
+# Remove this override when abi3audit knows the hook
+[[tool.cibuildwheel.overrides]]
+select = "cp315t-manylinux_*"
+audit-command = ""
+
 [tool.coverage.run]
 # --cov=./ also measured conftest.py, set_version.py and tests/__init__.py. Test modules are
 # ~100% covered by definition, so counting them inflated the project figure; dropping them is a
