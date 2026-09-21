@@ -760,7 +760,8 @@ def draw_residual_panel(
 ) -> pl.DataFrame:
     """Draw model / reference below the main frame, and return the statistics of each model.
 
-    The panel takes a log y axis only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE.
+    The y range holds the central 95 % of the ratios and the value 1. The panel takes a log y axis only
+    when that range reaches a ratio, or its inverse, above RESIDUALRATIO_LOGSCALE.
     Call it after the main frame has its labels and its x range, because the panel takes both.
     """
     xlim = mainaxis.get_xlim()
@@ -775,10 +776,18 @@ def draw_residual_panel(
 
     ratios = np.concatenate([np.asarray(line.get_ydata(), dtype=np.float64) for line in residualaxis.lines])
     ratios = ratios[np.isfinite(ratios) & (ratios > 0.0)]
-    # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
-    if ratios.size > 0 and max(ratios.max(), 1.0 / ratios.min()) > RESIDUALRATIO_LOGSCALE:
-        residualaxis.set_yscale("log")
-        prune_log_ticks(residualaxis.yaxis)
+    if ratios.size > 0:
+        # a small number of outliers must not set the y range, thus it holds the central 95 % of the ratios
+        ratiolow, ratiohigh = (float(q) for q in np.percentile(ratios, [2.5, 97.5]))
+        ratiolow, ratiohigh = min(ratiolow, 1.0), max(ratiohigh, 1.0)
+        # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
+        if max(ratiohigh, 1.0 / ratiolow) > RESIDUALRATIO_LOGSCALE:
+            residualaxis.set_yscale("log")
+            prune_log_ticks(residualaxis.yaxis)
+            residualaxis.set_ylim(ratiolow / 1.2, ratiohigh * 1.2)
+        elif ratiohigh > ratiolow:
+            margin = 0.05 * (ratiohigh - ratiolow)
+            residualaxis.set_ylim(ratiolow - margin, ratiohigh + margin)
     residualaxis.set_ylabel("flux ratio\nmodel / ref" if ismagnitude else "model / ref")
 
     if mainaxis.get_xlabel():

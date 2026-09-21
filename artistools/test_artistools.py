@@ -298,10 +298,12 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
 def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
     """The panel shows model / reference, on a log y axis only when a ratio or its inverse is above 50."""
-    x = np.array([1.0, 2.0, 3.0])
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    yreference = np.array([1.0, 2.0, 4.0, 8.0])
+    factors = np.array([1.0, 1.0, modelfactor, modelfactor])
     series = [
-        at.plottools.ResidualSeries("obs", x, np.array([1.0, 2.0, 4.0]), "k", isreference=True),
-        at.plottools.ResidualSeries("model", x, np.array([1.0, 2.0, 4.0 * modelfactor]), "C0", isreference=False),
+        at.plottools.ResidualSeries("obs", x, yreference, "k", isreference=True),
+        at.plottools.ResidualSeries("model", x, yreference * factors, "C0", isreference=False),
     ]
     args = argparse.Namespace()
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
@@ -309,7 +311,26 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert residualaxis.get_yscale() == yscale
     assert residualaxis.get_ylabel() == "model / ref"
-    assert np.allclose(residualaxis.lines[0].get_ydata(), [1.0, 1.0, modelfactor])
+    assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
+
+
+def test_ratio_panel_keeps_outliers_out_of_the_y_range() -> None:
+    """The y range of the panel holds the central 95 % of the ratios, thus one outlier does not set it."""
+    x = np.linspace(1.0, 2.0, 200)
+    modely = np.full(200, 1.5)
+    modely[100] = 1000.0
+    series = [
+        at.plottools.ResidualSeries("obs", x, np.ones(200), "k", isreference=True),
+        at.plottools.ResidualSeries("model", x, modely, "C0", isreference=False),
+    ]
+    args = argparse.Namespace()
+    _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.plot(x, series[0].y)
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    assert residualaxis.get_yscale() == "linear"
+    ymin, ymax = residualaxis.get_ylim()
+    assert ymin < 1.0
+    assert 1.5 < ymax < 2.0
 
 
 def test_frame_figure_takes_a_shorter_row() -> None:
