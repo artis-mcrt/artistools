@@ -1306,14 +1306,14 @@ def get_default_losvelocity_shells(
     return [*(-edge for edge in reversed(edges[1:])), *edges], unit
 
 
-def check_shell_edges(shelledges: Sequence[float]) -> None:
-    """Stop with an error if the shell edges are not finite, do not increase, or give no shell."""
+def check_shell_edges(shelledges: Sequence[float], description: str = "shell edges") -> None:
+    """Stop with an error if the edges are not finite, do not increase, or give no shell."""
     if (
         len(shelledges) < 2
         or not all(math.isfinite(v) for v in shelledges)
         or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(shelledges))
     ):
-        msg = f"The shell edges must be finite, increase, and give at least one shell, not {list(shelledges)}"
+        msg = f"The {description} must be finite, increase, and give at least one shell, not {list(shelledges)}"
         raise ValueError(msg)
 
 
@@ -1373,10 +1373,10 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
 def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> pl.Expr:
     """Return the label of the shell that holds the value of each packet, or null outside every shell.
 
-    A velocity column holds cm/s, and the edges are in km/s. A packet with no thermal emission record
-    has a value of NaN, because ARTIS writes a time of -1 and no position for it. A packet whose value
-    is null, e.g. from an old cache with no thermal column, has no value either. Such a packet takes the
-    label NOT SET, as the ion grouping gives it.
+    A velocity column holds cm/s, and the edges are in km/s. add_shell_columns gives a value of NaN to a
+    packet with no thermal emission record. A packet whose value is null, e.g. from an old cache with no
+    thermal column, has no value either. Such a packet takes the label NOT SET, as the ion grouping
+    gives it.
     """
     scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
@@ -1393,38 +1393,13 @@ def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["km
     )
 
 
-def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby: str, usethermal: bool) -> pl.LazyFrame:
-    """Add the packet column that a shell grouping bins, for the last interaction and for the last thermal emission.
-
-    The Ye of a packet is the initial electron fraction of the model cell that holds the position.
-    """
-    lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
-    packetcolumns = lzdfpackets.collect_schema().names()
-    positions: list[tuple[str, t.Literal["em", "trueem"]]] = [(lastcolumn, "em")]
-    # an old packets file holds the thermal emission velocity and no position. That velocity gives the
-    # radial shell and the cell of a 1D model, but not the line of sight
-    thermalfromvelocity = (
-        usethermal and "trueem_posx" not in packetcolumns and "true_emission_velocity" in packetcolumns
-    )
-    if usethermal and thermalcolumn not in packetcolumns:
-        if "trueem_posx" not in packetcolumns and not (thermalfromvelocity and groupby == "ye"):
-            msg = (
-                "The packets hold no thermal emission position, thus --use_thermalemissiontype cannot put a packet in"
-                " a shell or in a velocity range"
-            )
-            raise ValueError(msg)
-        positions.append((thermalcolumn, "trueem"))
-
-    if groupby == "velocity":
-        return lzdfpackets.with_columns(**{
-            column: get_emission_velocity_expr(position) for column, position in positions
-        })
-
-    if groupby == "losvelocity":
-        return lzdfpackets.with_columns(**{
-            column: get_emission_velocity_lineofsight_expr(position) for column, position in positions
-        })
-
+def add_ye_columns(
+    lzdfpackets: pl.LazyFrame,
+    modelpath: Path | str,
+    positions: list[tuple[str, t.Literal["em", "trueem"]]],
+    thermalfromvelocity: bool,
+) -> pl.LazyFrame:
+    """Add a column of the initial electron fraction of the model cell that holds each position."""
     from artistools.inputmodel import get_modeldata
 
     dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
@@ -1448,11 +1423,48 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
             .join(dfcellye.lazy().rename({"modelgridindex": indexcolumn, "Ye": column}), on=indexcolumn, how="left")
             .drop(indexcolumn)
         )
-        if position == "trueem":
-            # a packet with no thermal emission record has a time of -1, thus its cell is not set
-            lzdfpackets = lzdfpackets.with_columns(
-                pl.when(pl.col("trueem_time") <= 0).then(math.nan).otherwise(pl.col(column)).alias(column)
+
+    return lzdfpackets
+
+
+def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby: str, usethermal: bool) -> pl.LazyFrame:
+    """Add the packet column that a shell grouping bins, for the last interaction and for the last thermal emission.
+
+    A velocity range reads the column of the velocity grouping or of the losvelocity grouping. A packet
+    with no thermal emission record gets a thermal value of NaN.
+    """
+    lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
+    packetcolumns = lzdfpackets.collect_schema().names()
+    positions: list[tuple[str, t.Literal["em", "trueem"]]] = [(lastcolumn, "em")]
+    # an old packets file holds the thermal emission velocity and no position. That velocity gives the
+    # radial shell and the cell of a 1D model, but not the line of sight
+    thermalfromvelocity = (
+        usethermal and "trueem_posx" not in packetcolumns and "true_emission_velocity" in packetcolumns
+    )
+    if usethermal and thermalcolumn not in packetcolumns:
+        if "trueem_posx" not in packetcolumns and not (thermalfromvelocity and groupby == "ye"):
+            msg = (
+                "The packets hold no thermal emission position, thus --use_thermalemissiontype has no position to read"
             )
+            raise ValueError(msg)
+        positions.append((thermalcolumn, "trueem"))
+
+    if groupby == "ye":
+        lzdfpackets = add_ye_columns(lzdfpackets, modelpath, positions, thermalfromvelocity)
+    else:
+        get_velocity_expr = (
+            get_emission_velocity_expr if groupby == "velocity" else get_emission_velocity_lineofsight_expr
+        )
+        lzdfpackets = lzdfpackets.with_columns(**{
+            column: get_velocity_expr(position) for column, position in positions
+        })
+
+    if usethermal:
+        # ARTIS gives a time of 0 or -1 and a position of zero to a packet with no thermal emission record.
+        # Thus the velocity of that packet is 0 and not NaN, in a packets file and from the position
+        lzdfpackets = lzdfpackets.with_columns(
+            pl.when(pl.col("trueem_time") > 0).then(pl.col(thermalcolumn)).otherwise(math.nan).alias(thermalcolumn)
+        )
 
     return lzdfpackets
 
@@ -1470,7 +1482,7 @@ def get_flux_contributions_from_packets(
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
-    emtypecolumn: str | None = None,
+    usethermal: bool = False,
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1479,7 +1491,7 @@ def get_flux_contributions_from_packets(
     gamma: bool = False,
     shelledges: Sequence[float] | None = None,
     shellunit: t.Literal["kmps", "c", "ye"] = "kmps",
-    emissionvelocityrange: tuple[float, float] | None = None,
+    velocityranges: Mapping[str, tuple[float, float]] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the emission and absorption contributions binned from the packets, and the flux and wavelength arrays.
 
@@ -1487,22 +1499,24 @@ def get_flux_contributions_from_packets(
     radial velocity (velocity), of the velocity along the line of sight (losvelocity), or of the
     initial electron fraction of the cell (ye).
 
+    An emission belongs to the last interaction of the packet, or to the last thermal emission when
+    usethermal is true. This choice sets the emission type of an ion group and of a line group. It also
+    sets the shell of an emission and the velocity that velocityranges reads. A nuclide group always
+    takes the nuclide of the pellet.
+
     A shell holds the packets whose last interaction lies inside it. shelledges gives the edges of the
     shells, and shellunit gives the unit of the labels. The last absorption of a packet happens at the
-    position of its last emission, thus the shell of the absorption comes from the column of the last
-    interaction. The shell of the emission comes from emtypecolumn, which SHELLCOLUMNS names for the
-    last interaction and for the last thermal emission.
+    position of its last emission. Thus the shell and the velocity of an absorption always come from the
+    last interaction.
 
-    emissionvelocityrange gives a lower limit and an upper limit [km/s] of the radial velocity. Each
-    contribution then holds only the packets inside the limits, and the lower limit is inside. The
-    velocity of an emission is that of the last thermal emission when emtypecolumn names a thermal
-    column, and that of the last interaction if not. The velocity of an absorption is that of the last
-    interaction, as for a shell.
+    velocityranges maps the key velocity, the key losvelocity, or both to the two edges [km/s] of a
+    range. The keys name the radial velocity and the velocity along the line of sight. Each contribution
+    then holds only the packets inside each range. The lower edge is inside the range.
     """
     assert groupby in {"ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
     assert use_time in {"arrival", "emission", "escape"}
     if groupby in SHELLCOLUMNS:
-        assert emtypecolumn in SHELLCOLUMNS[groupby]
+        emtypecolumn = SHELLCOLUMNS[groupby][1 if usethermal else 0]
         if groupby == "ye":
             # an electron fraction has one unit, thus the caller cannot give a velocity unit for it
             shellunit = "ye"
@@ -1510,19 +1524,17 @@ def get_flux_contributions_from_packets(
             msg = f"groupby {groupby} needs the shell edges in shelledges"
             raise ValueError(msg)
         check_shell_edges(shelledges)
-        if directionbins_are_vpkt_observers:
-            msg = "A virtual packet holds no emission position, thus no shell can hold it"
-            raise ValueError(msg)
+    elif groupby in {"nuc", "nucmass"}:
+        emtypecolumn = "pellet_nucindex"
     else:
-        assert emtypecolumn in {"emissiontype", "trueemissiontype", "pellet_nucindex"}
-    if emissionvelocityrange is not None:
-        vlow_kmps, vhigh_kmps = emissionvelocityrange
-        if not (math.isfinite(vlow_kmps) and math.isfinite(vhigh_kmps) and vlow_kmps < vhigh_kmps):
-            msg = f"The emission velocity range must be finite and must increase, not {list(emissionvelocityrange)}"
-            raise ValueError(msg)
-        if directionbins_are_vpkt_observers:
-            msg = "A virtual packet holds no emission position, thus no velocity range can select it"
-            raise ValueError(msg)
+        emtypecolumn = "trueemissiontype" if usethermal else "emissiontype"
+    velocityranges = velocityranges or {}
+    for rangegrouping, rangeedges in velocityranges.items():
+        assert rangegrouping in {"velocity", "losvelocity"}
+        check_shell_edges(rangeedges, f"edges of the {rangegrouping} range")
+    if directionbins_are_vpkt_observers and (groupby in SHELLCOLUMNS or velocityranges):
+        msg = "A virtual packet holds no emission position, thus no shell and no velocity range can hold it"
+        raise ValueError(msg)
     if getabsorption and groupby == "nuc":
         # A nuclide emits a packet, but a nuclide does not absorb a packet.
         # Thus a nuclide name cannot be a label for an absorption contribution.
@@ -1538,7 +1550,6 @@ def get_flux_contributions_from_packets(
 
     if gamma:
         assert groupby in {"nuc", "nucmass"}
-        assert emtypecolumn == "pellet_nucindex"
 
     if directionbins_are_vpkt_observers and use_time != "arrival":
         msg = "Virtual packet contributions support only observer arrival time"
@@ -1552,10 +1563,6 @@ def get_flux_contributions_from_packets(
 
     nu_min = constants.c_ang_per_s / lambda_bin_edges[-1]
     nu_max = constants.c_ang_per_s / lambda_bin_edges[0]
-
-    usethermal = emtypecolumn == "trueemissiontype" or emtypecolumn in {
-        thermalcolumn for _, thermalcolumn in SHELLCOLUMNS.values()
-    }
 
     vpkt_config = None
     opacchoiceindex = None
@@ -1578,11 +1585,11 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
-        if groupby in SHELLCOLUMNS:
-            lzdfpackets = add_shell_columns(lzdfpackets, modelpath, groupby, usethermal=usethermal)
-
-        if emissionvelocityrange is not None and groupby != "velocity":
-            lzdfpackets = add_shell_columns(lzdfpackets, modelpath, "velocity", usethermal=usethermal)
+        for shellgrouping in sorted({groupby, *velocityranges} & SHELLCOLUMNS.keys()):
+            # only an emission reads the thermal column, thus an absorption plot does not need that column
+            lzdfpackets = add_shell_columns(
+                lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
+            )
 
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
@@ -1592,19 +1599,29 @@ def get_flux_contributions_from_packets(
 
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(value=False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(value=False)
-    if emissionvelocityrange is not None:
-        emissionvelocitycolumn = "true_emission_velocity" if usethermal else "emission_velocity"
-        vlow_cmps, vhigh_cmps = (velocity_kmps * km_to_cm for velocity_kmps in emissionvelocityrange)
-        # a packet with no thermal emission record has a velocity of NaN, which is outside each range
-        lzdfpackets = lzdfpackets.with_columns(
-            emission_inrange=pl.col(emissionvelocitycolumn).is_between(vlow_cmps, vhigh_cmps, closed="left"),
-            absorption_inrange=pl.col("emission_velocity").is_between(vlow_cmps, vhigh_cmps, closed="left"),
-        )
-        condition_nu_emit &= pl.col("emission_inrange")
-        condition_nu_abs &= pl.col("absorption_inrange")
-        cols |= {"emission_inrange", "absorption_inrange"}
-
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
+
+    if velocityranges:
+
+        def get_inrange_expr(thermalcolumns: bool) -> pl.Expr:
+            """Return the test that the velocity of a packet is inside each range."""
+            return pl.all_horizontal(
+                pl.col(SHELLCOLUMNS[rangegrouping][1 if thermalcolumns else 0]).is_between(
+                    vlow_kmps * km_to_cm, vhigh_kmps * km_to_cm, closed="left"
+                )
+                for rangegrouping, (vlow_kmps, vhigh_kmps) in velocityranges.items()
+            )
+
+        inrange_exprs: dict[str, pl.Expr] = {}
+        if getemission:
+            inrange_exprs[dirbin_nu_column] = get_inrange_expr(thermalcolumns=usethermal)
+        if getabsorption:
+            inrange_exprs["absorption_freq"] = get_inrange_expr(thermalcolumns=False)
+        # A frequency of null fails each frequency filter, thus the packet leaves that contribution. The filter
+        # above stays on the columns of the files, because polars then applies it while it reads them
+        lzdfpackets = lzdfpackets.with_columns(**{
+            nucolumn: pl.when(inrange_expr).then(pl.col(nucolumn)) for nucolumn, inrange_expr in inrange_exprs.items()
+        }).filter(condition_nu_emit | condition_nu_abs)
 
     if getemission:
         cols |= {emtypecolumn, dirbin_nu_column}
@@ -1720,27 +1737,23 @@ def get_flux_contributions_from_packets(
             abstypelabels.collect(), on="absorption_type", how="left", maintain_order="left"
         ).drop("absorption_type")
 
-    # The label column, the frequency column, and the velocity range column of each type of contribution.
+    # The label column and the frequency column of each type of contribution.
     # When the code bins one type, it removes the columns of the other type.
-    emission_columns = ("emissiontype_str", dirbin_nu_column, "emission_inrange")
-    absorption_columns = ("absorptiontype_str", "absorption_freq", "absorption_inrange")
+    emission_columns = ("emissiontype_str", dirbin_nu_column)
+    absorption_columns = ("absorptiontype_str", "absorption_freq")
 
     # The dfpackets frame is a parameter and not a captured variable. The code deletes that variable below.
     # The deletion makes the memory free before the code bins the groups.
-    def group_by_label(
-        dfpkts: pl.DataFrame, keep: tuple[str, str, str], drop: tuple[str, str, str]
-    ) -> dict[str, pl.DataFrame]:
+    def group_by_label(dfpkts: pl.DataFrame, keep: tuple[str, str], drop: tuple[str, str]) -> dict[str, pl.DataFrame]:
         """Divide the packets into one frame for each label. Keep only the columns that the bin operation needs."""
-        labelcolumn, nucolumn, inrangecolumn = keep
-        isinrange = pl.col(inrangecolumn) if emissionvelocityrange is not None else pl.lit(value=True)
+        labelcolumn, nucolumn = keep
         # partition_by() copies each group into new memory. Thus the memory of the intermediate frame becomes free.
         return {
             groupname: dfgroup
             for (groupname,), dfgroup in (
                 dfpkts
                 .drop(drop, strict=False)
-                .filter(pl.col(nucolumn).is_between(nu_min, nu_max) & pl.col(labelcolumn).is_not_null() & isinrange)
-                .drop(inrangecolumn, strict=False)
+                .filter(pl.col(nucolumn).is_between(nu_min, nu_max) & pl.col(labelcolumn).is_not_null())
                 .partition_by(labelcolumn, include_key=False, as_dict=True)
             ).items()
         }
@@ -1755,6 +1768,9 @@ def get_flux_contributions_from_packets(
         absorptiongroups = group_by_label(dfpackets, absorption_columns, emission_columns)
 
     del dfpackets, dflines
+
+    if velocityranges and not (emissiongroups or absorptiongroups):
+        print_warning("No packet of the time range and the x range lies inside each velocity range")
 
     group_energy_sum: dict[str, float] = {}
     for groups in (emissiongroups, absorptiongroups):

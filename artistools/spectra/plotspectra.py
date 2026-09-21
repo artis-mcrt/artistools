@@ -927,15 +927,6 @@ def get_emission_contributions(
     else:
         use_time = "arrival"
 
-    if args.groupby in SHELLCOLUMNS:
-        emtypecolumn = SHELLCOLUMNS[args.groupby][1 if args.use_thermalemissiontype else 0]
-    elif args.groupby in {"nuc", "nucmass"}:
-        emtypecolumn = "pellet_nucindex"
-    elif args.use_thermalemissiontype:
-        emtypecolumn = "trueemissiontype"
-    else:
-        emtypecolumn = "emissiontype"
-
     lambda_bin_edges = get_lambda_bin_edges(
         xmin,
         xmax,
@@ -961,7 +952,7 @@ def get_emission_contributions(
         fixedionlist=args.fixedionlist,
         maxseriescount=args.maxseriescount + 20,
         gamma=args.gamma,
-        emtypecolumn=emtypecolumn,
+        usethermal=args.use_thermalemissiontype,
         directionbin=dirbin,
         average_over_phi=args.average_over_phi_angle,
         average_over_theta=args.average_over_theta_angle,
@@ -969,7 +960,7 @@ def get_emission_contributions(
         vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
         shelledges=args.shelledges,
         shellunit=args.shellunit,
-        emissionvelocityrange=args.emissionvelocityrange_kmps,
+        velocityranges=args.velocityranges_kmps,
     )
 
 
@@ -1207,9 +1198,13 @@ def get_emission_plot_label(
         return str(args.title)
 
     plotlabel = f"{modelname} [{timemin:.2f}d to {timemax:.2f}d]"
-    if args.emissionvelocityrange_kmps is not None:
-        (rangelabel,) = get_shell_labels(args.emissionvelocityrange_kmps, args.emissionvelocityunit)
-        plotlabel += f", {'thermal ' if args.use_thermalemissiontype else ''}emission velocity {rangelabel}"
+    if args.velocityranges_kmps:
+        velocitynames = {"velocity": "radial velocity", "losvelocity": "line-of-sight velocity"}
+        rangelabels = [
+            f"{velocitynames[rangegrouping]} {get_shell_labels(rangeedges, args.velocityrangeunits[rangegrouping])[0]}"
+            for rangegrouping, rangeedges in args.velocityranges_kmps.items()
+        ]
+        plotlabel += f", emission at {' and '.join(rangelabels)}"
     if not (args.plotviewingangle or args.plotvspecpol):
         return plotlabel
 
@@ -1310,9 +1305,10 @@ def make_emissionabsorption_plot(
 
     if scale_to_peak and max_f_emission_total <= 0.0:
         # the scale to the peak divides by this maximum
+        selection = "the velocity ranges" if args.velocityranges_kmps else "the shells"
         exit_with_error(
             "--normalised needs a peak, and no packet of the selection emits inside the plotted range",
-            "Widen the time range, the x range, or the shells",
+            f"Widen the time range, the x range, or {selection}",
         )
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
@@ -1722,10 +1718,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar=("vmin", "vmax"),
         help=(
-            "Keep only the contributions of --showemission and --showabsorption from a range of the radial"
-            " velocity, in km/s, e.g. 5000 10000, or as a fraction of c, e.g. 0.1c 0.2c. The velocity is that of"
-            " the last interaction, or of the last thermal emission with --use_thermalemissiontype. vmin is"
-            " inside the range, and vmax is not. Implies --frompackets"
+            "Keep only the emission and the absorption from a range of the radial velocity. Give vmin and vmax in"
+            " km/s, e.g. 5000 10000, or as a fraction of c, e.g. 0.1c 0.2c. An emission takes the velocity of the last"
+            " interaction, or of the last thermal emission with --use_thermalemissiontype. An absorption always takes"
+            " the velocity of the last interaction. vmin is inside the range, and vmax is not. Implies --frompackets"
+        ),
+    )
+
+    parser.add_argument(
+        "-emissionlosvelocityrange",
+        type=parse_velocity_argument,
+        nargs=2,
+        default=None,
+        metavar=("vmin", "vmax"),
+        help=(
+            "Keep only the emission and the absorption from a range of the velocity along the line of sight. A"
+            " positive velocity is motion toward the observer, and a value can be negative, e.g. -0.05c 0.05c. The"
+            " other rules of -emissionvelocityrange apply. The two ranges together keep a packet that is inside both"
         ),
     )
 
@@ -1849,24 +1858,59 @@ def parse_velocity_values(
     return [velocity_kmps for velocity_kmps, _ in parsedvalues], unit
 
 
-def resolve_shell_args(args: argparse.Namespace) -> None:
-    """Set the shell edges, the emission velocity range, and the units of their labels, from the arguments or the model."""
-    args.emissionvelocityrange_kmps = None
-    args.emissionvelocityunit = "kmps"
-    if args.emissionvelocityrange is not None:
-        if len(args.emissionvelocityrange) != 2:
-            exit_with_error(
-                f"-emissionvelocityrange takes two velocities, not {list(args.emissionvelocityrange)}",
-                "Give vmin and vmax, e.g. -emissionvelocityrange 0.1c 0.2c",
-            )
-        (vlow_kmps, vhigh_kmps), args.emissionvelocityunit = parse_velocity_values(args.emissionvelocityrange)
-        if vhigh_kmps <= vlow_kmps:
-            exit_with_error(
-                f"-emissionvelocityrange needs vmin below vmax, not {vlow_kmps:g} km/s and {vhigh_kmps:g} km/s",
-                "Give the lower velocity first",
-            )
-        args.emissionvelocityrange_kmps = (vlow_kmps, vhigh_kmps)
+def exit_if_no_emission_position(args: argparse.Namespace) -> None:
+    """Stop if a shell grouping or a velocity range meets gamma packets or virtual packets."""
+    if args.groupby in SHELLCOLUMNS:
+        option = f"-groupby {args.groupby}"
+        gammahelp = "Give -groupby nuc or -groupby nucmass"
+    elif args.emissionvelocityrange is not None or args.emissionlosvelocityrange is not None:
+        option = "-emissionvelocityrange" if args.emissionvelocityrange is not None else "-emissionlosvelocityrange"
+        gammahelp = f"Remove {option}, or remove --gamma"
+    else:
+        return
 
+    if args.gamma:
+        # no test covers these options on gamma packets, thus the command refuses the combination
+        exit_with_error(f"{option} does not apply to a gamma-ray spectrum", gammahelp)
+
+    if args.plotvspecpol is not None:
+        exit_with_error(
+            f"a virtual packet holds no emission position, thus {option} does not apply to -plotvspecpol",
+            "Give -plotviewingangle for a direction bin of the real packets",
+        )
+
+
+def resolve_velocity_ranges(args: argparse.Namespace) -> None:
+    """Set the velocity ranges in km/s and the units of their labels, from the two range arguments."""
+    args.velocityranges_kmps = {}
+    args.velocityrangeunits = {}
+    for rangegrouping, argname in (("velocity", "emissionvelocityrange"), ("losvelocity", "emissionlosvelocityrange")):
+        rangevalues = getattr(args, argname)
+        if rangevalues is None:
+            continue
+
+        velocities_kmps, args.velocityrangeunits[rangegrouping] = parse_velocity_values(rangevalues)
+        if len(velocities_kmps) != 2:
+            exit_with_error(
+                f"-{argname} takes two velocities, not {len(velocities_kmps)}",
+                f"Give vmin and vmax, e.g. -{argname} 0.1c 0.2c",
+            )
+        args.velocityranges_kmps[rangegrouping] = (velocities_kmps[0], velocities_kmps[1])
+
+    if not args.velocityranges_kmps:
+        return
+
+    if not (args.showemission or args.showabsorption or args.emissionabsorption):
+        exit_with_error(
+            "a velocity range selects the packets of the contributions, and the plot shows none",
+            "Give --showemission, --showabsorption, or --emissionabsorption",
+        )
+    # the spectrum files of exspec hold no emission position
+    args.frompackets = True
+
+
+def resolve_shell_args(args: argparse.Namespace) -> None:
+    """Set the shell edges and the unit of their labels for a shell grouping, from the arguments or the model."""
     args.shelledges = None
     args.shellunit = "kmps"
     if args.groupby == "ye":
@@ -2035,35 +2079,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS}:
         args.frompackets = True
 
-    if args.emissionvelocityrange is not None:
-        if not (args.showemission or args.showabsorption or args.emissionabsorption):
-            exit_with_error(
-                "-emissionvelocityrange selects the packets of the contributions, and the plot shows none",
-                "Give --showemission, --showabsorption, or --emissionabsorption",
-            )
-        if args.gamma:
-            # the range is not tested on gamma packets, thus the command refuses the combination
-            exit_with_error("-emissionvelocityrange does not apply to a gamma-ray spectrum", "Drop one of the two")
-        if args.plotvspecpol:
-            exit_with_error(
-                "a virtual packet holds no emission position, thus -emissionvelocityrange does not apply to"
-                " -plotvspecpol",
-                "Give -plotviewingangle for a direction bin of the real packets",
-            )
-        args.frompackets = True
-
-    if args.gamma and args.groupby in SHELLCOLUMNS:
-        # the shells are not tested on gamma packets, thus the command refuses the combination
-        exit_with_error(
-            f"-groupby {args.groupby} does not apply to a gamma-ray spectrum", "Give -groupby nuc or -groupby nucmass"
-        )
-
-    if args.plotvspecpol and args.groupby in SHELLCOLUMNS:
-        exit_with_error(
-            f"a virtual packet holds no emission position, thus -groupby {args.groupby} does not apply to -plotvspecpol",
-            "Give -plotviewingangle for a direction bin of the real packets",
-        )
-
+    exit_if_no_emission_position(args)
+    resolve_velocity_ranges(args)
     resolve_shell_args(args)
 
     if args.gamma and args.plotviewingangle:
