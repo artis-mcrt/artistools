@@ -728,7 +728,12 @@ def make_lightcurve_plot(
             bolreflightcurve = Path(modelpath)
 
             lightcurvelabel = plot_bol_reflightcurve(
-                axis, bolreflightcurve, lumunit, color=args.color[lcindex], label=args.label[lcindex]
+                axis,
+                bolreflightcurve,
+                lumunit,
+                color=args.color[lcindex],
+                label=args.label[lcindex],
+                residualseries=residualseries,
             )
             print_heading(lightcurvelabel)
             plottedsomething = True

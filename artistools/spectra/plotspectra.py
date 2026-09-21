@@ -1375,6 +1375,8 @@ def draw_residual_panel(
     residualargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None, "logscaley": False})
     set_axis_properties(residualaxis, residualargs)
     residualaxis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    if args.hidexticklabels:
+        residualaxis.tick_params(axis="x", which="both", labelbottom=False)
     return dfresidualstats
 
 

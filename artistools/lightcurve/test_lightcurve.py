@@ -1812,7 +1812,8 @@ def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> No
     assert at.lightcurve.find_lightcurve_file(modelpath).name.startswith("light_curve.out")
 
 
-def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> None:
+@pytest.mark.parametrize("refispositional", [False, True])
+def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path, refispositional: bool) -> None:
     """Give the reduced chi-square of a bolometric residual panel.
 
     The reference luminosity is 1.2 times the model, with an error of 0.2 times the model. Each
@@ -1835,8 +1836,8 @@ def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) 
 
     at.lightcurve.plot(
         argsraw=[],
-        modelpath=[modelpath],
-        reflightcurves=[str(obsfile)],
+        modelpath=[modelpath, obsfile] if refispositional else [modelpath],
+        reflightcurves=[] if refispositional else [str(obsfile)],
         residuals=True,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
