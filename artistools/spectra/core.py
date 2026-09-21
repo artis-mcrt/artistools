@@ -1586,11 +1586,12 @@ def get_flux_contributions_from_packets(
         )
         dirbin_nu_column = "nu_rf"
 
-        for shellgrouping in sorted({groupby, *velocityranges} & SHELLCOLUMNS.keys()):
-            # only an emission reads the thermal column, thus an absorption plot does not need that column
-            lzdfpackets = add_shell_columns(
-                lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
-            )
+        for shellgrouping in SHELLCOLUMNS:
+            if shellgrouping == groupby or shellgrouping in velocityranges:
+                # only an emission reads the thermal column, thus an absorption plot does not need that column
+                lzdfpackets = add_shell_columns(
+                    lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
+                )
 
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
 
@@ -1652,7 +1653,6 @@ def get_flux_contributions_from_packets(
         assert shelledges is not None
         shellexprs = {}
         if getemission:
-            assert emtypecolumn is not None
             shellexprs["emissiontype_str"] = get_shell_expr(emtypecolumn, shelledges, shellunit)
         if getabsorption:
             shellexprs["absorptiontype_str"] = get_shell_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)

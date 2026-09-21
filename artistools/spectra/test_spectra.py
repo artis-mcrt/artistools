@@ -623,31 +623,31 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
     assert len(mockstackplot.call_args_list[0].args[2]) == 4
 
 
-def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("packetargs", [{"gamma": True}, {"plotvspecpol": [0]}])
+@pytest.mark.parametrize(
+    "optionargs",
+    [{"groupby": "velocity"}, {"emissionvelocityrange": [5000, 10000]}, {"emissionlosvelocityrange": [-5000, 5000]}],
+)
+def test_spectraemissionplot_refuses_packets_with_no_emission_position(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], optionargs: dict[str, t.Any], packetargs: dict[str, t.Any]
 ) -> None:
-    """A gamma spectrum, a virtual packet observer, and an empty shell selection stop with a message."""
-    needsposition: list[dict[str, t.Any]] = [
-        {"groupby": "velocity"},
-        {"emissionvelocityrange": [5000, 10000]},
-        {"emissionlosvelocityrange": [-5000, 5000]},
-    ]
-    nopositions: list[dict[str, t.Any]] = [{"gamma": True}, {"plotvspecpol": [0]}]
-    for optionargs in needsposition:
-        for packetargs in nopositions:
-            with pytest.raises(SystemExit):
-                at.spectra.plot(
-                    argsraw=[],
-                    specpath=modelpath_classic_3d,
-                    timemin=4,
-                    timemax=6.5,
-                    showemission=True,
-                    outputfile=tmp_path / "noposition.pdf",
-                    **optionargs,
-                    **packetargs,
-                )
-            assert "does not apply to" in capsys.readouterr().err
+    """A shell grouping and a velocity range stop with a message for gamma packets and for virtual packets."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            outputfile=tmp_path / "noposition.pdf",
+            **optionargs,
+            **packetargs,
+        )
+    assert "does not apply to" in capsys.readouterr().err
 
+
+def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
+    """A shell selection that holds no packet stops with a message when the plot is normalised."""
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],

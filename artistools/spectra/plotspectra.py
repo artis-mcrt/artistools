@@ -7,8 +7,10 @@ import math
 import sys
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
@@ -1198,13 +1200,8 @@ def get_emission_plot_label(
         return str(args.title)
 
     plotlabel = f"{modelname} [{timemin:.2f}d to {timemax:.2f}d]"
-    if args.velocityranges_kmps:
-        velocitynames = {"velocity": "radial velocity", "losvelocity": "line-of-sight velocity"}
-        rangelabels = [
-            f"{velocitynames[rangegrouping]} {get_shell_labels(rangeedges, args.velocityrangeunits[rangegrouping])[0]}"
-            for rangegrouping, rangeedges in args.velocityranges_kmps.items()
-        ]
-        plotlabel += f", packets at {' and '.join(rangelabels)}"
+    if args.velocityrangelabels:
+        plotlabel += f", packets at {' and '.join(args.velocityrangelabels)}"
     if not (args.plotviewingangle or args.plotvspecpol):
         return plotlabel
 
@@ -1861,13 +1858,20 @@ def parse_velocity_values(
     return [velocity_kmps for velocity_kmps, _ in parsedvalues], unit
 
 
+# the argument and the name in the title of the velocity range of each shell grouping
+VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
+    "velocity": ("emissionvelocityrange", "radial velocity"),
+    "losvelocity": ("emissionlosvelocityrange", "line-of-sight velocity"),
+})
+
+
 def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     """Stop if the user gives a shell grouping or a velocity range with gamma packets or virtual packets."""
     if args.groupby in SHELLCOLUMNS:
         option = f"-groupby {args.groupby}"
         gammahelp = "Give -groupby nuc or -groupby nucmass"
-    elif args.emissionvelocityrange is not None or args.emissionlosvelocityrange is not None:
-        option = "-emissionvelocityrange" if args.emissionvelocityrange is not None else "-emissionlosvelocityrange"
+    elif args.velocityranges_kmps:
+        option = f"-{VELOCITYRANGEARGS[next(iter(args.velocityranges_kmps))][0]}"
         gammahelp = f"Remove {option}, or remove --gamma"
     else:
         return
@@ -1884,21 +1888,22 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
 
 
 def resolve_velocity_ranges(args: argparse.Namespace) -> None:
-    """Set the velocity ranges in km/s and the units of their labels, from the two range arguments."""
+    """Set the velocity ranges in km/s and their labels for the title, from the two range arguments."""
     args.velocityranges_kmps = {}
-    args.velocityrangeunits = {}
-    for rangegrouping, argname in (("velocity", "emissionvelocityrange"), ("losvelocity", "emissionlosvelocityrange")):
+    args.velocityrangelabels = []
+    for rangegrouping, (argname, velocityname) in VELOCITYRANGEARGS.items():
         rangevalues = getattr(args, argname)
         if rangevalues is None:
             continue
 
-        velocities_kmps, args.velocityrangeunits[rangegrouping] = parse_velocity_values(rangevalues)
+        velocities_kmps, unit = parse_velocity_values(rangevalues)
         if len(velocities_kmps) != 2:
             exit_with_error(
                 f"-{argname} takes two velocities, not {len(velocities_kmps)}",
                 f"Give vmin and vmax, e.g. -{argname} 0.1c 0.2c",
             )
         args.velocityranges_kmps[rangegrouping] = (velocities_kmps[0], velocities_kmps[1])
+        args.velocityrangelabels.append(f"{velocityname} {get_shell_labels(velocities_kmps, unit)[0]}")
 
     if not args.velocityranges_kmps:
         return
@@ -2082,8 +2087,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS}:
         args.frompackets = True
 
-    exit_if_no_emission_position(args)
     resolve_velocity_ranges(args)
+    exit_if_no_emission_position(args)
     resolve_shell_args(args)
 
     if args.gamma and args.plotviewingangle:
