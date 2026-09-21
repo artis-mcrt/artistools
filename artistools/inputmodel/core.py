@@ -418,6 +418,29 @@ def read_parquet_cache(
     return df, pqmetadata
 
 
+def get_parquet_cache_path(textfilepath: Path) -> Path:
+    """Return the path of the parquet cache of a text file that get_text_source_cached reads."""
+    # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
+    textname = (
+        textfilepath.name.removesuffix(textfilepath.suffix)
+        if textfilepath.suffix in COMPRESSED_EXTENSIONS
+        else textfilepath.name
+    )
+    return textfilepath.with_name(f"{textname}.parquet.tmp")
+
+
+def remove_parquet_cache(textfilepath: Path) -> None:
+    """Delete the parquet cache of a text file that the caller wrote again.
+
+    The cache check accepts a modification time within MTIME_TOLERANCE_S of its stamp. Thus the time of
+    a text file that the caller wrote again soon after a read cannot show that the cache is stale.
+    """
+    parquetfilepath = get_parquet_cache_path(textfilepath)
+    if parquetfilepath.is_file():
+        print(f"Deleting {parquetfilepath}, because it is the cache of the old {textfilepath.name}")
+        parquetfilepath.unlink(missing_ok=True)
+
+
 def get_text_source_cached(
     textfilepath: Path,
     read_text_source: Callable[[], tuple[pl.LazyFrame, dict[str, str]]],
@@ -435,13 +458,7 @@ def get_text_source_cached(
     that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
     textsource_mtime = textfilepath.stat().st_mtime
-    # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
-    textname = (
-        textfilepath.name.removesuffix(textfilepath.suffix)
-        if textfilepath.suffix in COMPRESSED_EXTENSIONS
-        else textfilepath.name
-    )
-    parquetfilepath = textfilepath.with_name(f"{textname}.parquet.tmp")
+    parquetfilepath = get_parquet_cache_path(textfilepath)
     # the identity of the cache that a rewrite replaces, from the same moment as the existence check
     outdatedparquet = get_file_identity(parquetfilepath)
     hadcachefile = outdatedparquet is not None
@@ -1073,6 +1090,7 @@ def save_modeldata(
             fmodel.flush()
             write_artis_csv(dfmodel, fmodel)
 
+    remove_parquet_cache(modelfilepath)
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
@@ -1182,6 +1200,7 @@ def save_initelemabundances(
         fabund.flush()
         write_artis_csv(dfelabundances, fabund)
 
+    remove_parquet_cache(Path(abundancefilename))
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 

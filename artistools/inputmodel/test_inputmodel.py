@@ -2121,6 +2121,30 @@ def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
     assert math.isclose(modelmeta_saved["vmax_cmps"], 1.0e9)
 
 
+def test_save_removes_the_parquet_cache_of_the_old_text(tmp_path: Path) -> None:
+    """Write model.txt and abundances.txt again after a cached read, then read the new values.
+
+    The cache check accepts a modification time within MTIME_TOLERANCE_S of its stamp, thus the time of
+    the new text file cannot show that the cache is stale.
+    """
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=40, vmax=1000, t_model_init_days=1)
+    dfelabundances = pl.DataFrame({"inputcellid": range(1, 40**3 + 1)}).with_columns(
+        (pl.lit(1.0 / 30, dtype=pl.Float32)).alias(f"X_{at.get_elsymbol(z)}") for z in range(1, 31)
+    )
+    for rho, x_h in ((1.0, 0.25), (2.0, 0.75)):
+        at.inputmodel.save_modeldata(lzdfmodel.with_columns(rho=pl.lit(rho)), outpath=tmp_path, modelmeta=modelmeta)
+        at.inputmodel.save_initelemabundances(dfelabundances.with_columns(X_H=pl.lit(x_h)), outpath=tmp_path)
+        assert (tmp_path / "model.txt").stat().st_size > 2 * 1024 * 1024
+        assert (tmp_path / "abundances.txt").stat().st_size > 2 * 1024 * 1024
+
+        dfmodel, _ = at.inputmodel.get_modeldata(tmp_path)
+        assert np.isclose(dfmodel.select(pl.col("rho").first()).collect().item(), rho)
+        dfabund = at.inputmodel.get_initelemabundances(tmp_path)
+        assert np.isclose(dfabund.select(pl.col("X_H").first()).collect().item(), x_h)
+        assert (tmp_path / "model.txt.parquet.tmp").is_file()
+        assert (tmp_path / "abundances.txt.parquet.tmp").is_file()
+
+
 def test_get_modeldata_3d_rejects_inconsistent_vmax(tmp_path: Path) -> None:
     """A saved 3D model names its position columns, and a vmax that disagrees with them must still give an error."""
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=2, vmax=1000, t_model_init_days=1)
