@@ -296,6 +296,23 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     )
 
 
+@pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
+def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
+    """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
+    x = np.array([1.0, 2.0, 3.0])
+    series = [
+        at.plottools.ResidualSeries("obs", x, np.array([1.0, 2.0, 4.0]), "k", isreference=True),
+        at.plottools.ResidualSeries("model", x, np.array([1.0, 2.0, 4.0 * modelfactor]), "C0", isreference=False),
+    ]
+    args = argparse.Namespace(logscaley=True)
+    _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.plot(x, series[0].y)
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    assert residualaxis.get_yscale() == yscale
+    assert residualaxis.get_ylabel() == "model / ref"
+    assert np.allclose(residualaxis.lines[0].get_ydata(), [1.0, 1.0, modelfactor])
+
+
 def test_frame_figure_takes_a_shorter_row() -> None:
     """A residual panel takes a part of the frame height, and the main frame keeps its size."""
     fig, axes = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))

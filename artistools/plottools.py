@@ -634,6 +634,9 @@ def add_cax_for_fixed_frames(fig: mplfig.Figure, *, horizontal: bool) -> mplax.A
 # the height of the residual panel as a part of the height of the main frame
 RESIDUALROWHEIGHT: t.Final[float] = 0.35
 
+# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
+RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
+
 
 def make_frame_figure_with_residuals(
     args: argparse.Namespace, aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES
@@ -763,8 +766,9 @@ def draw_residual_panel(
 ) -> pl.DataFrame:
     """Draw model minus reference below the main frame, and return the statistics of each model.
 
-    With a log y axis in the main frame, the panel shows model / reference on a log y axis, because a
-    distance in that frame is a ratio. Call it after the main frame has its labels and its x range, because the panel takes both.
+    With a log y axis in the main frame, the panel shows model / reference, because a distance in that
+    frame is a ratio. The panel takes a log y axis only when a ratio is above RESIDUALRATIO_LOGSCALE.
+    Call it after the main frame has its labels and its x range, because the panel takes both.
     """
     xlim = mainaxis.get_xlim()
     isratio = bool(getattr(args, "logscaley", False)) and not ismagnitude
@@ -780,8 +784,14 @@ def draw_residual_panel(
     if getattr(args, "logscaley", False):
         prune_log_ticks(mainaxis.yaxis)
     if isratio:
-        residualaxis.set_yscale("log")
-        prune_log_ticks(residualaxis.yaxis)
+        import numpy as np
+
+        ratios = np.concatenate([np.asarray(line.get_ydata(), dtype=np.float64) for line in residualaxis.lines])
+        ratios = ratios[np.isfinite(ratios) & (ratios > 0.0)]
+        # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
+        if ratios.size > 0 and max(ratios.max(), 1.0 / ratios.min()) > RESIDUALRATIO_LOGSCALE:
+            residualaxis.set_yscale("log")
+            prune_log_ticks(residualaxis.yaxis)
 
     mainformatter = mainaxis.yaxis.get_major_formatter()
     mainylabel = (
