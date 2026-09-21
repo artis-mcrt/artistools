@@ -643,8 +643,8 @@ class ResidualSeries(t.NamedTuple):
 
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
-) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64] | None]":
-    """Return x, the model value minus the reference value, and the error, at each reference point.
+) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64], npt.NDArray[np.float64] | None]":
+    """Return the reference points that count, and the reference value minus the model value and the error there.
 
     The model takes a linear interpolation to the reference x values. A point counts only inside the
     x range of the panel and inside the x range that the model covers. With an error of two sides,
@@ -658,17 +658,17 @@ def get_residuals(
     modelx = model.x[modelfinite][order]
     modely = model.y[modelfinite][order]
     if modelx.size < 2:
-        return np.array([]), np.array([]), None
+        return np.zeros(reference.x.size, dtype=bool), np.array([]), None
 
     inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
-    residual = np.interp(reference.x[inrange], modelx, modely) - reference.y[inrange]
+    residual = reference.y[inrange] - np.interp(reference.x[inrange], modelx, modely)
     if reference.yerr is None:
-        return reference.x[inrange], residual, None
+        return inrange, residual, None
 
     errlower, errupper = reference.yerr
     # a model above the reference point lies on the side of the upper error
-    sigma = np.where(residual > 0.0, errupper[inrange], errlower[inrange])
-    return reference.x[inrange], residual, np.where(np.isfinite(sigma) & (sigma > 0.0), sigma, np.nan)
+    sigma = np.where(residual < 0.0, errupper[inrange], errlower[inrange])
+    return inrange, residual, np.where(np.isfinite(sigma) & (sigma > 0.0), sigma, np.nan)
 
 
 def get_residual_stats(
@@ -700,12 +700,11 @@ def get_residual_stats(
 def plot_residual_panel(
     axis: mplax.Axes, series: Sequence[ResidualSeries], xmin: float, xmax: float, *, relative: bool = True
 ) -> "pl.DataFrame":
-    """Draw model minus reference for each model against the first reference series, and return the statistics.
+    """Draw reference minus model for each model against the first reference series, and return the statistics.
 
-    With an error in the reference data, the panel shows the residual in units of that error, and the
-    table gives the reduced chi-square. Without one, the panel shows the residual in the units of the
-    main panel, and the table gives the RMS residual alone. relative=False applies to a magnitude,
-    where a ratio to the mean reference value has no meaning.
+    The panel shows the residual in the units of the main frame. The table gives the root mean square
+    (RMS) of the residual, and also the reduced chi-square when the reference data have an error.
+    relative=False applies to a magnitude, where a ratio to the mean reference value has no meaning.
     """
     import numpy as np
 
@@ -721,18 +720,19 @@ def plot_residual_panel(
 
     rows = []
     for model in models:
-        x, residual, sigma = get_residuals(reference, model, xmin, xmax)
-        inpanel = np.isin(reference.x, x) & np.isfinite(reference.y)
-        yreference_mean = float(np.mean(np.abs(reference.y[inpanel]))) if relative and inpanel.any() else 0.0
+        inrange, residual, sigma = get_residuals(reference, model, xmin, xmax)
+        x = reference.x[inrange]
+        yreference = reference.y[inrange]
+        hasvalue = np.isfinite(yreference)
+        yreference_mean = float(np.mean(np.abs(yreference[hasvalue]))) if relative and hasvalue.any() else 0.0
         stats = get_residual_stats(residual, sigma, yreference_mean)
         rows.append({"model": model.label, "reference": reference.label} | stats)
 
-        yvalues = residual / sigma if sigma is not None else residual
         # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
         style: dict[str, t.Any] = (
             {"linewidth": 0.8} if x.size > 200 else {"marker": "o", "markersize": 3, "linewidth": 0.8}
         )
-        axis.plot(x, yvalues, color=model.color, **style)
+        axis.plot(x, residual, color=model.color, **style)
 
         strchi2 = "" if math.isnan(stats["chi2_reduced"]) else f", reduced chi-square {stats['chi2_reduced']:.3g}"
         strrelative = (
@@ -744,9 +744,7 @@ def plot_residual_panel(
         )
 
     axis.axhline(0.0, color="black", linewidth=0.8, zorder=0)
-    axis.set_ylabel(r"(model $-$ ref) / $\sigma$" if reference.yerr is not None else r"model $-$ ref")
-
-    import polars as pl
+    axis.set_ylabel(r"ref $-$ model")
 
     return pl.DataFrame(rows).with_columns(pl.col("npoints").cast(pl.Int64))
 

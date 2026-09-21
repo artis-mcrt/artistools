@@ -1368,7 +1368,7 @@ RESIDUALROWHEIGHT: t.Final[float] = 0.35
 def draw_residual_panel(
     residualaxis: mplax.Axes, mainaxis: mplax.Axes, residualseries: list[ResidualSeries], args: argparse.Namespace
 ) -> pl.DataFrame:
-    """Draw model minus reference below the main frame, and return the statistics of each model."""
+    """Draw reference minus model below the main frame, and return the statistics of each model."""
     xmin, xmax = sorted(mainaxis.get_xlim())
     dfresidualstats = plot_residual_panel(residualaxis, residualseries, xmin, xmax)
     # the residual panel has its own y range and a linear scale, thus the code clears the y arguments here
@@ -1666,7 +1666,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--residuals",
         action="store_true",
         help=(
-            "Add a panel of model minus reference for each model, against the first reference spectrum. The command"
+            "Add a panel of reference minus model for each model, against the first reference spectrum. The command"
             " prints the RMS residual, and the reduced chi-square when the reference spectrum has an error column"
             " (metadata key f_lambda_err_columnindex). --write_data also writes these numbers"
         ),
