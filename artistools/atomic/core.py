@@ -43,7 +43,8 @@ def parse_adata(
     firstlevelnumber = 1
 
     for line in fadata:
-        if not line.strip():
+        # artisatomic writes a block of comment lines before the header line of each ion
+        if not line.strip() or line.lstrip().startswith("#"):
             continue
 
         ionheader = line.split()
@@ -114,7 +115,8 @@ def parse_phixsdata(
             1.0, 1.0 + phixsnuincrement * nphixspoints, num=nphixspoints, endpoint=False, dtype=np.float64
         )
         for line in fphixs:
-            if not line.strip():
+            # artisatomic writes a block of comment lines before the first table of each ion
+            if not line.strip() or line.lstrip().startswith("#"):
                 continue
 
             ionheader = line.split()

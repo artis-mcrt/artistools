@@ -160,6 +160,98 @@ def test_get_levels_photoionisation_level_alignment() -> None:
         assert np.array_equal(levels.item(levelindex, "phixstargetlist"), nptargetlist)
 
 
+def write_atomic_files_of_two_ions(folder: Path, comments: bool) -> None:
+    """Write small atomic data files, with or without the comment blocks that artisatomic writes before each ion."""
+
+    def block(*commentlines: str) -> list[str]:
+        return [f"# {line}" for line in commentlines] if comments else []
+
+    nphixspoints = 3
+    adatalines: list[str] = []
+    transitionlines: list[str] = []
+    phixslines = [str(nphixspoints), "0.1"]
+    for ion_stage in (1, 2):
+        adatalines += [
+            *block(f"Z=26 Fe {ion_stage}", "handler: cmfgen", "Reading a file"),
+            f"26 {ion_stage} 2 7.9",
+            "1 0.0 9.0 1 groundlevel",
+            "2 1.5 7.0 1 level with a # in its name",
+            "",
+        ]
+        transitionlines += [
+            *block("handler: cmfgen", "   # an indented comment"),
+            f"26 {ion_stage} 1",
+            "1 2 1.5e+06 0.5 0",
+            "",
+        ]
+        phixslines += [
+            *block("handler: cmfgen", "Writing 2 phixs tables"),
+            f"26 {ion_stage + 1} 1 {ion_stage} 1 7.9",
+            *["1.0"] * nphixspoints,
+            # upper ion level -1 means the targets are listed on the following lines
+            f"26 {ion_stage + 1} -1 {ion_stage} 2 6.4",
+            "2",
+            "1 0.75",
+            "2 0.25",
+            *["2.0"] * nphixspoints,
+        ]
+
+    for filename, lines in (
+        ("adata.txt", adatalines),
+        ("transitiondata.txt", transitionlines),
+        ("phixsdata_v2.txt", phixslines),
+    ):
+        (folder / filename).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("ionlist", [None, [(26, 2)]])
+def test_atomic_files_with_comment_lines(tmp_path: Path, ionlist: list[tuple[int, int]] | None) -> None:
+    """The comment lines that artisatomic writes before each ion must not change what the readers return.
+
+    With an ionlist, the readers step over the first ion by its line count, so its comment block must not count.
+    """
+    from artistools.atomic.core import parse_phixsdata
+
+    folders = {}
+    for comments in (False, True):
+        folders[comments] = tmp_path / f"comments_{comments}"
+        folders[comments].mkdir()
+        write_atomic_files_of_two_ions(folders[comments], comments=comments)
+
+    dflevels_plain, dflevels_comments = (
+        at.atomic.get_levels(folders[comments], ionlist=ionlist, get_transitions=True, get_photoionisations=True)
+        for comments in (False, True)
+    )
+    expected_ions = ionlist or [(26, 1), (26, 2)]
+    assert list(zip(dflevels_comments["Z"], dflevels_comments["ion_stage"], strict=True)) == expected_ions
+    for row_plain, row_comments in zip(
+        dflevels_plain.iter_rows(named=True), dflevels_comments.iter_rows(named=True), strict=True
+    ):
+        assert [name.strip() for name in row_comments["levels"]["levelname"]] == [
+            "groundlevel",
+            "level with a # in its name",
+        ]
+        pltest.assert_frame_equal(
+            row_comments["levels"].drop("phixstargetlist", "phixstable"),
+            row_plain["levels"].drop("phixstargetlist", "phixstable"),
+        )
+        dftransitions = row_comments["transitions"].collect()
+        pltest.assert_frame_equal(dftransitions, row_plain["transitions"].collect())
+        assert dftransitions.height == 1
+
+    phixs_plain, phixs_comments = (
+        parse_phixsdata(folders[comments] / "phixsdata_v2.txt", ionlist=ionlist) for comments in (False, True)
+    )
+    assert (
+        phixs_comments.keys()
+        == phixs_plain.keys()
+        == {(26, ion_stage, level) for _, ion_stage in expected_ions for level in (0, 1)}
+    )
+    for key, (nptargetlist, phixstable) in phixs_comments.items():
+        assert np.array_equal(nptargetlist, phixs_plain[key][0])
+        assert np.array_equal(phixstable, phixs_plain[key][1])
+
+
 @pytest.mark.parametrize("bflistcontents", ["0\n", "", "0"])
 def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
     """A run with no bound-free transitions must give an empty frame, not fail at a later collect().
