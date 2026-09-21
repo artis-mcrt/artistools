@@ -1456,6 +1456,8 @@ def make_figure(
     else:
         strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
+        if args.slice is not None:
+            figure_title += f", {args.slicelabel}"
         print("  plotting " + figure_title.replace("\n", " "))
 
         assert isinstance(timestepslist, list)
@@ -1933,13 +1935,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
             " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
             " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
-            " plane, which is the layer above it for a plane between two layers. -slice sets -modeldimensions"
-            " to 2"
+            " plane, which is the layer above it for a plane between two layers. A plane sets -modeldimensions"
+            " to 2. Two axes give a line, e.g. -slice z=0,y=0 for the cells along the x axis. A line sets"
+            " -modeldimensions to 1, and the plot shows the variables against the velocity on that axis"
         ),
     )
 
     parser.add_argument(
         "-modeldimensions",
+        "-modeldim",
+        "-dim",
         type=int,
         default=1,
         choices=[1, 2],
@@ -1987,33 +1992,45 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     return timestepmin, timestepmax
 
 
-def parse_slice_argument(slicetext: str) -> tuple[str, float, str]:
-    """Return the normal axis, its velocity [cm/s], and the label of a plane, e.g. of "xy" or "z=-0.2c"."""
+def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
+    """Return the axis, its velocity [cm/s], and the label of each condition of -slice.
+
+    "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
+    """
     from artistools.spectra import parse_velocity_argument
 
     text = slicetext.strip().lower()
-    helptext = "Give a plane through the origin, e.g. -slice xy, or an axis and its velocity, e.g. -slice z=-0.2c"
+    helptext = (
+        "Give a plane through the origin, e.g. -slice xy, an axis and its velocity, e.g. -slice z=-0.2c, or two"
+        " axes for a line, e.g. -slice z=0,y=0"
+    )
     if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
         normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
-        return normalaxis, 0.0, f"{normalaxis} = 0"
+        return [(normalaxis, 0.0, f"{normalaxis} = 0")]
 
-    normalaxis, separator, velocitytext = text.partition("=")
-    if normalaxis not in {"x", "y", "z"} or not separator:
-        exit_with_error(f"'{slicetext}' is not a plane of the model", helptext)
-    try:
-        velocity_kmps, unit = parse_velocity_argument(velocitytext)
-    except argparse.ArgumentTypeError as err:
-        exit_with_error(str(err), helptext)
+    conditions: list[tuple[str, float, str]] = []
+    for conditiontext in text.split(","):
+        axisname, separator, velocitytext = conditiontext.strip().partition("=")
+        if axisname not in {"x", "y", "z"} or not separator:
+            exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
+        try:
+            velocity_kmps, unit = parse_velocity_argument(velocitytext)
+        except argparse.ArgumentTypeError as err:
+            exit_with_error(str(err), helptext)
 
-    label = f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
-    if velocity_kmps == 0.0:
-        label = "0"
-    return normalaxis, velocity_kmps * km_to_cm, f"{normalaxis} = {label}"
+        label = f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+        if velocity_kmps == 0.0:
+            label = "0"
+        conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
+
+    if len(conditions) > 2 or len({axisname for axisname, _, _ in conditions}) < len(conditions):
+        exit_with_error(f"'{slicetext}' must give one axis for a plane, or two different axes for a line", helptext)
+    return conditions
 
 
 def select_cells_of_slice(args: argparse.Namespace, modelpath: Path) -> None:
-    """Select the layer of cells of a 3D model that holds the plane of -slice, and record the plane."""
-    args.sliceaxis, velocity_cmps, args.slicelabel = parse_slice_argument(args.slice)
+    """Select the cells of a 3D model that hold the plane or the line of -slice, and record it."""
+    conditions = parse_slice_argument(args.slice)
     lzmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
         exit_with_error(
@@ -2021,23 +2038,23 @@ def select_cells_of_slice(args: argparse.Namespace, modelpath: Path) -> None:
             "Remove -slice to plot the variables against the velocity",
         )
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    if abs(velocity_cmps) >= vmax_cmps:
-        exit_with_error(
-            f"the plane {args.slicelabel} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-            "Give a velocity inside the model",
-        )
+    for axisname, velocity_cmps, label in conditions:
+        if abs(velocity_cmps) >= vmax_cmps:
+            exit_with_error(
+                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
+                "Give a velocity inside the model",
+            )
+        # a velocity between two layers of cells takes the layer above it
+        ncells = int(modelmeta[f"ncoordgrid{axisname}"])
+        layerindex = math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells))
+        poscolumn = pl.col(f"pos_{axisname}_min")
+        lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
 
-    ncells = int(modelmeta[f"ncoordgrid{args.sliceaxis}"])
-    layerindex = math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells))
-    poscolumn = pl.col(f"pos_{args.sliceaxis}_min")
-    args.modelgridindex = (
-        lzmodel
-        .filter(poscolumn == poscolumn.unique().sort().get(layerindex))
-        .select("modelgridindex")
-        .collect()["modelgridindex"]
-        .to_list()
-    )
-    print(f"Getting the {len(args.modelgridindex)} cells of the layer that holds the plane {args.slicelabel}")
+    args.modelgridindex = lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
+    args.slicelabel = ", ".join(label for _, _, label in conditions)
+    print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
+    if len(conditions) == 1:
+        args.sliceaxis = conditions[0][0]
 
 
 def select_cells_along_axis(args: argparse.Namespace) -> None:
@@ -2279,7 +2296,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
     if args.slice is not None:
-        args.modeldimensions = 2
+        conditions = parse_slice_argument(args.slice)
+        # one condition is a plane, and two conditions are a line along the axis that stays
+        args.modeldimensions = 2 if len(conditions) == 1 else 1
+        if len(conditions) == 2:
+            if args.readonlymgi:
+                exit_with_error("-slice and -readonlymgi each select the cells of the plot", "Give one of the two")
+            lineaxis = next(axisname for axisname in "xyz" if axisname not in {c[0] for c in conditions})
+            if args.x is None:
+                args.x = f"vel_{lineaxis}_mid_on_c"
     if args.modeldimensions == 2:
         if args.readonlymgi:
             exit_with_error(

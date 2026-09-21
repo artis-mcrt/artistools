@@ -1966,13 +1966,48 @@ def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model
     assert np.isnan(tegrid[~hasshell]).all()
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-slice z=0,y=0 plots the cells along the x axis against the velocity on that axis."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te"]],
+        outputfile=tmp_path,
+        timestep="8",
+        slice="z=0,y=0",
+    )
+    # the cell with the grid indices (ix, iy, iz) has the modelgridindex ix + 10 iy + 100 iz
+    dfexpected = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .filter(pl.col("modelgridindex").is_between(550, 559))
+        .select("modelgridindex", "Te")
+        .sort("modelgridindex")
+        .collect()
+    )
+    assert dfexpected.height > 2
+    xvalues, yvalues = (np.asarray(values, dtype=float) for values in mockplot.call_args_list[0].args[1:3])
+    # the line holds a negative and a positive velocity, because it crosses the model
+    assert xvalues.min() < 0.0 < xvalues.max()
+    assert np.allclose(np.unique(yvalues), np.unique(dfexpected["Te"].to_numpy()))
+
+
+@pytest.mark.parametrize("flag", ["-modeldimensions", "-modeldim", "-dim"])
+def test_modeldimensions_has_two_short_aliases(flag: str) -> None:
+    """-modeldim and -dim are aliases of -modeldimensions."""
+    parser = argparse.ArgumentParser()
+    at.estimators.plotestimators.addargs(parser)
+    assert parser.parse_args(["Te", flag, "2"]).modeldimensions == 2
+
+
 def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) -> None:
     """-slice stops the command for a 1D model, for text that names no plane, and for a plane outside the model."""
     with pytest.raises(SystemExit):
         at.estimators.plot(
             argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", slice="xy"
         )
-    for slicetext in ("xx", "w=0", "z=fast", "z=0.5c"):
+    for slicetext in ("xx", "w=0", "z=fast", "z=0.5c", "z=0,z=0.01c", "x=0,y=0,z=0"):
         with pytest.raises(SystemExit):
             at.estimators.plot(
                 argsraw=[],

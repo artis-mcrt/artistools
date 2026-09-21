@@ -406,10 +406,14 @@ class UnsupportedArgument(argparse.Action):
         """Report that this command does not take the argument."""
         assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
         helptext = self.instead and f"Give {self.instead} instead"
+        # the name can be the start of a longer name of this command, e.g. -dim of -dimensionreduce, thus
+        # such a name comes before the closest name, as for an ambiguous abbreviation
+        visible = parser.get_visible_flags()
+        starts = sorted(sorted(flag for flag in visible if flag.startswith(str(option_string))), key=len)
         parser.exit_with_help(
             f"{option_string} is not an argument of this command",
             helptext
-            or suggest_names(str(option_string), parser.get_visible_flags())
+            or (f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(str(option_string), visible))
             or f"Run `{parser.prog} --help` to see every argument",
         )
 
