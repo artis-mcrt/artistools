@@ -2011,32 +2011,29 @@ def print_integrated_flux(
 
 
 def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
-    """Return an observed reference spectrum, applying any scaling and time shift from its metadata.
-
-    The metadata key f_lambda_err_columnindex names the column of the 1 sigma error of the flux. The
-    result then has a column f_lambda_err, which takes the same reddening correction as the flux.
-    """
+    """Return an observed reference spectrum, applying any scaling and time shift from its metadata."""
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
-    columns = [cs.by_index(0).alias("lambda_angstroms"), cs.by_index(flambdaindex).alias("f_lambda")]
-    if "f_lambda_err_columnindex" in metadata:
-        columns.append(cs.by_index(metadata["f_lambda_err_columnindex"]).alias("f_lambda_err"))
 
-    specdata = read_wsv(filepath, has_header=False, comment_prefix="#").select(columns)
+    specdata = read_wsv(filepath, has_header=False, comment_prefix="#").select(
+        cs.by_index(0).alias("lambda_angstroms"), cs.by_index(flambdaindex).alias("f_lambda")
+    )
 
     if "a_v" in metadata and "r_v" in metadata:
         from extinction import apply
         from extinction import ccm89
 
-        extinction_mag = ccm89(
-            specdata["lambda_angstroms"].to_numpy(writable=True), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"
-        )
-        # the correction is a factor for each wavelength, thus the error takes the same factor
         specdata = specdata.with_columns(
-            pl.Series(colname, apply(extinction_mag, specdata[colname].to_numpy()))
-            for colname in specdata.columns
-            if colname.startswith("f_lambda")
+            f_lambda=apply(
+                ccm89(
+                    specdata["lambda_angstroms"].to_numpy(writable=True),
+                    a_v=-metadata["a_v"],
+                    r_v=metadata["r_v"],
+                    unit="aa",
+                ),
+                specdata["f_lambda"].to_numpy(),
+            )
         )
         print(
             f"Correcting for reddening using CCM89 law with A_V = {metadata['a_v']} and R_V = {metadata.get('r_v', 3.1)}"

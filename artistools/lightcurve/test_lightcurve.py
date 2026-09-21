@@ -1812,12 +1812,9 @@ def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> No
     assert at.lightcurve.find_lightcurve_file(modelpath).name.startswith("light_curve.out")
 
 
-def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> None:
-    """Give the reduced chi-square of a bolometric residual panel.
-
-    The reference luminosity is 1.2 times the model, with an error of 0.2 times the model. Each
-    point then lies one error from the model.
-    """
+@pytest.mark.parametrize("refispositional", [False, True])
+def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refispositional: bool) -> None:
+    """A reference luminosity of 1.2 times the model gives a relative RMS residual of 0.2 / 1.2."""
     dfmodel = (
         at.lightcurve
         .scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1]
@@ -1835,8 +1832,8 @@ def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) 
 
     at.lightcurve.plot(
         argsraw=[],
-        modelpath=[modelpath],
-        reflightcurves=[str(obsfile)],
+        modelpath=[modelpath, obsfile] if refispositional else [modelpath],
+        reflightcurves=[] if refispositional else [str(obsfile)],
         residuals=True,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
@@ -1844,8 +1841,7 @@ def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) 
     dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.csv")
     assert dfstats["reference"].item() == "fake bolometric"
     assert dfstats["npoints"].item() == dfmodel.height
-    # the model lies below each observed point, thus the lower error of 0.2 applies and not the upper error of 0.4
-    assert np.isclose(dfstats["chi2_reduced"].item(), 1.0, rtol=1e-4)
+    assert np.isclose(dfstats["rms_relative"].item(), 0.2 / 1.2, rtol=0.05)
     assert np.isclose(
         dfstats["rms_relative"].item(), dfstats["rms"].item() / (1.2 * dfmodel["luminosity_erg/s"].to_numpy().mean())
     )
@@ -1857,8 +1853,13 @@ def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytes
     monkeypatch.chdir(tmp_path)
     refdata = pl.DataFrame({"band": ["B", "B", "B"], "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
 
-    with mock.patch.object(
-        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+    with (
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+        ),
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "save_figure", wraps=at.lightcurve.plotlightcurve.save_figure
+        ) as mocksave,
     ):
         at.lightcurve.plot(
             argsraw=[],
@@ -1869,12 +1870,13 @@ def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytes
             write_data=True,
             outputfile=tmp_path,
         )
+        # a fainter model lies below the reference in the main frame, thus it must also lie below zero in the panel
+        assert all(axis.yaxis_inverted() for axis in mocksave.call_args.args[0].axes)
         dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
         assert dfstats["npoints"].item() == 3
         assert dfstats["rms"].item() > 0.0
-        # the band data give no error, and a ratio to a mean magnitude has no meaning
-        assert dfstats["chi2_reduced"].null_count() == 1 or np.isnan(dfstats["chi2_reduced"].item())
-        assert dfstats["rms_relative"].null_count() == 1 or np.isnan(dfstats["rms_relative"].item())
+        # a ratio to a mean magnitude has no meaning
+        assert dfstats["rms_relative"].null_count() == 1
 
         with pytest.raises(SystemExit):
             at.lightcurve.plot(
