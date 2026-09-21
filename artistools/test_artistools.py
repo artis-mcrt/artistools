@@ -261,6 +261,92 @@ def test_each_package_command_is_named_plot() -> None:
         assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
+def test_residuals_take_the_model_at_each_observed_point() -> None:
+    """The residual is model minus observed, inside the x range of the panel and of the model alone."""
+    model = at.plottools.ResidualSeries(
+        "model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0", isreference=False
+    )
+    reference = at.plottools.ResidualSeries(
+        "obs", np.array([-5.0, 5.0, 12.0, 15.0, 25.0]), np.array([1.0, 11.0, 22.0, 33.0, 50.0]), "k", isreference=True
+    )
+    inrange, residual = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
+    # the points at -5 and 25 lie outside the model, and the point at 15 lies outside the panel
+    assert inrange.tolist() == [False, True, True, False, False]
+    assert np.allclose(residual, [10.0 - 11.0, 24.0 - 22.0])
+
+    # an observed NaN, e.g. a masked telluric range, stays a gap and does not count
+    masked = reference._replace(y=np.array([1.0, np.nan, 22.0, 33.0, 50.0]))
+    inrange, residual = at.plottools.get_residuals(masked, model, xmin=0.0, xmax=20.0)
+    assert inrange.tolist() == [False, True, True, True, False]
+    assert np.isnan(residual[0])
+
+    # a model value that is not finite leaves a gap, as in the main frame, and gives no value from its neighbours
+    gapmodel = model._replace(y=np.array([0.0, np.inf, 40.0]))
+    _, residual = at.plottools.get_residuals(reference, gapmodel, xmin=0.0, xmax=20.0)
+    assert np.isnan(residual).all()
+
+    _fig, axis = plt.subplots()
+    dfstats = at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0)
+    assert dfstats["npoints"].item() == 2
+    assert np.isclose(dfstats["rms"].item(), math.sqrt((4.0 + 9.0) / 2.0))
+    assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / ((22.0 + 33.0) / 2.0))
+    # the panel shows model minus reference: 24 - 22 and 30 - 33
+    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[1:], [2.0, -3.0])
+
+    # a main frame with a log y axis takes model / reference: 24 / 22 and 30 / 33
+    _fig, ratioaxis = plt.subplots()
+    at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ratio=True)
+    assert np.allclose(np.asarray(ratioaxis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
+
+    # a ratio of the RMS to the mean reference value has no meaning for a magnitude
+    dfmagstats = at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ismagnitude=True)
+    assert dfmagstats["rms_relative"].item() is None
+
+
+@pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
+def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
+    """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    yreference = np.array([1.0, 2.0, 4.0, 8.0])
+    factors = np.array([1.0, 1.0, modelfactor, modelfactor])
+    series = [
+        at.plottools.ResidualSeries("obs", x, yreference, "k", isreference=True),
+        at.plottools.ResidualSeries("model", x, yreference * factors, "C0", isreference=False),
+    ]
+    args = argparse.Namespace(logscaley=True)
+    _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.plot(x, series[0].y)
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    assert residualaxis.get_yscale() == yscale
+    assert residualaxis.get_ylabel() == "model / ref"
+    assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
+
+
+def test_frame_figure_takes_a_shorter_row() -> None:
+    """A residual panel takes a part of the frame height, and the main frame keeps its size."""
+    fig, axes = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))
+    fig.canvas.draw()
+    mainheight = axes[0][0].get_position().height
+    residualheight = axes[1][0].get_position().height
+    assert np.isclose(residualheight / mainheight, 0.35, rtol=1e-3)
+    # row 0 is at the top
+    assert axes[0][0].get_position().y0 > axes[1][0].get_position().y1
+    plt.close(fig)
+
+    figone, axesone = at.plottools.make_frame_figure()
+    figone.canvas.draw()
+    figtwo, axestwo = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))
+    figtwo.canvas.draw()
+    inchesone = axesone[0][0].get_position().height * figone.get_figheight()
+    inchestwo = axestwo[0][0].get_position().height * figtwo.get_figheight()
+    assert np.isclose(inchesone, inchestwo, rtol=1e-3)
+    plt.close(figone)
+    plt.close(figtwo)
+
+    with pytest.raises(ValueError, match="rowheights gives"):
+        at.plottools.make_frame_figure(rows=2, rowheights=(1.0,))
+
+
 def test_package_modules_import_no_package_alias() -> None:
     """A package module must import each name from the module that defines it.
 

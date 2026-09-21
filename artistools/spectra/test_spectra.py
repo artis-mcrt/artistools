@@ -1364,3 +1364,76 @@ def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: p
     assert excinfo.value.code == 1
     assert "-timedayslist" in capsys.readouterr().err
     assert not list(tmp_path.glob("*.pdf"))
+
+
+def write_fake_observed_spectrum(folder: Path) -> Path:
+    """Write a reference spectrum of 1.1 times the model of timestep 54."""
+    dfmodel = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
+    obsfile = folder / "fakeobs.txt"
+    dfmodel.select("lambda_angstroms", (pl.col("f_lambda") * 1.1).alias("flux")).sort("lambda_angstroms").write_csv(
+        obsfile, separator=" ", include_header=False
+    )
+    obsfile.with_name(f"{obsfile.name}.meta.yml").write_text(
+        "dist_mpc: 1\nlabel: fake observation\nt: 300\n", encoding="utf-8"
+    )
+    return obsfile
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """An observed flux of 1.1 times the model gives a residual below zero, and a ratio of 1 / 1.1 with --logscaley."""
+    obsfile = write_fake_observed_spectrum(tmp_path)
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residuals=True,
+        write_data=True,
+        outputfile=tmp_path / "residuals.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
+    assert dfstats.height == 1
+    assert dfstats["reference"].item() == "fake observation"
+    assert dfstats["npoints"].item() > 100
+    assert dfstats["rms"].item() > 0.0
+    assert 0.0 < dfstats["rms_relative"].item() < 0.1 / 1.1 * 3.0
+
+    # the last plot call draws the residual line: the model is below the observed flux at each point
+    residual = np.asarray(mockplot.call_args_list[-1].args[2])
+    assert (residual <= 0.0).all()
+    assert (residual < 0.0).any()
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residuals=True,
+        logscaley=True,
+        outputfile=tmp_path / "ratio.pdf",
+    )
+    # a reference flux of zero gives a gap
+    ratio = np.asarray(mockplot.call_args_list[-1].args[2])
+    assert np.isfinite(ratio).any()
+    assert np.allclose(ratio[np.isfinite(ratio)], 1.0 / 1.1)
+
+
+def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
+    """--residuals needs a model and an observed spectrum, and one frame."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
+
+    obsfile = write_fake_observed_spectrum(tmp_path)
+    # --output_spectra draws no figure, thus it cannot hold a residual panel
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=True, outputfile=tmp_path
+        )
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath, obsfile],
+            timedayslist=["280", "300"],
+            residuals=True,
+            outputfile=tmp_path / "b.pdf",
+        )

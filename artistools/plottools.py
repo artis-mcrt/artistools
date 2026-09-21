@@ -18,9 +18,11 @@ import matplotlib.ticker as mplticker
 import polars as pl
 
 from artistools.commands import get_path
+from artistools.misc import exit_with_error
 from artistools.misc import get_phibin_rank_ascending
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
@@ -32,6 +34,9 @@ LOGSCALE_MINRATIO: t.Final[float] = 15.0
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
 # still shows the data. This fraction of the values is the most that a log axis may hide.
 LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
+
+# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
+RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
 
 
 def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
@@ -461,6 +466,7 @@ def make_frame_figure(
     sharex: bool = True,
     sharey: bool = False,
     fullwidth: bool = True,
+    rowheights: Sequence[float] | None = None,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -478,6 +484,8 @@ def make_frame_figure(
     A helper that parses no arguments passes no args, and the figure then takes a scale of 1.
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
+    rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
+    residual panel below the main frame.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
@@ -501,9 +509,14 @@ def make_frame_figure(
 
     # Divider counts the vertical sizes from the bottom, thus the lowest row comes first
     vertical = [Size.Fixed(LABELHEIGHT_INCHES)]
-    for row in range(rows):
-        vertical += [Size.Fixed(rowgap)] if row else []
-        vertical += [Size.Fixed(frameheight)]
+    if rowheights is None:
+        rowheights = [1.0] * rows
+    elif len(rowheights) != rows:
+        msg = f"rowheights gives {len(rowheights)} values for {rows} rows"
+        raise ValueError(msg)
+    for row in reversed(range(rows)):
+        vertical += [Size.Fixed(rowgap)] if row != rows - 1 else []
+        vertical += [Size.Fixed(frameheight * rowheights[row])]
     vertical += [Size.Fixed(TOPMARGIN_INCHES)]
 
     figwidth = sum(size.fixed_size for size in horizontal)
@@ -621,6 +634,201 @@ def add_cax_for_fixed_frames(fig: mplfig.Figure, *, horizontal: bool) -> mplax.A
     if horizontal:
         return fig.add_axes((x0, y1 + 0.15 / figheight, x1 - x0, 0.18 / figheight))
     return fig.add_axes((x1 + 0.15 / figwidth, y0, 0.18 / figwidth, y1 - y0))
+
+
+# the height of the residual panel as a part of the height of the main frame
+RESIDUALROWHEIGHT: t.Final[float] = 0.35
+
+
+def make_frame_figure_with_residuals(
+    args: argparse.Namespace, aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES
+) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes]:
+    """Return a figure with a main frame and a residual panel below it, and the two axes."""
+    fig, axesgrid = make_frame_figure(args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT))
+    return fig, axesgrid[0, 0], axesgrid[1, 0]
+
+
+class ResidualSeries(t.NamedTuple):
+    """One drawn series of a main frame that a residual panel compares, in the units of that frame."""
+
+    label: str
+    x: "npt.NDArray[np.float64]"
+    y: "npt.NDArray[np.float64]"
+    color: "mplt.ColorType | None"
+    isreference: bool
+
+
+def get_residuals(
+    reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
+) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64]]":
+    """Return the reference points that count, and the model value minus the reference value there.
+
+    The model takes a linear interpolation to the reference x values. A point counts only inside the
+    x range of the panel and inside the x range that the model covers. A reference value of NaN gives
+    a residual of NaN, thus a masked range stays a gap in the panel.
+    """
+    import numpy as np
+
+    # a model value that is not finite stays in as NaN, thus the interpolation keeps the gap that the main frame shows
+    hasx = np.isfinite(model.x)
+    modelx, modely = model.x[hasx], np.where(np.isfinite(model.y[hasx]), model.y[hasx], np.nan)
+    if not (np.diff(modelx) >= 0.0).all():
+        order = np.argsort(modelx)
+        modelx, modely = modelx[order], modely[order]
+    if modelx.size < 2:
+        return np.zeros(reference.x.size, dtype=bool), np.array([])
+
+    inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
+    return inrange, np.interp(reference.x[inrange], modelx, modely) - reference.y[inrange]
+
+
+def plot_residual_panel(
+    axis: mplax.Axes,
+    series: Sequence[ResidualSeries],
+    xmin: float,
+    xmax: float,
+    *,
+    ismagnitude: bool = False,
+    ratio: bool = False,
+) -> pl.DataFrame:
+    """Draw model minus reference for each model against the first reference series, and return the statistics.
+
+    ratio=True draws model / reference, which agrees with a main frame that has a log y axis. The axis
+    then takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE. The table
+    gives the number of points and the root mean square (RMS) of model minus reference. It also gives
+    the ratio of the RMS to the mean reference value, which has no meaning for a magnitude.
+    """
+    import numpy as np
+
+    references = [s for s in series if s.isreference]
+    models = [s for s in series if not s.isreference]
+    if not references or not models:
+        exit_with_error(
+            "--residuals compares a model with a reference series, and the plot holds only one of the two",
+            "Give a model and a reference file",
+        )
+
+    reference = references[0]
+    if len(references) > 1:
+        print_warning(f"the residual panel compares each model with '{reference.label}', the first reference series")
+
+    rows: list[dict[str, str | int | float | None]] = []
+    maxratio = 1.0
+    for model in models:
+        inrange, residual = get_residuals(reference, model, xmin, xmax)
+        hasvalue = np.isfinite(residual)
+        if not hasvalue.any():
+            print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
+            continue
+
+        xreference, yreference = reference.x[inrange], reference.y[inrange]
+        npoints = int(hasvalue.sum())
+        rms = float(np.sqrt(np.mean(residual[hasvalue] ** 2)))
+        yreference_mean = float(np.mean(np.abs(yreference[hasvalue])))
+        rms_relative = rms / yreference_mean if not ismagnitude and yreference_mean > 0.0 else None
+        rows.append({
+            "model": model.label,
+            "reference": reference.label,
+            "npoints": npoints,
+            "rms": rms,
+            "rms_relative": rms_relative,
+        })
+
+        # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
+        markerkwargs: dict[str, t.Any] = {} if residual.size > 200 else {"marker": "o", "markersize": 3}
+        yvalues = residual
+        if ratio:
+            # a reference value of zero gives a gap
+            yvalues = 1.0 + np.divide(residual, yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0)
+            positive = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)]
+            if positive.size > 0:
+                maxratio = max(maxratio, float(positive.max()), 1.0 / float(positive.min()))
+        axis.plot(xreference, yvalues, color=model.color, linewidth=0.8, **markerkwargs)
+
+        strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
+        print_detail(
+            f"residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
+            f"{npoints} points, RMS {rms:.3g}{strrelative}"
+        )
+
+    axis.axhline(1.0 if ratio else 0.0, color="black", linewidth=0.8, zorder=0)
+    # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
+    if maxratio > RESIDUALRATIO_LOGSCALE:
+        axis.set_yscale("log")
+        prune_log_ticks(axis.yaxis)
+    return pl.DataFrame(
+        rows,
+        schema={
+            "model": pl.String,
+            "reference": pl.String,
+            "npoints": pl.Int64,
+            "rms": pl.Float64,
+            "rms_relative": pl.Float64,
+        },
+    )
+
+
+def draw_residual_panel(
+    residualaxis: mplax.Axes,
+    mainaxis: mplax.Axes,
+    series: Sequence[ResidualSeries],
+    args: argparse.Namespace,
+    *,
+    ismagnitude: bool = False,
+) -> pl.DataFrame:
+    """Draw model minus reference below the main frame, and return the statistics of each model.
+
+    With a log y axis in the main frame, the panel shows model / reference, because a distance in that
+    frame is a ratio. Call it after the main frame has its labels and its x range, because the panel
+    takes both.
+    """
+    logscaley = bool(getattr(args, "logscaley", False))
+    isratio = logscaley and not ismagnitude
+    # the shared x axis otherwise takes a new range with the default margin of the residual axis
+    residualaxis.set_xmargin(mainaxis.get_xmargin())
+    xlim = mainaxis.get_xlim()
+    dfresidualstats = plot_residual_panel(
+        residualaxis, series, min(xlim), max(xlim), ismagnitude=ismagnitude, ratio=isratio
+    )
+    set_axis_properties(residualaxis, args, setyaxis=False)
+    if logscaley:
+        prune_log_ticks(mainaxis.yaxis)
+
+    if isratio:
+        residualaxis.set_ylabel("model / ref")
+    else:
+        mainformatter = mainaxis.yaxis.get_major_formatter()
+        mainylabel = (
+            mainformatter.labeltemplate if isinstance(mainformatter, ExponentLabelFormatter) else mainaxis.get_ylabel()
+        )
+        # the residual has the units of the main frame, which the label of that frame gives in brackets
+        strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
+        residualaxis.set_ylabel(rf"model $-$ ref{strunits}")
+        set_exponent_label(residualaxis)
+    if ismagnitude:
+        # a model that is fainter than the reference then lies below zero, as it lies below in the main frame
+        invert_magnitude_yaxis(residualaxis)
+
+    if mainaxis.get_xlabel():
+        residualaxis.set_xlabel(mainaxis.get_xlabel())
+        mainaxis.set_xlabel("")
+    if getattr(args, "hidexticklabels", False):
+        residualaxis.tick_params(axis="x", which="both", labelbottom=False)
+    if getattr(args, "hideyticklabels", False):
+        residualaxis.tick_params(axis="y", which="both", labelleft=False)
+        residualaxis.set_ylabel("")
+
+    return dfresidualstats
+
+
+def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str") -> None:
+    """Write the statistics of a residual panel to a file of comma-separated values next to the figure."""
+    from pathlib import Path
+
+    if not dfresidualstats.is_empty():
+        residualfile = Path(outputfile).with_name(f"{Path(outputfile).stem}_residuals.csv")
+        dfresidualstats.write_csv(residualfile)
+        print_saved(residualfile)
 
 
 def save_figure(
@@ -881,7 +1089,11 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
 
 
 def set_axis_properties(
-    ax: AxesTree, args: argparse.Namespace, xlimits: tuple[float | None, float | None, str] | None = None
+    ax: AxesTree,
+    args: argparse.Namespace,
+    xlimits: tuple[float | None, float | None, str] | None = None,
+    *,
+    setyaxis: bool = True,
 ) -> AxesTree:
     """Apply the standard tick, minor tick, and font size settings to one or more axes.
 
@@ -889,6 +1101,9 @@ def set_axis_properties(
     commands, passes it as xlimits=(min, max, "-timemin") rather than copying the values onto args.xmin:
     a copied value would also reach every other reader of args.xmin, and a warning about it would name an
     argument that the user did not give.
+
+    setyaxis=False leaves the y scale and the y range alone, e.g. for a residual panel, which has its
+    own y range.
     """
     if "subplots" not in args:
         args.subplots = False
@@ -899,9 +1114,10 @@ def set_axis_properties(
     if xlimits is None:
         xlimits = (getattr(args, "xmin", None), getattr(args, "xmax", None), "-xmin")
 
-    logscalex, logscaley = getattr(args, "logscalex", False), getattr(args, "logscaley", False)
-    ymin = log_axis_limit(getattr(args, "ymin", None), logscale=logscaley, argname="-ymin")
-    ymax = log_axis_limit(getattr(args, "ymax", None), logscale=logscaley, argname="-ymax")
+    logscalex = getattr(args, "logscalex", False)
+    logscaley = setyaxis and getattr(args, "logscaley", False)
+    ymin = log_axis_limit(getattr(args, "ymin", None), logscale=logscaley, argname="-ymin") if setyaxis else None
+    ymax = log_axis_limit(getattr(args, "ymax", None), logscale=logscaley, argname="-ymax") if setyaxis else None
     xargname = xlimits[2]
     xmin = log_axis_limit(xlimits[0], logscale=logscalex, argname=xargname)
     xmax = log_axis_limit(xlimits[1], logscale=logscalex, argname=xargname.replace("min", "max"))
