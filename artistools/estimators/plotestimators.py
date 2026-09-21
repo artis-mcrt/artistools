@@ -102,6 +102,7 @@ from artistools.plottools import set_plot_title
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
+    import numpy.typing as npt
 
     from artistools.misc import FrameSet
 
@@ -1366,6 +1367,30 @@ def plot_subplot(
         set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
 
 
+def get_snapshot_timestrings(
+    modelpath: Path | str, timestepslist: Sequence[t.Any], *, multiplot: bool
+) -> tuple[str, str]:
+    """Return the timesteps and the time range of a snapshot as text for a title and a file name."""
+    if multiplot:
+        return f"ts{timestepslist[0]:03d}", f"{get_timestep_time(modelpath, timestepslist[0]):.2f}d"
+
+    timesteps_flat = flatten_list(list(timestepslist))
+    timestepmin = min(timesteps_flat)
+    timestepmax = max(timesteps_flat)
+
+    strtimestep = f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
+    timelow_days, timehigh_days = (
+        get_timesteps(modelpath)
+        .select(
+            pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
+            pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
+        )
+        .collect()
+        .row(0)
+    )
+    return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
+
+
 def make_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1429,28 +1454,7 @@ def make_figure(
         outfilename = format_frame_path(outpath, cell=mgilist[0], format=args.format)
 
     else:
-        if args.multiplot:
-            strtimestep = f"ts{timestepslist[0]:03d}"
-            strtimedays = f"{get_timestep_time(modelpath, timestepslist[0]):.2f}d"
-        else:
-            timesteps_flat = flatten_list(timestepslist)
-            timestepmin = min(timesteps_flat)
-            timestepmax = max(timesteps_flat)
-
-            strtimestep = (
-                f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
-            )
-            timelow_days, timehigh_days = (
-                get_timesteps(modelpath)
-                .select(
-                    pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
-                    pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
-                )
-                .collect()
-                .row(0)
-            )
-            strtimedays = f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
-
+        strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         print("  plotting " + figure_title.replace("\n", " "))
 
@@ -1465,6 +1469,175 @@ def make_figure(
 
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
+    return outfilename
+
+
+class SlicePanel(t.NamedTuple):
+    """One variable of a slice plot, with the colour scale that the directives of its subplot give."""
+
+    colexpr: pl.Expr
+    label: str
+    colourscale: str | None
+    vmin: float | None
+    vmax: float | None
+
+
+def get_slice_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[str]) -> list[SlicePanel]:
+    """Return one panel for each variable and each ion of the plot list.
+
+    The directives yscale=, ymin=, and ymax= of a subplot apply to the colour scale of its panels.
+    """
+    panels: list[SlicePanel] = []
+    for plotitems in plotlist:
+        directives: dict[str, t.Any] = {}
+        columns: list[tuple[pl.Expr, str]] = []
+        ionlabels: dict[str, str] = {}
+        for plotitem in plotitems:
+            if isinstance(plotitem, pl.Expr):
+                columns.append((plotitem, plotitem.meta.output_name()))
+            elif isinstance(plotitem, str):
+                columns.append((pl.col(plotitem), plotitem))
+            elif (directive := str(plotitem[0]).removeprefix("_").lower()) in {"yscale", "ymin", "ymax"}:
+                directives[directive] = plotitem[1]
+            elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
+                for ionstr in plotitem[1]:
+                    colname, _ = get_column_name(plotitem[0], *get_element_or_ion_tuple(ionstr))
+                    columns.append((pl.col(colname), colname))
+                    ionlabels[colname] = f"{ionstr} {plotitem[0]}"
+            else:
+                exit_with_error(
+                    f"a slice plot shows estimator variables and ions, and not '{plotitem[0]}'",
+                    "Give a variable, e.g. Te, or an ion, e.g. 'Fe II'",
+                )
+
+        for colexpr, colname in columns:
+            if isinstance(colname, str) and not set(colexpr.meta.root_names()) <= set(estimatorcolumns):
+                exit_with_error(
+                    f"'{colname}' is not an estimator variable",
+                    suggest_names(colname, estimatorcolumns)
+                    or "Run with --listvariables to see the variables of this model",
+                )
+            colourscale = directives.get("yscale")
+            panels.append(
+                SlicePanel(
+                    colexpr,
+                    f"{ionlabels.get(colname) or get_varname_formatted(colname)}{get_units_string(colname)}",
+                    "linear" if colourscale == "lin" else colourscale,
+                    float(directives["ymin"]) if "ymin" in directives else None,
+                    float(directives["ymax"]) if "ymax" in directives else None,
+                )
+            )
+
+    return panels
+
+
+def get_slice_values(
+    estimators: pl.LazyFrame,
+    panels: Sequence[SlicePanel],
+    modelmeta: dict[str, t.Any],
+    sliceaxis: str,
+    timesteps: Collection[int],
+) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
+    """Return the grid of values of each panel, and the two plot axes.
+
+    The estimators hold the cells of one plane of a 3D model, which is normal to sliceaxis. An empty cell
+    has no estimators and gives NaN. Each value is the mean over the timesteps with the time widths as weights.
+    """
+    plotaxis1, plotaxis2 = (axisname for axisname in "xyz" if axisname != sliceaxis)
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+
+    def cellindex(axisname: str) -> pl.Expr:
+        ncells = int(modelmeta[f"ncoordgrid{axisname}"])
+        return ((pl.col(f"vel_{axisname}_mid") + vmax_cmps) / (2.0 * vmax_cmps / ncells)).floor().cast(pl.Int32)
+
+    weight = pl.col("twidth_days")
+    dfcells = (
+        estimators
+        .filter(pl.col("timestep").is_in(list(timesteps)))
+        .group_by("modelgridindex")
+        .agg(
+            cellindex(plotaxis1).first().alias("cellindex1"),
+            cellindex(plotaxis2).first().alias("cellindex2"),
+            *(
+                # a timestep with no value of the variable must not pull the mean to zero
+                ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(
+                    f"panel{panelindex}"
+                )
+                for panelindex, panel in enumerate(panels)
+            ),
+        )
+        .collect()
+    )
+
+    grids = []
+    for panelindex in range(len(panels)):
+        grid = np.full((modelmeta[f"ncoordgrid{plotaxis2}"], modelmeta[f"ncoordgrid{plotaxis1}"]), np.nan)
+        grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = (
+            dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
+        )
+        grids.append(grid)
+
+    return grids, (plotaxis1, plotaxis2)
+
+
+def make_slice_figure(
+    modelpath: Path | str,
+    timestepslist: Sequence[int],
+    estimators: pl.LazyFrame,
+    plotlist: list[list[t.Any]],
+    modelmeta: dict[str, t.Any],
+    args: argparse.Namespace,
+    frameset: "FrameSet | None" = None,
+) -> str:
+    """Plot each variable as a colour image of a plane through a 3D model, save the figure, and return its name."""
+    import matplotlib.pyplot as plt
+
+    from artistools.plottools import wants_log_scale
+
+    panels = get_slice_panels(plotlist, estimators.collect_schema().names())
+    grids, (plotaxis1, plotaxis2) = get_slice_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+
+    ncols = min(len(panels), 3)
+    nrows = math.ceil(len(panels) / ncols)
+    fig, axesgrid = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(4.6 * ncols * args.figscale, 4.2 * nrows * args.figscale),
+        squeeze=False,
+        layout="constrained",
+    )
+    vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
+    for ax, panel, grid in zip(axesgrid.flat, panels, grids, strict=False):
+        colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
+        norm = (
+            mc.LogNorm(vmin=panel.vmin, vmax=panel.vmax)
+            if colourscale == "log"
+            else mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
+        )
+        edges1, edges2 = (np.linspace(-vmax_on_c, vmax_on_c, ncells + 1) for ncells in reversed(grid.shape))
+        # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
+        image = ax.pcolormesh(
+            edges1,
+            edges2,
+            np.ma.masked_invalid(np.where(grid > 0.0, grid, np.nan) if colourscale == "log" else grid),
+            norm=norm,
+        )
+        fig.colorbar(image, ax=ax, label=panel.label)
+        ax.set_aspect("equal")
+        ax.set_xlabel(rf"v$_{plotaxis1}$ [$c$]")
+        ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]")
+    for ax in list(axesgrid.flat)[len(panels) :]:
+        ax.set_visible(False)
+
+    strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
+    if not args.notitle:
+        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), plane {args.sliceaxis} = 0")
+
+    outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, SLICEFRAMENAME)
+    outfilename = format_frame_path(
+        outpath, sliceaxis=args.sliceaxis, timestep=strtimestep, timedays=strtimedays, format=args.format
+    )
+    save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
     return outfilename
 
 
@@ -1679,15 +1852,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-readonlymgi",
         default=False,
-        choices=["alongaxis", "cone"],  # plan to extend this to e.g. 2D slice
-        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
+        choices=["alongaxis", "cone", "slice"],
+        help=(
+            "Select cells of a 3D model with -axis. alongaxis and cone plot the cells on the axis or in a cone"
+            " around it. slice plots each variable as a colour image of the plane through the origin that is"
+            " normal to the axis, e.g. 'plotestimators Te nne -readonlymgi slice -axis=+z -ts 40'"
+        ),
     )
 
     parser.add_argument(
         "-axis",
         default="+z",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+        help=(
+            "Choose an axis for use with -readonlymgi. Hint: for negative use e.g. -axis=-z. For a slice of a"
+            " grid with an even number of cells, the sign selects the layer of cells on that side of the origin"
+        ),
     )
 
     parser.add_argument(
@@ -1737,6 +1917,27 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
     modelpath = normalize_path_list(args.modelpath)[0]
+    if args.readonlymgi == "slice":
+        lzmodel, modelmeta = get_modeldata(modelpath)
+        if modelmeta["dimensions"] != 3:
+            exit_with_error(
+                f"-readonlymgi slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+                "Remove -readonlymgi slice to plot the variables against the velocity",
+            )
+        # a grid with an even number of cells has no layer at the origin, thus the sign selects the side
+        ncells = int(modelmeta[f"ncoordgrid{args.sliceaxis}"])
+        layerindex = ncells // 2 if args.positive_axis else (ncells - 1) // 2
+        poscolumn = pl.col(f"pos_{args.sliceaxis}_min")
+        args.modelgridindex = (
+            lzmodel
+            .filter(poscolumn == poscolumn.unique().sort().get(layerindex))
+            .select("modelgridindex")
+            .collect()["modelgridindex"]
+            .to_list()
+        )
+        print(f"Getting the {len(args.modelgridindex)} cells of the plane {args.sliceaxis} = 0")
+        return
+
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = (
@@ -1771,6 +1972,7 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
 
 
 SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"
+SLICEFRAMENAME = "plotestimators_slice{sliceaxis}_{timestep}_{timedays}.{format}"
 CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
 
 
@@ -1843,7 +2045,7 @@ def write_snapshot_figures(
     args: argparse.Namespace,
     modelpath: Path,
     estimators: pl.LazyFrame,
-    vmax_cmps: float,
+    modelmeta: dict[str, t.Any],
     timesteps_included: list[int],
     plotlist: list[list[t.Any]],
 ) -> None:
@@ -1852,9 +2054,10 @@ def write_snapshot_figures(
     With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
     one PDF file.
     """
-    if args.x == "velocity" and vmax_cmps > 0.3 * C_cm_per_s:
+    if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
 
+    isslice = args.readonlymgi == "slice"
     if args.readonlymgi:
         if not isinstance(args.modelgridindex, list):
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
@@ -1880,14 +2083,16 @@ def write_snapshot_figures(
         frameset = resolve_frameset_paths(
             args.outputfile,
             framecount=len(frames),
-            framename=SNAPSHOTFRAMENAME,
+            framename=SLICEFRAMENAME if isslice else SNAPSHOTFRAMENAME,
             productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
             combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
             gifduration=1000.0 if args.makegif else None,
         )
 
         outputfiles = [
-            make_figure(
+            make_slice_figure(modelpath, frame, estimators, plotlist, modelmeta, args, frameset=frameset)
+            if isslice
+            else make_figure(
                 frameset=frameset,
                 modelpath=modelpath,
                 timestepslist=frame,
@@ -1959,6 +2164,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
+    if args.readonlymgi == "slice":
+        # a slice is a snapshot, and its two axes are the velocities in the plane
+        args.x = "velocity"
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 
@@ -2011,7 +2219,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args=args,
         )
     else:
-        write_snapshot_figures(args, modelpath, estimators, modelmeta["vmax_cmps"], timesteps_included, plotlist)
+        write_snapshot_figures(args, modelpath, estimators, modelmeta, timesteps_included, plotlist)
 
 
 if __name__ == "__main__":

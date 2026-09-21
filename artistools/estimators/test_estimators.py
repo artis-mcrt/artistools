@@ -1838,6 +1838,54 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     assert len(xvalues) > 0
 
 
+@pytest.mark.parametrize(("axis", "layerindex"), [("+z", 5), ("-z", 4)])
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_estimator_slice_of_3d_model(
+    mockpcolormesh: mock.MagicMock, tmp_path: Path, axis: str, layerindex: int
+) -> None:
+    """-readonlymgi slice draws each variable in the plane through the origin that is normal to the axis.
+
+    The test model has 10 cells on each axis, thus the sign of the axis selects one of the two middle layers.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te"], ["nne", ["_yscale", "log"]]],
+        outputfile=tmp_path,
+        timestep="8",
+        readonlymgi="slice",
+        axis=axis,
+    )
+    assert len(list(tmp_path.glob("plotestimators_slicez_ts008_*.pdf"))) == 1
+    # each colour bar also calls pcolormesh, thus a panel is a call with the grid of the model
+    panelcalls = [call for call in mockpcolormesh.call_args_list if np.shape(call.args[3]) == (10, 10)]
+    assert len(panelcalls) == 2
+    _, edges1, edges2, tegrid = panelcalls[0].args
+    assert len(edges1) == len(edges2) == 11
+    assert tegrid.shape == (10, 10)
+
+    # the cell with the grid indices (ix, iy, iz) has the modelgridindex ix + 10 iy + 100 iz
+    dfexpected = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .filter(pl.col("modelgridindex") // 100 == layerindex)
+        .select("modelgridindex", "Te")
+        .collect()
+    )
+    assert 0 < dfexpected.height < 100
+    assert int(np.isfinite(tegrid.filled(np.nan)).sum()) == dfexpected.height
+    for modelgridindex, cellte in dfexpected.iter_rows():
+        assert np.isclose(tegrid[(modelgridindex // 10) % 10, modelgridindex % 10], cellte)
+
+
+def test_estimator_slice_needs_a_3d_model(tmp_path: Path) -> None:
+    """-readonlymgi slice stops the command for a 1D model."""
+    with pytest.raises(SystemExit):
+        at.estimators.plot(
+            argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", readonlymgi="slice"
+        )
+
+
 # the estimators of every test model of the repository hold no deposition_ column, thus a test that
 # needs one writes this line into a copy of the test model
 DEPOSITIONLINE = "deposition: gamma 2.0e-10 positron 1.0e-10 electron 5.0e-11 alpha 2.5e-11"
