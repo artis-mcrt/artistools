@@ -37,6 +37,8 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.modelinfo import parse_npts_line
 
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
@@ -59,9 +61,7 @@ def is_writer_comment(commentline: str) -> bool:
     if commentline.startswith(UNITS_COMMENT_PREFIX) and commentline.endswith(UNITS_COMMENT_END):
         return True
     try:
-        datetime.datetime.strptime(commentline, f"{CREATED_COMMENT_PREFIX} {CREATED_TIME_FORMAT}").replace(
-            tzinfo=datetime.UTC
-        )
+        time.strptime(commentline, f"{CREATED_COMMENT_PREFIX} {CREATED_TIME_FORMAT}")
     except ValueError:
         return False
     return True
@@ -84,31 +84,28 @@ def read_modelfile_text(
         ncoordgridz: int = 0
 
         numheaderrows = 0
-        line = "#"
-        while line.startswith("#"):
-            line = fmodel.readline()
-            if line.startswith("#"):
-                commentline = line.removeprefix("#").removeprefix(" ").removesuffix("\n")
+        line = fmodel.readline()
+        # sn3d and get_npts_model also skip an empty line and a comment that has spaces before it
+        while line.lstrip().startswith("#") or (line and not line.strip()):
+            if line.strip():
+                commentline = line.lstrip().removeprefix("#").removeprefix(" ").removesuffix("\n")
                 # save_modeldata writes these lines again, thus a kept copy gives each line two times
                 if not is_writer_comment(commentline):
                     modelmeta["headercommentlines"].append(commentline)
-                numheaderrows += 1
+            numheaderrows += 1
+            line = fmodel.readline()
 
-        # a header line can end with an inline comment, as the lines of input.txt do
-        nptstokens = line.split("#", 1)[0].split()
-        if len(nptstokens) not in {1, 2} or not all(token.isdecimal() for token in nptstokens):
-            msg = f"The first line of {filename} after the comments must hold one or two integers, not {line!r}"
-            raise ValueError(msg)
-        if len(nptstokens) == 2:
+        cellcounts = parse_npts_line(line, filename)
+        if len(cellcounts) == 2:
             modelmeta["dimensions"] = 2
-            ncoordgridr, ncoordgridz = (int(n) for n in nptstokens)
+            ncoordgridr, ncoordgridz = cellcounts
             modelmeta["ncoordgridrcyl"] = ncoordgridr
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
             if not printwarningsonly:
                 print(f"  detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
         else:
-            npts_model = int(nptstokens[0])
+            npts_model = cellcounts[0]
 
         modelmeta["npts_model"] = npts_model
         modelmeta["t_model_init_days"] = float(fmodel.readline().split("#", 1)[0])
@@ -290,8 +287,8 @@ def read_modelfile_text(
             for col, pos in expected_positions:
                 if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
                     msg = (
-                        f"{filename}: {col} of the first cell is {firstrow[col]:.6e} cm, but vmax and t_model_init_days "
-                        f"give {pos:.6e} cm. Make vmax consistent with the cell positions."
+                        f"{filename}: {col} of the first cell is {firstrow[col]:.6e} cm, but vmax and "
+                        f"t_model_init_days give {pos:.6e} cm. Make vmax consistent with the cell positions."
                     )
                     raise ValueError(msg)
 
@@ -363,7 +360,12 @@ def read_modelfile_text(
                     if not vectormatch(pos3_in, target):
                         matched[key] = False
 
-            assert sum(matched.values()) == 1, "one option must match uniquely"
+            if sum(matched.values()) != 1:
+                msg = (
+                    f"{filename}: the cell positions agree with no order of the position columns. "
+                    "Make vmax consistent with the cell positions."
+                )
+                raise ValueError(msg)
 
             matchedkey = next(key for key, ismatch in matched.items() if ismatch)
             message, colrenames = posordercandidates[matchedkey]
@@ -382,8 +384,9 @@ def read_modelfile_text(
 
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
-# incorrect, e.g. a new column or a different data type in either one.
-CACHEVERSION = 1
+# incorrect, e.g. a new column or a different data type in either one. Version 2: the reader rejects a 3D
+# model with a vmax that does not agree with the cell positions, which a cache of version 1 can hold.
+CACHEVERSION = 2
 
 
 def read_parquet_cache(
@@ -482,18 +485,30 @@ def get_text_source_cached(
 
     df, extrametadata = read_text_source()
 
-    # a writer can replace the text file during the read. A cache of the old text would then hold a time
-    # within MTIME_TOLERANCE_S of the new file, thus write no cache in that case
-    textsource_stat_after = textfilepath.stat()
-    textsource_changed = (textsource_stat.st_ino, textsource_stat.st_mtime_ns, textsource_stat.st_size) != (
-        textsource_stat_after.st_ino,
-        textsource_stat_after.st_mtime_ns,
-        textsource_stat_after.st_size,
-    )
-
     mebibyte = 1024 * 1024
-    if not textsource_changed and (hadcachefile or textsource_stat.st_size > 2 * mebibyte):
-        print(f"Saving {parquetfilepath}")
+    if not (hadcachefile or textsource_stat.st_size > 2 * mebibyte):
+        return df, extrametadata
+
+    # a writer can replace the text file during the read. A cache of the old text would then hold a time
+    # within MTIME_TOLERANCE_S of the new file. A file system can move the time with no write, thus
+    # the time has that tolerance here also
+    try:
+        textsource_stat_after = textfilepath.stat()
+    except FileNotFoundError:
+        textsource_stat_after = None
+    if (
+        textsource_stat_after is None
+        or (textsource_stat_after.st_ino, textsource_stat_after.st_size)
+        != (textsource_stat.st_ino, textsource_stat.st_size)
+        or abs(textsource_stat_after.st_mtime - textsource_mtime) > MTIME_TOLERANCE_S
+    ):
+        # the reader opens the text file more than one time, thus the header and the cells can be from
+        # two versions of the file
+        print(f"{textfilepath} changed during the read. Reading it again, with no write of {parquetfilepath.name}.")
+        return read_text_source()
+
+    print(f"Saving {parquetfilepath}")
+    try:
         write_parquet_atomic(
             df,
             parquetfilepath,
@@ -505,12 +520,15 @@ def get_text_source_cached(
             }
             | extrametadata,
         )
-        print("  Done.")
-        del df
-        gc.collect()
-        df = pl.scan_parquet(parquetfilepath)
+    except PermissionError as exc:
+        # a command that only reads a model must also operate on a folder that the user cannot write
+        print(f"  Could not write {parquetfilepath} ({exc}). The next read parses the text file again.")
+        return df, extrametadata
 
-    return df, extrametadata
+    print("  Done.")
+    del df
+    gc.collect()
+    return pl.scan_parquet(parquetfilepath), extrametadata
 
 
 def get_model_text_folder(modelpath: Path | str) -> Path:
@@ -952,16 +970,24 @@ def save_modeldata(
     2D
     -------
     dfmodel must contain columns inputcellid, pos_rcyl_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
-    modelmeta must define: vmax, ncoordgridr and ncoordgridz
+    modelmeta must define: vmax_cmps, ncoordgridrcyl and ncoordgridz
 
     3D
     -------
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
-    modelmeta must define: vmax, ncoordgridr and ncoordgridz
+    modelmeta must define: vmax_cmps
 
-    model.txt starts with a comment line for the creation time and a comment line for the column units. An inline
-    comment follows each header value, and a comment line gives the column names. For a 1D model or a 2D model,
-    sn3d reads these column names from v2024.04.
+    model.txt holds these comments:
+
+    - a comment line that gives the creation time;
+    - a comment line that gives the column units;
+    - an inline comment after each header value;
+    - a comment line that gives the column names.
+
+    For a 1D model or a 2D model, sn3d reads these column names from v2024.04.
+
+    The function deletes the parquet cache of the file that it writes. A LazyFrame from get_modeldata of the same
+    file can scan that cache, thus collect such a LazyFrame before this call.
 
     model.txt gets the standard columns, each X_ column, and the custom columns that ARTIS reads (Ye, q, and
     tracercount) if dfmodel holds them. A caller names each other custom column in extracols. model.txt gets no
@@ -1021,7 +1047,6 @@ def save_modeldata(
         modelmeta["npts_model"] = dfmodel_npts_model
 
     timestart = time.perf_counter()
-    # each header line is a value and the inline comment that names it
     tmodelline = (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {dfmodel_npts_model}")
@@ -1055,6 +1080,8 @@ def save_modeldata(
     modelfilepath = resolve_outputfile(outpath, "model.txt")
 
     backup_existing_file(modelfilepath)
+    # a write that stops early must not leave the cache of the old file beside a part of the new file
+    remove_parquet_cache(modelfilepath)
 
     with modelfilepath.open("w", encoding="utf-8") as fmodel:
         if headercommentlines:
@@ -1123,6 +1150,32 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
     return mgi_upper
 
 
+def read_onespace_abundances(textfilepath: Path, ncolumns: int) -> pl.DataFrame | None:
+    """Return the table of an abundances.txt that has one space between two values, or None.
+
+    pl.read_csv is much faster than read_wsv, but it cannot read a run of spaces. A result of None shows
+    that the caller must use read_wsv.
+    """
+    colnames = ["inputcellid", *[f"X_{get_elsymbol(z)}" for z in range(1, ncolumns)]]
+    try:
+        abundancedata = pl.read_csv(
+            polars_source(textfilepath),
+            separator=" ",
+            has_header=False,
+            comment_prefix="#",
+            schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in colnames},
+            # read_wsv gives null and not NaN for these tokens, thus this reader must do the same
+            null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
+        )
+    except pl.exceptions.ComputeError:
+        return None
+
+    # an empty line gives a row of nulls, which read_wsv drops
+    abundancedata = abundancedata.filter(~pl.all_horizontal(pl.all().is_null()))
+    # a line with more spaces or with fewer values also gives a null, and read_wsv decides such a file
+    return None if abundancedata.null_count().sum_horizontal().item() > 0 else abundancedata
+
+
 def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True)
@@ -1134,27 +1187,15 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         with zopen(textfilepath) as fabund:
             firstdataline = next((line for line in fabund if line.strip() and not line.startswith("#")), "")
 
-        abundancedata = None
-        # pl.read_csv needs one space between two values, which save_initelemabundances writes
-        if firstdataline == " ".join(firstdataline.split()) + "\n":
-            colnames = ["inputcellid", *[f"X_{get_elsymbol(z)}" for z in range(1, len(firstdataline.split()))]]
-            try:
-                abundancedata = pl.read_csv(
-                    polars_source(textfilepath),
-                    separator=" ",
-                    has_header=False,
-                    comment_prefix="#",
-                    schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in colnames},
-                )
-            except pl.exceptions.ComputeError:
-                abundancedata = None
-            # a later line with more spaces or with fewer values gives a null value
-            if abundancedata is not None and abundancedata.null_count().sum_horizontal().item() > 0:
-                abundancedata = None
-
+        # save_initelemabundances writes one space between two values
+        abundancedata = (
+            read_onespace_abundances(Path(textfilepath), len(firstdataline.split()))
+            if firstdataline == " ".join(firstdataline.split()) + "\n"
+            else None
+        )
         if abundancedata is None:
             if not printwarningsonly:
-                print("  using the slow reader, because pl.read_csv cannot read the format of this file")
+                print("  read_wsv reads this file, because pl.read_csv cannot read its format")
             abundancedata = read_wsv(textfilepath, has_header=False, comment_prefix="#")
             colnames = ["inputcellid", *[f"X_{get_elsymbol(z)}" for z in range(1, len(abundancedata.columns))]]
             abundancedata = abundancedata.rename({
@@ -1201,6 +1242,7 @@ def save_initelemabundances(
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     backup_existing_file(abundancefilename)
+    remove_parquet_cache(Path(abundancefilename))
 
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines:

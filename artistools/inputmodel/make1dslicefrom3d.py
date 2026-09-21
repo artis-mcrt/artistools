@@ -62,22 +62,28 @@ def slice_3dmodel(
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
     """Write a 1D model.txt from the cells along chosenaxis, and return the 3D-to-1D cell id map and plot data."""
     dfmodel3d, modelmeta3d = get_modeldata(inputfolder)
-    assert modelmeta3d["dimensions"] == 3, "the input model must be 3D"
+    if modelmeta3d["dimensions"] != 3:
+        msg = f"The model in {inputfolder} has {modelmeta3d['dimensions']} dimensions, but the slice needs a 3D model"
+        raise ValueError(msg)
     t_model_s = modelmeta3d["t_model_init_days"] * day_to_s
     wid_init = modelmeta3d["wid_init"]
 
-    # the reader gives Float32 positions, thus compare a position with zero to a small part of the cell width
+    # A grid with an even cell count has a cell face on the axis, and the slice takes the cell on the positive
+    # side. With an odd count, the axis goes through the middle of a cell. The reader gives Float32
+    # positions, thus a face counts as on the axis within a small part of the cell width
     postolerance = 1e-3 * wid_init
     dfslice = (
         dfmodel3d
         .filter(
-            *(pl.col(f"pos_{ax}_min").abs() < postolerance for ax in "xyz" if ax != chosenaxis),
-            pl.col(f"pos_{chosenaxis}_min") > -postolerance,
+            *(
+                pl.col(f"pos_{ax}_min").is_between(-wid_init + postolerance, postolerance, closed="left")
+                for ax in "xyz"
+                if ax != chosenaxis
+            ),
+            pl.col(f"pos_{chosenaxis}_min") >= -wid_init + postolerance,
         )
         .sort("inputcellid")
         .with_columns(
-            inputcellid3d=pl.col("inputcellid"),
-            inputcellid=pl.int_range(1, pl.len() + 1, dtype=pl.Int32),
             # pos_min is the inner face of a cell, but the 1D model gives the outer boundary of a shell.
             # The cell width makes that outer face, thus the first shell holds a volume
             vel_r_max_kmps=(pl.col(f"pos_{chosenaxis}_min") + wid_init) / t_model_s / km_to_cm,
@@ -85,9 +91,11 @@ def slice_3dmodel(
         )
         .collect()
     )
+    dict3dcellidto1dcellid = {cellid3d: cellid1d for cellid1d, cellid3d in enumerate(dfslice["inputcellid"], start=1)}
+    dfslice = dfslice.with_columns(inputcellid=pl.int_range(1, pl.len() + 1, dtype=pl.Int32))
 
     save_modeldata(
-        dfslice.drop("modelgridindex", strict=False),
+        dfslice,
         outpath=outputfolder,
         dimensions=1,
         t_model_init_days=modelmeta3d["t_model_init_days"],
@@ -97,7 +105,6 @@ def slice_3dmodel(
         ],
     )
 
-    dict3dcellidto1dcellid = dict(zip(dfslice["inputcellid3d"], dfslice["inputcellid"], strict=True))
     ylists = [dfslice[col].to_list() for col in ("rho", "X_Ni56", "X_Co56")]
     return dict3dcellidto1dcellid, dfslice["vel_r_max_kmps"].to_list(), ylists
 
@@ -110,7 +117,15 @@ def slice_abundance_file(
         get_initelemabundances(inputfolder)
         .filter(pl.col("inputcellid").is_in(list(dict3dcellidto1dcellid)))
         .with_columns(pl.col("inputcellid").replace_strict(dict3dcellidto1dcellid, return_dtype=pl.Int32))
+        .collect()
     )
+    # save_initelemabundances writes 0.0 for a null value, thus a short line must stop the command here
+    if dfelabundances.height != len(dict3dcellidto1dcellid) or dfelabundances.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"abundances.txt in {inputfolder} does not hold a full line of mass fractions for each of the "
+            f"{len(dict3dcellidto1dcellid)} cells of the slice"
+        )
+        raise ValueError(msg)
     save_initelemabundances(dfelabundances, outpath=outputfolder)
 
 

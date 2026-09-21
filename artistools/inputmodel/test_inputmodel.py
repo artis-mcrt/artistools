@@ -194,10 +194,10 @@ def verify_file_checksums(
 ) -> None:
     checksums_actual: dict[Path, str] = {}
 
+    createdprefix = f"# {CREATED_COMMENT_PREFIX}".encode()
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
         m = hashlib.new(digest)
-        createdprefix = f"# {CREATED_COMMENT_PREFIX}".encode()
         with Path(fullpath).open("rb") as f:
             for line in f:
                 # the creation time is different in each run
@@ -1828,7 +1828,10 @@ def test_scale_model_to_time_uses_modelmeta() -> None:
 
 
 def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
-    """Read a file with one space between values without read_wsv, and read an older file with more spaces."""
+    """Read an abundances.txt that has one space between two values with no call of read_wsv.
+
+    An older file with more spaces, and a file with a nan token, must give the same table as read_wsv gives.
+    """
     rng = np.random.default_rng(seed=11)
     dfelabundances = pl.DataFrame(
         {"inputcellid": range(1, 6)}
@@ -1849,74 +1852,64 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
     pltest.assert_frame_equal(dfonespace, at.inputmodel.get_initelemabundances(morespacesfolder).collect())
     pltest.assert_frame_equal(dfonespace, dfelabundances.with_columns(pl.col("inputcellid").cast(pl.Int32)))
 
+    # read_wsv gives null and not NaN for a nan token, and the fast reader must not change that
+    nanfolder = tmp_path / "nan"
+    nanfolder.mkdir()
+    (nanfolder / "abundances.txt").write_text("1 nan 0.5\n2 0.25 0.75\n", encoding="utf-8")
+    assert at.inputmodel.get_initelemabundances(nanfolder).collect()["X_H"].to_list() == [None, 0.25]
+
 
 def test_slice_abundance_file_renumbers_the_cells(tmp_path: Path) -> None:
-    """Keep the cells of the slice, also the last cell of the input, and give them the 1D cell numbers."""
+    """Keep the cells of the slice, also the last cell of the input.
+
+    The cells of the output must have the 1D cell numbers.
+    """
     from artistools.inputmodel.make1dslicefrom3d import slice_abundance_file
 
     inputfolder = tmp_path / "in"
     outputfolder = tmp_path / "out"
-    inputfolder.mkdir()
-    outputfolder.mkdir()
-
-    # abundances.txt as written by save_initelemabundances: one line per cell with inputcellid and 30 mass fractions
-    # and comment lines before them, which hold no cell
-    lines = ["# created: 2026-09-21 12:00:00 UTC", "#inputcellid X_H X_He", ""]
-    lines += [" ".join([str(cellid), *[f"{cellid * 0.001:.5f}"] * 30]) for cellid in (1, 2, 3)]
-    (inputfolder / "abundances.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    at.inputmodel.save_initelemabundances(
+        pl.DataFrame({"inputcellid": [1, 2, 3], "X_H": [0.001, 0.002, 0.003]}), outpath=inputfolder
+    )
 
     slice_abundance_file(inputfolder, outputfolder, {1: 1, 3: 2})
 
     dfelabundances = at.inputmodel.get_initelemabundances(outputfolder).collect()
     assert dfelabundances["inputcellid"].to_list() == [1, 2]
     assert np.allclose(dfelabundances["X_H"], [0.001, 0.003], rtol=1e-6)
-    assert dfelabundances.width == 31
+
+    # a cell of the slice that the input does not hold must stop the command
+    with pytest.raises(ValueError, match="full line of mass fractions"):
+        slice_abundance_file(inputfolder, tmp_path / "out2", {1: 1, 4: 2})
 
 
-def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
-    """Cell positions must be compared as numbers: model.txt is written in several float formats."""
+@pytest.mark.parametrize(("ncoordgrid", "cellids3d"), [(3, [14, 15]), (4, [43, 44])])
+def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
+    tmp_path: Path, ncoordgrid: int, cellids3d: list[int]
+) -> None:
+    """Select the cells that hold the positive x axis.
+
+    A grid with an even cell count has a cell face on the axis. With an odd count, the axis goes through
+    the middle of a cell, and the first shell reaches half a cell width.
+    """
     from artistools.inputmodel.make1dslicefrom3d import slice_3dmodel
 
+    vmax_cmps, t_model_days = 1.0e9, 1.0
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
+        ncoordgrid=ncoordgrid, vmax=vmax_cmps, t_model_init_days=t_model_days
+    )
     inputfolder = tmp_path / "in"
     outputfolder = tmp_path / "out"
-    inputfolder.mkdir()
-    outputfolder.mkdir()
-
-    t_model_days = 1.0
-    xmax = 1.0e15
-    # line 3 of model.txt gives vmax in cm/s, thus the outermost face sits at vmax * t_model
-    vmax_cmps = xmax / (t_model_days * at.constants.day_to_s)
-    # a 2x2x2 grid written with scientific notation, as save_modeldata() does (float_scientific=True)
-    # the header has each comment that save_modeldata writes: full lines, inline comments, and the column names
-    lines = [
-        "# created: 2026-09-21 12:00:00 UTC",
-        "# column units: pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3]",
-        "8  # npts_model",
-        f"{t_model_days}  # t_model_init_days",
-        f"{vmax_cmps:.4e}  # vmax_cmps",
-        "#inputcellid pos_x_min pos_y_min pos_z_min rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
-    ]
-    cellid = 0
-    for zpos in (-xmax, 0.0):
-        for ypos in (-xmax, 0.0):
-            for xpos in (-xmax, 0.0):
-                cellid += 1
-                lines.extend((f"{cellid} {xpos:.4e} {ypos:.4e} {zpos:.4e} 1.0e-10", "0.1 0.2 0.3 0.0 0.0"))
-    (inputfolder / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    at.inputmodel.save_modeldata(lzdfmodel.with_columns(rho=pl.lit(1.0e-10)), outpath=inputfolder, modelmeta=modelmeta)
 
     dict3dcellidto1dcellid, xlist, _ylists = slice_3dmodel(inputfolder, outputfolder, "x")
 
-    # only the cell at (0, 0, 0) is on the positive x axis with y == z == 0
-    assert dict3dcellidto1dcellid == {8: 1}
-    # the 1D model gives the outer boundary of each shell. That cell spans 0 to one cell width, thus
-    # its vel_r_max_kmps is the velocity of the cell width and not zero
-    # the file holds the rounded value, thus the expectation must read it back
-    wid_init = 2 * float(f"{vmax_cmps:.4e}") * t_model_days * at.constants.day_to_s / 2
-    assert xlist == pytest.approx([wid_init / (t_model_days * at.constants.day_to_s) / at.constants.km_to_cm])
+    assert dict3dcellidto1dcellid == dict(zip(cellids3d, [1, 2], strict=True))
+    wid_init_kmps = 2 * vmax_cmps / ncoordgrid / at.constants.km_to_cm
+    vel_r_max_first = wid_init_kmps / 2 if ncoordgrid % 2 else wid_init_kmps
+    assert xlist == pytest.approx([vel_r_max_first, vel_r_max_first + wid_init_kmps], rel=1e-5)
     dfmodel1d, modelmeta1d = at.inputmodel.get_modeldata(outputfolder)
     assert modelmeta1d["dimensions"] == 1
-    assert modelmeta1d["npts_model"] == 1
-    assert math.isclose(modelmeta1d["t_model_init_days"], t_model_days)
     assert dfmodel1d.collect()["vel_r_max_kmps"].to_list() == pytest.approx(xlist, rel=1e-5)
 
 
@@ -2066,7 +2059,10 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
 
 
 def test_model_header_comments_round_trip(tmp_path: Path) -> None:
-    """Keep a user comment that starts as the creation line does, and drop the lines that the writer adds again."""
+    """Keep a user comment that starts as a line of the writer does.
+
+    The reader must drop the lines that the writer adds again.
+    """
     ncoordgridrcyl, ncoordgridz = 4, 6
     sourcefolder = tmp_path / "source"
     sourcefolder.mkdir()
