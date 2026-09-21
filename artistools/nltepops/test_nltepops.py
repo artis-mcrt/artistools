@@ -33,10 +33,10 @@ def test_nltepops_singletimestep(mockplot: mock.MagicMock) -> None:
     }
     for callindex, (expected_first, expected_last, expected_mean, expected_std) in expected_stats.items():
         _, yarr = get_plot_xy(mockplot.call_args_list[callindex])
-        assert np.isclose(yarr[0], expected_first, rtol=1e-4)
-        assert np.isclose(yarr[-1], expected_last, rtol=1e-4)
-        assert np.isclose(yarr.mean(), expected_mean, rtol=1e-4)
-        assert np.isclose(yarr.std(), expected_std, rtol=1e-4)
+        assert np.isclose(yarr[0], expected_first, rtol=1e-4, atol=0.0)
+        assert np.isclose(yarr[-1], expected_last, rtol=1e-4, atol=0.0)
+        assert np.isclose(yarr.mean(), expected_mean, rtol=1e-4, atol=0.0)
+        assert np.isclose(yarr.std(), expected_std, rtol=1e-4, atol=0.0)
 
 
 def make_model_without_plotted_cell_estimators(tmp_path: Path) -> None:

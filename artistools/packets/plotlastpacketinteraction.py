@@ -23,6 +23,7 @@ from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import parse_cli_args
 from artistools.packets.core import filter_packets_dirbin
+from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_packets
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
@@ -130,7 +131,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     Delta_t_secs = (t_max - t_min) * day_to_s
     Delta_beta = 0.5 / 25
 
-    pos_type_str = ""
+    position: t.Literal["em", "trueem"] = "em"
     if trueem:
         required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
         missing_cols = required_cols - set(dfpackets.collect_schema().names())
@@ -140,31 +141,27 @@ def packets_2d_hist_bin_and_ejecta_vel(
                 f"{sorted(required_cols)} (missing {sorted(missing_cols)})"
             )
             raise ValueError(message)
-        pos_type_str = "true"
+        position = "trueem"
     print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
+    # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the histogram
+    emtime = get_emission_time_expr(position)
     dfpackets = dfpackets.with_columns(
-        (
-            (pl.col(f"{pos_type_str}em_posx") ** 2 + pl.col(f"{pos_type_str}em_posy") ** 2).sqrt()
-            / pl.col(f"{pos_type_str}em_time")
-            / CLIGHT
-        ).alias("beta_r_cyl_em")
-    ).with_columns((pl.col(f"{pos_type_str}em_posz") / pl.col(f"{pos_type_str}em_time") / CLIGHT).alias("beta_z_em"))
+        ((pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2).sqrt() / emtime / CLIGHT).alias(
+            "beta_r_cyl_em"
+        )
+    ).with_columns((pl.col(f"{position}_posz") / emtime / CLIGHT).alias("beta_z_em"))
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias(
-            "R_cyl_inner_em"
-        )
-    ).with_columns(
-        (pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * pl.col(f"{pos_type_str}em_time")).alias("R_cyl_outer_em")
-    )
+        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * emtime).alias("R_cyl_inner_em")
+    ).with_columns((pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * emtime).alias("R_cyl_outer_em"))
     dfpackets_selected = dfpackets.with_columns(
         (
             np.pi
             * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
             * CLIGHT
             * Delta_beta
-            * pl.col(f"{pos_type_str}em_time")
+            * emtime
         ).alias("hollow_cyl_vol_em")
     ).collect()
     inverse_solidangle_fraction = get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0

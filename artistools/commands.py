@@ -771,6 +771,8 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-emax",
     "-emfeaturesearch",
     "-emin",
+    "-emissionlosvelocityrange",
+    "-emissionvelocityrange",
     "-energy",
     "-escape_type",
     "-exc-temperature",

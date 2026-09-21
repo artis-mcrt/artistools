@@ -54,7 +54,8 @@ def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
 
     integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
 
-    assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
+    # the window is timesteps 44 to 72, and one more timestep at the low edge changes the integral by 2 per cent
+    assert np.isclose(integral, 7.715075e-12, rtol=1e-3, atol=0.0)
 
 
 def test_spectra_outputtext(tmp_path: Path) -> None:
@@ -93,12 +94,12 @@ def test_spectraemissionplot_nostack() -> None:
 
 
 def test_spectra_get_spectrum() -> None:
-    def check_spectrum(dfspectrumpkts: pl.DataFrame) -> None:
-        assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
+    def check_spectrum(dfspectrumpkts: pl.DataFrame, expectedmax: float, expectedmean: float) -> None:
+        assert math.isclose(max(dfspectrumpkts["f_lambda"]), expectedmax, rel_tol=1e-4)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         flambdamean = dfspectrumpkts["f_lambda"].mean()
         assert isinstance(flambdamean, float)
-        assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
+        assert math.isclose(flambdamean, expectedmean, rel_tol=1e-4)
 
     dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
@@ -107,7 +108,7 @@ def test_spectra_get_spectrum() -> None:
     assert abs(dfspectrum["lambda_angstroms"].to_numpy()[-1] - 29920.601421214415) < 1e-5
     assert abs(dfspectrum["lambda_angstroms"].to_numpy()[0] - 600.75759482509852) < 1e-5
 
-    check_spectrum(dfspectrum)
+    check_spectrum(dfspectrum, expectedmax=2.548532804918824e-13, expectedmean=1.0314682640070206e-14)
 
     timelowdays = at.get_timestep_times(modelpath)[55]
     timehighdays = at.get_timestep_times(modelpath)[65]
@@ -116,7 +117,10 @@ def test_spectra_get_spectrum() -> None:
         -1
     ].collect()
 
-    check_spectrum(dfspectrumpkts)
+    # the packets file of the test model holds a part of the packets of the run, thus its flux is
+    # below the flux of spec.out. test_spectra_get_flux_contributions_from_packets compares the two
+    # sources for a complete model
+    check_spectrum(dfspectrumpkts, expectedmax=1.4601241778685615e-14, expectedmean=3.8221552332231758e-16)
 
 
 @pytest.mark.benchmark
@@ -221,7 +225,6 @@ def get_contributions_classic_3d(
 
     Thus the results of the different tests are comparable.
     """
-    kwargs.setdefault("emtypecolumn", "emissiontype")
     return atspectra.get_flux_contributions_from_packets(
         modelpath=modelpath_classic_3d,
         timelowdays=3.0,
@@ -266,9 +269,11 @@ def test_spectra_flux_contribution_labels_from_packets(
     assert len(contributions) == expected_contribs
     for contrib, (linelabel, fluxcontrib) in zip(contributions[: len(expected_top)], expected_top, strict=True):
         assert contrib.linelabel == linelabel
-        assert np.isclose(contrib.fluxcontrib, fluxcontrib, rtol=1e-4)
+        assert np.isclose(contrib.fluxcontrib, fluxcontrib, rtol=1e-4, atol=0.0)
 
-    assert np.isclose(np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4)
+    assert np.isclose(
+        np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4, atol=0.0
+    )
 
 
 # The "ion" group makes an ion label for the absorption. The "nucmass" group makes a line label.
@@ -284,7 +289,7 @@ def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
 
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
-        get_contributions_classic_3d(groupby="nuc", emtypecolumn="pellet_nucindex")
+        get_contributions_classic_3d(groupby="nuc")
 
 
 def test_spectra_velocity_shell_contributions() -> None:
@@ -295,7 +300,7 @@ def test_spectra_velocity_shell_contributions() -> None:
     # the corner of the 3D grid lies at sqrt(3) times vmax, which is 50 091 km/s
     shells = [0.0, 10000.0, 20000.0, 30000.0, 51000.0]
     contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
-        groupby="velocity", emtypecolumn="emission_velocity", shelledges=shells
+        groupby="velocity", shelledges=shells
     )
     contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
@@ -306,12 +311,74 @@ def test_spectra_velocity_shell_contributions() -> None:
     ]
     assert len(contributions) >= 2
 
-    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
 
     absorption_shells = sum(contrib.array_flambda_absorption for contrib in contributions)
     absorption_ions = sum(contrib.array_flambda_absorption for contrib in contributions_ion)
     assert np.trapezoid(absorption_shells, x=array_lambda) > 0.0
-    assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6)
+    assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6, atol=0.0)
+
+
+@pytest.mark.parametrize(
+    ("rangegrouping", "rangeedges"), [("velocity", (10000.0, 20000.0)), ("losvelocity", (-10000.0, 5000.0))]
+)
+def test_spectra_velocity_range_contributions(rangegrouping: str, rangeedges: tuple[float, float]) -> None:
+    """The ion groups of a velocity range hold the emission and the absorption of the shell with the same edges."""
+    shells = [-51000.0 if rangegrouping == "losvelocity" else 0.0, *rangeedges, 51000.0]
+    contributions_shells, _, array_lambda = get_contributions_classic_3d(groupby=rangegrouping, shelledges=shells)
+    (shelllabel,) = atspectra.get_shell_labels(rangeedges)
+    (shell,) = (contrib for contrib in contributions_shells if contrib.linelabel == shelllabel)
+
+    contributions, array_flambda_emission_total, _ = get_contributions_classic_3d(
+        groupby="ion", velocityranges={rangegrouping: rangeedges}
+    )
+
+    assert len(contributions) >= 2
+    assert np.trapezoid(shell.array_flambda_emission, x=array_lambda) > 0.0
+    assert np.trapezoid(shell.array_flambda_absorption, x=array_lambda) > 0.0
+    assert np.allclose(array_flambda_emission_total, shell.array_flambda_emission, rtol=1e-6, atol=0.0)
+    absorption_ions = sum(contrib.array_flambda_absorption for contrib in contributions)
+    assert np.allclose(absorption_ions, shell.array_flambda_absorption, rtol=1e-6, atol=0.0)
+
+
+def test_spectra_two_velocity_ranges_keep_the_packets_inside_both() -> None:
+    """A radial range and a line-of-sight range together hold the radial range of the line-of-sight shell."""
+    losedges = (-10000.0, 5000.0)
+    radialedges = (10000.0, 20000.0)
+    contributions_shells, _, _ = get_contributions_classic_3d(
+        groupby="losvelocity", shelledges=list(losedges), velocityranges={"velocity": radialedges}
+    )
+    (shell,) = contributions_shells
+
+    _, array_flambda_emission_total, _ = get_contributions_classic_3d(
+        groupby="ion", velocityranges={"velocity": radialedges, "losvelocity": losedges}
+    )
+    _, array_flambda_emission_total_radial, _ = get_contributions_classic_3d(
+        groupby="ion", velocityranges={"velocity": radialedges}
+    )
+
+    assert np.allclose(array_flambda_emission_total, shell.array_flambda_emission, rtol=1e-6, atol=0.0)
+    assert 0.0 < array_flambda_emission_total.sum() < array_flambda_emission_total_radial.sum()
+
+
+def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
+    """A packet with no thermal emission record is in the NOT SET series, and no velocity range from zero holds it.
+
+    ARTIS gives such a packet a thermal emission velocity of zero. The thermal emission of this model
+    lies above 11 000 km/s. Thus a packet below 10 000 km/s has no thermal emission record.
+    """
+    contributions, _, _ = get_contributions_classic_3d(
+        groupby="velocity", usethermal=True, shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
+    )
+    fluxes = {contrib.linelabel: contrib.fluxcontrib for contrib in contributions}
+    assert "[0, 10000) km/s" not in fluxes
+    assert fluxes["NOT SET"] > 0.0
+    assert fluxes["[10000, 51000) km/s"] > 0.0
+
+    contributions_range, _, _ = get_contributions_classic_3d(
+        usethermal=True, velocityranges={"velocity": (0.0, 10000.0)}, getabsorption=False
+    )
+    assert not contributions_range
 
 
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
@@ -387,14 +454,14 @@ def test_spectra_losvelocity_shell_contributions() -> None:
     """A line-of-sight shell holds the packets by the signed velocity along the packet direction."""
     shells = [-51000.0, -20000.0, 0.0, 20000.0, 51000.0]
     contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
-        groupby="losvelocity", emtypecolumn="emission_velocity_lineofsight", shelledges=shells
+        groupby="losvelocity", shelledges=shells
     )
     _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
     labels = [contrib.linelabel for contrib in contributions]
     assert set(labels) <= set(atspectra.get_shell_labels(shells))
     assert any(label.startswith("[-") for label in labels)
-    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
     assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
 
 
@@ -411,25 +478,28 @@ def test_spectra_ye_shell_contributions() -> None:
 
     with mock.patch("artistools.inputmodel.get_modeldata", side_effect=get_modeldata_with_ye):
         contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
-            groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6]
+            groupby="ye", shelledges=[0.0, 0.3, 0.6]
         )
     _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
     assert sorted(contrib.linelabel for contrib in contributions) == ["Ye [0, 0.3)", "Ye [0.3, 0.6)"]
-    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
     assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
 
     with pytest.raises(ValueError, match="no Ye column"):
-        get_contributions_classic_3d(groupby="ye", emtypecolumn="em_ye", shelledges=[0.0, 0.3, 0.6])
+        get_contributions_classic_3d(groupby="ye", shelledges=[0.0, 0.3, 0.6])
 
 
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
     with pytest.raises(ValueError, match="needs the shell edges"):
-        get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity")
+        get_contributions_classic_3d(groupby="velocity")
 
     for badshells in ([0.0, 20000.0, 10000.0], [0.0, math.inf], [0.0, math.nan, 20000.0]):
         with pytest.raises(ValueError, match="must be finite, increase"):
-            get_contributions_classic_3d(groupby="velocity", emtypecolumn="emission_velocity", shelledges=badshells)
+            get_contributions_classic_3d(groupby="velocity", shelledges=badshells)
+
+    with pytest.raises(ValueError, match="edges of the losvelocity range must be finite, increase"):
+        get_contributions_classic_3d(velocityranges={"losvelocity": (5000.0, -5000.0)})
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
@@ -467,6 +537,51 @@ def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.M
     # the edges lie inside vmax of the model, thus each of the three shells holds packets
     assert mockstackplot.call_count == 1
     assert len(mockstackplot.call_args_list[0].args[2]) == 3
+
+
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_velocity_ranges(
+    mockstackplot: mock.MagicMock, mocksettitle: mock.MagicMock, tmp_path: Path
+) -> None:
+    """A velocity range keeps the ion series, and the title gives each range in the unit of its values."""
+    # argparse must read a negative value with a c suffix as a value and not as a flag
+    at.spectra.plot(
+        argsraw=[
+            str(modelpath_classic_3d),
+            "--showemission",
+            "-emissionlosvelocityrange",
+            "-0.05c",
+            "0.05c",
+            "-timemin",
+            "4",
+            "-timemax",
+            "6.5",
+            "-outputfile",
+            str(tmp_path / "losvelocityrange.pdf"),
+        ]
+    )
+
+    assert mockstackplot.call_count == 1
+    assert len(mockstackplot.call_args_list[0].args[2]) >= 2
+    title = mocksettitle.call_args_list[-1].args[1]
+    assert title.endswith(", packets at line-of-sight velocity [-0.05, 0.05) c")
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityranges.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        emissionvelocityrange=["0.04c", "0.06c"],
+        emissionlosvelocityrange=[-15000, 15000],
+    )
+
+    assert mockstackplot.call_count == 2
+    assert len(mockstackplot.call_args_list[1].args[2]) >= 2
+    title = mocksettitle.call_args_list[-1].args[1]
+    assert title.endswith(", packets at radial velocity [0.04, 0.06) c and line-of-sight velocity [-15000, 15000) km/s")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -527,8 +642,15 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
     assert len(mockstackplot.call_args_list[0].args[2]) == 4
 
 
-def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Path) -> None:
-    """A gamma spectrum, a virtual packet observer, and an empty shell selection stop with a message."""
+@pytest.mark.parametrize("packetargs", [{"gamma": True}, {"plotvspecpol": [0]}])
+@pytest.mark.parametrize(
+    "optionargs",
+    [{"groupby": "velocity"}, {"emissionvelocityrange": [5000, 10000]}, {"emissionlosvelocityrange": [-5000, 5000]}],
+)
+def test_spectraemissionplot_refuses_packets_with_no_emission_position(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], optionargs: dict[str, t.Any], packetargs: dict[str, t.Any]
+) -> None:
+    """A shell grouping and a velocity range stop with a message for gamma packets and for virtual packets."""
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],
@@ -536,23 +658,15 @@ def test_spectraemissionplot_velocity_shells_reject_gamma_and_empty(tmp_path: Pa
             timemin=4,
             timemax=6.5,
             showemission=True,
-            groupby="velocity",
-            gamma=True,
-            outputfile=tmp_path / "gamma.pdf",
+            outputfile=tmp_path / "noposition.pdf",
+            **optionargs,
+            **packetargs,
         )
+    assert "does not accept" in capsys.readouterr().err
 
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath_classic_3d,
-            timemin=4,
-            timemax=6.5,
-            showemission=True,
-            groupby="velocity",
-            plotvspecpol=[0],
-            outputfile=tmp_path / "vspecpol.pdf",
-        )
 
+def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
+    """A shell selection that holds no packet stops with a message when the plot is normalised."""
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],
@@ -620,7 +734,7 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
 
     nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
     assert np.array_equal(arraylambda_window, arraylambda_full[nu_select])
-    assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12)
+    assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12, atol=0.0)
 
     contrib_full_bylabel = {c.linelabel: c for c in contributions_full}
     assert any(c.fluxcontrib < 0.999 * contrib_full_bylabel[c.linelabel].fluxcontrib for c in contributions_window), (
@@ -629,8 +743,10 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
     for contrib in contributions_window:
         full = contrib_full_bylabel[contrib.linelabel]
         assert contrib.fluxcontrib <= full.fluxcontrib * (1 + 1e-12)
-        assert np.allclose(contrib.array_flambda_emission, full.array_flambda_emission[nu_select], rtol=1e-12)
-        assert np.allclose(contrib.array_flambda_absorption, full.array_flambda_absorption[nu_select], rtol=1e-12)
+        assert np.allclose(contrib.array_flambda_emission, full.array_flambda_emission[nu_select], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            contrib.array_flambda_absorption, full.array_flambda_absorption[nu_select], rtol=1e-12, atol=0.0
+        )
 
 
 def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
@@ -650,11 +766,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions_from_packets(
-            modelpath_classic_3d,
-            timelowdays=timelowdays,
-            timehighdays=timehighdays,
-            emtypecolumn="emissiontype",
-            lambda_bin_edges=lambda_bin_edges,
+            modelpath_classic_3d, timelowdays=timelowdays, timehighdays=timehighdays, lambda_bin_edges=lambda_bin_edges
         )
     )
 
@@ -726,7 +838,7 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
 
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 1.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
-    assert np.isclose(integrated_flux, expected_flux)
+    assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
 @pytest.mark.parametrize("beta", [0.0, 0.3, 0.6])
@@ -773,12 +885,11 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, 
         getabsorption=False,
         groupby="nuc",
         use_time="escape",
-        emtypecolumn="pellet_nucindex",
     )
 
     assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
     assert np.array_equal(array_lambda, dfspectrum["lambda_angstroms"].to_numpy())
-    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())
+    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), rtol=1e-12, atol=0.0)
 
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 20.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
