@@ -126,6 +126,8 @@ def slice_abundance_file(
         keepcurrentblock = False
         blocklens: set[int] = set()
         for line in fabundancesin:
+            if line.startswith("#"):
+                continue
             linesplit = line.split()
 
             if len(currentblock) + len(linesplit) >= 30:

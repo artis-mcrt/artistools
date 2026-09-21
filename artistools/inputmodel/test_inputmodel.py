@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import hashlib
 import itertools
 import json
@@ -197,8 +198,10 @@ def verify_file_checksums(
         fullpath = Path(folder) / filename
         m = hashlib.new(digest)
         with Path(fullpath).open("rb") as f:
-            for chunk in f:
-                m.update(chunk)
+            for line in f:
+                # the creation time is different in each run
+                if not line.startswith(b"# created:"):
+                    m.update(line)
 
         checksums_actual[fullpath] = m.hexdigest()
         strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
@@ -226,7 +229,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         # write_artis_csv went from five significant figures to eight.
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-            "abundances.txt": "3fa70e381e9d538d7c07d8447b3b8a23d34a2bcc996370b4b71990e42f219baf",
+            "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
             "model.txt": "c5cbe9fa3b7e95e3a4efe9fbd140a9a26f14ba8dd0ac418e0823e5b371cab788",
         },
     }
@@ -375,6 +378,16 @@ def test_make_empty_abundance_file() -> None:
     outpath = outputpath / "test_make_empty_abundance_file"
     outpath.mkdir(exist_ok=True, parents=True)
     at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outpath)
+
+    createdline, unitsline, columnsline, firstcellline = (
+        (outpath / "abundances.txt").read_text(encoding="utf-8").splitlines()[:4]
+    )
+    assert createdline.startswith("# created: ")
+    assert "mass fraction" in unitsline
+    assert columnsline.split()[:3] == ["#inputcellid", "X_H", "X_He"]
+    assert len(columnsline.split()) == len(firstcellline.split()) == 31
+    # the reader must skip the comment lines
+    assert at.inputmodel.get_initelemabundances(outpath).collect().height == 50
 
 
 def test_opacity_by_Ye_file() -> None:
@@ -1834,7 +1847,9 @@ def test_slice_abundance_file_writes_last_block(tmp_path: Path) -> None:
     outputfolder.mkdir()
 
     # abundances.txt as written by save_initelemabundances: one line per cell with inputcellid and 30 mass fractions
-    lines = [" ".join([str(cellid), *[f"{cellid * 0.001:.5f}"] * 30]) for cellid in (1, 2, 3)]
+    # and comment lines before them, which hold no cell
+    lines = ["# created: 2026-09-21 12:00:00 UTC", "#inputcellid X_H X_He"]
+    lines += [" ".join([str(cellid), *[f"{cellid * 0.001:.5f}"] * 30]) for cellid in (1, 2, 3)]
     (inputfolder / "abundances.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     slice_abundance_file(inputfolder, outputfolder, {1: 1, 3: 2})
@@ -2035,9 +2050,13 @@ def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    unitsline, nptsline, timeline, vmaxline, columnsline = (
-        (tmp_path / "model.txt").read_text(encoding="utf-8").splitlines()[:5]
+    createdline, unitsline, nptsline, timeline, vmaxline, columnsline = (
+        (tmp_path / "model.txt").read_text(encoding="utf-8").splitlines()[:6]
     )
+    timecreated = datetime.datetime.strptime(createdline, "# created: %Y-%m-%d %H:%M:%S UTC").replace(
+        tzinfo=datetime.UTC
+    )
+    assert abs(datetime.datetime.now(tz=datetime.UTC) - timecreated) < datetime.timedelta(hours=1)
     assert unitsline.startswith("# column units:")
     assert "rho [g/cm^3]" in unitsline
     assert columnsline.startswith("#inputcellid pos_rcyl_mid pos_z_mid rho ")
@@ -2047,7 +2066,7 @@ def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
     assert "[cm/s]" in vmaxline.split("#")[1]
 
     _, modelmeta_saved = at.inputmodel.get_modeldata(tmp_path)
-    # the writer adds the units line again, thus the reader must not keep it
+    # the writer adds the creation line and the units line again, thus the reader must not keep them
     assert modelmeta_saved["headercommentlines"] == []
     assert modelmeta_saved["ncoordgridrcyl"] == ncoordgridrcyl
     assert modelmeta_saved["ncoordgridz"] == ncoordgridz

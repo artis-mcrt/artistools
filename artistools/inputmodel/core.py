@@ -39,7 +39,13 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
+CREATED_COMMENT_PREFIX = "created:"
 UNITS_COMMENT_PREFIX = "column units:"
+
+
+def get_created_comment() -> str:
+    """Return the comment line that gives the creation time of an input file in UTC."""
+    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC):%Y-%m-%d %H:%M:%S} UTC\n"
 
 
 def read_modelfile_text(
@@ -64,8 +70,8 @@ def read_modelfile_text(
             line = fmodel.readline()
             if line.startswith("#"):
                 commentline = line.removeprefix("#").removeprefix(" ").removesuffix("\n")
-                # save_modeldata writes the units line again, thus a kept copy gives two such lines
-                if not commentline.startswith(UNITS_COMMENT_PREFIX):
+                # save_modeldata writes these two lines again, thus a kept copy gives each line two times
+                if not commentline.startswith((CREATED_COMMENT_PREFIX, UNITS_COMMENT_PREFIX)):
                     modelmeta["headercommentlines"].append(commentline)
                 numheaderrows += 1
 
@@ -979,8 +985,9 @@ def save_modeldata(
         if headercommentlines:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
-        # sn3d reads the first comment line after the header values as the column names, thus the
-        # units line comes before those values
+        # sn3d reads the first comment line after the header values as the column names, thus each
+        # other comment line comes before those values
+        fmodel.write(get_created_comment())
         strunits = {
             1: "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days",
             2: "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days",
@@ -1120,6 +1127,10 @@ def save_initelemabundances(
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
+        # sn3d and get_initelemabundances skip each comment line, and both read the columns by position
+        fabund.write(get_created_comment())
+        fabund.write(f"# {UNITS_COMMENT_PREFIX} each X_ column is the mass fraction of an element\n")
+        fabund.write(f"#{' '.join(dfelabundances.columns)}\n")
         fabund.flush()
         write_artis_csv(dfelabundances, fabund)
 
