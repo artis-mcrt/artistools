@@ -317,26 +317,6 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
     assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
 
 
-def test_residual_panel_keeps_outliers_out_of_the_y_range() -> None:
-    """The y range of the panel holds the central 95 % of the residuals, thus one outlier does not set it."""
-    x = np.linspace(1.0, 2.0, 200)
-    modely = np.full(200, 1.5)
-    modely[100] = 1000.0
-    series = [
-        at.plottools.ResidualSeries("obs", x, np.ones(200), "k", isreference=True),
-        at.plottools.ResidualSeries("model", x, modely, "C0", isreference=False),
-    ]
-    args = argparse.Namespace()
-    _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
-    mainaxis.plot(x, series[0].y)
-    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
-    assert residualaxis.get_yscale() == "linear"
-    ymin, ymax = residualaxis.get_ylim()
-    assert ymin < 0.0
-    assert 0.5 < ymax < 1.0
-    assert residualaxis.get_ylabel().startswith("model $-$ ref")
-
-
 def test_frame_figure_takes_a_shorter_row() -> None:
     """A residual panel takes a part of the frame height, and the main frame keeps its size."""
     fig, axes = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))

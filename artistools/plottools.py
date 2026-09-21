@@ -767,8 +767,8 @@ def draw_residual_panel(
     """Draw model minus reference below the main frame, and return the statistics of each model.
 
     With a log y axis in the main frame, the panel shows model / reference, because a distance in that
-    frame is a ratio. The panel then takes a log y axis only when its y range reaches a ratio, or its
-    inverse, above RESIDUALRATIO_LOGSCALE. The y range holds the central 95 % of the values. Call it after the main frame has its labels and its x range, because the panel takes both.
+    frame is a ratio. The panel then takes a log y axis only when a ratio, or its inverse, is above
+    RESIDUALRATIO_LOGSCALE. Call it after the main frame has its labels and its x range, because the panel takes both.
     """
     xlim = mainaxis.get_xlim()
     isratio = bool(getattr(args, "logscaley", False)) and not ismagnitude
@@ -781,26 +781,16 @@ def draw_residual_panel(
     if getattr(args, "logscaley", False):
         prune_log_ticks(mainaxis.yaxis)
 
-    import numpy as np
+    if isratio:
+        import numpy as np
 
-    yvalues = np.concatenate([np.asarray(line.get_ydata(), dtype=np.float64) for line in residualaxis.lines])
-    yvalues = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)] if isratio else yvalues[np.isfinite(yvalues)]
-    if yvalues.size > 0:
-        # a small number of outliers must not set the y range, thus it holds the central 95 % of the values
-        ylow, yhigh = (float(q) for q in np.percentile(yvalues, [2.5, 97.5]))
-        yagreement = 1.0 if isratio else 0.0
-        ylow, yhigh = min(ylow, yagreement), max(yhigh, yagreement)
+        residualaxis.set_ylabel("model / ref")
+        ratios = np.concatenate([np.asarray(line.get_ydata(), dtype=np.float64) for line in residualaxis.lines])
+        ratios = ratios[np.isfinite(ratios) & (ratios > 0.0)]
         # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
-        if isratio and max(yhigh, 1.0 / ylow) > RESIDUALRATIO_LOGSCALE:
+        if ratios.size > 0 and max(ratios.max(), 1.0 / ratios.min()) > RESIDUALRATIO_LOGSCALE:
             residualaxis.set_yscale("log")
             prune_log_ticks(residualaxis.yaxis)
-            residualaxis.set_ylim(ylow / 1.2, yhigh * 1.2)
-        elif yhigh > ylow:
-            margin = 0.05 * (yhigh - ylow)
-            residualaxis.set_ylim(ylow - margin, yhigh + margin)
-
-    if isratio:
-        residualaxis.set_ylabel("model / ref")
     else:
         mainformatter = mainaxis.yaxis.get_major_formatter()
         mainylabel = (
