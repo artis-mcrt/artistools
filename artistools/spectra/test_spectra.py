@@ -314,6 +314,34 @@ def test_spectra_velocity_shell_contributions() -> None:
     assert np.allclose(absorption_shells, absorption_ions, rtol=1e-6)
 
 
+def test_spectra_emission_velocity_range_contributions() -> None:
+    """The ion groups of a velocity range together hold the emission and the absorption of the shell with the same edges."""
+    shells = [0.0, 10000.0, 20000.0, 51000.0]
+    contributions_shells, _, array_lambda = get_contributions_classic_3d(
+        groupby="velocity", emtypecolumn="emission_velocity", shelledges=shells
+    )
+    (shell,) = (contrib for contrib in contributions_shells if contrib.linelabel == "[10000, 20000) km/s")
+
+    contributions, array_flambda_emission_total, _ = get_contributions_classic_3d(
+        groupby="ion", emissionvelocityrange=(10000.0, 20000.0)
+    )
+    contributions_all, _, _ = get_contributions_classic_3d(groupby="ion")
+
+    assert len(contributions) >= 2
+    assert np.trapezoid(shell.array_flambda_emission, x=array_lambda) > 0.0
+    assert np.trapezoid(shell.array_flambda_absorption, x=array_lambda) > 0.0
+    assert np.allclose(array_flambda_emission_total, shell.array_flambda_emission, rtol=1e-6)
+    assert np.allclose(
+        sum(contrib.array_flambda_absorption for contrib in contributions), shell.array_flambda_absorption, rtol=1e-6
+    )
+    assert sum(contrib.fluxcontrib for contrib in contributions) < sum(
+        contrib.fluxcontrib for contrib in contributions_all
+    )
+
+    with pytest.raises(ValueError, match="must be finite and must increase"):
+        get_contributions_classic_3d(groupby="ion", emissionvelocityrange=(20000.0, 10000.0))
+
+
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
     assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
@@ -467,6 +495,36 @@ def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.M
     # the edges lie inside vmax of the model, thus each of the three shells holds packets
     assert mockstackplot.call_count == 1
     assert len(mockstackplot.call_args_list[0].args[2]) == 3
+
+
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
+def test_spectraemissionplot_emission_velocity_range(
+    mockstackplot: mock.MagicMock, mocksettitle: mock.MagicMock, tmp_path: Path
+) -> None:
+    """A velocity range keeps the ion series, reads the packets, and the title gives the range in the unit of the values."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "emissionvelocityrange.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        emissionvelocityrange=["0.04c", "0.06c"],
+    )
+
+    assert mockstackplot.call_count == 1
+    assert len(mockstackplot.call_args_list[0].args[2]) >= 2
+    assert mocksettitle.call_args_list[-1].args[1].endswith(", emission velocity [0.04, 0.06) c")
+
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            outputfile=tmp_path / "badrange.pdf",
+            showemission=True,
+            emissionvelocityrange=[20000, 10000],
+        )
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)

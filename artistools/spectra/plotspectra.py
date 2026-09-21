@@ -969,6 +969,7 @@ def get_emission_contributions(
         vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
         shelledges=args.shelledges,
         shellunit=args.shellunit,
+        emissionvelocityrange=args.emissionvelocityrange_kmps,
     )
 
 
@@ -1206,6 +1207,9 @@ def get_emission_plot_label(
         return str(args.title)
 
     plotlabel = f"{modelname} [{timemin:.2f}d to {timemax:.2f}d]"
+    if args.emissionvelocityrange_kmps is not None:
+        (rangelabel,) = get_shell_labels(args.emissionvelocityrange_kmps, args.emissionvelocityunit)
+        plotlabel += f", {'thermal ' if args.use_thermalemissiontype else ''}emission velocity {rangelabel}"
     if not (args.plotviewingangle or args.plotvspecpol):
         return plotlabel
 
@@ -1712,6 +1716,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "-emissionvelocityrange",
+        type=parse_velocity_argument,
+        nargs=2,
+        default=None,
+        metavar=("vmin", "vmax"),
+        help=(
+            "Keep only the contributions of --showemission and --showabsorption from a range of the radial"
+            " velocity, in km/s, e.g. 5000 10000, or as a fraction of c, e.g. 0.1c 0.2c. The velocity is that of"
+            " the last interaction, or of the last thermal emission with --use_thermalemissiontype. vmin is"
+            " inside the range, and vmax is not. Implies --frompackets"
+        ),
+    )
+
+    parser.add_argument(
         "-yeshells",
         type=float,
         nargs="+",
@@ -1819,8 +1837,36 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def parse_velocity_values(
+    values: Sequence[str | float | tuple[float, t.Literal["kmps", "c"]]],
+) -> tuple[list[float], t.Literal["kmps", "c"]]:
+    """Return the velocities [km/s] and the unit of their labels, which is c if one value has a c suffix.
+
+    argparse gives a parsed pair, and a keyword argument of the API gives a text or a number.
+    """
+    parsedvalues = [parse_velocity_argument(str(value)) if not isinstance(value, tuple) else value for value in values]
+    unit: t.Literal["kmps", "c"] = "c" if any(valueunit == "c" for _, valueunit in parsedvalues) else "kmps"
+    return [velocity_kmps for velocity_kmps, _ in parsedvalues], unit
+
+
 def resolve_shell_args(args: argparse.Namespace) -> None:
-    """Set the shell edges and the unit of their labels for a shell grouping, from the arguments or the model."""
+    """Set the shell edges, the emission velocity range, and the units of their labels, from the arguments or the model."""
+    args.emissionvelocityrange_kmps = None
+    args.emissionvelocityunit = "kmps"
+    if args.emissionvelocityrange is not None:
+        if len(args.emissionvelocityrange) != 2:
+            exit_with_error(
+                f"-emissionvelocityrange takes two velocities, not {list(args.emissionvelocityrange)}",
+                "Give vmin and vmax, e.g. -emissionvelocityrange 0.1c 0.2c",
+            )
+        (vlow_kmps, vhigh_kmps), args.emissionvelocityunit = parse_velocity_values(args.emissionvelocityrange)
+        if vhigh_kmps <= vlow_kmps:
+            exit_with_error(
+                f"-emissionvelocityrange needs vmin below vmax, not {vlow_kmps:g} km/s and {vhigh_kmps:g} km/s",
+                "Give the lower velocity first",
+            )
+        args.emissionvelocityrange_kmps = (vlow_kmps, vhigh_kmps)
+
     args.shelledges = None
     args.shellunit = "kmps"
     if args.groupby == "ye":
@@ -1831,13 +1877,7 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         getdefault = get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
         args.shelledges, args.shellunit = getdefault(args.specpath[0])
     elif args.velocityshells is not None:
-        # argparse gives a parsed pair, and a keyword argument of the API gives a text or a number
-        parsedshells = [
-            parse_velocity_argument(str(shell)) if not isinstance(shell, tuple) else shell
-            for shell in args.velocityshells
-        ]
-        args.shellunit = "c" if any(unit == "c" for _, unit in parsedshells) else "kmps"
-        args.shelledges = [velocity_kmps for velocity_kmps, _ in parsedshells]
+        args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1993,6 +2033,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.showemission = True
 
     if args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS}:
+        args.frompackets = True
+
+    if args.emissionvelocityrange is not None:
+        if not (args.showemission or args.showabsorption or args.emissionabsorption):
+            exit_with_error(
+                "-emissionvelocityrange selects the packets of the contributions, and the plot shows none",
+                "Give --showemission, --showabsorption, or --emissionabsorption",
+            )
+        if args.gamma:
+            # the range is not tested on gamma packets, thus the command refuses the combination
+            exit_with_error("-emissionvelocityrange does not apply to a gamma-ray spectrum", "Drop one of the two")
+        if args.plotvspecpol:
+            exit_with_error(
+                "a virtual packet holds no emission position, thus -emissionvelocityrange does not apply to"
+                " -plotvspecpol",
+                "Give -plotviewingangle for a direction bin of the real packets",
+            )
         args.frompackets = True
 
     if args.gamma and args.groupby in SHELLCOLUMNS:
