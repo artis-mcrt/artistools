@@ -92,13 +92,16 @@ from artistools.misc import suggest_names
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_yvalues
+from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
+from artistools.plottools import set_mpl_style
 from artistools.plottools import set_plot_title
+from artistools.plottools import wants_log_scale
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -667,6 +670,32 @@ def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Seq
 FIGURE_ARGUMENTS = ("xmin", "xmax")
 
 
+def get_directive_name(seriestype: str) -> str | None:
+    """Return the name of the directive that a plot item gives, e.g. "ymin", or None for a series.
+
+    A figure argument and an unknown directive stop the command.
+    """
+    # normalise_plotitems adds the underscore, thus report the name as the user wrote it
+    given = seriestype.removeprefix("_")
+    # a figure argument stops the command whichever way the caller spells it, because a plot item
+    # of that name reaches the ion branch and gives an error that names no argument
+    if given.lower() in FIGURE_ARGUMENTS:
+        exit_with_error(
+            f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
+            f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
+        )
+
+    if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
+        suggestion = suggest_names(given, DIRECTIVES)
+        exit_with_error(
+            f"'{given}' is not a plot directive",
+            f"{suggestion + ' ' if suggestion else ''}The directives are "
+            f"{', '.join(f'{name}=' for name in DIRECTIVES)}",
+        )
+
+    return given.lower() if given.lower() in DIRECTIVES else None
+
+
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')].
 
@@ -839,6 +868,15 @@ def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -
     return f"{seriestype}_{ionstr}", ionstr
 
 
+def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int) -> pl.Expr:
+    """Return the divisor that turns the number density of an ion into the population type, e.g. elpop."""
+    if seriestype == "populations" and poptype == "elpop":
+        return pl.col(f"nnelement_{get_elsymbol(atomic_number)}")
+    if seriestype == "populations" and poptype == "totalpop":
+        return pl.col("nntot")
+    return pl.lit(1)
+
+
 def plot_multi_ion_series(
     ax: mplax.Axes,
     seriestype: str,
@@ -904,20 +942,9 @@ def plot_multi_ion_series(
         expr_yvals = pl.col(colname)
         print(f"  plotting {seriestype} {ionstr.replace('_', ' ')}")
 
-        if seriestype != "populations" or poptype == "absolute":
-            expr_normfactor = pl.lit(1)
-        elif poptype == "elpop":
-            elsymbol = get_elsymbol(atomic_number)
-            expr_normfactor = pl.col(f"nnelement_{elsymbol}")
-        elif poptype == "totalpop":
-            expr_normfactor = pl.col("nntot")
-        elif poptype in {"radialdensity", "cylradialdensity"}:
-            # get the volumetric number density to later be multiplied by the surface area of a sphere or cylinder
-            expr_normfactor = pl.lit(1)
-        elif poptype == "cumulative":
-            expr_normfactor = pl.lit(1)
-        else:
-            raise AssertionError
+        assert poptype in POPTYPE_YLABELS
+        # a radial density and a cumulative count take the number density, and the code below converts it
+        expr_normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
 
         # convert the volumetric number density [cm^-3] to a radial density [cm^-1] with the radius of each cell
         expr_tmid_s = pl.col("tmid_days") * day_to_s
@@ -1229,24 +1256,7 @@ def plot_subplot(
             remaining_plotitems.append(plotitem)
             continue
         seriestype, params = plotitem
-        # normalise_plotitems adds the underscore, thus report the name as the user wrote it
-        given = seriestype.removeprefix("_")
-        # a figure argument stops the command whichever way the caller spells it, because a plot item
-        # of that name reaches the ion branch and gives an error that names no argument
-        if given.lower() in FIGURE_ARGUMENTS:
-            exit_with_error(
-                f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
-                f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
-            )
-
-        if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
-            suggestion = suggest_names(given, DIRECTIVES)
-            exit_with_error(
-                f"'{given}' is not a plot directive",
-                f"{suggestion + ' ' if suggestion else ''}The directives are "
-                f"{', '.join(f'{name}=' for name in DIRECTIVES)}",
-            )
-        seriestype = seriestype.removeprefix("_").lower()
+        seriestype = get_directive_name(seriestype) or seriestype
         if seriestype == "ymin":
             # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here
             # would leave the other side at the value it held before the data arrived
@@ -1461,11 +1471,16 @@ def make_figure(
         print("  plotting " + figure_title.replace("\n", " "))
 
         assert isinstance(timestepslist, list)
-        # the caller of a set of frames gives the frameset, thus every frame lands beside its product
-        outpath = (
-            frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, SNAPSHOTFRAMENAME)
+        # a line of -slice has the plot of a snapshot, thus its file name must hold the line
+        slicefields: dict[str, str] = (
+            {"kind": "slice", "plane": get_slice_filetag(args)} if args.slice is not None else {}
         )
-        outfilename = format_frame_path(outpath, timestep=strtimestep, timedays=strtimedays, format=args.format)
+        framename = IMAGEFRAMENAME if slicefields else SNAPSHOTFRAMENAME
+        # the caller of a set of frames gives the frameset, thus every frame lands beside its product
+        outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, framename)
+        outfilename = format_frame_path(
+            outpath, timestep=strtimestep, timedays=strtimedays, format=args.format, **slicefields
+        )
 
     set_plot_title(axes[0], figure_title, args)
 
@@ -1474,8 +1489,8 @@ def make_figure(
     return outfilename
 
 
-class SlicePanel(t.NamedTuple):
-    """One variable of a slice plot, with the colour scale that the directives of its subplot give."""
+class ImagePanel(t.NamedTuple):
+    """One variable of a colour image, with the colour scale that the directives of its subplot give."""
 
     colexpr: pl.Expr
     label: str
@@ -1484,67 +1499,116 @@ class SlicePanel(t.NamedTuple):
     vmax: float | None
 
 
-def get_slice_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[str]) -> list[SlicePanel]:
+# a colour image shows a density or a fraction of it, and the other population types belong to a line
+IMAGEPOPTYPES = ("absolute", "elpop", "totalpop")
+
+
+def get_ion_panel_columns(
+    seriestype: str, ionlist: Sequence[str], poptype: str, estimatorcolumns: Collection[str]
+) -> list[tuple[pl.Expr, str, str]]:
+    """Return the expression, the column name, and the label of each ion of a series that the estimators hold."""
+    if seriestype == "populations" and poptype not in IMAGEPOPTYPES:
+        exit_with_error(
+            f"a colour image cannot show the ion population type '{poptype}'",
+            f"The types for an image are {', '.join(IMAGEPOPTYPES)}",
+        )
+
+    columns: list[tuple[pl.Expr, str, str]] = []
+    for ionstr in ionlist:
+        atomic_number, ion_stage = get_iontuple(ionstr)
+        colname, ionlabel = get_column_name(seriestype, atomic_number, ion_stage)
+        normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
+        if not {colname, *normfactor.meta.root_names()} <= set(estimatorcolumns):
+            # the line plot also leaves such an ion out, thus the other ions of the series stay
+            print_warning(f"Can't plot {seriestype} for {ionstr} because the estimators hold no such column")
+            continue
+
+        ispopulation = seriestype == "populations"
+        label = (
+            f"{ionlabel.replace('_', ' ')} {POPTYPE_YLABELS[poptype]}"
+            if ispopulation
+            else f"{ionlabel.replace('_', ' ')} {seriestype}{get_units_string(colname)}"
+        )
+        # 0/0 gives NaN for a cell that holds none of the element, and the mean leaves such a cell out
+        columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label))
+
+    return columns
+
+
+def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[str], poptype: str) -> list[ImagePanel]:
     """Return one panel for each variable and each ion of the plot list.
 
-    The directives yscale=, ymin=, and ymax= of a subplot apply to the colour scale of its panels.
+    The directives yscale=, ymin=, and ymax= of a subplot apply to the colour scale of its panels, and
+    ionpoptype= replaces poptype. A series that an image cannot show gives a warning, because the
+    default plot list holds such series.
     """
-    panels: list[SlicePanel] = []
+    panels: list[ImagePanel] = []
     for plotitems in plotlist:
-        directives: dict[str, t.Any] = {}
-        columns: list[tuple[pl.Expr, str]] = []
-        ionlabels: dict[str, str] = {}
+        directives: dict[str, t.Any] = {
+            directive: plotitem[1]
+            for plotitem in plotitems
+            if not isinstance(plotitem, str | pl.Expr) and (directive := get_directive_name(plotitem[0])) is not None
+        }
+        columns: list[tuple[pl.Expr, str, str]] = []
         for plotitem in plotitems:
             if isinstance(plotitem, pl.Expr):
-                columns.append((plotitem, plotitem.meta.output_name()))
+                colname = plotitem.meta.output_name()
+                columns.append((plotitem, colname, f"{get_varname_formatted(colname)}{get_units_string(colname)}"))
             elif isinstance(plotitem, str):
-                columns.append((pl.col(plotitem), plotitem))
-            elif (directive := str(plotitem[0]).removeprefix("_").lower()) in {"yscale", "ymin", "ymax"}:
-                directives[directive] = plotitem[1]
+                if plotitem not in estimatorcolumns:
+                    exit_with_error(
+                        f"'{plotitem}' is not an estimator variable",
+                        suggest_names(plotitem, estimatorcolumns)
+                        or "Run with --listvariables to see the variables of this model",
+                    )
+                label = f"{get_varname_formatted(plotitem)}{get_units_string(plotitem)}"
+                columns.append((pl.col(plotitem), plotitem, label))
+            elif get_directive_name(plotitem[0]) is not None:
+                continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
-                for ionstr in plotitem[1]:
-                    colname, _ = get_column_name(plotitem[0], *get_element_or_ion_tuple(ionstr))
-                    columns.append((pl.col(colname), colname))
-                    ionlabels[colname] = f"{ionstr} {plotitem[0]}"
+                subplotpoptype = str(directives.get("ionpoptype", poptype))
+                columns += get_ion_panel_columns(plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns)
             else:
-                exit_with_error(
-                    f"a slice plot shows estimator variables and ions, and not '{plotitem[0]}'",
-                    "Give a variable, e.g. Te, or an ion, e.g. 'Fe II'",
-                )
+                print_warning(f"a colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
 
-        for colexpr, colname in columns:
-            if isinstance(colname, str) and not set(colexpr.meta.root_names()) <= set(estimatorcolumns):
-                exit_with_error(
-                    f"'{colname}' is not an estimator variable",
-                    suggest_names(colname, estimatorcolumns)
-                    or "Run with --listvariables to see the variables of this model",
-                )
-            colourscale = directives.get("yscale")
-            panels.append(
-                SlicePanel(
-                    colexpr,
-                    f"{ionlabels.get(colname) or get_varname_formatted(colname)}{get_units_string(colname)}",
-                    "linear" if colourscale == "lin" else colourscale,
-                    float(directives["ymin"]) if "ymin" in directives else None,
-                    float(directives["ymax"]) if "ymax" in directives else None,
-                )
-            )
+        yscale = directives.get("yscale")
+        if yscale not in {None, "log", "lin", "linear"}:
+            exit_with_error(f"the colour scale of an image cannot be '{yscale}'", "Give yscale=log or yscale=linear")
+        colourscale = "linear" if yscale == "lin" else yscale
+        vmin = float(directives["ymin"]) if "ymin" in directives else None
+        vmax = float(directives["ymax"]) if "ymax" in directives else None
+        panels += [ImagePanel(colexpr, label, colourscale, vmin, vmax) for colexpr, _, label in columns]
 
+    if not panels:
+        exit_with_error(
+            "the plot list holds nothing that a colour image can show",
+            "Give a variable, e.g. Te, or an ion, e.g. 'Fe II'",
+        )
     return panels
 
 
-def get_panel_means(panels: Sequence[SlicePanel]) -> list[pl.Expr]:
+def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
     """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight."""
     weight = pl.col("deltavol_deltat")
-    return [
-        # a cell or a timestep with no value of the variable must not pull the mean to zero
-        ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(f"panel{panelindex}")
-        for panelindex, panel in enumerate(panels)
-    ]
+    means = []
+    for panelindex, panel in enumerate(panels):
+        value = panel.colexpr.cast(pl.Float64)
+        # a cell or a timestep with no value must not pull the mean to zero, and a NaN is not a null
+        hasvalue = value.is_not_null() & value.is_not_nan()
+        weightsum = weight.filter(hasvalue).sum()
+        means.append(
+            pl
+            .when(weightsum != 0.0)
+            .then((value * weight).filter(hasvalue).sum() / weightsum)
+            # equal weights make the weighted mean the plain mean, as get_line_points does
+            .otherwise(value.filter(hasvalue).mean())
+            .alias(f"panel{panelindex}")
+        )
+    return means
 
 
 def get_shell_values_on_rz_grid(
-    estimators: pl.LazyFrame, panels: Sequence[SlicePanel], vmax_cmps: float, timesteps: Collection[int]
+    estimators: pl.LazyFrame, panels: Sequence[ImagePanel], vmax_cmps: float, timesteps: Collection[int]
 ) -> "list[npt.NDArray[np.float64]]":
     """Return the grid of values of each panel for a 1D model, which gives each point the value of its shell."""
     dfshells = (
@@ -1555,12 +1619,16 @@ def get_shell_values_on_rz_grid(
         .sort("vel_r_min")
         .collect()
     )
-    nradialpoints = 200
+    # two points across the thinnest shell of a model with equal shells, and 200 for a smooth circle
+    nradialpoints = max(200, 2 * dfshells.height)
     pointwidth = vmax_cmps / nradialpoints
-    vel_rcyl, vel_z = np.meshgrid(
-        (np.arange(nradialpoints) + 0.5) * pointwidth, (np.arange(2 * nradialpoints) + 0.5) * pointwidth - vmax_cmps
-    )
-    pointradius = np.hypot(vel_rcyl, vel_z)
+    vel_rcyl = (np.arange(nradialpoints) + 0.5) * pointwidth
+    vel_z = (np.arange(2 * nradialpoints) + 0.5) * pointwidth - vmax_cmps
+    pointradius = np.hypot(vel_rcyl, vel_z[:, np.newaxis])
+    if dfshells.is_empty():
+        # a timestep of a set of frames can have no estimators, and its frame stays empty
+        return [np.full(pointradius.shape, np.nan) for _ in panels]
+
     shellindex = np.searchsorted(dfshells["vel_r_max"].to_numpy(), pointradius, side="right")
     # an empty shell has no estimators, thus a point between two shells that have them lies in neither
     shellindex_clipped = np.minimum(shellindex, dfshells.height - 1)
@@ -1575,9 +1643,9 @@ def get_shell_values_on_rz_grid(
     ]
 
 
-def get_slice_values(
+def get_image_values(
     estimators: pl.LazyFrame,
-    panels: Sequence[SlicePanel],
+    panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     sliceaxis: str | None,
     timesteps: Collection[int],
@@ -1585,10 +1653,11 @@ def get_slice_values(
     """Return the grid of values of each panel, and the two plot axes.
 
     With a sliceaxis, the estimators hold the cells of one plane of a 3D model, which is normal to that
-    axis. With no sliceaxis, the grid holds the average around the z axis at each cylindrical radius and
-    each z, on the grid that the reduction of a 3D model to 2D uses. A 2D model has this grid already, and
-    a 1D model gives the value of its shell at each point. An empty cell has no estimators and gives NaN.
-    Each value is the mean over the cells and the timesteps with volume x time as the weight.
+    axis. With no sliceaxis, the grid holds the average around the z axis. The grid then has a point at
+    each cylindrical radius and each z, as the reduction of a 3D model to 2D gives. A 2D model has this
+    grid already, and a 1D model gives the value of its shell at each point. An empty cell has no
+    estimators and gives NaN. Each value is the mean over the cells and the timesteps with volume x time
+    as the weight.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if modelmeta["dimensions"] == 1:
@@ -1631,78 +1700,103 @@ def get_slice_values(
     return grids, (plotaxis1, plotaxis2)
 
 
-def make_slice_figure(
+def get_colour_norm(panel: ImagePanel, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
+    """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
+    colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
+    with np.errstate(invalid="ignore"):
+        haspositive = bool((grid > 0.0).any())
+    if colourscale == "log" and not haspositive:
+        print_warning(f"'{panel.label}' holds no value above zero, thus its colour scale is linear")
+        colourscale = "linear"
+
+    if colourscale == "log":
+        return mc.LogNorm(
+            vmin=log_axis_limit(panel.vmin, logscale=True, argname="ymin="),
+            vmax=log_axis_limit(panel.vmax, logscale=True, argname="ymax="),
+        )
+    return mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
+
+
+def make_image_figure(
     modelpath: Path | str,
     timestepslist: Sequence[int],
     estimators: pl.LazyFrame,
-    plotlist: list[list[t.Any]],
+    panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
-    frameset: "FrameSet | None" = None,
+    frameset: "FrameSet",
 ) -> str:
-    """Plot each variable as a colour image of a plane through a 3D model, save the figure, and return its name."""
+    """Plot each panel as a colour image of a snapshot, save the figure, and return its name.
+
+    The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each
+    z without it.
+    """
     import matplotlib.pyplot as plt
 
-    from artistools.plottools import wants_log_scale
-
-    panels = get_slice_panels(plotlist, estimators.collect_schema().names())
-    grids, (plotaxis1, plotaxis2) = get_slice_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    set_mpl_style()
+    grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    isplane = plotaxis1 != "rcyl"
 
     ncols = min(len(panels), 3)
     nrows = math.ceil(len(panels) / ncols)
+    # the image at each cylindrical radius has half the width of a plane
+    panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
     fig, axesgrid = plt.subplots(
-        nrows,
-        ncols,
-        # the average around the z axis has half the width of a plane
-        figsize=((3.8 if args.sliceaxis is None else 4.6) * ncols * args.figscale, 4.2 * nrows * args.figscale),
-        squeeze=False,
-        layout="constrained",
+        nrows, ncols, figsize=(panelwidth * ncols, 4.2 * nrows * args.figscale), squeeze=False, layout="constrained"
     )
     vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
     for ax, panel, grid in zip(axesgrid.flat, panels, grids, strict=False):
-        colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
-        norm = (
-            mc.LogNorm(vmin=panel.vmin, vmax=panel.vmax)
-            if colourscale == "log"
-            else mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
-        )
-        edges1 = np.linspace(0.0 if args.sliceaxis is None else -vmax_on_c, vmax_on_c, grid.shape[1] + 1)
+        norm = get_colour_norm(panel, grid)
+        values = np.ma.masked_invalid(grid)
+        if isinstance(norm, mc.LogNorm):
+            # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
+            values = np.ma.masked_less_equal(values, 0.0)
+        edges1 = np.linspace(-vmax_on_c if isplane else 0.0, vmax_on_c, grid.shape[1] + 1)
         edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
-        # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
-        image = ax.pcolormesh(
-            edges1,
-            edges2,
-            np.ma.masked_invalid(np.where(grid > 0.0, grid, np.nan) if colourscale == "log" else grid),
-            norm=norm,
-        )
-        fig.colorbar(image, ax=ax, label=panel.label)
+        # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
+        image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
+        colourbar = fig.colorbar(image, ax=ax)
+        colourbar.set_label(panel.label, fontsize=args.labelfontsize)
         # an empty cell has no value, and black sets it apart from the lowest colour of the scale
         ax.set_facecolor("black")
         ax.tick_params(which="both", color="white")
+        if args.labelfontsize is not None:
+            ax.tick_params(axis="both", which="both", labelsize=args.labelfontsize)
+            colourbar.ax.tick_params(labelsize=args.labelfontsize)
         ax.set_aspect("equal")
-        ax.set_xlabel(r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]")
-        ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]")
+        ax.set_xlabel(
+            r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]", fontsize=args.labelfontsize
+        )
+        ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]", fontsize=args.labelfontsize)
+        if args.xmin is not None or args.xmax is not None:
+            ax.set_xlim(args.xmin, args.xmax)
     for ax in list(axesgrid.flat)[len(panels) :]:
         ax.set_visible(False)
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
+    strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
+    if not isplane and modelmeta["dimensions"] == 3:
+        strimage = "average around the z axis"
+    figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
+    print("  plotting " + figure_title.replace("\n", " "))
     if not args.notitle:
-        strslice = f"plane {args.slicelabel}" if args.slice is not None else "cylindrical radius and z"
-        if args.slice is None and modelmeta["dimensions"] == 3:
-            strslice = "average around the z axis"
-        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strslice}")
+        fig.suptitle(figure_title)
 
-    outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, IMAGEFRAMENAME)
     outfilename = format_frame_path(
-        outpath,
-        kind="cylindrical" if args.slice is None else "slice",
-        plane="rz" if args.slice is None else args.slicelabel.replace(" ", "").replace("km/s", "kmps"),
+        frameset.frametemplate,
+        kind="slice" if isplane else "cylindrical",
+        plane=get_slice_filetag(args) if isplane else "rz",
         timestep=strtimestep,
         timedays=strtimedays,
         format=args.format,
     )
-    save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
+    save_figure(fig, outfilename, args=args, isframe=frameset.combines, dpi=args.dpi)
     return outfilename
+
+
+def get_slice_filetag(args: argparse.Namespace) -> str:
+    """Return the plane or the line of -slice as text for a file name, e.g. "z=-0.2c" or "z=0,y=0"."""
+    return str(args.slicelabel).replace(" ", "").replace("km/s", "kmps")
 
 
 def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
@@ -1933,11 +2027,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         metavar="PLANE",
         help=(
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
-            " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
-            " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
-            " plane, which is the layer above it for a plane between two layers. A plane sets -dimensionreduce"
-            " to 2. Two axes give a line, e.g. -slice z=0,y=0 for the cells along the x axis. A line sets"
-            " -dimensionreduce to 1, and the plot shows the variables against the velocity on that axis"
+            " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as"
+            " a fraction of c, e.g. -slice z=-0.2c. The plot shows the layer of cells that holds the plane,"
+            " which is the layer above it for a plane between two layers. Two axes give a line of cells, e.g."
+            " -slice z=0,y=0 along the x axis, and the plot then shows the variables against that velocity"
         ),
     )
 
@@ -1945,14 +2038,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-dimensionreduce",
         "-dim",
         type=int,
-        default=1,
+        default=None,
         choices=[1, 2],
         help=(
-            "Show the model in this number of dimensions for the plot of a snapshot. 1 gives the average in"
-            " each shell of radial velocity, which the plot shows against -x. 2 shows each variable as a colour"
-            " image at each cylindrical radius and each z. A 3D model gives the average around the z axis, as"
-            " -dimensionreduce 2 of makeartismodel does, and a 1D model gives the value of its shell at each point."
-            " With -slice, the image shows a plane of a 3D model"
+            "Show the model in this number of dimensions for the plot of a snapshot. 1 is the default, which"
+            " plots the cells against -x. 2 shows each variable as a colour image at each cylindrical radius and"
+            " each z. A 3D model gives the average around the z axis, as -dimensionreduce 2 of makeartismodel"
+            " does. A 1D model gives the value of its shell at each point. With -slice, the image shows a plane"
+            " of a 3D model"
         ),
     )
 
@@ -2000,8 +2093,8 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     text = slicetext.strip().lower()
     helptext = (
-        "Give a plane through the origin, e.g. -slice xy, an axis and its velocity, e.g. -slice z=-0.2c, or two"
-        " axes for a line, e.g. -slice z=0,y=0"
+        "Give a plane through the origin, e.g. -slice xy. As an alternative, give an axis and its velocity,"
+        " e.g. -slice z=-0.2c. Two axes give a line, e.g. -slice z=0,y=0"
     )
     if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
         normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
@@ -2009,7 +2102,7 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     conditions: list[tuple[str, float, str]] = []
     for conditiontext in text.split(","):
-        axisname, separator, velocitytext = conditiontext.strip().partition("=")
+        axisname, separator, velocitytext = (part.strip() for part in conditiontext.partition("="))
         if axisname not in {"x", "y", "z"} or not separator:
             exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
         try:
@@ -2027,9 +2120,85 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
     return conditions
 
 
-def select_cells_of_slice(args: argparse.Namespace, modelpath: Path) -> None:
-    """Select the cells of a 3D model that hold the plane or the line of -slice, and record it."""
-    conditions = parse_slice_argument(args.slice)
+def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
+    """Return the index of the layer of cells that holds a velocity on one axis of a 3D model.
+
+    A velocity between two layers takes the layer above it. The quotient of such a velocity can lie one
+    rounding step below the whole number, e.g. 24.999999999999996 for vmax = 6724085530.798534 cm/s and 50
+    cells, thus a small part of a cell goes on before the floor.
+    """
+    return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
+
+
+def resolve_snapshot_arguments(args: argparse.Namespace, modelpath: Path) -> list[tuple[str, float, str]]:
+    """Apply -slice and -dimensionreduce to the arguments, and return the conditions of -slice.
+
+    A plane of -slice gives a colour image, and a line of -slice gives a plot against the velocity on
+    its axis. An argument that disagrees with the selection stops the command.
+    """
+    conditions: list[tuple[str, float, str]] = parse_slice_argument(args.slice) if args.slice is not None else []
+    if conditions:
+        # one condition is a plane, and two conditions are a line along the axis that stays
+        slicedimensions = 2 if len(conditions) == 1 else 1
+        if args.dimensionreduce not in {None, slicedimensions}:
+            exit_with_error(
+                f"-slice {args.slice} gives a plot with -dimensionreduce {slicedimensions}, and not"
+                f" {args.dimensionreduce}",
+                "Remove -dimensionreduce",
+            )
+        args.dimensionreduce = slicedimensions
+    elif args.dimensionreduce is None:
+        args.dimensionreduce = 1
+
+    isimage = args.dimensionreduce == 2
+    args.sliceaxis = conditions[0][0] if isimage and conditions else None
+    args.slicelabel = ", ".join(label for _, _, label in conditions)
+    if not isimage and not conditions:
+        return conditions
+
+    selection = "-slice" if conditions else "-dimensionreduce 2"
+    if args.readonlymgi or args.modelgridindex is not None:
+        exit_with_error(
+            f"{selection} selects the cells of the plot, thus -readonlymgi and -cell do not apply",
+            f"Remove {selection}, or remove the other argument",
+        )
+
+    if isimage:
+        if args.x is not None:
+            exit_with_error(
+                f"the two axes of a colour image are velocities, thus -x {args.x} does not apply",
+                f"Remove -x, or remove {selection}",
+            )
+        ignored = [
+            name
+            for name, given in (
+                ("-xbins", args.xbins is not None),
+                ("-filtermovingavg", bool(args.filtermovingavg)),
+                ("-filtersavgol", bool(args.filtersavgol)),
+                ("--markers", bool(args.markers)),
+            )
+            if given
+        ]
+        if ignored:
+            print_warning(f"{', '.join(ignored)} do not apply to a colour image")
+        # a colour image is a snapshot, thus it takes the time range of a plot against the velocity
+        args.x = "velocity"
+    elif args.x is None:
+        lineaxis = next(axisname for axisname in "xyz" if axisname not in {axisname for axisname, _, _ in conditions})
+        args.x = f"vel_{lineaxis}_mid_on_c"
+
+    # a gif holds each timestep, and a listing needs no time. The other snapshots need a time
+    timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
+    if all(value is None for value in timeargs) and (args.makegif or args.listvariables or args.listnuclides):
+        args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
+
+    return conditions
+
+
+def select_cells_of_slice(
+    args: argparse.Namespace, modelpath: Path, conditions: Sequence[tuple[str, float, str]]
+) -> None:
+    """Select the cells of a 3D model that hold the plane or the line of -slice."""
     lzmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
         exit_with_error(
@@ -2043,17 +2212,12 @@ def select_cells_of_slice(args: argparse.Namespace, modelpath: Path) -> None:
                 f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
                 "Give a velocity inside the model",
             )
-        # a velocity between two layers of cells takes the layer above it
-        ncells = int(modelmeta[f"ncoordgrid{axisname}"])
-        layerindex = math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells))
+        layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
         poscolumn = pl.col(f"pos_{axisname}_min")
         lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
 
     args.modelgridindex = lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
-    args.slicelabel = ", ".join(label for _, _, label in conditions)
     print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
-    if len(conditions) == 1:
-        args.sliceaxis = conditions[0][0]
 
 
 def select_cells_along_axis(args: argparse.Namespace) -> None:
@@ -2193,6 +2357,15 @@ def write_snapshot_figures(
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
+    panels: list[ImagePanel] = []
+    if isimage:
+        panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
+        # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
+        panelcolumns = {name for panel in panels for name in panel.colexpr.meta.root_names()}
+        estimators = estimators.select(
+            cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
+        )
+
     # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
     if args.makegif:
         args.multiplot = True
@@ -2213,14 +2386,14 @@ def write_snapshot_figures(
         frameset = resolve_frameset_paths(
             args.outputfile,
             framecount=len(frames),
-            framename=IMAGEFRAMENAME if isimage else SNAPSHOTFRAMENAME,
+            framename=IMAGEFRAMENAME if isimage or args.slice is not None else SNAPSHOTFRAMENAME,
             productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
             combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
             gifduration=1000.0 if args.makegif else None,
         )
 
         outputfiles = [
-            make_slice_figure(modelpath, frame, estimators, plotlist, modelmeta, args, frameset=frameset)
+            make_image_figure(modelpath, frame, estimators, panels, modelmeta, args, frameset)
             if isimage
             else make_figure(
                 frameset=frameset,
@@ -2294,24 +2467,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
-    if args.slice is not None:
-        conditions = parse_slice_argument(args.slice)
-        # one condition is a plane, and two conditions are a line along the axis that stays
-        args.dimensionreduce = 2 if len(conditions) == 1 else 1
-        if len(conditions) == 2:
-            if args.readonlymgi:
-                exit_with_error("-slice and -readonlymgi each select the cells of the plot", "Give one of the two")
-            lineaxis = next(axisname for axisname in "xyz" if axisname not in {c[0] for c in conditions})
-            if args.x is None:
-                args.x = f"vel_{lineaxis}_mid_on_c"
-    if args.dimensionreduce == 2:
-        if args.readonlymgi:
-            exit_with_error(
-                "-readonlymgi selects cells for a plot against -x", "Remove it, or remove -dimensionreduce 2 and -slice"
-            )
-        # a colour image is a snapshot, and its two axes are velocities
-        args.x = "velocity"
-        args.sliceaxis = None
+    sliceconditions = resolve_snapshot_arguments(args, modelpath)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 
@@ -2322,8 +2478,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         print_modelpath(modelpath)
 
-    if args.slice is not None:
-        select_cells_of_slice(args, modelpath)
+    if sliceconditions and not wantslisting:
+        select_cells_of_slice(args, modelpath, sliceconditions)
     elif args.readonlymgi:
         select_cells_along_axis(args)
 

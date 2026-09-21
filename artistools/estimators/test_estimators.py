@@ -1838,33 +1838,34 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     assert len(xvalues) > 0
 
 
+def get_image_panel_calls(imagekwargs: dict[str, t.Any], outputfolder: Path) -> list[tuple[t.Any, ...]]:
+    """Plot a colour image of the 3D test model, and return the arguments of the pcolormesh call of each panel.
+
+    A colour bar also calls pcolormesh, and its grid has one row or one column.
+    """
+    kwargs: dict[str, t.Any] = {"modelpath": modelpath_classic_3d, "timestep": "8"} | imagekwargs
+    with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
+        at.estimators.plot(argsraw=[], outputfile=outputfolder, **kwargs)
+    return [call.args for call in mockmesh.call_args_list if min(np.shape(call.args[3])) > 1]
+
+
 @pytest.mark.parametrize(
     ("slicetext", "layerindex", "filetag"),
-    [("xy", 5, "z=0"), ("z=0", 5, "z=0"), ("z=-0.01c", 4, "z=-0.01c"), ("z=-3000", 4, "z=-3000kmps")],
+    [("xy", 5, "z=0"), ("z=0", 5, "z=0"), ("z=-0.01c", 4, "z=-0.01c"), ("z = -3000", 4, "z=-3000kmps")],
 )
-@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
-def test_estimator_slice_of_3d_model(
-    mockpcolormesh: mock.MagicMock, tmp_path: Path, slicetext: str, layerindex: int, filetag: str
-) -> None:
+def test_estimator_slice_of_3d_model(tmp_path: Path, slicetext: str, layerindex: int, filetag: str) -> None:
     """-slice draws each variable in the layer of cells that holds the plane.
 
     The test model has 10 cells on each axis out to 0.096c. The plane z = 0 lies between two layers and
     takes the layer above it, and a small velocity below zero takes the layer below it.
     """
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath_classic_3d,
-        plotlist=[["Te"], ["nne", ["_yscale", "log"]]],
-        outputfile=tmp_path,
-        timestep="8",
-        slice=slicetext,
+    panelcalls = get_image_panel_calls(
+        {"plotlist": [["Te"], ["nne", ["_yscale", "log"]]], "slice": slicetext}, tmp_path
     )
     assert len(list(tmp_path.glob(f"plotestimators_slice_{filetag}_ts008_*.pdf"))) == 1
-    # each colour bar also calls pcolormesh, thus a panel is a call with the grid of the model
-    panelcalls = [call for call in mockpcolormesh.call_args_list if np.shape(call.args[3]) == (10, 10)]
     assert len(panelcalls) == 2
-    panelaxis, edges1, edges2, tegrid = panelcalls[0].args
-    assert panelaxis.get_facecolor() == (0.0, 0.0, 0.0, 1.0)
+    panelaxis, edges1, edges2, tegrid = panelcalls[0]
+    assert np.allclose(panelaxis.get_facecolor(), (0.0, 0.0, 0.0, 1.0))
     assert len(edges1) == len(edges2) == 11
     assert tegrid.shape == (10, 10)
 
@@ -1878,23 +1879,15 @@ def test_estimator_slice_of_3d_model(
     )
     assert 0 < dfexpected.height < 100
     assert int(np.isfinite(tegrid.filled(np.nan)).sum()) == dfexpected.height
-    for modelgridindex, cellte in dfexpected.iter_rows():
-        assert np.isclose(tegrid[(modelgridindex // 10) % 10, modelgridindex % 10], cellte)
+    cellindex = dfexpected["modelgridindex"].to_numpy()
+    assert np.allclose(tegrid[(cellindex // 10) % 10, cellindex % 10], dfexpected["Te"].to_numpy())
 
 
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
-    with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
-        at.estimators.plot(
-            argsraw=[],
-            modelpath=modelpath_classic_3d,
-            plotlist=[["Te"]],
-            outputfile=tmp_path,
-            timestep="8",
-            dimensionreduce=2,
-        )
+    ((_, edges1, edges2, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "dimensionreduce": 2}, tmp_path)
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
-    _, edges1, edges2, tegrid = next(call.args for call in mockmesh.call_args_list if np.shape(call.args[3]) == (10, 5))
+    assert tegrid.shape == (10, 5)
     assert np.isclose(edges1[0], 0.0)
     assert np.isclose(edges1[-1], edges2[-1])
     assert np.isclose(edges2[0], -edges2[-1])
@@ -1919,23 +1912,84 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     )
     assert dfexpected.height > 10
     assert int(np.isfinite(tegrid.filled(np.nan)).sum()) == dfexpected.height
-    for ir, iz, ringte in dfexpected.iter_rows():
-        assert np.isclose(tegrid[iz, ir], ringte, rtol=1e-5)
+    assert np.allclose(tegrid[dfexpected["iz"].to_numpy(), dfexpected["ir"].to_numpy()], dfexpected["Te"], rtol=1e-5)
+
+
+def test_estimator_image_takes_the_series_that_it_can_show(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An image keeps the ions and the isotopes that have a column, and it leaves the other series out.
+
+    The default plot list holds series such as averageionisation, thus these must not stop the command.
+    """
+    plotlist = [[["populations", ["Fe II", "Fe VI", "Ni56"]]], [["averageionisation", ["Fe"]]]]
+    panelcalls = get_image_panel_calls({"plotlist": plotlist, "slice": "xy"}, tmp_path)
+    assert len(panelcalls) == 2
+    warnings = capsys.readouterr().err
+    assert "Fe VI" in warnings
+    assert "averageionisation" in warnings
+
+    # a fraction of the element lies below 1, and the absolute density of the same ion does not
+    ((_, _, _, elpopgrid),) = get_image_panel_calls(
+        {"plotlist": [[["populations", ["Fe II"]]]], "slice": "xy", "poptype": "elpop"}, tmp_path
+    )
+    ((_, _, _, absolutegrid),) = get_image_panel_calls(
+        {"plotlist": [[["populations", ["Fe II"]]]], "slice": "xy"}, tmp_path
+    )
+    assert elpopgrid.max() <= 1.0 < absolutegrid.max()
+
+
+def test_estimator_image_with_a_log_scale_and_no_value_above_zero(tmp_path: Path) -> None:
+    """A log colour scale of a variable that is zero in each cell must not stop the command."""
+    plotlist = [["gammaestimator_Fe_V", ["_yscale", "log"]], ["nne", ["_yscale", "log"], ["_ymin", 0.0]]]
+    assert len(get_image_panel_calls({"plotlist": plotlist, "slice": "xy"}, tmp_path)) == 2
+
+
+def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
+    """One NaN value must not remove the mean of its ring, and a frame with no estimators gives an empty grid."""
+    plotestimators = at.estimators.plotestimators
+    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    # a 2D model of 2 rings and 2 layers, where ring 0 of layer 1 holds a NaN in one of its two timesteps
+    vmax_cmps = 1.0e9
+    modelmeta = {"dimensions": 2, "ncoordgridrcyl": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
+    estimators = pl.LazyFrame({
+        "timestep": [5, 5, 5, 5, 6],
+        "modelgridindex": [0, 1, 2, 3, 2],
+        "vel_rcyl_mid": [0.25e9, 0.75e9, 0.25e9, 0.75e9, 0.25e9],
+        "vel_z_mid": [-0.5e9, -0.5e9, 0.5e9, 0.5e9, 0.5e9],
+        "deltavol_deltat": [1.0, 3.0, 1.0, 3.0, 1.0],
+        "Te": [1000.0, 2000.0, float("nan"), 4000.0, 3000.0],
+    })
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5, 6])
+    assert plotaxes == ("rcyl", "z")
+    assert np.allclose(grid, [[1000.0, 2000.0], [3000.0, 4000.0]])
+
+    estimators1d = estimators.with_columns(vel_r_min=pl.lit(0.0), vel_r_max=pl.lit(vmax_cmps))
+    (emptygrid,) = plotestimators.get_shell_values_on_rz_grid(estimators1d, panels, vmax_cmps, [999])
+    assert np.isnan(emptygrid).all()
+
+
+def test_layer_index_of_a_plane_between_two_layers() -> None:
+    """A plane between two layers takes the layer above it, also when the quotient lies below the whole number."""
+    get_layer_index = at.estimators.plotestimators.get_layer_index
+    # (0 + vmax) / (2 vmax / 50) gives 24.999999999999996 for this vmax
+    assert get_layer_index(0.0, 6724085530.798534, 50) == 25
+    assert get_layer_index(0.0, 2892020000.0, 10) == 5
+    # 10 km/s below the plane, which is far more than the rounding step
+    assert get_layer_index(-1.0e6, 2892020000.0, 10) == 4
+    assert get_layer_index(2892019999.0, 2892020000.0, 10) == 9
 
 
 def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model(tmp_path: Path) -> None:
     """-dimensionreduce 2 of a 1D model gives each point of cylindrical radius and z the value of its shell."""
-    with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
-        at.estimators.plot(
-            argsraw=[],
-            modelpath=CLASSIC1DPATH,
-            plotlist=[["Te"]],
-            outputfile=tmp_path,
-            timestep="24",
-            classicartis=True,
-            dimensionreduce=2,
-        )
-    _, edges1, edges2, tegrid = next(call.args for call in mockmesh.call_args_list if np.ndim(call.args[3]) == 2)
+    ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
+        {
+            "modelpath": CLASSIC1DPATH,
+            "plotlist": [["Te"]],
+            "timestep": "24",
+            "classicartis": True,
+            "dimensionreduce": 2,
+        },
+        tmp_path,
+    )
     tegrid = tegrid.filled(np.nan)
     assert tegrid.shape == (len(edges2) - 1, len(edges1) - 1)
 
@@ -1951,17 +2005,17 @@ def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model
             on="modelgridindex",
             how="inner",
         )
+        .sort("vel_r_min")
         .collect()
     )
     assert dfshells.height > 1
     rmid, zmid = np.meshgrid((edges1[:-1] + edges1[1:]) / 2.0, (edges2[:-1] + edges2[1:]) / 2.0)
-    pointradius_cmps = np.hypot(rmid, zmid) * 29979245800.0
-    hasshell = np.zeros(tegrid.shape, dtype=bool)
-    for _, shellte, vel_r_min, vel_r_max in dfshells.iter_rows():
-        inshell = (pointradius_cmps >= vel_r_min) & (pointradius_cmps < vel_r_max)
-        assert inshell.any()
-        assert np.allclose(tegrid[inshell], shellte)
-        hasshell |= inshell
+    pointradius_cmps = np.hypot(rmid, zmid) * at.constants.C_cm_per_s
+    # the shells that have estimators are next to each other in this model, thus a search gives the shell
+    shellindex = np.searchsorted(dfshells["vel_r_max"].to_numpy(), pointradius_cmps, side="right")
+    hasshell = (shellindex < dfshells.height) & (pointradius_cmps >= dfshells["vel_r_min"].min())
+    assert hasshell.any()
+    assert np.allclose(tegrid[hasshell], dfshells["Te"].to_numpy()[shellindex[hasshell]])
     # a shell with no estimators stays empty
     assert np.isnan(tegrid[~hasshell]).all()
 
@@ -1977,6 +2031,9 @@ def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_
         timestep="8",
         slice="z=0,y=0",
     )
+    # the file name holds the line, thus two lines and a plain snapshot do not write the same file
+    assert len(list(tmp_path.glob("plotestimators_slice_z=0,y=0_ts008_*.pdf"))) == 1
+
     # the cell with the grid indices (ix, iy, iz) has the modelgridindex ix + 10 iy + 100 iz
     dfexpected = (
         at
@@ -1990,7 +2047,9 @@ def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_
     xvalues, yvalues = (np.asarray(values, dtype=float) for values in mockplot.call_args_list[0].args[1:3])
     # the line holds a negative and a positive velocity, because it crosses the model
     assert xvalues.min() < 0.0 < xvalues.max()
-    assert np.allclose(np.unique(yvalues), np.unique(dfexpected["Te"].to_numpy()))
+    # the line repeats its end points, thus each cell appears one time in the order of x
+    _, firstindex = np.unique(xvalues, return_index=True)
+    assert np.allclose(yvalues[firstindex], dfexpected["Te"].to_numpy())
 
 
 @pytest.mark.parametrize("flag", ["-dimensionreduce", "-dim"])
@@ -2001,13 +2060,24 @@ def test_dimensionreduce_has_a_short_alias(flag: str) -> None:
     assert parser.parse_args(["Te", flag, "2"]).dimensionreduce == 2
 
 
-def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) -> None:
-    """-slice stops the command for a 1D model, for text that names no plane, and for a plane outside the model."""
+def test_estimator_image_refuses_arguments_that_do_not_apply(tmp_path: Path) -> None:
+    """An image and a slice stop the command for a model, a plane, or an argument that does not fit."""
     with pytest.raises(SystemExit):
         at.estimators.plot(
             argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", slice="xy"
         )
-    for slicetext in ("xx", "w=0", "z=fast", "z=0.5c", "z=0,z=0.01c", "x=0,y=0,z=0"):
+    badkwargs: list[dict[str, t.Any]] = [
+        *({"slice": slicetext} for slicetext in ("xx", "w=0", "z=fast", "z=0.5c", "z=0,z=0.01c", "x=0,y=0,z=0")),
+        # -slice and an image select the cells, thus -cell and -readonlymgi do not apply
+        {"slice": "xy", "modelgridindex": "5"},
+        {"dimensionreduce": 2, "modelgridindex": "5"},
+        {"slice": "z=0,y=0", "readonlymgi": "alongaxis"},
+        # a plane is an image, and a line is no image
+        {"slice": "xy", "dimensionreduce": 1},
+        {"slice": "z=0,y=0", "dimensionreduce": 2},
+        {"dimensionreduce": 2, "x": "time"},
+    ]
+    for kwargs in badkwargs:
         with pytest.raises(SystemExit):
             at.estimators.plot(
                 argsraw=[],
@@ -2015,8 +2085,16 @@ def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) 
                 plotlist=[["Te"]],
                 outputfile=tmp_path,
                 timestep="8",
-                slice=slicetext,
+                **kwargs,
             )
+
+
+def test_estimator_listing_needs_no_time_with_an_image(capsys: pytest.CaptureFixture[str]) -> None:
+    """--listvariables with -dimensionreduce 2 or -slice and no time prints the listing."""
+    imagekwargs: list[dict[str, t.Any]] = [{"dimensionreduce": 2}, {"slice": "xy"}]
+    for kwargs in imagekwargs:
+        at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, listvariables=True, **kwargs)
+        assert "Te" in capsys.readouterr().out
 
 
 # the estimators of every test model of the repository hold no deposition_ column, thus a test that
