@@ -1307,13 +1307,13 @@ def get_default_losvelocity_shells(
 
 
 def check_shell_edges(shelledges: Sequence[float], description: str = "shell edges") -> None:
-    """Stop with an error if the edges are not finite, do not increase, or give no shell."""
+    """Stop with an error if the edges are not finite, do not increase, or give no interval."""
     if (
         len(shelledges) < 2
         or not all(math.isfinite(v) for v in shelledges)
         or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(shelledges))
     ):
-        msg = f"The {description} must be finite, increase, and give at least one shell, not {list(shelledges)}"
+        msg = f"The {description} must be finite, increase, and give at least one interval, not {list(shelledges)}"
         raise ValueError(msg)
 
 
@@ -1430,8 +1430,8 @@ def add_ye_columns(
 def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby: str, usethermal: bool) -> pl.LazyFrame:
     """Add the packet column that a shell grouping bins, for the last interaction and for the last thermal emission.
 
-    A velocity range reads the column of the velocity grouping or of the losvelocity grouping. A packet
-    with no thermal emission record gets a thermal value of NaN.
+    A velocity range reads the column of the velocity grouping or of the losvelocity grouping. The
+    thermal column holds NaN for a packet with no thermal emission record.
     """
     lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
     packetcolumns = lzdfpackets.collect_schema().names()
@@ -1444,7 +1444,8 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     if usethermal and thermalcolumn not in packetcolumns:
         if "trueem_posx" not in packetcolumns and not (thermalfromvelocity and groupby == "ye"):
             msg = (
-                "The packets hold no thermal emission position, thus --use_thermalemissiontype has no position to read"
+                "The packets hold no thermal emission position. Thus --use_thermalemissiontype cannot select the"
+                " packets by that position"
             )
             raise ValueError(msg)
         positions.append((thermalcolumn, "trueem"))
@@ -1460,8 +1461,8 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
         })
 
     if usethermal:
-        # ARTIS gives a time of 0 or -1 and a position of zero to a packet with no thermal emission record.
-        # Thus the velocity of that packet is 0 and not NaN, in a packets file and from the position
+        # ARTIS gives a time of 0 or -1 and a position of 0 to a packet with no thermal emission record.
+        # Thus the velocity from the packets file and the velocity from the position are both 0, and not NaN
         lzdfpackets = lzdfpackets.with_columns(
             pl.when(pl.col("trueem_time") > 0).then(pl.col(thermalcolumn)).otherwise(math.nan).alias(thermalcolumn)
         )
@@ -1533,7 +1534,7 @@ def get_flux_contributions_from_packets(
         assert rangegrouping in {"velocity", "losvelocity"}
         check_shell_edges(rangeedges, f"edges of the {rangegrouping} range")
     if directionbins_are_vpkt_observers and (groupby in SHELLCOLUMNS or velocityranges):
-        msg = "A virtual packet holds no emission position, thus no shell and no velocity range can hold it"
+        msg = "A virtual packet holds no emission position, thus a shell and a velocity range cannot select it"
         raise ValueError(msg)
     if getabsorption and groupby == "nuc":
         # A nuclide emits a packet, but a nuclide does not absorb a packet.
@@ -1618,7 +1619,7 @@ def get_flux_contributions_from_packets(
         if getabsorption:
             inrange_exprs["absorption_freq"] = get_inrange_expr(thermalcolumns=False)
         # A frequency of null fails each frequency filter, thus the packet leaves that contribution. The filter
-        # above stays on the columns of the files, because polars then applies it while it reads them
+        # above stays on the columns of the files, because polars applies that filter while it reads the files
         lzdfpackets = lzdfpackets.with_columns(**{
             nucolumn: pl.when(inrange_expr).then(pl.col(nucolumn)) for nucolumn, inrange_expr in inrange_exprs.items()
         }).filter(condition_nu_emit | condition_nu_abs)

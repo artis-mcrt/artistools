@@ -317,7 +317,7 @@ def test_spectra_velocity_shell_contributions() -> None:
     ("rangegrouping", "rangeedges"), [("velocity", (10000.0, 20000.0)), ("losvelocity", (-10000.0, 5000.0))]
 )
 def test_spectra_velocity_range_contributions(rangegrouping: str, rangeedges: tuple[float, float]) -> None:
-    """The ion groups of a velocity range together hold the emission and the absorption of the shell with its edges."""
+    """The ion groups of a velocity range hold the emission and the absorption of the shell with the same edges."""
     shells = [-51000.0 if rangegrouping == "losvelocity" else 0.0, *rangeedges, 51000.0]
     contributions_shells, _, array_lambda = get_contributions_classic_3d(groupby=rangegrouping, shelledges=shells)
     (shelllabel,) = atspectra.get_shell_labels(rangeedges)
@@ -359,7 +359,7 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
     """A packet with no thermal emission record is in the NOT SET series, and no velocity range from zero holds it.
 
     ARTIS gives such a packet a thermal emission velocity of zero. The thermal emission of this model
-    lies above 11 000 km/s, thus a packet below 10 000 km/s is a packet with no record.
+    lies above 11 000 km/s. Thus a packet below 10 000 km/s has no thermal emission record.
     """
     contributions, _, _ = get_contributions_classic_3d(
         groupby="velocity", usethermal=True, shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
@@ -559,7 +559,7 @@ def test_spectraemissionplot_velocity_ranges(
     assert mockstackplot.call_count == 1
     assert len(mockstackplot.call_args_list[0].args[2]) >= 2
     title = mocksettitle.call_args_list[-1].args[1]
-    assert title.endswith(", emission at line-of-sight velocity [-0.05, 0.05) c")
+    assert title.endswith(", packets at line-of-sight velocity [-0.05, 0.05) c")
 
     at.spectra.plot(
         argsraw=[],
@@ -575,9 +575,7 @@ def test_spectraemissionplot_velocity_ranges(
     assert mockstackplot.call_count == 2
     assert len(mockstackplot.call_args_list[1].args[2]) >= 2
     title = mocksettitle.call_args_list[-1].args[1]
-    assert title.endswith(
-        ", emission at radial velocity [0.04, 0.06) c and line-of-sight velocity [-15000, 15000) km/s"
-    )
+    assert title.endswith(", packets at radial velocity [0.04, 0.06) c and line-of-sight velocity [-15000, 15000) km/s")
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)

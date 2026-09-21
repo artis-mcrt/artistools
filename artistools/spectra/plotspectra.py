@@ -1204,7 +1204,7 @@ def get_emission_plot_label(
             f"{velocitynames[rangegrouping]} {get_shell_labels(rangeedges, args.velocityrangeunits[rangegrouping])[0]}"
             for rangegrouping, rangeedges in args.velocityranges_kmps.items()
         ]
-        plotlabel += f", emission at {' and '.join(rangelabels)}"
+        plotlabel += f", packets at {' and '.join(rangelabels)}"
     if not (args.plotviewingangle or args.plotvspecpol):
         return plotlabel
 
@@ -1721,7 +1721,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Keep only the emission and the absorption from a range of the radial velocity. Give vmin and vmax in"
             " km/s, e.g. 5000 10000, or as a fraction of c, e.g. 0.1c 0.2c. An emission takes the velocity of the last"
             " interaction, or of the last thermal emission with --use_thermalemissiontype. An absorption always takes"
-            " the velocity of the last interaction. vmin is inside the range, and vmax is not. Implies --frompackets"
+            " the velocity of the last interaction. vmin is inside the range, and vmax is outside the range."
+            " Implies --frompackets"
         ),
     )
 
@@ -1734,7 +1735,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Keep only the emission and the absorption from a range of the velocity along the line of sight. A"
             " positive velocity is motion toward the observer, and a value can be negative, e.g. -0.05c 0.05c. The"
-            " other rules of -emissionvelocityrange apply. The two ranges together keep a packet that is inside both"
+            " other rules of -emissionvelocityrange apply. The two ranges together keep a packet that is inside"
+            " both ranges"
         ),
     )
 
@@ -1849,9 +1851,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def parse_velocity_values(
     values: Sequence[str | float | tuple[float, t.Literal["kmps", "c"]]],
 ) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the velocities [km/s] and the unit of their labels, which is c if one value has a c suffix.
+    """Return the velocities [km/s] and the unit of their labels.
 
-    argparse gives a parsed pair, and a keyword argument of the API gives a text or a number.
+    The unit is c if one value has a c suffix. argparse gives a parsed pair, and a keyword argument
+    of the API gives a text or a number.
     """
     parsedvalues = [parse_velocity_argument(str(value)) if not isinstance(value, tuple) else value for value in values]
     unit: t.Literal["kmps", "c"] = "c" if any(valueunit == "c" for _, valueunit in parsedvalues) else "kmps"
@@ -1859,7 +1862,7 @@ def parse_velocity_values(
 
 
 def exit_if_no_emission_position(args: argparse.Namespace) -> None:
-    """Stop if a shell grouping or a velocity range meets gamma packets or virtual packets."""
+    """Stop if the user gives a shell grouping or a velocity range with gamma packets or virtual packets."""
     if args.groupby in SHELLCOLUMNS:
         option = f"-groupby {args.groupby}"
         gammahelp = "Give -groupby nuc or -groupby nucmass"
@@ -1902,7 +1905,7 @@ def resolve_velocity_ranges(args: argparse.Namespace) -> None:
 
     if not (args.showemission or args.showabsorption or args.emissionabsorption):
         exit_with_error(
-            "a velocity range selects the packets of the contributions, and the plot shows none",
+            "a velocity range selects the packets of the contributions, and the plot shows no contribution",
             "Give --showemission, --showabsorption, or --emissionabsorption",
         )
     # the spectrum files of exspec hold no emission position
