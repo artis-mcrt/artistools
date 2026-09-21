@@ -1366,21 +1366,23 @@ def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: p
     assert not list(tmp_path.glob("*.pdf"))
 
 
-def write_fake_observed_spectrum(folder: Path, *, witherror: bool) -> Path:
-    """Write a reference spectrum of 1.1 times the model of timestep 54, with an error of 0.1 times the model."""
+def write_fake_observed_spectrum(folder: Path) -> Path:
+    """Write a reference spectrum of 1.1 times the model of timestep 54."""
     dfmodel = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
-    obsfile = folder / ("fakeobs_witherror.txt" if witherror else "fakeobs.txt")
-    dfmodel.select(
-        "lambda_angstroms", (pl.col("f_lambda") * 1.1).alias("flux"), (pl.col("f_lambda") * 0.1).alias("error")
-    ).sort("lambda_angstroms").write_csv(obsfile, separator=" ", include_header=False)
-    metadata = "dist_mpc: 1\nlabel: fake observation\nt: 300\n" + ("f_lambda_err_columnindex: 2\n" if witherror else "")
-    obsfile.with_name(f"{obsfile.name}.meta.yml").write_text(metadata, encoding="utf-8")
+    obsfile = folder / "fakeobs.txt"
+    dfmodel.select("lambda_angstroms", (pl.col("f_lambda") * 1.1).alias("flux")).sort("lambda_angstroms").write_csv(
+        obsfile, separator=" ", include_header=False
+    )
+    obsfile.with_name(f"{obsfile.name}.meta.yml").write_text(
+        "dist_mpc: 1\nlabel: fake observation\nt: 300\n", encoding="utf-8"
+    )
     return obsfile
 
 
-def test_spectra_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> None:
-    """An observed flux of 1.1 times the model with an error of 0.1 times the model lies one error from the model."""
-    obsfile = write_fake_observed_spectrum(tmp_path, witherror=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """An observed flux of 1.1 times the model gives a residual of -0.1 times the model at each point."""
+    obsfile = write_fake_observed_spectrum(tmp_path)
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, obsfile],
@@ -1393,25 +1395,13 @@ def test_spectra_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> 
     assert dfstats.height == 1
     assert dfstats["reference"].item() == "fake observation"
     assert dfstats["npoints"].item() > 100
-    assert np.isclose(dfstats["chi2_reduced"].item(), 1.0, rtol=1e-6)
     assert dfstats["rms"].item() > 0.0
+    assert 0.0 < dfstats["rms_relative"].item() < 0.1 / 1.1 * 3.0
 
-
-def test_spectra_residual_panel_gives_the_rms_alone_without_an_error(tmp_path: Path) -> None:
-    """An observed spectrum with no error column gives the RMS residual and no reduced chi-square."""
-    obsfile = write_fake_observed_spectrum(tmp_path, witherror=False)
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[modelpath, obsfile],
-        timestep=54,
-        residuals=True,
-        write_data=True,
-        outputfile=tmp_path / "residuals.pdf",
-    )
-    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
-    assert dfstats["chi2_reduced"].null_count() == 1 or math.isnan(dfstats["chi2_reduced"].item())
-    # the residual is 0.1 times the model and the observed value is 1.1 times the model at each point
-    assert 0.0 < dfstats["rms_relative"].item() < 1.0
+    # the last plot call draws the residual line: the model is below the observed flux at each point
+    residual = np.asarray(mockplot.call_args_list[-1].args[2])
+    assert (residual[np.isfinite(residual)] <= 0.0).all()
+    assert (residual < 0.0).any()
 
 
 def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
@@ -1419,7 +1409,7 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
     with pytest.raises(SystemExit):
         at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
 
-    obsfile = write_fake_observed_spectrum(tmp_path, witherror=False)
+    obsfile = write_fake_observed_spectrum(tmp_path)
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],

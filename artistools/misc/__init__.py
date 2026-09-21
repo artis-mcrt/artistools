@@ -16,6 +16,7 @@ from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
 from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
+from artistools.misc.cliutils import addarg_residuals as addarg_residuals
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays

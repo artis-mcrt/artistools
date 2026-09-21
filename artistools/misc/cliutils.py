@@ -672,6 +672,19 @@ def require_action(args: argparse.Namespace) -> None:
         exit_with_error("no action was given", "Run with --help to see the available actions")
 
 
+def addarg_residuals(parser: argparse.ArgumentParser, referencename: str) -> None:
+    """Add --residuals, which draws model minus reference in a panel below the main frame."""
+    arggroup(parser, "appearance").add_argument(
+        "--residuals",
+        action="store_true",
+        help=(
+            f"Add a panel of model minus reference for each model, against the first {referencename}. The command"
+            " prints the root mean square (RMS) of the residual. The plot must have one frame. --write_data also"
+            " writes this number"
+        ),
+    )
+
+
 def addarg_show(parser: argparse.ArgumentParser) -> None:
     """Add --show, which opens the figure in a window before the save, and --open, which opens the file after it."""
     group = arggroup(parser, "output")

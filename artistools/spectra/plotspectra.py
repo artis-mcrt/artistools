@@ -34,6 +34,7 @@ from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
+from artistools.misc import addarg_residuals
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
@@ -75,12 +76,13 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.packets import get_packets
+from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
+from artistools.plottools import make_frame_figure_with_residuals
 from artistools.plottools import plain_label
-from artistools.plottools import plot_residual_panel
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
@@ -90,6 +92,7 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
+from artistools.plottools import write_residual_stats
 from artistools.spectra.core import bin_spectrum
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
@@ -347,16 +350,16 @@ def plot_reference_spectrum(
         # scale to 1 Mpc and let get_dfspectrum_x_y_with_units scale to scale_to_dist_mpc later
         print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
         assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
-        specdata = specdata.with_columns(cs.starts_with("f_lambda") * metadata["dist_mpc"] ** 2)
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
 
     if scaletoreftime is not None:
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print_detail(f"scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
-        specdata = specdata.with_columns(cs.starts_with("f_lambda") * timefactor)
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
-        specdata = specdata.with_columns(cs.starts_with("f_lambda") * metadata["scale_factor"])
+        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
 
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
@@ -390,29 +393,16 @@ def plot_reference_spectrum(
 
     if fluxfilterfunc:
         print_detail("applying the filter to the reference spectrum")
-        # a smooth flux has a smaller error, thus the code keeps the error of the raw flux
-        specdata = specdata.with_columns(pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
-
-    dferror = None
-    if "f_lambda_err" in specdata.columns:
-        # each y variable is linear in the flux, thus the same conversion gives the error in the units of y
-        dferror = get_dfspectrum_x_y_with_units(
-            specdata.select("lambda_angstroms", f_lambda=pl.col("f_lambda_err")),
-            xunit=xunit,
-            yvariable=yvariable,
-            fluxdistance_mpc=scale_to_dist_mpc,
-        ).collect()
+        specdata = specdata.with_columns(
+            cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
+        )
 
     specdata = get_dfspectrum_x_y_with_units(
         specdata, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=scale_to_dist_mpc
     ).collect()
 
-    peakfactor = 1.0
     if scale_to_peak:
-        ypeak = specdata["y"].max()
-        assert isinstance(ypeak, float)
-        peakfactor = scale_to_peak / ypeak
-        specdata = specdata.with_columns(y=pl.col("y") * peakfactor + offset)
+        specdata = specdata.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak + offset)
     else:
         assert offset == 0
     ymax = specdata["y"].max()
@@ -420,10 +410,6 @@ def plot_reference_spectrum(
     (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
 
     if residualseries is not None:
-        yerr = None
-        if dferror is not None:
-            yerrvalues = np.abs(dferror["y"].to_numpy().astype(np.float64)) * peakfactor
-            yerr = (yerrvalues, yerrvalues)
         residualseries.append(
             ResidualSeries(
                 label,
@@ -431,7 +417,6 @@ def plot_reference_spectrum(
                 specdata["y"].to_numpy().astype(np.float64),
                 lineplot.get_color(),
                 isreference=True,
-                yerr=yerr,
             )
         )
 
@@ -1361,23 +1346,25 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-# the height of the residual panel as a part of the height of the main frame
-RESIDUALROWHEIGHT: t.Final[float] = 0.35
-
-
-def draw_residual_panel(
-    residualaxis: mplax.Axes, mainaxis: mplax.Axes, residualseries: list[ResidualSeries], args: argparse.Namespace
-) -> pl.DataFrame:
-    """Draw model minus reference below the main frame, and return the statistics of each model."""
-    xmin, xmax = sorted(mainaxis.get_xlim())
-    dfresidualstats = plot_residual_panel(residualaxis, residualseries, xmin, xmax)
-    # the residual panel has its own y range and a linear scale, thus the code clears the y arguments here
-    residualargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None, "logscaley": False})
-    set_axis_properties(residualaxis, residualargs)
-    residualaxis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    if args.hidexticklabels:
-        residualaxis.tick_params(axis="x", which="both", labelbottom=False)
-    return dfresidualstats
+def check_residual_args(args: argparse.Namespace) -> None:
+    """Stop the command when --residuals cannot apply to the plot that args selects."""
+    if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
+        exit_with_error(
+            "--residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
+            "Give one time with -t, and no emission or absorption option",
+        )
+    nreferences = sum(path_is_reference_spectrum(path) for path in args.specpath)
+    if nreferences in {0, len(args.specpath)}:
+        exit_with_error(
+            "--residuals compares a model with a reference spectrum, and the paths hold only one of the two",
+            "Give both, e.g. plotspectra mymodel 2003du_20031213_3219_8822_00.txt",
+        )
+    if any(str(path).startswith("codecomparison/") for path in args.specpath):
+        print_warning("the residual panel does not include a code comparison series")
+    if args.normalised:
+        print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
+    if args.filtersavgol:
+        print_warning("the residual and its statistics take the smoothed series of -filtersavgol")
 
 
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], pl.DataFrame, pl.DataFrame]:
@@ -1392,10 +1379,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     residualaxis = None
     if args.residuals:
-        fig, axesgrid = make_frame_figure(args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT))
-        residualaxis = axesgrid[1, 0]
-        assert isinstance(residualaxis, mplax.Axes)
-        axesgrid = axesgrid[:1]
+        fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect)
+        axesgrid = np.array([[mainaxis]], dtype=object)
     else:
         fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=aspect, sharex=True, sharey=False)
 
@@ -1462,6 +1447,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
         if residualaxis is not None and residualseries is not None:
             dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
+            if not args.logscalex:
+                residualaxis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
     if args.showtime:
         for index, axis in enumerate(axes):
@@ -1662,15 +1649,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
-    parser.add_argument(
-        "--residuals",
-        action="store_true",
-        help=(
-            "Add a panel of model minus reference for each model, against the first reference spectrum. The command"
-            " prints the RMS residual, and the reduced chi-square when the reference spectrum has an error column"
-            " (metadata key f_lambda_err_columnindex). --write_data also writes these numbers"
-        ),
-    )
+    addarg_residuals(parser, "reference spectrum")
 
     timegroup = parser.add_mutually_exclusive_group()
 
@@ -1931,17 +1910,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
     if args.residuals:
-        nreferences = sum(path_is_reference_spectrum(path) for path in args.specpath)
-        if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
-            exit_with_error(
-                "--residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
-                "Give one time with -t, and no emission or absorption option",
-            )
-        if nreferences in {0, len(args.specpath)}:
-            exit_with_error(
-                "--residuals compares a model with a reference spectrum, and the paths hold only one of the two",
-                "Give both, e.g. plotspectra mymodel 2003du_20031213_3219_8822_00.txt",
-            )
+        check_residual_args(args)
 
     if args.multispecplot and not args.timedayslist:
         # every later step reads one epoch of the list for each subplot, thus an absent list gave a
@@ -2078,10 +2047,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfalldata.write_csv(datafilenameout, separator=" ")
             print_saved(datafilenameout)
 
-        if args.write_data and not dfresidualstats.is_empty():
-            residualfilenameout = Path(filenameout).with_name(f"{Path(filenameout).stem}_residuals.csv")
-            dfresidualstats.write_csv(residualfilenameout)
-            print_saved(residualfilenameout)
+        if args.write_data:
+            write_residual_stats(dfresidualstats, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
 
