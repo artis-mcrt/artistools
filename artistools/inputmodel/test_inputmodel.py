@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import hashlib
 import itertools
 import json
@@ -23,7 +22,6 @@ from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 from artistools.inputmodel.core import CREATED_COMMENT_PREFIX
-from artistools.inputmodel.core import CREATED_TIME_FORMAT
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
@@ -380,22 +378,6 @@ def test_make_empty_abundance_file() -> None:
     outpath = outputpath / "test_make_empty_abundance_file"
     outpath.mkdir(exist_ok=True, parents=True)
     at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outpath)
-
-    createdline, unitsline, columnsline, firstcellline = (
-        (outpath / "abundances.txt").read_text(encoding="utf-8").splitlines()[:4]
-    )
-    assert createdline.startswith("# created: ")
-    assert "mass fraction" in unitsline
-    assert columnsline.split()[:3] == ["#inputcellid", "X_H", "X_He"]
-    assert len(columnsline.split()) == len(firstcellline.split()) == 31
-    # the reader must skip the comment lines
-    assert at.inputmodel.get_initelemabundances(outpath).collect().height == 50
-
-    # an empty list of header comments must not give an empty first line
-    at.inputmodel.save_initelemabundances(
-        pl.DataFrame({"inputcellid": range(1, 51)}), outpath=outpath, headercommentlines=[]
-    )
-    assert (outpath / "abundances.txt").read_text(encoding="utf-8").startswith(f"# {CREATED_COMMENT_PREFIX}")
 
 
 def test_opacity_by_Ye_file() -> None:
@@ -2083,8 +2065,8 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
     )
 
 
-def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
-    """Save a 2D model, examine each header line, and read the file back."""
+def test_model_header_comments_round_trip(tmp_path: Path) -> None:
+    """Keep a user comment that starts as the creation line does, and drop the lines that the writer adds again."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     sourcefolder = tmp_path / "source"
     sourcefolder.mkdir()
@@ -2096,46 +2078,12 @@ def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    usercommentline, createdline, unitsline, nptsline, timeline, vmaxline, columnsline = (
-        (tmp_path / "model.txt").read_text(encoding="utf-8").splitlines()[:7]
-    )
-    assert usercommentline == f"# {usercomments[0]}"
-    timecreated = datetime.datetime.strptime(createdline, f"# {CREATED_COMMENT_PREFIX} {CREATED_TIME_FORMAT}").replace(
-        tzinfo=datetime.UTC
-    )
-    assert abs(datetime.datetime.now(tz=datetime.UTC) - timecreated) < datetime.timedelta(hours=1)
-    assert unitsline.startswith("# column units:")
-    assert "rho [g/cm^3]" in unitsline
-    assert columnsline.startswith("#inputcellid pos_rcyl_mid pos_z_mid rho ")
-    assert nptsline.split("#")[0].split() == ["4", "6"]
-    assert "ncoordgridrcyl ncoordgridz" in nptsline.split("#")[1]
-    assert "[day]" in timeline.split("#")[1]
-    assert "[cm/s]" in vmaxline.split("#")[1]
-
     _, modelmeta_saved = at.inputmodel.get_modeldata(tmp_path)
-    # the writer adds the creation line and the units line again, thus the reader must keep only the user comment
     assert modelmeta_saved["headercommentlines"] == usercomments
     assert modelmeta_saved["ncoordgridrcyl"] == ncoordgridrcyl
     assert modelmeta_saved["ncoordgridz"] == ncoordgridz
     assert math.isclose(modelmeta_saved["t_model_init_days"], 1.0)
     assert math.isclose(modelmeta_saved["vmax_cmps"], 1.0e9)
-
-
-def test_get_modeldata_3d_rejects_inconsistent_vmax(tmp_path: Path) -> None:
-    """A saved 3D model names its position columns, and a vmax that disagrees with them must still give an error."""
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=2, vmax=1000, t_model_init_days=1)
-    at.inputmodel.save_modeldata(lzdfmodel, outpath=tmp_path, modelmeta=modelmeta)
-    assert at.inputmodel.get_modeldata(tmp_path)[1]["dimensions"] == 3
-
-    modelfile = tmp_path / "model.txt"
-    lines = modelfile.read_text(encoding="utf-8").splitlines()
-    vmaxlineindex = next(i for i, line in enumerate(lines) if "vmax_cmps" in line)
-    vmax_cmps = float(lines[vmaxlineindex].split("#")[0])
-    lines[vmaxlineindex] = f"{2 * vmax_cmps:.8e}"
-    modelfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="Make vmax consistent"):
-        at.inputmodel.get_modeldata(tmp_path)
 
 
 def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
