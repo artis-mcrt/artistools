@@ -1306,14 +1306,14 @@ def get_default_losvelocity_shells(
     return [*(-edge for edge in reversed(edges[1:])), *edges], unit
 
 
-def check_shell_edges(shelledges: Sequence[float], description: str = "shell edges") -> None:
+def check_edges_increase(edges: Sequence[float], description: str) -> None:
     """Stop with an error if the edges are not finite, do not increase, or give no interval."""
     if (
-        len(shelledges) < 2
-        or not all(math.isfinite(v) for v in shelledges)
-        or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(shelledges))
+        len(edges) < 2
+        or not all(math.isfinite(v) for v in edges)
+        or any(vhigh <= vlow for vlow, vhigh in itertools.pairwise(edges))
     ):
-        msg = f"The {description} must be finite, increase, and give at least one interval, not {list(shelledges)}"
+        msg = f"The {description} must be finite, increase, and give at least one interval, not {list(edges)}"
         raise ValueError(msg)
 
 
@@ -1505,7 +1505,7 @@ def get_flux_contributions_from_packets(
     sets the shell of an emission and the velocity that velocityranges reads. A nuclide group always
     takes the nuclide of the pellet.
 
-    A shell holds the packets whose last interaction lies inside it. shelledges gives the edges of the
+    A shell holds the packets whose emission position lies inside it. shelledges gives the edges of the
     shells, and shellunit gives the unit of the labels. The last absorption of a packet happens at the
     position of its last emission. Thus the shell and the velocity of an absorption always come from the
     last interaction.
@@ -1524,7 +1524,7 @@ def get_flux_contributions_from_packets(
         if shelledges is None:
             msg = f"groupby {groupby} needs the shell edges in shelledges"
             raise ValueError(msg)
-        check_shell_edges(shelledges)
+        check_edges_increase(shelledges, "shell edges")
     elif groupby in {"nuc", "nucmass"}:
         emtypecolumn = "pellet_nucindex"
     else:
@@ -1532,7 +1532,7 @@ def get_flux_contributions_from_packets(
     velocityranges = velocityranges or {}
     for rangegrouping, rangeedges in velocityranges.items():
         assert rangegrouping in {"velocity", "losvelocity"}
-        check_shell_edges(rangeedges, f"edges of the {rangegrouping} range")
+        check_edges_increase(rangeedges, f"edges of the {rangegrouping} range")
     if directionbins_are_vpkt_observers and (groupby in SHELLCOLUMNS or velocityranges):
         msg = "A virtual packet holds no emission position, thus a shell and a velocity range cannot select it"
         raise ValueError(msg)

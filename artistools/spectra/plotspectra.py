@@ -1195,7 +1195,10 @@ def plot_reference_spectra(
 def get_emission_plot_label(
     modelpath: Path, args: argparse.Namespace, modelname: str, dirbin: int | None, timemin: float, timemax: float
 ) -> str:
-    """Return the title of the plot, which names the model, the time range, and the direction bin."""
+    """Return the title of the plot, which names the model and each selection of the packets.
+
+    The selections are the time range, the velocity ranges, and the direction bin.
+    """
     if args.title:
         return str(args.title)
 
@@ -1302,10 +1305,9 @@ def make_emissionabsorption_plot(
 
     if scale_to_peak and max_f_emission_total <= 0.0:
         # the scale to the peak divides by this maximum
-        selection = "the velocity ranges" if args.velocityranges_kmps else "the shells"
         exit_with_error(
             "--normalised needs a peak, and no packet of the selection emits inside the plotted range",
-            f"Widen the time range, the x range, or {selection}",
+            "Widen the time range, the x range, or the selection of the packets",
         )
 
     scalefactor = scale_to_peak / max_f_emission_total if scale_to_peak else 1.0
@@ -1871,18 +1873,18 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
         option = f"-groupby {args.groupby}"
         gammahelp = "Give -groupby nuc or -groupby nucmass"
     elif args.velocityranges_kmps:
-        option = f"-{VELOCITYRANGEARGS[next(iter(args.velocityranges_kmps))][0]}"
+        option = " and ".join(f"-{VELOCITYRANGEARGS[rangegrouping][0]}" for rangegrouping in args.velocityranges_kmps)
         gammahelp = f"Remove {option}, or remove --gamma"
     else:
         return
 
     if args.gamma:
         # no test covers these options on gamma packets, thus the command refuses the combination
-        exit_with_error(f"{option} does not apply to a gamma-ray spectrum", gammahelp)
+        exit_with_error(f"a gamma-ray spectrum does not accept {option}", gammahelp)
 
     if args.plotvspecpol is not None:
         exit_with_error(
-            f"a virtual packet holds no emission position, thus {option} does not apply to -plotvspecpol",
+            f"a virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
             "Give -plotviewingangle for a direction bin of the real packets",
         )
 
@@ -2088,8 +2090,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.frompackets = True
 
     resolve_velocity_ranges(args)
-    exit_if_no_emission_position(args)
     resolve_shell_args(args)
+    exit_if_no_emission_position(args)
 
     if args.gamma and args.plotviewingangle:
         # exspec does not generate angle-resolved gamma spectra files,

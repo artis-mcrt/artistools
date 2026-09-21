@@ -643,7 +643,7 @@ def test_spectraemissionplot_refuses_packets_with_no_emission_position(
             **optionargs,
             **packetargs,
         )
-    assert "does not apply to" in capsys.readouterr().err
+    assert "does not accept" in capsys.readouterr().err
 
 
 def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:

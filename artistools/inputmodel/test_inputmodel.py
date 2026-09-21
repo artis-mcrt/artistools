@@ -2334,7 +2334,7 @@ def test_downscale_mass_fractions_matches_cell_loop() -> None:
         if rho_small_expected[x, y, z] > 0:
             massfracs_small_expected[x, y, z, :] /= rho_small_expected[x, y, z]
 
-    assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12)
+    assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12, atol=0.0)
     assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12, atol=0.0)
     assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0.0)
 
