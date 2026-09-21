@@ -1631,11 +1631,15 @@ def make_slice_figure(
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
     if not args.notitle:
-        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), plane {args.sliceaxis} = 0")
+        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), plane {args.slicelabel}")
 
     outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, SLICEFRAMENAME)
     outfilename = format_frame_path(
-        outpath, sliceaxis=args.sliceaxis, timestep=strtimestep, timedays=strtimedays, format=args.format
+        outpath,
+        slice=args.slicelabel.replace(" ", "").replace("km/s", "kmps"),
+        timestep=strtimestep,
+        timedays=strtimedays,
+        format=args.format,
     )
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
     return outfilename
@@ -1852,21 +1856,26 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-readonlymgi",
         default=False,
-        choices=["alongaxis", "cone", "slice"],
-        help=(
-            "Select cells of a 3D model with -axis. alongaxis and cone plot the cells on the axis or in a cone"
-            " around it. slice plots each variable as a colour image of the plane through the origin that is"
-            " normal to the axis, e.g. 'plotestimators Te nne -readonlymgi slice -axis=+z -ts 40'"
-        ),
+        choices=["alongaxis", "cone"],
+        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
     )
 
     parser.add_argument(
         "-axis",
         default="+z",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+    )
+
+    parser.add_argument(
+        "-slice",
+        default=None,
+        metavar="PLANE",
         help=(
-            "Choose an axis for use with -readonlymgi. Hint: for negative use e.g. -axis=-z. For a slice of a"
-            " grid with an even number of cells, the sign selects the layer of cells on that side of the origin"
+            "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
+            " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
+            " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
+            " plane, which is the layer above it for a plane between two layers"
         ),
     )
 
@@ -1905,8 +1914,61 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     return timestepmin, timestepmax
 
 
+def parse_slice_argument(slicetext: str) -> tuple[str, float, str]:
+    """Return the normal axis, its velocity [cm/s], and the label of a plane, e.g. of "xy" or "z=-0.2c"."""
+    from artistools.spectra import parse_velocity_argument
+
+    text = slicetext.strip().lower()
+    helptext = "Give a plane through the origin, e.g. -slice xy, or an axis and its velocity, e.g. -slice z=-0.2c"
+    if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
+        normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
+        return normalaxis, 0.0, f"{normalaxis} = 0"
+
+    normalaxis, separator, velocitytext = text.partition("=")
+    if normalaxis not in {"x", "y", "z"} or not separator:
+        exit_with_error(f"'{slicetext}' is not a plane of the model", helptext)
+    try:
+        velocity_kmps, unit = parse_velocity_argument(velocitytext)
+    except argparse.ArgumentTypeError as err:
+        exit_with_error(str(err), helptext)
+
+    label = f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+    if velocity_kmps == 0.0:
+        label = "0"
+    return normalaxis, velocity_kmps * km_to_cm, f"{normalaxis} = {label}"
+
+
+def select_cells_of_slice(args: argparse.Namespace, modelpath: Path) -> None:
+    """Select the layer of cells of a 3D model that holds the plane of -slice, and record the plane."""
+    args.sliceaxis, velocity_cmps, args.slicelabel = parse_slice_argument(args.slice)
+    lzmodel, modelmeta = get_modeldata(modelpath)
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"-slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Remove -slice to plot the variables against the velocity",
+        )
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    if abs(velocity_cmps) >= vmax_cmps:
+        exit_with_error(
+            f"the plane {args.slicelabel} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
+            "Give a velocity inside the model",
+        )
+
+    ncells = int(modelmeta[f"ncoordgrid{args.sliceaxis}"])
+    layerindex = math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells))
+    poscolumn = pl.col(f"pos_{args.sliceaxis}_min")
+    args.modelgridindex = (
+        lzmodel
+        .filter(poscolumn == poscolumn.unique().sort().get(layerindex))
+        .select("modelgridindex")
+        .collect()["modelgridindex"]
+        .to_list()
+    )
+    print(f"Getting the {len(args.modelgridindex)} cells of the layer that holds the plane {args.slicelabel}")
+
+
 def select_cells_along_axis(args: argparse.Namespace) -> None:
-    """Select the cells of a slice or a cone of a 3D model, and record the two axes that stay.
+    """Select the cells on an axis or in a cone of a 3D model, and record the two axes that stay.
 
     The selection functions of slice1dfromconein3dmodel read these axis names from the arguments.
     """
@@ -1917,27 +1979,6 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
     modelpath = normalize_path_list(args.modelpath)[0]
-    if args.readonlymgi == "slice":
-        lzmodel, modelmeta = get_modeldata(modelpath)
-        if modelmeta["dimensions"] != 3:
-            exit_with_error(
-                f"-readonlymgi slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-                "Remove -readonlymgi slice to plot the variables against the velocity",
-            )
-        # a grid with an even number of cells has no layer at the origin, thus the sign selects the side
-        ncells = int(modelmeta[f"ncoordgrid{args.sliceaxis}"])
-        layerindex = ncells // 2 if args.positive_axis else (ncells - 1) // 2
-        poscolumn = pl.col(f"pos_{args.sliceaxis}_min")
-        args.modelgridindex = (
-            lzmodel
-            .filter(poscolumn == poscolumn.unique().sort().get(layerindex))
-            .select("modelgridindex")
-            .collect()["modelgridindex"]
-            .to_list()
-        )
-        print(f"Getting the {len(args.modelgridindex)} cells of the plane {args.sliceaxis} = 0")
-        return
-
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = (
@@ -1972,7 +2013,7 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
 
 
 SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"
-SLICEFRAMENAME = "plotestimators_slice{sliceaxis}_{timestep}_{timedays}.{format}"
+SLICEFRAMENAME = "plotestimators_slice_{slice}_{timestep}_{timedays}.{format}"
 CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
 
 
@@ -2057,8 +2098,8 @@ def write_snapshot_figures(
     if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
 
-    isslice = args.readonlymgi == "slice"
-    if args.readonlymgi:
+    isslice = args.slice is not None
+    if args.readonlymgi or isslice:
         if not isinstance(args.modelgridindex, list):
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
@@ -2164,7 +2205,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
-    if args.readonlymgi == "slice":
+    if args.slice is not None:
+        if args.readonlymgi:
+            exit_with_error("-slice and -readonlymgi each select the cells of the plot", "Give one of the two")
         # a slice is a snapshot, and its two axes are the velocities in the plane
         args.x = "velocity"
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
@@ -2177,7 +2220,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         print_modelpath(modelpath)
 
-    if args.readonlymgi:
+    if args.slice is not None:
+        select_cells_of_slice(args, modelpath)
+    elif args.readonlymgi:
         select_cells_along_axis(args)
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))

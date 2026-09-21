@@ -881,6 +881,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-selected_timesteps",
     "-setgrid_fractionrmax",
     "-sigma_v",
+    "-slice",
     "-snapshot",
     "-sort",
     "-species",

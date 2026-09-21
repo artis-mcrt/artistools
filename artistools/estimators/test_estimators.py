@@ -1838,14 +1838,18 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     assert len(xvalues) > 0
 
 
-@pytest.mark.parametrize(("axis", "layerindex"), [("+z", 5), ("-z", 4)])
+@pytest.mark.parametrize(
+    ("slicetext", "layerindex", "filetag"),
+    [("xy", 5, "z=0"), ("z=0", 5, "z=0"), ("z=-0.01c", 4, "z=-0.01c"), ("z=-3000", 4, "z=-3000kmps")],
+)
 @mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
 def test_estimator_slice_of_3d_model(
-    mockpcolormesh: mock.MagicMock, tmp_path: Path, axis: str, layerindex: int
+    mockpcolormesh: mock.MagicMock, tmp_path: Path, slicetext: str, layerindex: int, filetag: str
 ) -> None:
-    """-readonlymgi slice draws each variable in the plane through the origin that is normal to the axis.
+    """-slice draws each variable in the layer of cells that holds the plane.
 
-    The test model has 10 cells on each axis, thus the sign of the axis selects one of the two middle layers.
+    The test model has 10 cells on each axis out to 0.096c. The plane z = 0 lies between two layers and
+    takes the layer above it, and a small velocity below zero takes the layer below it.
     """
     at.estimators.plot(
         argsraw=[],
@@ -1853,10 +1857,9 @@ def test_estimator_slice_of_3d_model(
         plotlist=[["Te"], ["nne", ["_yscale", "log"]]],
         outputfile=tmp_path,
         timestep="8",
-        readonlymgi="slice",
-        axis=axis,
+        slice=slicetext,
     )
-    assert len(list(tmp_path.glob("plotestimators_slicez_ts008_*.pdf"))) == 1
+    assert len(list(tmp_path.glob(f"plotestimators_slice_{filetag}_ts008_*.pdf"))) == 1
     # each colour bar also calls pcolormesh, thus a panel is a call with the grid of the model
     panelcalls = [call for call in mockpcolormesh.call_args_list if np.shape(call.args[3]) == (10, 10)]
     assert len(panelcalls) == 2
@@ -1878,12 +1881,22 @@ def test_estimator_slice_of_3d_model(
         assert np.isclose(tegrid[(modelgridindex // 10) % 10, modelgridindex % 10], cellte)
 
 
-def test_estimator_slice_needs_a_3d_model(tmp_path: Path) -> None:
-    """-readonlymgi slice stops the command for a 1D model."""
+def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) -> None:
+    """-slice stops the command for a 1D model, for text that names no plane, and for a plane outside the model."""
     with pytest.raises(SystemExit):
         at.estimators.plot(
-            argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", readonlymgi="slice"
+            argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", slice="xy"
         )
+    for slicetext in ("xx", "w=0", "z=fast", "z=0.5c"):
+        with pytest.raises(SystemExit):
+            at.estimators.plot(
+                argsraw=[],
+                modelpath=modelpath_classic_3d,
+                plotlist=[["Te"]],
+                outputfile=tmp_path,
+                timestep="8",
+                slice=slicetext,
+            )
 
 
 # the estimators of every test model of the repository hold no deposition_ column, thus a test that
