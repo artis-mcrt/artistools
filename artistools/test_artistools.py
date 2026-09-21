@@ -294,7 +294,7 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert np.allclose(np.asarray(ratioaxis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
 
     # a ratio of the RMS to the mean reference value has no meaning for a magnitude
-    dfmagstats = at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, relative=False)
+    dfmagstats = at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ismagnitude=True)
     assert dfmagstats["rms_relative"].item() is None
 
 

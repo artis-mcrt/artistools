@@ -413,8 +413,8 @@ def plot_reference_spectrum(
         residualseries.append(
             ResidualSeries(
                 label,
-                specdata["x"].to_numpy().astype(np.float64),
-                specdata["y"].to_numpy().astype(np.float64),
+                np.asarray(specdata["x"].to_numpy(), dtype=np.float64),
+                np.asarray(specdata["y"].to_numpy(), dtype=np.float64),
                 lineplot.get_color(),
                 isreference=True,
             )
@@ -722,8 +722,8 @@ def plot_artis_spectrum(
                 residualseries.append(
                     ResidualSeries(
                         linelabel_withdirbin or "",
-                        dfspectrum["x"].to_numpy().astype(np.float64),
-                        dfspectrum["y"].to_numpy().astype(np.float64),
+                        np.asarray(dfspectrum["x"].to_numpy(), dtype=np.float64),
+                        np.asarray(dfspectrum["y"].to_numpy(), dtype=np.float64),
                         modelline.get_color(),
                         isreference=False,
                     )
@@ -791,6 +791,8 @@ def make_spectrum_plot(
             from artistools.codecomparison import plot_spectrum
 
             plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
+            if residualseries is not None:
+                print_warning("the residual panel does not include the code comparison series")
             refspecindex += 1
         else:
             # ARTIS model spectrum
@@ -1359,8 +1361,6 @@ def check_residual_args(args: argparse.Namespace) -> None:
             "--residuals compares a model with a reference spectrum, and the paths hold only one of the two",
             "Give both, e.g. plotspectra mymodel 2003du_20031213_3219_8822_00.txt",
         )
-    if any(str(path).startswith("codecomparison/") for path in args.specpath):
-        print_warning("the residual panel does not include a code comparison series")
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
     if args.filtersavgol:
@@ -1418,10 +1418,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
         axis.set_xlabel("")  # remove xlabel (last axis xlabel optionally added later)
 
-    if xlabel is not None:
-        (residualaxis or axes[-1]).set_xlabel(xlabel)
-    if residualaxis is not None:
-        axes[-1].tick_params(axis="x", which="both", labelbottom=False)
+    if not args.hidexticklabels:
+        axes[-1].set_xlabel(xlabel)
 
     if args.showemission or args.showabsorption:
         legendncol = 2
@@ -1447,8 +1445,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
         if residualaxis is not None and residualseries is not None:
             dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
-            if not args.logscalex:
-                residualaxis.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
     if args.showtime:
         for index, axis in enumerate(axes):
@@ -2046,7 +2042,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.write_csv(datafilenameout, separator=" ")
             print_saved(datafilenameout)
-
         if args.write_data:
             write_residual_stats(dfresidualstats, filenameout)
 

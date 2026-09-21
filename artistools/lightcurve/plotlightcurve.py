@@ -246,7 +246,11 @@ def plot_bol_reflightcurve(
     if residualseries is not None:
         residualseries.append(
             ResidualSeries(
-                plotlabel, time_days.astype(np.float64), np.asarray(yvalues, dtype=np.float64), color, isreference=True
+                plotlabel,
+                np.asarray(time_days, dtype=np.float64),
+                np.asarray(yvalues, dtype=np.float64),
+                color,
+                isreference=True,
             )
         )
 
@@ -605,8 +609,8 @@ def plot_artis_lightcurve(
             residualseries.append(
                 ResidualSeries(
                     label_with_tags or f"direction bin {dirbin}",
-                    lcdata_valid["time_days"].to_numpy().astype(np.float64),
-                    lcdata_valid[ycolumn].to_numpy().astype(np.float64),
+                    np.asarray(lcdata_valid["time_days"].to_numpy(), dtype=np.float64),
+                    np.asarray(lcdata_valid[ycolumn].to_numpy(), dtype=np.float64),
                     modelline.get_color(),
                     isreference=False,
                 )
@@ -818,14 +822,7 @@ def make_lightcurve_plot(
         invert_magnitude_yaxis(axis)
 
     if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(
-            residualaxis,
-            axis,
-            residualseries,
-            args,
-            ismagnitude=lumunit == "mag",
-            xlimits=(args.timemin, args.timemax, "-timemin"),
-        )
+        dfresidualstats = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
         if args.write_data:
             write_residual_stats(dfresidualstats, filenameout)
 
@@ -1064,9 +1061,7 @@ def make_band_lightcurves_plot(
 
     if residualaxis is not None and residualseries is not None:
         assert isinstance(ax, mplax.Axes)
-        dfresidualstats = draw_residual_panel(
-            residualaxis, ax, residualseries, args, ismagnitude=True, xlimits=(args.timemin, args.timemax, "-timemin")
-        )
+        dfresidualstats = draw_residual_panel(residualaxis, ax, residualseries, args, ismagnitude=True)
         if args.write_data:
             write_residual_stats(dfresidualstats, args.outputfile)
 
@@ -1243,8 +1238,8 @@ def plot_lightcurve_from_refdata(
             residualseries.append(
                 ResidualSeries(
                     linename or str(lightcurvefilename),
-                    dfband["time"].to_numpy().astype(np.float64),
-                    dfband["magnitude"].to_numpy().astype(np.float64),
+                    np.asarray(dfband["time"].to_numpy(), dtype=np.float64),
+                    np.asarray(dfband["magnitude"].to_numpy(), dtype=np.float64),
                     color,
                     isreference=True,
                 )

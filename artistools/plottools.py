@@ -35,6 +35,9 @@ LOGSCALE_MINRATIO: t.Final[float] = 15.0
 # still shows the data. This fraction of the values is the most that a log axis may hide.
 LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
 
+# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
+RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
+
 
 def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
     """Return the y values of every line that the axes holds."""
@@ -506,12 +509,14 @@ def make_frame_figure(
 
     # Divider counts the vertical sizes from the bottom, thus the lowest row comes first
     vertical = [Size.Fixed(LABELHEIGHT_INCHES)]
-    if rowheights is not None and len(rowheights) != rows:
+    if rowheights is None:
+        rowheights = [1.0] * rows
+    elif len(rowheights) != rows:
         msg = f"rowheights gives {len(rowheights)} values for {rows} rows"
         raise ValueError(msg)
     for row in reversed(range(rows)):
         vertical += [Size.Fixed(rowgap)] if row != rows - 1 else []
-        vertical += [Size.Fixed(frameheight * (rowheights[row] if rowheights is not None else 1.0))]
+        vertical += [Size.Fixed(frameheight * rowheights[row])]
     vertical += [Size.Fixed(TOPMARGIN_INCHES)]
 
     figwidth = sum(size.fixed_size for size in horizontal)
@@ -634,9 +639,6 @@ def add_cax_for_fixed_frames(fig: mplfig.Figure, *, horizontal: bool) -> mplax.A
 # the height of the residual panel as a part of the height of the main frame
 RESIDUALROWHEIGHT: t.Final[float] = 0.35
 
-# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
-RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
-
 
 def make_frame_figure_with_residuals(
     args: argparse.Namespace, aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES
@@ -668,9 +670,10 @@ def get_residuals(
     import numpy as np
 
     modelfinite = np.isfinite(model.x) & np.isfinite(model.y)
-    order = np.argsort(model.x[modelfinite])
-    modelx = model.x[modelfinite][order]
-    modely = model.y[modelfinite][order]
+    modelx, modely = model.x[modelfinite], model.y[modelfinite]
+    if not (np.diff(modelx) >= 0.0).all():
+        order = np.argsort(modelx)
+        modelx, modely = modelx[order], modely[order]
     if modelx.size < 2:
         return np.zeros(reference.x.size, dtype=bool), np.array([])
 
@@ -684,15 +687,15 @@ def plot_residual_panel(
     xmin: float,
     xmax: float,
     *,
-    relative: bool = True,
+    ismagnitude: bool = False,
     ratio: bool = False,
 ) -> pl.DataFrame:
     """Draw model minus reference for each model against the first reference series, and return the statistics.
 
-    ratio=True draws model / reference, which agrees with a main frame that has a log y axis. The table
+    ratio=True draws model / reference, which agrees with a main frame that has a log y axis. The axis
+    then takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE. The table
     gives the number of points and the root mean square (RMS) of model minus reference. It also gives
-    the ratio of the RMS to the mean reference value. relative=False applies to a magnitude, where that
-    ratio has no meaning.
+    the ratio of the RMS to the mean reference value, which has no meaning for a magnitude.
     """
     import numpy as np
 
@@ -709,6 +712,7 @@ def plot_residual_panel(
         print_warning(f"the residual panel compares each model with '{reference.label}', the first reference series")
 
     rows: list[dict[str, str | int | float | None]] = []
+    maxratio = 1.0
     for model in models:
         inrange, residual = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
@@ -716,13 +720,15 @@ def plot_residual_panel(
             print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
             continue
 
+        xreference, yreference = reference.x[inrange], reference.y[inrange]
+        npoints = int(hasvalue.sum())
         rms = float(np.sqrt(np.mean(residual[hasvalue] ** 2)))
-        yreference_mean = float(np.mean(np.abs(reference.y[inrange][hasvalue])))
-        rms_relative = rms / yreference_mean if relative and yreference_mean > 0.0 else None
+        yreference_mean = float(np.mean(np.abs(yreference[hasvalue])))
+        rms_relative = rms / yreference_mean if not ismagnitude and yreference_mean > 0.0 else None
         rows.append({
             "model": model.label,
             "reference": reference.label,
-            "npoints": int(hasvalue.sum()),
+            "npoints": npoints,
             "rms": rms,
             "rms_relative": rms_relative,
         })
@@ -731,18 +737,24 @@ def plot_residual_panel(
         markerkwargs: dict[str, t.Any] = {} if residual.size > 200 else {"marker": "o", "markersize": 3}
         yvalues = residual
         if ratio:
-            yreference = reference.y[inrange]
             # a reference value of zero gives a gap
             yvalues = 1.0 + np.divide(residual, yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0)
-        axis.plot(reference.x[inrange], yvalues, color=model.color, linewidth=0.8, **markerkwargs)
+            positive = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)]
+            if positive.size > 0:
+                maxratio = max(maxratio, float(positive.max()), 1.0 / float(positive.min()))
+        axis.plot(xreference, yvalues, color=model.color, linewidth=0.8, **markerkwargs)
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
             f"residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
-            f"{int(hasvalue.sum())} points, RMS {rms:.3g}{strrelative}"
+            f"{npoints} points, RMS {rms:.3g}{strrelative}"
         )
 
     axis.axhline(1.0 if ratio else 0.0, color="black", linewidth=0.8, zorder=0)
+    # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
+    if maxratio > RESIDUALRATIO_LOGSCALE:
+        axis.set_yscale("log")
+        prune_log_ticks(axis.yaxis)
     return pl.DataFrame(
         rows,
         schema={
@@ -762,35 +774,27 @@ def draw_residual_panel(
     args: argparse.Namespace,
     *,
     ismagnitude: bool = False,
-    xlimits: tuple[float | None, float | None, str] | None = None,
 ) -> pl.DataFrame:
     """Draw model minus reference below the main frame, and return the statistics of each model.
 
     With a log y axis in the main frame, the panel shows model / reference, because a distance in that
-    frame is a ratio. The panel then takes a log y axis only when a ratio, or its inverse, is above
-    RESIDUALRATIO_LOGSCALE. Call it after the main frame has its labels and its x range, because the panel takes both.
+    frame is a ratio. Call it after the main frame has its labels and its x range, because the panel
+    takes both.
     """
+    logscaley = bool(getattr(args, "logscaley", False))
+    isratio = logscaley and not ismagnitude
+    # the shared x axis otherwise takes a new range with the default margin of the residual axis
+    residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
-    isratio = bool(getattr(args, "logscaley", False)) and not ismagnitude
     dfresidualstats = plot_residual_panel(
-        residualaxis, series, min(xlim), max(xlim), relative=not ismagnitude, ratio=isratio
+        residualaxis, series, min(xlim), max(xlim), ismagnitude=ismagnitude, ratio=isratio
     )
-    # the shared x axis otherwise takes a new range with the margin of the residual axis
-    mainaxis.set_xlim(xlim)
-    set_axis_properties(residualaxis, args, xlimits=xlimits, setyaxis=False)
-    if getattr(args, "logscaley", False):
+    set_axis_properties(residualaxis, args, setyaxis=False)
+    if logscaley:
         prune_log_ticks(mainaxis.yaxis)
 
     if isratio:
-        import numpy as np
-
         residualaxis.set_ylabel("model / ref")
-        ratios = np.concatenate([np.asarray(line.get_ydata(), dtype=np.float64) for line in residualaxis.lines])
-        ratios = ratios[np.isfinite(ratios) & (ratios > 0.0)]
-        # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
-        if ratios.size > 0 and max(ratios.max(), 1.0 / ratios.min()) > RESIDUALRATIO_LOGSCALE:
-            residualaxis.set_yscale("log")
-            prune_log_ticks(residualaxis.yaxis)
     else:
         mainformatter = mainaxis.yaxis.get_major_formatter()
         mainylabel = (
@@ -807,7 +811,6 @@ def draw_residual_panel(
     if mainaxis.get_xlabel():
         residualaxis.set_xlabel(mainaxis.get_xlabel())
         mainaxis.set_xlabel("")
-    mainaxis.tick_params(axis="x", which="both", labelbottom=False)
     if getattr(args, "hidexticklabels", False):
         residualaxis.tick_params(axis="x", which="both", labelbottom=False)
 
