@@ -285,26 +285,25 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert dfstats["npoints"].item() == 2
     assert np.isclose(dfstats["rms"].item(), math.sqrt((4.0 + 9.0) / 2.0))
     assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / ((22.0 + 33.0) / 2.0))
-    # a main frame with a log y axis takes model / reference: 24 / 22 and 30 / 33
-    with mock.patch.object(mplax.Axes, "plot", wraps=axis.plot) as mockplot:
-        at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0, ratio=True)
-    assert np.allclose(mockplot.call_args.args[1][1:], [24.0 / 22.0, 30.0 / 33.0])
-    # a ratio to the mean reference value has no meaning for a magnitude
-    assert (
-        at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0, relative=False)["rms_relative"].item()
-        is None
-    )
+    # the panel shows model / reference: 24 / 22 and 30 / 33
+    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
+
+    # a magnitude gives the flux ratio, and a ratio of the RMS to the mean reference value has no meaning
+    _fig, magaxis = plt.subplots()
+    dfmagstats = at.plottools.plot_residual_panel(magaxis, [masked, model], 0.0, 20.0, ismagnitude=True)
+    assert dfmagstats["rms_relative"].item() is None
+    assert np.allclose(np.asarray(magaxis.lines[0].get_ydata())[1:], 10.0 ** (-0.4 * np.array([2.0, -3.0])))
 
 
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
 def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
-    """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
+    """The panel shows model / reference, on a log y axis only when a ratio or its inverse is above 50."""
     x = np.array([1.0, 2.0, 3.0])
     series = [
         at.plottools.ResidualSeries("obs", x, np.array([1.0, 2.0, 4.0]), "k", isreference=True),
         at.plottools.ResidualSeries("model", x, np.array([1.0, 2.0, 4.0 * modelfactor]), "C0", isreference=False),
     ]
-    args = argparse.Namespace(logscaley=True)
+    args = argparse.Namespace()
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
