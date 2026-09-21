@@ -192,7 +192,13 @@ def get_npts_model(modelpath: Path) -> int:
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        return math.prod(int(n) for n in readnoncommentline(modelfile).split("#", 1)[0].split())
+        nptstokens = readnoncommentline(modelfile).split("#", 1)[0].split()
+
+    # one number is the cell count, and two numbers are the 2D counts along the cylindrical radius and the z axis
+    if len(nptstokens) not in {1, 2}:
+        msg = f"The first line of {modelfilepath} must hold one or two numbers, but it holds {nptstokens}"
+        raise ValueError(msg)
+    return math.prod(int(n) for n in nptstokens)
 
 
 def get_inputfilepath(modelpath: Path | str) -> Path:

@@ -1231,6 +1231,12 @@ def test_get_npts_model(tmp_path: Path) -> None:
     at.misc.get_npts_model.cache_clear()
     assert at.misc.get_npts_model(two_num_dir) == 100
 
+    # read_modelfile_text rejects three numbers, thus get_npts_model must not give their product
+    (two_num_dir / "model.txt").write_text("10 10 10\n")
+    at.misc.get_npts_model.cache_clear()
+    with pytest.raises(ValueError, match="one or two numbers"):
+        at.misc.get_npts_model(two_num_dir)
+
 
 def test_get_nprocs(tmp_path: Path) -> None:
     # input.txt: line index 21 (0-indexed, 22nd line) holds nprocs

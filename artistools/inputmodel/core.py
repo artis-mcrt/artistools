@@ -31,7 +31,6 @@ from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
-from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
@@ -40,12 +39,30 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
 CREATED_COMMENT_PREFIX = "created:"
+CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
 UNITS_COMMENT_PREFIX = "column units:"
 
 
 def get_created_comment() -> str:
     """Return the comment line that gives the creation time of an input file in UTC."""
-    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC):%Y-%m-%d %H:%M:%S} UTC\n"
+    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC).strftime(CREATED_TIME_FORMAT)}\n"
+
+
+def is_writer_comment(commentline: str) -> bool:
+    """Return True for a header comment that save_modeldata writes again.
+
+    A comment of a user can also start with "created:", e.g. "created: by hand". Thus only a line
+    with the time format of get_created_comment is the creation line.
+    """
+    if commentline.startswith(UNITS_COMMENT_PREFIX):
+        return True
+    try:
+        datetime.datetime.strptime(commentline, f"{CREATED_COMMENT_PREFIX} {CREATED_TIME_FORMAT}").replace(
+            tzinfo=datetime.UTC
+        )
+    except ValueError:
+        return False
+    return True
 
 
 def read_modelfile_text(
@@ -70,13 +87,16 @@ def read_modelfile_text(
             line = fmodel.readline()
             if line.startswith("#"):
                 commentline = line.removeprefix("#").removeprefix(" ").removesuffix("\n")
-                # save_modeldata writes these two lines again, thus a kept copy gives each line two times
-                if not commentline.startswith((CREATED_COMMENT_PREFIX, UNITS_COMMENT_PREFIX)):
+                # save_modeldata writes these lines again, thus a kept copy gives each line two times
+                if not is_writer_comment(commentline):
                     modelmeta["headercommentlines"].append(commentline)
                 numheaderrows += 1
 
         # a header line can end with an inline comment, as the lines of input.txt do
         nptstokens = line.split("#", 1)[0].split()
+        if len(nptstokens) not in {1, 2}:
+            msg = f"The first line of {filename} after the comments must hold one or two numbers, not {line!r}"
+            raise ValueError(msg)
         if len(nptstokens) == 2:
             modelmeta["dimensions"] = 2
             ncoordgridr, ncoordgridz = (int(n) for n in nptstokens)
@@ -86,7 +106,7 @@ def read_modelfile_text(
             if not printwarningsonly:
                 print(f"  detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
         else:
-            npts_model = int(line.split("#", 1)[0])
+            npts_model = int(nptstokens[0])
 
         modelmeta["npts_model"] = npts_model
         modelmeta["t_model_init_days"] = float(fmodel.readline().split("#", 1)[0])
@@ -264,11 +284,14 @@ def read_modelfile_text(
                 ("pos_y_mid", -xmax_tmodel + wid_init_y / 2.0),
                 ("pos_z_mid", -xmax_tmodel + wid_init_z / 2.0),
             )
+            # a wrong vmax gives a wrong cell width, and thus a wrong volume and a wrong mass for each cell
             for col, pos in expected_positions:
                 if col in firstrow and not math.isclose(firstrow[col], pos, rel_tol=0.01):
-                    print_warning(
-                        f"{col} does not match expected value. Check that vmax is consistent with the cell positions."
+                    msg = (
+                        f"{filename}: {col} of the first cell is {firstrow[col]:.6e} cm, but vmax and t_model_init_days "
+                        f"give {pos:.6e} cm. Make vmax consistent with the cell positions."
                     )
+                    raise ValueError(msg)
 
         else:
 
@@ -907,6 +930,10 @@ def save_modeldata(
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
 
+    model.txt starts with a comment line for the creation time and a comment line for the column units. An inline
+    comment follows each header value, and a comment line gives the column names. For a 1D model or a 2D model,
+    sn3d reads these column names from v2024.04.
+
     model.txt gets the standard columns, each X_ column, and the custom columns that ARTIS reads (Ye, q, and
     tracercount) if dfmodel holds them. A caller names each other custom column in extracols. model.txt gets no
     other column, e.g. no derived column.
@@ -965,17 +992,36 @@ def save_modeldata(
         modelmeta["npts_model"] = dfmodel_npts_model
 
     timestart = time.perf_counter()
+    # each header line is a value and the inline comment that names it
+    tmodelline = (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {dfmodel_npts_model}")
+        strunits = "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days"
+        headerlines = [(str(dfmodel_npts_model), "npts_model: number of radial cells"), tmodelline]
 
     elif modelmeta["dimensions"] == 2:
         print(f" 2D grid size: {dfmodel_npts_model} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == dfmodel_npts_model
+        strunits = "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days"
+        headerlines = [
+            (
+                f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}",
+                "ncoordgridrcyl ncoordgridz: number of cells along the cylindrical radius and along the z axis",
+            ),
+            tmodelline,
+            (f"{vmax:.8e}", "vmax_cmps: maximum velocity along the radius and the z axis [cm/s]"),
+        ]
 
-    elif modelmeta["dimensions"] == 3:
+    else:
         griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
         print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
         assert griddimension**3 == dfmodel_npts_model
+        strunits = "pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3], all at t_model_init_days"
+        headerlines = [
+            (str(dfmodel_npts_model), f"npts_model: number of cells ({griddimension}^3 Cartesian grid)"),
+            tmodelline,
+            (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
+        ]
 
     modelfilepath = resolve_outputfile(outpath, "model.txt")
 
@@ -988,30 +1034,9 @@ def save_modeldata(
         # sn3d reads the first comment line after the header values as the column names, thus each
         # other comment line comes before those values
         fmodel.write(get_created_comment())
-        strunits = {
-            1: "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days",
-            2: "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days",
-            3: "pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3], all at t_model_init_days",
-        }[modelmeta["dimensions"]]
         fmodel.write(f"# {UNITS_COMMENT_PREFIX} {strunits}. Each X_ column is a mass fraction\n")
 
         # sn3d reads the numbers at the start of a header line, thus an inline comment can follow them
-        if modelmeta["dimensions"] == 1:
-            nptsline = (str(dfmodel_npts_model), "npts_model: number of radial cells")
-        elif modelmeta["dimensions"] == 2:
-            nptsline = (
-                f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}",
-                "ncoordgridrcyl ncoordgridz: number of cells along the cylindrical radius and along the z axis",
-            )
-        else:
-            nptsline = (str(dfmodel_npts_model), f"npts_model: number of cells ({griddimension}^3 Cartesian grid)")
-
-        headerlines = [nptsline, (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")]
-        if modelmeta["dimensions"] == 2:
-            headerlines.append((f"{vmax:.8e}", "vmax_cmps: maximum velocity along the radius and the z axis [cm/s]"))
-        elif modelmeta["dimensions"] == 3:
-            headerlines.append((f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"))
-
         fmodel.writelines(f"{strvalue:<24} # {comment}\n" for strvalue, comment in headerlines)
 
         fmodel.write(f"#{' '.join([*standardcols, *customcols])}\n")
@@ -1076,12 +1101,35 @@ def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool 
         if not printwarningsonly:
             print(f"Reading {textfilepath}")
 
-        abundancedata = read_wsv(textfilepath, has_header=False, comment_prefix="#")
+        with zopen(textfilepath) as fabund:
+            firstdataline = next((line for line in fabund if line.strip() and not line.startswith("#")), "")
 
-        colnames = ["inputcellid", *[f"X_{get_elsymbol(x)}" for x in range(1, len(abundancedata.columns))]]
-        abundancedata = abundancedata.rename({
-            col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
-        }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
+        abundancedata = None
+        # pl.read_csv needs one space between two values, which save_initelemabundances writes
+        if firstdataline == " ".join(firstdataline.split()) + "\n":
+            colnames = ["inputcellid", *[f"X_{get_elsymbol(z)}" for z in range(1, len(firstdataline.split()))]]
+            try:
+                abundancedata = pl.read_csv(
+                    polars_source(textfilepath),
+                    separator=" ",
+                    has_header=False,
+                    comment_prefix="#",
+                    schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in colnames},
+                )
+            except pl.exceptions.ComputeError:
+                abundancedata = None
+            # a later line with more spaces or with fewer values gives a null value
+            if abundancedata is not None and abundancedata.null_count().sum_horizontal().item() > 0:
+                abundancedata = None
+
+        if abundancedata is None:
+            if not printwarningsonly:
+                print("  using the slow reader, because pl.read_csv cannot read the format of this file")
+            abundancedata = read_wsv(textfilepath, has_header=False, comment_prefix="#")
+            colnames = ["inputcellid", *[f"X_{get_elsymbol(z)}" for z in range(1, len(abundancedata.columns))]]
+            abundancedata = abundancedata.rename({
+                col: colnames[idx] for idx, col in enumerate(abundancedata.columns)
+            }).with_columns(cs.starts_with("X_").cast(pl.Float32), (~cs.starts_with("X_")).cast(pl.Int32))
 
         return abundancedata.lazy(), {}
 
@@ -1125,7 +1173,7 @@ def save_initelemabundances(
     backup_existing_file(abundancefilename)
 
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
-        if headercommentlines is not None:
+        if headercommentlines:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         # sn3d and get_initelemabundances skip each comment line, and both read the columns by position
         fabund.write(get_created_comment())
