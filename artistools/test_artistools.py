@@ -1649,6 +1649,16 @@ def test_auto_yscale_reads_the_drawn_values() -> None:
         plt.close(fig)
 
 
+def test_set_legend_draws_no_legend_without_a_labelled_series() -> None:
+    """An axes that has no series with a label gets no legend. matplotlib raised ValueError for the empty handles."""
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0], [0.0, 1.0])
+
+    assert at.plottools.set_legend(ax) is None
+    assert ax.get_legend() is None
+    plt.close(fig)
+
+
 def test_get_series_colors_greys_then_cycle() -> None:
     """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])

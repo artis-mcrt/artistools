@@ -250,6 +250,39 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
 
 
+@mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
+def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
+    mockscatter: mock.MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The colour bar mode gives one colour to each direction bin of the data file, and not to all the direction bins.
+
+    The scatter plot raised ValueError, because 100 colours went to the rows of the selected direction bins.
+    """
+    monkeypatch.chdir(tmp_path)
+    commonargs: dict[str, t.Any] = {
+        "modelpath": [modelpath_classic_3d],
+        "timemin": 3.2,
+        "timemax": 7.5,
+        "outputfile": tmp_path,
+    }
+    at.lightcurve.plot(
+        argsraw=[], plotviewingangle=[0, 10], save_viewing_angle_peakmag_risetime_delta_m15_to_file=True, **commonargs
+    )
+    scatterplotargs: dict[str, t.Any] = {
+        "make_viewing_angle_peakmag_risetime_scatter_plot": True,
+        "colorbarcostheta": True,
+    }
+    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10], **scatterplotargs, **commonargs)
+
+    assert list(tmp_path.glob("*risetime_peakmag.pdf"))
+    dirbincolors = mockscatter.call_args_list[0].kwargs["color"]
+    assert len(dirbincolors) == 2
+    assert not np.allclose(dirbincolors[0], dirbincolors[1]), "the two cos(theta) bins share a colour"
+
+    with pytest.raises(ValueError, match="Give the same -plotviewingangle selection"):
+        at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10, 20], **scatterplotargs, **commonargs)
+
+
 def test_band_lightcurve_subplots(tmp_path: Path) -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=tmp_path)
 

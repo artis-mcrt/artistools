@@ -555,9 +555,9 @@ def make_frame_figure(
 def set_legend(
     ax: mplax.Axes, args: argparse.Namespace | None = None, **legendkwargs: t.Any
 ) -> "mpllegend.Legend | None":
-    """Draw the legend of the axes and return it. Return None when -nolegend was given.
+    """Draw the legend of the axes and return it. Return None when -nolegend was given or no series has a label.
 
-    A helper that parses no arguments passes no args, and the legend then always draws.
+    A helper that parses no arguments passes no args, and -nolegend then does not apply.
     Each label takes the colour of its series, unless the caller gives labelcolor.
     """
     if getattr(args, "nolegend", False):
@@ -569,6 +569,10 @@ def set_legend(
         legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(
             ax, legendkwargs.get("handler_map")
         )
+
+    if not legendkwargs["handles"]:
+        # matplotlib raises ValueError for an empty list of handles
+        return None
 
     return ax.legend(**legendkwargs)
 

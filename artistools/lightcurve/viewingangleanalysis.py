@@ -27,7 +27,6 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import match_closest_time
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
@@ -317,11 +316,14 @@ def make_plot_test_viewing_angle_fit(
     save_figure(fig, plotname)
 
 
-def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
+def set_scatterplot_plotkwargs(
+    modelnumber: int, datafilename: str, rowcount: int, args: argparse.Namespace
+) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
     """Return the plot kwargs for one model's per-direction-bin points and for its angle-averaged point."""
     plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
-        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
+        dirbins = get_datafile_dirbins(datafilename, rowcount, args)
+        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, dirbins, args)
     else:
         plotkwargsviewingangles["color"] = args.color[modelnumber]
 
@@ -336,17 +338,41 @@ def set_scatterplot_plotkwargs(modelnumber: int, args: argparse.Namespace) -> tu
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
+def get_datafile_dirbins(datafilename: str, rowcount: int, args: argparse.Namespace) -> list[int]:
+    """Return the direction bin of each row of a viewing angle data file.
+
+    The file does not hold the direction bins. Its rows follow the -plotviewingangle selection of the run that
+    wrote the file, thus the same selection gives the direction bins.
+    """
+    selection = [args.plotviewingangle] if isinstance(args.plotviewingangle, int) else args.plotviewingangle
+    if selection and selection[0] != -2:
+        dirbins = list(selection)
+    else:
+        dirbins = get_dirbins(
+            average_over_phi=args.average_over_phi_angle, average_over_theta=args.average_over_theta_angle
+        )
+
+    if len(dirbins) != rowcount or -1 in dirbins:
+        msg = (
+            f"The colour bar needs the direction bin of each row of {datafilename}, which has {rowcount} rows."
+            f" The arguments select {len(dirbins)} direction bins."
+            " Give the same -plotviewingangle selection as in the run that wrote the file."
+        )
+        raise ValueError(msg)
+
+    return dirbins
+
+
 def update_plotkwargs_for_viewingangle_colorbar(
-    plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
+    plotkwargsviewingangles: dict[str, t.Any], dirbins: Sequence[int], args: argparse.Namespace
 ) -> dict[str, t.Any]:
-    """Set one colour per direction bin in the plot kwargs, matching the viewing angle colorbar."""
+    """Set the colour of each direction bin in the plot kwargs, matching the viewing angle colorbar."""
     scaledmap = make_colorbar_viewingangles_colormap()
 
-    angles = list(range(get_viewingdirectionbincount()))
     colors = []
-    for angle in angles:
+    for dirbin in dirbins:
         colorindex: t.Any
-        _, colorindex = get_viewinganglecolor_for_colorbar(angle, scaledmap, plotkwargsviewingangles, args)
+        _, colorindex = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargsviewingangles, args)
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles["color"] = colors
     return plotkwargsviewingangles
@@ -374,13 +400,16 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     ax = axesgrid[0][0]
 
     for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = read_wsv(f"{key}band_{modelname!s}_viewing_angle_data.txt")
+        datafilename = f"{key}band_{modelname!s}_viewing_angle_data.txt"
+        viewing_angle_plot_data = read_wsv(datafilename)
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].cast(pl.Float64).to_numpy()
         band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
 
-        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(
+            ii, datafilename, len(band_peak_mag_viewing_angles), args
+        )
 
         # the error bars below use the angle-averaged x value whether or not its point is drawn
         if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
@@ -470,7 +499,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         )
         print(dfdata["peakcolour"], dfdata[f"{bands[0]}max"], dfdata[f"{bands[1]}at{bands[0]}max"])
 
-        plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
+        plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, datafilename, dfdata.height, args)
         plotkwargsviewingangles["label"] = modelname
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
 
