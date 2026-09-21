@@ -280,6 +280,11 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert inrange.tolist() == [False, True, True, True, False]
     assert np.isnan(residual[0])
 
+    # a model value that is not finite leaves a gap, as in the main frame, and gives no value from its neighbours
+    gapmodel = model._replace(y=np.array([0.0, np.inf, 40.0]))
+    _, residual = at.plottools.get_residuals(reference, gapmodel, xmin=0.0, xmax=20.0)
+    assert np.isnan(residual).all()
+
     _fig, axis = plt.subplots()
     dfstats = at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0)
     assert dfstats["npoints"].item() == 2

@@ -669,8 +669,9 @@ def get_residuals(
     """
     import numpy as np
 
-    modelfinite = np.isfinite(model.x) & np.isfinite(model.y)
-    modelx, modely = model.x[modelfinite], model.y[modelfinite]
+    # a model value that is not finite stays in as NaN, thus the interpolation keeps the gap that the main frame shows
+    hasx = np.isfinite(model.x)
+    modelx, modely = model.x[hasx], np.where(np.isfinite(model.y[hasx]), model.y[hasx], np.nan)
     if not (np.diff(modelx) >= 0.0).all():
         order = np.argsort(modelx)
         modelx, modely = modelx[order], modely[order]
@@ -813,6 +814,9 @@ def draw_residual_panel(
         mainaxis.set_xlabel("")
     if getattr(args, "hidexticklabels", False):
         residualaxis.tick_params(axis="x", which="both", labelbottom=False)
+    if getattr(args, "hideyticklabels", False):
+        residualaxis.tick_params(axis="y", which="both", labelleft=False)
+        residualaxis.set_ylabel("")
 
     return dfresidualstats
 

@@ -1423,6 +1423,12 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
         at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
 
     obsfile = write_fake_observed_spectrum(tmp_path)
+    # --output_spectra draws no figure, thus it cannot hold a residual panel
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=True, outputfile=tmp_path
+        )
+
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],

@@ -1355,6 +1355,11 @@ def check_residual_args(args: argparse.Namespace) -> None:
             "--residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
             "Give one time with -t, and no emission or absorption option",
         )
+    if args.makevspecpol or args.averagevspecpolfiles or args.output_spectra or "/" in args.stokesparam:
+        exit_with_error(
+            "--residuals applies only to a plot of spectra, and the other options select a different action",
+            "Remove --residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
+        )
     nreferences = sum(path_is_reference_spectrum(path) for path in args.specpath)
     if nreferences in {0, len(args.specpath)}:
         exit_with_error(
@@ -1421,6 +1426,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     if not args.hidexticklabels:
         axes[-1].set_xlabel(xlabel)
 
+    residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     if args.showemission or args.showabsorption:
         legendncol = 2
         defaultoutputfile = Path("plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf")
@@ -1438,13 +1444,10 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         # the legend comes from the first axis that a plot used, which is axes[0] for
         # --multispecplot and axes[-1] otherwise
         specaxes = list(axes) if args.multispecplot else [axes[-1]]
-        residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
         dfalldata = make_spectrum_plot(
             args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
-        if residualaxis is not None and residualseries is not None:
-            dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
 
     if args.showtime:
         for index, axis in enumerate(axes):
@@ -1465,6 +1468,9 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     # the loop above sets the scale before the data exists, because make_emissionabsorption_plot reads
     # the x range back from the axes. Thus -yscale auto reads the values here and sets the scale itself
     set_auto_yscale(list(axes), args)
+    # the panel shows a ratio below a log y axis, thus it follows the choice of -yscale auto
+    if residualaxis is not None and residualseries is not None:
+        dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
 
     if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
         plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
