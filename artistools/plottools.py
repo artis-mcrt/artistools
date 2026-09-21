@@ -644,7 +644,7 @@ class ResidualSeries(t.NamedTuple):
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
 ) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64] | None]":
-    """Return x, the reference value minus the model value, and the error, at each reference point.
+    """Return x, the model value minus the reference value, and the error, at each reference point.
 
     The model takes a linear interpolation to the reference x values. A point counts only inside the
     x range of the panel and inside the x range that the model covers. With an error of two sides,
@@ -661,13 +661,13 @@ def get_residuals(
         return np.array([]), np.array([]), None
 
     inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
-    residual = reference.y[inrange] - np.interp(reference.x[inrange], modelx, modely)
+    residual = np.interp(reference.x[inrange], modelx, modely) - reference.y[inrange]
     if reference.yerr is None:
         return reference.x[inrange], residual, None
 
     errlower, errupper = reference.yerr
     # a model above the reference point lies on the side of the upper error
-    sigma = np.where(residual < 0.0, errupper[inrange], errlower[inrange])
+    sigma = np.where(residual > 0.0, errupper[inrange], errlower[inrange])
     return reference.x[inrange], residual, np.where(np.isfinite(sigma) & (sigma > 0.0), sigma, np.nan)
 
 
@@ -700,7 +700,7 @@ def get_residual_stats(
 def plot_residual_panel(
     axis: mplax.Axes, series: Sequence[ResidualSeries], xmin: float, xmax: float, *, relative: bool = True
 ) -> "pl.DataFrame":
-    """Draw reference minus model for each model against the first reference series, and return the statistics.
+    """Draw model minus reference for each model against the first reference series, and return the statistics.
 
     With an error in the reference data, the panel shows the residual in units of that error, and the
     table gives the reduced chi-square. Without one, the panel shows the residual in the units of the
@@ -744,7 +744,7 @@ def plot_residual_panel(
         )
 
     axis.axhline(0.0, color="black", linewidth=0.8, zorder=0)
-    axis.set_ylabel(r"(ref $-$ model) / $\sigma$" if reference.yerr is not None else r"ref $-$ model")
+    axis.set_ylabel(r"(model $-$ ref) / $\sigma$" if reference.yerr is not None else r"model $-$ ref")
 
     import polars as pl
 

@@ -262,7 +262,7 @@ def test_each_package_command_is_named_plot() -> None:
 
 
 def test_residuals_take_the_model_at_each_observed_point() -> None:
-    """The residual is observed minus model, inside the x range of the panel and of the model alone."""
+    """The residual is model minus observed, inside the x range of the panel and of the model alone."""
     model = at.plottools.ResidualSeries(
         "model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0", isreference=False
     )
@@ -277,7 +277,7 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     x, residual, sigma = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
     # the points at -5 and 25 lie outside the model, and the point at 15 lies outside the panel
     assert x.tolist() == [5.0, 12.0]
-    assert np.allclose(residual, [11.0 - 10.0, 22.0 - 24.0])
+    assert np.allclose(residual, [10.0 - 11.0, 24.0 - 22.0])
     # a model below the point takes the lower error, and a model above it takes the upper error
     assert sigma is not None
     assert np.allclose(sigma, [0.5, 2.0])

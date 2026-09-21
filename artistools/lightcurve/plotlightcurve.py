@@ -214,7 +214,7 @@ def draw_residual_panel(
     *,
     ismagnitude: bool,
 ) -> None:
-    """Draw reference minus model below the main frame.
+    """Draw model minus reference below the main frame.
 
     With --write_data, this function also writes the statistics to a CSV file. Call it after the
     main frame has its labels and its x range, because the panel takes both.
@@ -230,6 +230,9 @@ def draw_residual_panel(
     dfresidualstats = plot_residual_panel(residualaxis, residualseries, xmin, xmax, relative=not ismagnitude)
     residualargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None, "logscaley": False})
     set_axis_properties(residualaxis, residualargs, xlimits=(args.timemin, args.timemax, "-timemin"))
+    if ismagnitude:
+        # a model that is fainter than the reference then lies below zero, as it lies below in the main frame
+        invert_magnitude_yaxis(residualaxis)
 
     residualaxis.set_xlabel(mainaxis.get_xlabel())
     mainaxis.set_xlabel("")
@@ -1432,7 +1435,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--residuals",
         action="store_true",
         help=(
-            "Add a panel of reference minus model for each model, against the first reference light curve of"
+            "Add a panel of model minus reference for each model, against the first reference light curve of"
             " -reflightcurves. The command prints the RMS residual, and the reduced chi-square when the reference"
             " light curve gives an error. A band plot takes one filter. --write_data also writes these numbers"
         ),
