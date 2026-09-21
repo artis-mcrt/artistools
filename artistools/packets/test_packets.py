@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.axes as mplax
 import numpy as np
 import polars as pl
 import polars.testing as pltest
@@ -303,3 +304,82 @@ def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
     dftwice = at.packets.add_packet_directions_lazypolars(dfonce).collect()
 
     pltest.assert_frame_equal(dfonce, dftwice)
+
+
+def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> None:
+    """ARTIS gives a time of 0 or -1 and a position of zero to a packet with no thermal emission record."""
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    dfmodel, modelmeta = at.get_modeldata(modelpath, printwarningsonly=True)
+    emtime_s = 5.0 * at.constants.day_to_s
+    dfpackets = pl.DataFrame({
+        "trueem_posx": [1.0e9 * emtime_s, 0.0, 0.0],
+        "trueem_posy": [0.0, 0.0, 0.0],
+        "trueem_posz": [0.5e9 * emtime_s, 0.0, 0.0],
+        "trueem_time": [emtime_s, -1.0, 0.0],
+        "dirx": [0.0, 0.0, 0.0],
+        "diry": [0.0, 0.0, 0.0],
+        "dirz": [1.0, 1.0, 1.0],
+    })
+
+    dfvalues = dfpackets.select(
+        velocity=at.packets.get_emission_velocity_expr("trueem"),
+        losvelocity=at.packets.get_emission_velocity_lineofsight_expr("trueem"),
+        modelgridindex=at.packets.get_modelgridindex_expr("trueem", modelmeta, dfmodel),
+    )
+
+    assert np.isclose(dfvalues["velocity"][0], math.hypot(1.0e9, 0.5e9), rtol=1e-12, atol=0.0)
+    assert np.isclose(dfvalues["losvelocity"][0], 0.5e9, rtol=1e-12, atol=0.0)
+    assert dfvalues["modelgridindex"][0] is not None
+    for norecordrow in (1, 2):
+        assert math.isnan(dfvalues["velocity"][norecordrow])
+        assert math.isnan(dfvalues["losvelocity"][norecordrow])
+        assert dfvalues["modelgridindex"][norecordrow] is None
+
+
+def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
+    """An old packets file holds a thermal emission velocity of zero for a packet with no thermal emission record."""
+    _, lzdfpackets = at.packets.get_packets(
+        at.get_path("testdata") / "test-classicmode_3d", packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
+    dfpackets = lzdfpackets.select("trueem_time", "true_emission_velocity").collect()
+
+    dfnorecord = dfpackets.filter(pl.col("trueem_time") <= 0)
+    assert dfnorecord.height > 0
+    assert dfnorecord["true_emission_velocity"].is_nan().all()
+    dfrecord = dfpackets.filter(pl.col("trueem_time") > 0)
+    assert (dfrecord["true_emission_velocity"] > 0).all()
+
+
+@mock.patch("artistools.packets.plotlastpacketinteraction.save_figure")
+@mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
+def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
+    mockimshow: mock.MagicMock, mocksavefigure: mock.MagicMock
+) -> None:
+    """A packet with no thermal emission record gave a large negative weight, which removed the innermost bin."""
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    tdays = 300.0
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_arrive_d = at.get_timestep_times(modelpath, loc="mid")[timestep]
+    emtime_s = 250.0 * at.constants.day_to_s
+    beta = 0.01
+    # the two packets are in one bin of the histogram: a record at a velocity of 0.01 c, and no record
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [t_arrive_d, t_arrive_d],
+        "e_rf": [1.0e40, 1.0e40],
+        "trueem_posx": [beta * at.constants.C_cm_per_s * emtime_s, 0.0],
+        "trueem_posy": [0.0, 0.0],
+        "trueem_posz": [beta * at.constants.C_cm_per_s * emtime_s, 0.0],
+        "trueem_time": [emtime_s, -1.0],
+    })
+
+    with mock.patch.object(plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy())):
+        plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
+            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+        )
+
+    assert mocksavefigure.call_count == 1
+    heatmap = mockimshow.call_args.args[1].T
+    assert heatmap.count() == 1
+    assert heatmap[0, 25] > 0.0

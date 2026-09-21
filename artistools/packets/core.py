@@ -138,11 +138,28 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     return None
 
 
+def has_emission_record_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
+    """Return true for a packet that has a record of the last interaction (em) or of the last thermal emission (trueem).
+
+    ARTIS gives a time of 0 or -1 and a position of zero to a packet with no such record.
+    """
+    return pl.col(f"{position}_time") > 0
+
+
+def get_emission_time_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
+    """Return the time [s] of the last interaction (em) or of the last thermal emission (trueem), or NaN for no record.
+
+    A velocity from the position of zero and the time of -1 is 0. With a time of NaN, the velocity is NaN
+    and the cell index is null, thus no shell, no range, and no cell holds the packet.
+    """
+    return pl.when(has_emission_record_expr(position)).then(pl.col(f"{position}_time")).otherwise(math.nan)
+
+
 def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the radial velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem)."""
     return (
         pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2 + pl.col(f"{position}_posz") ** 2
-    ).sqrt() / pl.col(f"{position}_time")
+    ).sqrt() / get_emission_time_expr(position)
 
 
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
@@ -156,7 +173,7 @@ def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) 
         pl.col(f"{position}_posx") * pl.col("dirx")
         + pl.col(f"{position}_posy") * pl.col("diry")
         + pl.col(f"{position}_posz") * pl.col("dirz")
-    ) / pl.col(f"{position}_time")
+    ) / get_emission_time_expr(position)
 
 
 def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:
@@ -179,7 +196,7 @@ def get_modelgridindex_expr(
     vmax = float(modelmeta["vmax_cmps"])
 
     def velocity(axis: str) -> pl.Expr:
-        return pl.col(f"{position}_pos{axis}") / pl.col(f"{position}_time")
+        return pl.col(f"{position}_pos{axis}") / get_emission_time_expr(position)
 
     if modelmeta["dimensions"] == 2:
         vwidthrcyl = float(modelmeta["wid_init_rcyl"]) / t_model_s
@@ -629,6 +646,12 @@ def get_packets(
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
         {"stokes2": "stokes_q", "stokes3": "stokes_u"}, strict=False
     )
+
+    if {"true_emission_velocity", "trueem_time"} <= set(pldfpackets.collect_schema().names()):
+        # an old packets file holds a thermal emission velocity of 0 for a packet with no thermal emission record
+        pldfpackets = pldfpackets.with_columns(
+            pl.when(has_emission_record_expr("trueem")).then(pl.col("true_emission_velocity")).otherwise(math.nan)
+        )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
     print(f"  files contain {npkts_total:.2e} packets from {nprocs_read} ranks")

@@ -1373,9 +1373,9 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
 def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> pl.Expr:
     """Return the label of the shell that holds the value of each packet, or null outside every shell.
 
-    A velocity column holds cm/s, and the edges are in km/s. add_shell_columns gives a value of NaN to a
-    packet with no thermal emission record. A packet whose value is null, e.g. from an old cache with no
-    thermal column, has no value either. Such a packet takes the label NOT SET, as the ion grouping
+    A velocity column holds cm/s, and the edges are in km/s. A packet with no thermal emission record
+    has a value of NaN or null, which the packets module gives. A packet from an old cache with no
+    thermal column also has a value of null. Such a packet takes the label NOT SET, as the ion grouping
     gives it.
     """
     scale = 1.0 if unit == "ye" else km_to_cm
@@ -1431,7 +1431,7 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     """Add the packet column that a shell grouping bins, for the last interaction and for the last thermal emission.
 
     A velocity range reads the column of the velocity grouping or of the losvelocity grouping. The
-    thermal column holds NaN for a packet with no thermal emission record.
+    packets module gives NaN or null to the thermal column of a packet with no thermal emission record.
     """
     lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
     packetcolumns = lzdfpackets.collect_schema().names()
@@ -1459,13 +1459,6 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
         lzdfpackets = lzdfpackets.with_columns(**{
             column: get_velocity_expr(position) for column, position in positions
         })
-
-    if usethermal:
-        # ARTIS gives a time of 0 or -1 and a position of 0 to a packet with no thermal emission record.
-        # Thus the velocity from the packets file and the velocity from the position are both 0, and not NaN
-        lzdfpackets = lzdfpackets.with_columns(
-            pl.when(pl.col("trueem_time") > 0).then(pl.col(thermalcolumn)).otherwise(math.nan).alias(thermalcolumn)
-        )
 
     return lzdfpackets
 
