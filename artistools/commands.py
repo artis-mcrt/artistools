@@ -858,6 +858,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-perturb3Dmodel",
     "-plot",
     "-plot_hesma_model",
+    "-plotdimensions",
     "-plotfile",
     "-plotlist",
     "-plotstats",

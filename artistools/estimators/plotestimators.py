@@ -1535,43 +1535,56 @@ def get_slice_values(
     estimators: pl.LazyFrame,
     panels: Sequence[SlicePanel],
     modelmeta: dict[str, t.Any],
-    sliceaxis: str,
+    sliceaxis: str | None,
     timesteps: Collection[int],
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
-    The estimators hold the cells of one plane of a 3D model, which is normal to sliceaxis. An empty cell
-    has no estimators and gives NaN. Each value is the mean over the timesteps with the time widths as weights.
+    With a sliceaxis, the estimators hold the cells of one plane of a 3D model, which is normal to that
+    axis. With no sliceaxis, the grid holds the average around the z axis at each cylindrical radius and
+    each z, on the grid that the reduction of a 3D model to 2D uses. An empty cell has no estimators
+    and gives NaN. Each value is the mean over the cells and the timesteps with volume x time as the weight.
     """
-    plotaxis1, plotaxis2 = (axisname for axisname in "xyz" if axisname != sliceaxis)
     vmax_cmps = float(modelmeta["vmax_cmps"])
 
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
         return ((pl.col(f"vel_{axisname}_mid") + vmax_cmps) / (2.0 * vmax_cmps / ncells)).floor().cast(pl.Int32)
 
-    weight = pl.col("twidth_days")
+    if sliceaxis is None:
+        plotaxis1, plotaxis2 = "rcyl", "z"
+        ncells1 = int(modelmeta["ncoordgridx"]) // 2
+        cellindex1 = (
+            ((pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() / (vmax_cmps / ncells1))
+            .floor()
+            .cast(pl.Int32)
+        )
+    else:
+        plotaxis1, plotaxis2 = (axisname for axisname in "xyz" if axisname != sliceaxis)
+        ncells1 = int(modelmeta[f"ncoordgrid{plotaxis1}"])
+        cellindex1 = cellindex(plotaxis1)
+
+    weight = pl.col("deltavol_deltat")
     dfcells = (
         estimators
         .filter(pl.col("timestep").is_in(list(timesteps)))
-        .group_by("modelgridindex")
+        .with_columns(cellindex1=cellindex1, cellindex2=cellindex(plotaxis2))
+        # a cell in a corner of the cube lies outside the largest cylinder
+        .filter(pl.col("cellindex1") < ncells1)
+        .group_by("cellindex1", "cellindex2")
         .agg(
-            cellindex(plotaxis1).first().alias("cellindex1"),
-            cellindex(plotaxis2).first().alias("cellindex2"),
-            *(
-                # a timestep with no value of the variable must not pull the mean to zero
-                ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(
-                    f"panel{panelindex}"
-                )
-                for panelindex, panel in enumerate(panels)
-            ),
+            # a cell or a timestep with no value of the variable must not pull the mean to zero
+            ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(
+                f"panel{panelindex}"
+            )
+            for panelindex, panel in enumerate(panels)
         )
         .collect()
     )
 
     grids = []
     for panelindex in range(len(panels)):
-        grid = np.full((modelmeta[f"ncoordgrid{plotaxis2}"], modelmeta[f"ncoordgrid{plotaxis1}"]), np.nan)
+        grid = np.full((int(modelmeta[f"ncoordgrid{plotaxis2}"]), ncells1), np.nan)
         grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = (
             dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
         )
@@ -1602,7 +1615,8 @@ def make_slice_figure(
     fig, axesgrid = plt.subplots(
         nrows,
         ncols,
-        figsize=(4.6 * ncols * args.figscale, 4.2 * nrows * args.figscale),
+        # the average around the z axis has half the width of a plane
+        figsize=((3.8 if args.sliceaxis is None else 4.6) * ncols * args.figscale, 4.2 * nrows * args.figscale),
         squeeze=False,
         layout="constrained",
     )
@@ -1614,7 +1628,8 @@ def make_slice_figure(
             if colourscale == "log"
             else mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
         )
-        edges1, edges2 = (np.linspace(-vmax_on_c, vmax_on_c, ncells + 1) for ncells in reversed(grid.shape))
+        edges1 = np.linspace(0.0 if args.sliceaxis is None else -vmax_on_c, vmax_on_c, grid.shape[1] + 1)
+        edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
         # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
         image = ax.pcolormesh(
             edges1,
@@ -1627,19 +1642,21 @@ def make_slice_figure(
         ax.set_facecolor("black")
         ax.tick_params(which="both", color="white")
         ax.set_aspect("equal")
-        ax.set_xlabel(rf"v$_{plotaxis1}$ [$c$]")
+        ax.set_xlabel(r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]")
         ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]")
     for ax in list(axesgrid.flat)[len(panels) :]:
         ax.set_visible(False)
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
     if not args.notitle:
-        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), plane {args.slicelabel}")
+        strslice = "average around the z axis" if args.slice is None else f"plane {args.slicelabel}"
+        fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strslice}")
 
-    outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, SLICEFRAMENAME)
+    outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, IMAGEFRAMENAME)
     outfilename = format_frame_path(
         outpath,
-        slice=args.slicelabel.replace(" ", "").replace("km/s", "kmps"),
+        kind="cylindrical" if args.slice is None else "slice",
+        plane="rz" if args.slice is None else args.slicelabel.replace(" ", "").replace("km/s", "kmps"),
         timestep=strtimestep,
         timedays=strtimedays,
         format=args.format,
@@ -1878,7 +1895,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
             " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
             " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
-            " plane, which is the layer above it for a plane between two layers"
+            " plane, which is the layer above it for a plane between two layers. -slice sets -plotdimensions"
+            " to 2"
+        ),
+    )
+
+    parser.add_argument(
+        "-plotdimensions",
+        type=int,
+        default=1,
+        choices=[1, 2],
+        help=(
+            "The number of independent variables of the plot of a snapshot. 1 plots the variables against -x."
+            " 2 plots each variable of a 3D model as a colour image against two velocities. The image shows the"
+            " average around the z axis at each cylindrical radius and each z, as the reduction of a 3D model to"
+            " 2D does. With -slice, the image shows a plane of the model"
         ),
     )
 
@@ -2016,7 +2047,7 @@ def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
 
 
 SNAPSHOTFRAMENAME = "plotestimators_{timestep}_{timedays}.{format}"
-SLICEFRAMENAME = "plotestimators_slice_{slice}_{timestep}_{timedays}.{format}"
+IMAGEFRAMENAME = "plotestimators_{kind}_{plane}_{timestep}_{timedays}.{format}"
 CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
 
 
@@ -2101,8 +2132,8 @@ def write_snapshot_figures(
     if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
 
-    isslice = args.slice is not None
-    if args.readonlymgi or isslice:
+    isimage = args.plotdimensions == 2
+    if args.readonlymgi or args.slice is not None:
         if not isinstance(args.modelgridindex, list):
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
@@ -2127,7 +2158,7 @@ def write_snapshot_figures(
         frameset = resolve_frameset_paths(
             args.outputfile,
             framecount=len(frames),
-            framename=SLICEFRAMENAME if isslice else SNAPSHOTFRAMENAME,
+            framename=IMAGEFRAMENAME if isimage else SNAPSHOTFRAMENAME,
             productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
             combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
             gifduration=1000.0 if args.makegif else None,
@@ -2135,7 +2166,7 @@ def write_snapshot_figures(
 
         outputfiles = [
             make_slice_figure(modelpath, frame, estimators, plotlist, modelmeta, args, frameset=frameset)
-            if isslice
+            if isimage
             else make_figure(
                 frameset=frameset,
                 modelpath=modelpath,
@@ -2209,10 +2240,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
     if args.slice is not None:
+        args.plotdimensions = 2
+    if args.plotdimensions == 2:
         if args.readonlymgi:
-            exit_with_error("-slice and -readonlymgi each select the cells of the plot", "Give one of the two")
-        # a slice is a snapshot, and its two axes are the velocities in the plane
+            exit_with_error(
+                "-readonlymgi selects cells for a plot against one independent variable",
+                "Remove it, or remove -plotdimensions 2 and -slice",
+            )
+        # a colour image is a snapshot, and its two axes are velocities
         args.x = "velocity"
+        args.sliceaxis = None
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 
@@ -2225,6 +2262,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.slice is not None:
         select_cells_of_slice(args, modelpath)
+    elif args.plotdimensions == 2:
+        if get_modeldata(modelpath)[1]["dimensions"] != 3:
+            exit_with_error("-plotdimensions 2 needs a 3D model", "Remove it to plot against the velocity")
+        print("Getting the average around the z axis from all the cells")
     elif args.readonlymgi:
         select_cells_along_axis(args)
 
@@ -2244,7 +2285,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         report_data_available(modelpath, classicartis=args.classicartis)
         return
 
-    if args.modelgridindex is None:
+    # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
+    if args.modelgridindex is None and args.plotdimensions == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))

@@ -1882,6 +1882,47 @@ def test_estimator_slice_of_3d_model(
         assert np.isclose(tegrid[(modelgridindex // 10) % 10, modelgridindex % 10], cellte)
 
 
+def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
+    """-plotdimensions 2 gives the mean of the cells in each ring of cylindrical radius and z."""
+    with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath_classic_3d,
+            plotlist=[["Te"]],
+            outputfile=tmp_path,
+            timestep="8",
+            plotdimensions=2,
+        )
+    assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
+    _, edges1, edges2, tegrid = next(call.args for call in mockmesh.call_args_list if np.shape(call.args[3]) == (10, 5))
+    assert np.isclose(edges1[0], 0.0)
+    assert np.isclose(edges1[-1], edges2[-1])
+    assert np.isclose(edges2[0], -edges2[-1])
+
+    # each cell of the test model has the same volume, thus the weighted mean is the plain mean of the ring
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    ringwidth = modelmeta["vmax_cmps"] / 5
+    dfexpected = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .select("modelgridindex", "Te")
+        .join(lzmodel.select("modelgridindex", "vel_x_mid", "vel_y_mid"), on="modelgridindex", how="inner")
+        .with_columns(
+            ir=((pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() / ringwidth).floor().cast(pl.Int32),
+            iz=pl.col("modelgridindex") // 100,
+        )
+        .filter(pl.col("ir") < 5)
+        .group_by("ir", "iz")
+        .agg(pl.col("Te").mean())
+        .collect()
+    )
+    assert dfexpected.height > 10
+    assert int(np.isfinite(tegrid.filled(np.nan)).sum()) == dfexpected.height
+    for ir, iz, ringte in dfexpected.iter_rows():
+        assert np.isclose(tegrid[iz, ir], ringte, rtol=1e-5)
+
+
 def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) -> None:
     """-slice stops the command for a 1D model, for text that names no plane, and for a plane outside the model."""
     with pytest.raises(SystemExit):
