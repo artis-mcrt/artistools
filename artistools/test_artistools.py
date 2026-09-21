@@ -285,19 +285,22 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert dfstats["npoints"].item() == 2
     assert np.isclose(dfstats["rms"].item(), math.sqrt((4.0 + 9.0) / 2.0))
     assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / ((22.0 + 33.0) / 2.0))
-    # the panel shows model / reference: 24 / 22 and 30 / 33
-    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
+    # the panel shows model minus reference: 24 - 22 and 30 - 33
+    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[1:], [2.0, -3.0])
 
-    # a magnitude gives the flux ratio, and a ratio of the RMS to the mean reference value has no meaning
-    _fig, magaxis = plt.subplots()
-    dfmagstats = at.plottools.plot_residual_panel(magaxis, [masked, model], 0.0, 20.0, ismagnitude=True)
+    # a main frame with a log y axis takes model / reference: 24 / 22 and 30 / 33
+    _fig, ratioaxis = plt.subplots()
+    at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ratio=True)
+    assert np.allclose(np.asarray(ratioaxis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
+
+    # a ratio of the RMS to the mean reference value has no meaning for a magnitude
+    dfmagstats = at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, relative=False)
     assert dfmagstats["rms_relative"].item() is None
-    assert np.allclose(np.asarray(magaxis.lines[0].get_ydata())[1:], 10.0 ** (-0.4 * np.array([2.0, -3.0])))
 
 
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
 def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
-    """The panel shows model / reference, on a log y axis only when a ratio or its inverse is above 50."""
+    """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
     x = np.array([1.0, 2.0, 3.0, 4.0])
     yreference = np.array([1.0, 2.0, 4.0, 8.0])
     factors = np.array([1.0, 1.0, modelfactor, modelfactor])
@@ -305,7 +308,7 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
         at.plottools.ResidualSeries("obs", x, yreference, "k", isreference=True),
         at.plottools.ResidualSeries("model", x, yreference * factors, "C0", isreference=False),
     ]
-    args = argparse.Namespace()
+    args = argparse.Namespace(logscaley=True)
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
@@ -314,8 +317,8 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
     assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
 
 
-def test_ratio_panel_keeps_outliers_out_of_the_y_range() -> None:
-    """The y range of the panel holds the central 95 % of the ratios, thus one outlier does not set it."""
+def test_residual_panel_keeps_outliers_out_of_the_y_range() -> None:
+    """The y range of the panel holds the central 95 % of the residuals, thus one outlier does not set it."""
     x = np.linspace(1.0, 2.0, 200)
     modely = np.full(200, 1.5)
     modely[100] = 1000.0
@@ -329,8 +332,9 @@ def test_ratio_panel_keeps_outliers_out_of_the_y_range() -> None:
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert residualaxis.get_yscale() == "linear"
     ymin, ymax = residualaxis.get_ylim()
-    assert ymin < 1.0
-    assert 1.5 < ymax < 2.0
+    assert ymin < 0.0
+    assert 0.5 < ymax < 1.0
+    assert residualaxis.get_ylabel().startswith("model $-$ ref")
 
 
 def test_frame_figure_takes_a_shorter_row() -> None:

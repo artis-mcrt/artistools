@@ -1870,11 +1870,8 @@ def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytes
             write_data=True,
             outputfile=tmp_path,
         )
-        # the panel shows the flux ratio, where a brighter model lies higher, as in the inverted main frame
-        mainaxis, residualaxis = mocksave.call_args.args[0].axes
-        assert mainaxis.yaxis_inverted()
-        assert not residualaxis.yaxis_inverted()
-        assert residualaxis.get_ylabel() == "flux ratio\nmodel / ref"
+        # a fainter model lies below the reference in the main frame, thus it must also lie below zero in the panel
+        assert all(axis.yaxis_inverted() for axis in mocksave.call_args.args[0].axes)
         dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
         assert dfstats["npoints"].item() == 3
         assert dfstats["rms"].item() > 0.0

@@ -1380,8 +1380,8 @@ def write_fake_observed_spectrum(folder: Path) -> Path:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectra_residual_panel_gives_the_ratio_to_the_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """An observed flux of 1.1 times the model gives a ratio of 1 / 1.1 at each point."""
+def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """An observed flux of 1.1 times the model gives a residual below zero, and a ratio of 1 / 1.1 with --logscaley."""
     obsfile = write_fake_observed_spectrum(tmp_path)
     at.spectra.plot(
         argsraw=[],
@@ -1398,7 +1398,20 @@ def test_spectra_residual_panel_gives_the_ratio_to_the_reference(mockplot: mock.
     assert dfstats["rms"].item() > 0.0
     assert 0.0 < dfstats["rms_relative"].item() < 0.1 / 1.1 * 3.0
 
-    # the last plot call draws model / reference, and a reference flux of zero gives a gap
+    # the last plot call draws the residual line: the model is below the observed flux at each point
+    residual = np.asarray(mockplot.call_args_list[-1].args[2])
+    assert (residual <= 0.0).all()
+    assert (residual < 0.0).any()
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residuals=True,
+        logscaley=True,
+        outputfile=tmp_path / "ratio.pdf",
+    )
+    # a reference flux of zero gives a gap
     ratio = np.asarray(mockplot.call_args_list[-1].args[2])
     assert np.isfinite(ratio).any()
     assert np.allclose(ratio[np.isfinite(ratio)], 1.0 / 1.1)
