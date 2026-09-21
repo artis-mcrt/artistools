@@ -824,8 +824,6 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-mergecells",
     "-mergerroot",
     "-mgi",
-    "-modeldim",
-    "-modeldimensions",
     "-modelgridindex",
     "-modelname",
     "-modelpath",

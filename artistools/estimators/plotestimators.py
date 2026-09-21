@@ -1935,15 +1935,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
             " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
             " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
-            " plane, which is the layer above it for a plane between two layers. A plane sets -modeldimensions"
+            " plane, which is the layer above it for a plane between two layers. A plane sets -dimensionreduce"
             " to 2. Two axes give a line, e.g. -slice z=0,y=0 for the cells along the x axis. A line sets"
-            " -modeldimensions to 1, and the plot shows the variables against the velocity on that axis"
+            " -dimensionreduce to 1, and the plot shows the variables against the velocity on that axis"
         ),
     )
 
     parser.add_argument(
-        "-modeldimensions",
-        "-modeldim",
+        "-dimensionreduce",
         "-dim",
         type=int,
         default=1,
@@ -1952,7 +1951,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Show the model in this number of dimensions for the plot of a snapshot. 1 gives the average in"
             " each shell of radial velocity, which the plot shows against -x. 2 shows each variable as a colour"
             " image at each cylindrical radius and each z. A 3D model gives the average around the z axis, as"
-            " the reduction of a model file does, and a 1D model gives the value of its shell at each point."
+            " -dimensionreduce 2 of makeartismodel does, and a 1D model gives the value of its shell at each point."
             " With -slice, the image shows a plane of a 3D model"
         ),
     )
@@ -2188,7 +2187,7 @@ def write_snapshot_figures(
     if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
 
-    isimage = args.modeldimensions == 2
+    isimage = args.dimensionreduce == 2
     if args.readonlymgi or args.slice is not None:
         if not isinstance(args.modelgridindex, list):
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
@@ -2298,17 +2297,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.slice is not None:
         conditions = parse_slice_argument(args.slice)
         # one condition is a plane, and two conditions are a line along the axis that stays
-        args.modeldimensions = 2 if len(conditions) == 1 else 1
+        args.dimensionreduce = 2 if len(conditions) == 1 else 1
         if len(conditions) == 2:
             if args.readonlymgi:
                 exit_with_error("-slice and -readonlymgi each select the cells of the plot", "Give one of the two")
             lineaxis = next(axisname for axisname in "xyz" if axisname not in {c[0] for c in conditions})
             if args.x is None:
                 args.x = f"vel_{lineaxis}_mid_on_c"
-    if args.modeldimensions == 2:
+    if args.dimensionreduce == 2:
         if args.readonlymgi:
             exit_with_error(
-                "-readonlymgi selects cells for a plot against -x", "Remove it, or remove -modeldimensions 2 and -slice"
+                "-readonlymgi selects cells for a plot against -x", "Remove it, or remove -dimensionreduce 2 and -slice"
             )
         # a colour image is a snapshot, and its two axes are velocities
         args.x = "velocity"
@@ -2345,7 +2344,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
-    if args.modelgridindex is None and args.modeldimensions == 1:
+    if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
