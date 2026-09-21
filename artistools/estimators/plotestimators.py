@@ -1623,6 +1623,9 @@ def make_slice_figure(
             norm=norm,
         )
         fig.colorbar(image, ax=ax, label=panel.label)
+        # an empty cell has no value, and black sets it apart from the lowest colour of the scale
+        ax.set_facecolor("black")
+        ax.tick_params(which="both", color="white")
         ax.set_aspect("equal")
         ax.set_xlabel(rf"v$_{plotaxis1}$ [$c$]")
         ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]")

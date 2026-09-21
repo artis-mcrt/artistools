@@ -1863,7 +1863,8 @@ def test_estimator_slice_of_3d_model(
     # each colour bar also calls pcolormesh, thus a panel is a call with the grid of the model
     panelcalls = [call for call in mockpcolormesh.call_args_list if np.shape(call.args[3]) == (10, 10)]
     assert len(panelcalls) == 2
-    _, edges1, edges2, tegrid = panelcalls[0].args
+    panelaxis, edges1, edges2, tegrid = panelcalls[0].args
+    assert panelaxis.get_facecolor() == (0.0, 0.0, 0.0, 1.0)
     assert len(edges1) == len(edges2) == 11
     assert tegrid.shape == (10, 10)
 
