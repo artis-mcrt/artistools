@@ -1496,7 +1496,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         ncol=legendncol,
         numpoints=1,
         columnspacing=1.0,
-        labelcolor="linecolor",
     )
 
     if leg is not None:
