@@ -1883,7 +1883,7 @@ def test_estimator_slice_of_3d_model(
 
 
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
-    """-plotdimensions 2 gives the mean of the cells in each ring of cylindrical radius and z."""
+    """-modeldimensions 2 gives the mean of the cells in each ring of cylindrical radius and z."""
     with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
         at.estimators.plot(
             argsraw=[],
@@ -1891,7 +1891,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
             plotlist=[["Te"]],
             outputfile=tmp_path,
             timestep="8",
-            plotdimensions=2,
+            modeldimensions=2,
         )
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
     _, edges1, edges2, tegrid = next(call.args for call in mockmesh.call_args_list if np.shape(call.args[3]) == (10, 5))
@@ -1921,6 +1921,49 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert int(np.isfinite(tegrid.filled(np.nan)).sum()) == dfexpected.height
     for ir, iz, ringte in dfexpected.iter_rows():
         assert np.isclose(tegrid[iz, ir], ringte, rtol=1e-5)
+
+
+def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model(tmp_path: Path) -> None:
+    """-modeldimensions 2 of a 1D model gives each point of cylindrical radius and z the value of its shell."""
+    with mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True) as mockmesh:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=CLASSIC1DPATH,
+            plotlist=[["Te"]],
+            outputfile=tmp_path,
+            timestep="24",
+            classicartis=True,
+            modeldimensions=2,
+        )
+    _, edges1, edges2, tegrid = next(call.args for call in mockmesh.call_args_list if np.ndim(call.args[3]) == 2)
+    tegrid = tegrid.filled(np.nan)
+    assert tegrid.shape == (len(edges2) - 1, len(edges1) - 1)
+
+    lzmodel, modelmeta = at.get_modeldata(CLASSIC1DPATH)
+    dfshells = (
+        at
+        .scan_estimators(CLASSIC1DPATH, timestep=24, classicartis=True)
+        .select("modelgridindex", "Te")
+        .join(
+            at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(
+                "modelgridindex", "vel_r_min", "vel_r_max"
+            ),
+            on="modelgridindex",
+            how="inner",
+        )
+        .collect()
+    )
+    assert dfshells.height > 1
+    rmid, zmid = np.meshgrid((edges1[:-1] + edges1[1:]) / 2.0, (edges2[:-1] + edges2[1:]) / 2.0)
+    pointradius_cmps = np.hypot(rmid, zmid) * 29979245800.0
+    hasshell = np.zeros(tegrid.shape, dtype=bool)
+    for _, shellte, vel_r_min, vel_r_max in dfshells.iter_rows():
+        inshell = (pointradius_cmps >= vel_r_min) & (pointradius_cmps < vel_r_max)
+        assert inshell.any()
+        assert np.allclose(tegrid[inshell], shellte)
+        hasshell |= inshell
+    # a shell with no estimators stays empty
+    assert np.isnan(tegrid[~hasshell]).all()
 
 
 def test_estimator_slice_needs_a_3d_model_and_a_plane_inside_it(tmp_path: Path) -> None:

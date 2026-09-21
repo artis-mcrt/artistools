@@ -1531,6 +1531,48 @@ def get_slice_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
     return panels
 
 
+def get_panel_means(panels: Sequence[SlicePanel]) -> list[pl.Expr]:
+    """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight."""
+    weight = pl.col("deltavol_deltat")
+    return [
+        # a cell or a timestep with no value of the variable must not pull the mean to zero
+        ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(f"panel{panelindex}")
+        for panelindex, panel in enumerate(panels)
+    ]
+
+
+def get_shell_values_on_rz_grid(
+    estimators: pl.LazyFrame, panels: Sequence[SlicePanel], vmax_cmps: float, timesteps: Collection[int]
+) -> "list[npt.NDArray[np.float64]]":
+    """Return the grid of values of each panel for a 1D model, which gives each point the value of its shell."""
+    dfshells = (
+        estimators
+        .filter(pl.col("timestep").is_in(list(timesteps)))
+        .group_by("modelgridindex")
+        .agg(pl.col("vel_r_min").first(), pl.col("vel_r_max").first(), *get_panel_means(panels))
+        .sort("vel_r_min")
+        .collect()
+    )
+    nradialpoints = 200
+    pointwidth = vmax_cmps / nradialpoints
+    vel_rcyl, vel_z = np.meshgrid(
+        (np.arange(nradialpoints) + 0.5) * pointwidth, (np.arange(2 * nradialpoints) + 0.5) * pointwidth - vmax_cmps
+    )
+    pointradius = np.hypot(vel_rcyl, vel_z)
+    shellindex = np.searchsorted(dfshells["vel_r_max"].to_numpy(), pointradius, side="right")
+    # an empty shell has no estimators, thus a point between two shells that have them lies in neither
+    shellindex_clipped = np.minimum(shellindex, dfshells.height - 1)
+    isinshell = (shellindex < dfshells.height) & (pointradius >= dfshells["vel_r_min"].to_numpy()[shellindex_clipped])
+    return [
+        np.where(
+            isinshell,
+            dfshells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()[shellindex_clipped],
+            np.nan,
+        )
+        for panelindex in range(len(panels))
+    ]
+
+
 def get_slice_values(
     estimators: pl.LazyFrame,
     panels: Sequence[SlicePanel],
@@ -1542,10 +1584,13 @@ def get_slice_values(
 
     With a sliceaxis, the estimators hold the cells of one plane of a 3D model, which is normal to that
     axis. With no sliceaxis, the grid holds the average around the z axis at each cylindrical radius and
-    each z, on the grid that the reduction of a 3D model to 2D uses. An empty cell has no estimators
-    and gives NaN. Each value is the mean over the cells and the timesteps with volume x time as the weight.
+    each z, on the grid that the reduction of a 3D model to 2D uses. A 2D model has this grid already, and
+    a 1D model gives the value of its shell at each point. An empty cell has no estimators and gives NaN.
+    Each value is the mean over the cells and the timesteps with volume x time as the weight.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    if modelmeta["dimensions"] == 1:
+        return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
 
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
@@ -1553,18 +1598,15 @@ def get_slice_values(
 
     if sliceaxis is None:
         plotaxis1, plotaxis2 = "rcyl", "z"
-        ncells1 = int(modelmeta["ncoordgridx"]) // 2
-        cellindex1 = (
-            ((pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() / (vmax_cmps / ncells1))
-            .floor()
-            .cast(pl.Int32)
-        )
+        is3d = modelmeta["dimensions"] == 3
+        ncells1 = int(modelmeta["ncoordgridx"]) // 2 if is3d else int(modelmeta["ncoordgridrcyl"])
+        vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() if is3d else pl.col("vel_rcyl_mid")
+        cellindex1 = (vel_rcyl_mid / (vmax_cmps / ncells1)).floor().cast(pl.Int32)
     else:
         plotaxis1, plotaxis2 = (axisname for axisname in "xyz" if axisname != sliceaxis)
         ncells1 = int(modelmeta[f"ncoordgrid{plotaxis1}"])
         cellindex1 = cellindex(plotaxis1)
 
-    weight = pl.col("deltavol_deltat")
     dfcells = (
         estimators
         .filter(pl.col("timestep").is_in(list(timesteps)))
@@ -1572,13 +1614,7 @@ def get_slice_values(
         # a cell in a corner of the cube lies outside the largest cylinder
         .filter(pl.col("cellindex1") < ncells1)
         .group_by("cellindex1", "cellindex2")
-        .agg(
-            # a cell or a timestep with no value of the variable must not pull the mean to zero
-            ((panel.colexpr * weight).sum() / weight.filter(panel.colexpr.is_not_null()).sum()).alias(
-                f"panel{panelindex}"
-            )
-            for panelindex, panel in enumerate(panels)
-        )
+        .agg(get_panel_means(panels))
         .collect()
     )
 
@@ -1649,7 +1685,9 @@ def make_slice_figure(
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
     if not args.notitle:
-        strslice = "average around the z axis" if args.slice is None else f"plane {args.slicelabel}"
+        strslice = f"plane {args.slicelabel}" if args.slice is not None else "cylindrical radius and z"
+        if args.slice is None and modelmeta["dimensions"] == 3:
+            strslice = "average around the z axis"
         fig.suptitle(f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strslice}")
 
     outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, IMAGEFRAMENAME)
@@ -1895,21 +1933,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
             " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as a"
             " fraction of c, e.g. -slice z=0 or -slice z=-0.2c. The plot shows the layer of cells that holds the"
-            " plane, which is the layer above it for a plane between two layers. -slice sets -plotdimensions"
+            " plane, which is the layer above it for a plane between two layers. -slice sets -modeldimensions"
             " to 2"
         ),
     )
 
     parser.add_argument(
-        "-plotdimensions",
+        "-modeldimensions",
         type=int,
         default=1,
         choices=[1, 2],
         help=(
-            "The number of independent variables of the plot of a snapshot. 1 plots the variables against -x."
-            " 2 plots each variable of a 3D model as a colour image against two velocities. The image shows the"
-            " average around the z axis at each cylindrical radius and each z, as the reduction of a 3D model to"
-            " 2D does. With -slice, the image shows a plane of the model"
+            "Show the model in this number of dimensions for the plot of a snapshot. 1 gives the average in"
+            " each shell of radial velocity, which the plot shows against -x. 2 shows each variable as a colour"
+            " image at each cylindrical radius and each z. A 3D model gives the average around the z axis, as"
+            " the reduction of a model file does, and a 1D model gives the value of its shell at each point."
+            " With -slice, the image shows a plane of a 3D model"
         ),
     )
 
@@ -2132,7 +2171,7 @@ def write_snapshot_figures(
     if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
 
-    isimage = args.plotdimensions == 2
+    isimage = args.modeldimensions == 2
     if args.readonlymgi or args.slice is not None:
         if not isinstance(args.modelgridindex, list):
             args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
@@ -2240,12 +2279,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
     if args.slice is not None:
-        args.plotdimensions = 2
-    if args.plotdimensions == 2:
+        args.modeldimensions = 2
+    if args.modeldimensions == 2:
         if args.readonlymgi:
             exit_with_error(
-                "-readonlymgi selects cells for a plot against one independent variable",
-                "Remove it, or remove -plotdimensions 2 and -slice",
+                "-readonlymgi selects cells for a plot against -x", "Remove it, or remove -modeldimensions 2 and -slice"
             )
         # a colour image is a snapshot, and its two axes are velocities
         args.x = "velocity"
@@ -2262,10 +2300,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.slice is not None:
         select_cells_of_slice(args, modelpath)
-    elif args.plotdimensions == 2:
-        if get_modeldata(modelpath)[1]["dimensions"] != 3:
-            exit_with_error("-plotdimensions 2 needs a 3D model", "Remove it to plot against the velocity")
-        print("Getting the average around the z axis from all the cells")
     elif args.readonlymgi:
         select_cells_along_axis(args)
 
@@ -2286,7 +2320,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
-    if args.modelgridindex is None and args.plotdimensions == 1:
+    if args.modelgridindex is None and args.modeldimensions == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
