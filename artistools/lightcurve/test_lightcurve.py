@@ -8,6 +8,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
+import matplotlib.legend as mpllegend
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import numpy as np
@@ -683,6 +684,28 @@ def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> N
         for artist in (handle.get_children() if isinstance(handle, ErrorbarContainer) else [handle])
     ]
     assert len({artist.get_zorder() for artist in seriesartists}) == 1
+
+
+def test_lightcurve_plot_legend_labels_take_the_series_colours() -> None:
+    """Each legend label has the colour of its series, for a model line and for a series with error bars."""
+    legends: list[mpllegend.Legend] = []
+    drawlegend = mplax.Axes.legend
+
+    def keep_legend(axis: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> mpllegend.Legend:
+        legends.append(drawlegend(axis, *args, **kwargs))
+        return legends[-1]
+
+    with mock.patch.object(mplax.Axes, "legend", side_effect=keep_legend, autospec=True):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
+            color=["0.0", "tab:red", "0.4"],
+            outputfile=outputpath,
+        )
+
+    (legend,) = legends
+    labelcolours = [mplcolors.to_hex(text.get_color()) for text in legend.get_texts()]
+    assert labelcolours == [mplcolors.to_hex(color) for color in ("0.0", "tab:red", "0.4")]
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
