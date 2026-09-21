@@ -58,6 +58,7 @@ from artistools.misc.cliutils import resolve_positional_modelpath as resolve_pos
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
+from artistools.misc.cliutils import suggest_flags as suggest_flags
 from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument

@@ -234,6 +234,7 @@ subcommandtree: CommandTree = {
         helptext="Plot ARTIS estimators.",
         examples=(
             ("Te TR . -t 300", "two estimator variables against velocity"),
+            ("Te TR . -t 300 -dim 2", "each variable as a colour image at each cylindrical radius and z"),
             (". --listvariables", "every variable that a model holds"),
         ),
         aliases=("estimators",),
@@ -704,7 +705,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Report an error of argparse in the same two-part shape, with a suggestion where one fits."""
         import re
 
-        from artistools.misc import suggest_names
+        from artistools.misc import suggest_flags
 
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant
@@ -714,15 +715,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # argparse names the whole token, thus "-ti=300" carries its value. The flag alone
             # matches a name and gives a suggestion
             given = ambiguous.group(1).partition("=")[0]
-            # the user gave the start of a longer name, thus a flag that starts with it beats the
-            # closest name of difflib, which gave "-d" for "-dim" on a command that takes
-            # -dimensionreduce. addarg_collidingflags declares the names of the other commands,
-            # which get_visible_flags leaves out, thus the suggestion names a flag of this command
-            visible = self.get_visible_flags()
-            # the shortest names first, and three of them, as suggest_names gives. "-ti" on
-            # plotspectra starts 13 flags, and a line of every one says less than a line of three
-            starts = sorted(sorted(flag for flag in visible if flag.startswith(given)), key=len)
-            helptext = f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(given, visible)
+            # addarg_collidingflags declares the names of the other commands, which get_visible_flags
+            # leaves out, thus the suggestion names a flag of this command
+            helptext = suggest_flags(given, self.get_visible_flags())
 
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
 
@@ -754,6 +749,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-deltalogx",
     "-deltax",
     "-dilution_factor",
+    "-dim",
     "-dimensionreduce",
     "-dimensions",
     "-dirbin",
@@ -881,6 +877,7 @@ SINGLEDASHLONGFLAGS = frozenset({
     "-selected_timesteps",
     "-setgrid_fractionrmax",
     "-sigma_v",
+    "-slice",
     "-snapshot",
     "-sort",
     "-species",

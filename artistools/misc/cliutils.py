@@ -409,7 +409,7 @@ class UnsupportedArgument(argparse.Action):
         parser.exit_with_help(
             f"{option_string} is not an argument of this command",
             helptext
-            or suggest_names(str(option_string), parser.get_visible_flags())
+            or suggest_flags(str(option_string), parser.get_visible_flags())
             or f"Run `{parser.prog} --help` to see every argument",
         )
 
@@ -627,6 +627,17 @@ def suggest_names(name: str, candidates: "Collection[str]") -> str:
     matches = difflib.get_close_matches(name, names, n=3, cutoff=0.6)
 
     return f"Did you mean {', '.join(matches)}?" if matches else ""
+
+
+def suggest_flags(given: str, visibleflags: "Collection[str]") -> str:
+    """Return a sentence that names the flags that the user possibly meant, or an empty string.
+
+    The user can give the start of a longer name, e.g. -dim for -dimensionreduce, thus a flag that starts
+    with the given text comes before the closest name of difflib, which gave "-d". The shortest names
+    come first, and three of them, as suggest_names gives: "-ti" on plotspectra starts 13 flags.
+    """
+    starts = sorted(sorted(flag for flag in visibleflags if flag.startswith(given)), key=len)
+    return f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(given, visibleflags)
 
 
 def print_error(message: str, helptext: str = "") -> None:
