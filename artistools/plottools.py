@@ -103,7 +103,9 @@ type AxesTree = mplax.Axes | Iterable[AxesTree]
 if t.TYPE_CHECKING:
     from pathlib import Path
 
+    import matplotlib.artist as mplartist
     import matplotlib.legend as mpllegend
+    import matplotlib.legend_handler as mpllegendhandler
     import matplotlib.typing as mplt
     import numpy as np
     import numpy.typing as npt
@@ -560,7 +562,36 @@ def set_legend(
     if getattr(args, "nolegend", False):
         return None
 
+    if "handles" not in legendkwargs:
+        legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(
+            ax, legendkwargs.get("handler_map")
+        )
+
     return ax.legend(**legendkwargs)
+
+
+def get_legend_entries_in_draw_order(
+    ax: mplax.Axes, handler_map: "dict[t.Any, mpllegendhandler.HandlerBase] | None" = None
+) -> "tuple[list[mplartist.Artist], list[str]]":
+    """Return the legend handles and labels of the axes in the order that the axes received them.
+
+    Matplotlib lists the lines first, then the scatter points, then the error bars. Thus a reference
+    series with markers moves below each model line, and the legend shows a different order from the
+    command line.
+    """
+    import matplotlib.container as mplcontainer
+
+    handles, labels = ax.get_legend_handles_labels(handler_map)
+    children = ax.get_children()
+
+    def get_draw_index(entry: "tuple[mplartist.Artist, str]") -> int:
+        handle = entry[0]
+        # the axes holds the parts of a container in place of the container, e.g. the markers of an error bar
+        artist = handle.get_children()[0] if isinstance(handle, mplcontainer.Container) else handle
+        return children.index(artist)
+
+    entries = sorted(zip(handles, labels, strict=True), key=get_draw_index)
+    return [handle for handle, _ in entries], [label for _, label in entries]
 
 
 def get_unused_colors(

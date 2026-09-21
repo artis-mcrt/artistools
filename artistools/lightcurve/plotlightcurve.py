@@ -10,6 +10,7 @@ from pathlib import Path
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
+import matplotlib.lines as mpllines
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import numpy as np
@@ -221,7 +222,8 @@ def plot_bol_reflightcurve(
             dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
             lumunit,
         )
-        axis.errorbar(time_days, yvalues, yerr=yerr, fmt="o", capsize=3, label=plotlabel, color=color, zorder=0)
+        errorbars = axis.errorbar(time_days, yvalues, yerr=yerr, fmt="o", capsize=3, label=plotlabel, color=color)
+        refartists = errorbars.get_children()
         if unbounded.any():
             # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
             # second, zero-length bar whose arrow head sits on the point the bar above already reaches
@@ -232,7 +234,6 @@ def plot_bol_reflightcurve(
                 lolims=True,
                 fmt="none",
                 color=color,
-                zorder=0,
             )
             # matplotlib picks the direction of the arrow from the orientation of the axis as it is now, and
             # a magnitude axis is inverted only after every series is drawn, so point it at the faint side.
@@ -240,8 +241,14 @@ def plot_bol_reflightcurve(
             caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
             for capline in limitbars.lines[1]:
                 capline.set_marker(caretdown)
+            refartists += limitbars.get_children()
     else:
-        axis.scatter(time_days, yvalues, label=plotlabel, color=color, zorder=0)
+        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color)]
+
+    # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
+    # the series in the order of the command line
+    for artist in refartists:
+        artist.set_zorder(mpllines.Line2D.zorder)
 
     if residualseries is not None:
         residualseries.append(
