@@ -1,5 +1,7 @@
 """ARTIS model folder information: input parameters, run folders, and MPI rank mappings."""
 
+import contextlib
+import math
 import re
 import typing as t
 from collections.abc import Iterable
@@ -184,6 +186,22 @@ def get_model_logname(path: Path | str, label: str | None = None) -> str:
     return label if label == modelname == foldername else f"{label} (folder {foldername})"
 
 
+def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
+    """Return the one or two cell counts from the first line of model.txt after the comments.
+
+    One number is the cell count. Two numbers are the 2D counts along the cylindrical radius and along
+    the z axis. The line can end with an inline comment, as the lines of input.txt do.
+    """
+    cellcounts: list[int] = []
+    # a token that is not an integer leaves the list empty, and the error below then names the file
+    with contextlib.suppress(ValueError):
+        cellcounts = [int(token) for token in line.split("#", 1)[0].split()]
+    if len(cellcounts) not in {1, 2}:
+        msg = f"The first line of {modelfilepath} after the comments must hold one or two integers, not {line!r}"
+        raise ValueError(msg)
+    return cellcounts
+
+
 @lru_cache(maxsize=8)
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
@@ -191,10 +209,7 @@ def get_npts_model(modelpath: Path) -> int:
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        nptsline = readnoncommentline(modelfile).split(maxsplit=1)
-        if len(nptsline) == 1:
-            return int(nptsline[0])
-        return int(nptsline[0]) * int(nptsline[1])
+        return math.prod(parse_npts_line(readnoncommentline(modelfile), modelfilepath))
 
 
 def get_inputfilepath(modelpath: Path | str) -> Path:

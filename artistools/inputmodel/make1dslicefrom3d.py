@@ -1,16 +1,21 @@
 """Extract a 1D ARTIS model from the cells of a 3D model that lie along one coordinate axis."""
 
 import argparse
-import math
 import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import polars as pl
+
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel.core import get_initelemabundances
+from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import LOGRHO_FROM_RHO
+from artistools.inputmodel.core import save_initelemabundances
+from artistools.inputmodel.core import save_modeldata
 from artistools.misc import parse_cli_args
-from artistools.misc import print_warning
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -56,128 +61,72 @@ def slice_3dmodel(
     inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
     """Write a 1D model.txt from the cells along chosenaxis, and return the 3D-to-1D cell id map and plot data."""
-    xlist: list[float] = []
-    ylists: list[list[float]] = [[], [], []]
-    listout: list[str] = []
-    dict3dcellidto1dcellid = {}
-    outcellid = 0
-    with Path(inputfolder, "model.txt").open(encoding="utf-8") as fmodelin:
-        npts_model3d = int(fmodelin.readline())
-        t_model = fmodelin.readline()  # days
-        vmax_cmps = float(fmodelin.readline())
+    dfmodel3d, modelmeta3d = get_modeldata(inputfolder)
+    if modelmeta3d["dimensions"] != 3:
+        msg = f"The model in {inputfolder} has {modelmeta3d['dimensions']} dimensions, but the slice needs a 3D model"
+        raise ValueError(msg)
+    t_model_s = modelmeta3d["t_model_init_days"] * day_to_s
+    wid_init = modelmeta3d["wid_init"]
 
-        # pos_min is the inner face of a cell, but the 1D model gives the outer boundary of a shell.
-        # The cell width makes that outer face, thus the first shell holds a volume
-        ncoordgrid = round(npts_model3d ** (1 / 3))
-        assert ncoordgrid**3 == npts_model3d, f"{npts_model3d} cells do not make a cubic grid"
-        wid_init = 2 * vmax_cmps * float(t_model) * day_to_s / ncoordgrid
+    # A grid with an even cell count has a cell face on the axis, and the slice takes the cell on the positive
+    # side. With an odd count, the axis goes through the middle of a cell. The reader gives Float32
+    # positions, thus a face counts as on the axis within a small part of the cell width
+    postolerance = 1e-3 * wid_init
+    dfslice = (
+        dfmodel3d
+        .filter(
+            *(
+                pl.col(f"pos_{ax}_min").is_between(-wid_init + postolerance, postolerance, closed="left")
+                for ax in "xyz"
+                if ax != chosenaxis
+            ),
+            pl.col(f"pos_{chosenaxis}_min") >= -wid_init + postolerance,
+        )
+        .sort("inputcellid")
+        .with_columns(
+            # pos_min is the inner face of a cell, but the 1D model gives the outer boundary of a shell.
+            # The cell width makes that outer face, thus the first shell holds a volume
+            vel_r_max_kmps=(pl.col(f"pos_{chosenaxis}_min") + wid_init) / t_model_s / km_to_cm,
+            logrho=LOGRHO_FROM_RHO,
+        )
+        .collect()
+    )
+    dict3dcellidto1dcellid = {cellid3d: cellid1d for cellid1d, cellid3d in enumerate(dfslice["inputcellid"], start=1)}
+    dfslice = dfslice.with_columns(inputcellid=pl.int_range(1, pl.len() + 1, dtype=pl.Int32))
 
-        while True:
-            # two lines making up a model grid cell
-            block = fmodelin.readline(), fmodelin.readline()
+    save_modeldata(
+        dfslice,
+        outpath=outputfolder,
+        dimensions=1,
+        t_model_init_days=modelmeta3d["t_model_init_days"],
+        headercommentlines=[
+            *modelmeta3d["headercommentlines"],
+            f"slice of a 3D model along the positive {chosenaxis} axis",
+        ],
+    )
 
-            if not block[0] or not block[1]:
-                break
-
-            cell: dict[str, float | str] = {}
-            blocksplit = block[0].split(), block[1].split()
-            if len(blocksplit[0]) == 5:
-                (cell["cellid"], cell["pos_x_min"], cell["pos_y_min"], cell["pos_z_min"], cell["rho"]) = blocksplit[0]
-            else:
-                print("Wrong line size")
-                sys.exit()
-
-            if len(blocksplit[1]) == 5:
-                (cell["ffe"], cell["f56ni"], cell["fco"], cell["f52fe"], cell["f48cr"]) = map(float, blocksplit[1])
-            else:
-                print("Wrong line size")
-                sys.exit()
-
-            # a cell is on the chosen positive axis when its two other coordinates are zero. Compare the parsed
-            # numbers, not their text: model.txt is written in several formats (e.g. "0.0000000" or "0.0000e0")
-            positions = {ax: float(cell[f"pos_{ax}_min"]) for ax in ("x", "y", "z")}
-            if all(pos == 0.0 or (chosenaxis == ax and pos >= 0.0) for ax, pos in positions.items()):
-                outcellid += 1
-                dict3dcellidto1dcellid[int(cell["cellid"])] = outcellid
-                append_cell_to_output(cell, outcellid, t_model, wid_init, listout, xlist, ylists)
-                print(f"Cell {outcellid:4d} input1: {block[0].rstrip()}")
-                print(f"Cell {outcellid:4d} input2: {block[1].rstrip()}")
-                print(f"Cell {outcellid:4d} output: {listout[-1]}")
-
-    with Path(outputfolder, "model.txt").open("w", encoding="utf-8") as fmodelout:
-        fmodelout.write(f"{outcellid:7d}\n")
-        fmodelout.write(t_model)
-        fmodelout.writelines(line + "\n" for line in listout)
-
-    return dict3dcellidto1dcellid, xlist, ylists
+    ylists = [dfslice[col].to_list() for col in ("rho", "X_Ni56", "X_Co56")]
+    return dict3dcellidto1dcellid, dfslice["vel_r_max_kmps"].to_list(), ylists
 
 
 def slice_abundance_file(
     inputfolder: Path | str, outputfolder: Path | str, dict3dcellidto1dcellid: dict[int, int]
 ) -> None:
     """Write an abundances.txt holding only the cells kept by slice_3dmodel, renumbered to the 1D cell ids."""
-    with (
-        Path(inputfolder, "abundances.txt").open(encoding="utf-8") as fabundancesin,
-        Path(outputfolder, "abundances.txt").open("w", encoding="utf-8") as fabundancesout,
-    ):
-        currentblock: list[str] = []
-        keepcurrentblock = False
-        blocklens: set[int] = set()
-        for line in fabundancesin:
-            linesplit = line.split()
-
-            if len(currentblock) + len(linesplit) >= 30:
-                if currentblock:  # record only completed blocks, not the empty state before the first one
-                    blocklens.add(len(currentblock))
-                if keepcurrentblock:
-                    fabundancesout.write("  ".join(currentblock) + "\n")
-                currentblock = []
-                keepcurrentblock = False
-
-            if not currentblock:
-                currentblock = linesplit
-                if int(linesplit[0]) in dict3dcellidto1dcellid:
-                    outcellid = dict3dcellidto1dcellid[int(linesplit[0])]
-                    currentblock[0] = f"{outcellid:6d}"
-                    keepcurrentblock = True
-            else:
-                currentblock.extend(linesplit)
-
-        # the loop only writes a block when the next one starts, so the last block still has to be flushed
-        if currentblock:
-            if blocklens and len(currentblock) < max(blocklens):
-                print_warning(
-                    f"the last block has {len(currentblock)} values, but earlier blocks have"
-                    f" {max(blocklens)}. The input file looks truncated"
-                )
-            if keepcurrentblock:
-                fabundancesout.write("  ".join(currentblock) + "\n")
-
-
-def append_cell_to_output(
-    cell: dict[str, float | str],
-    outcellid: int,
-    t_model: str | float,
-    wid_init: float,
-    listout: list[str],
-    xlist: list[float],
-    ylists: list[list[float]],
-) -> None:
-    """Append one cell to the 1D model output lines and to the density and abundance plot series."""
-    dist = math.sqrt(float(cell["pos_x_min"]) ** 2 + float(cell["pos_y_min"]) ** 2 + float(cell["pos_z_min"]) ** 2)
-    # the slice keeps the positive half-axis, thus pos_min is the inner face and the outer face of
-    # the shell is one cell width further out. vel_r_max_kmps names that outer boundary
-    velocity = (dist + wid_init) / float(t_model) / day_to_s / km_to_cm
-
-    listout.append(
-        f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "
-        f"{cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}"
+    dfelabundances = (
+        get_initelemabundances(inputfolder)
+        .filter(pl.col("inputcellid").is_in(list(dict3dcellidto1dcellid)))
+        .with_columns(pl.col("inputcellid").replace_strict(dict3dcellidto1dcellid, return_dtype=pl.Int32))
+        .collect()
     )
-
-    xlist.append(velocity)
-    ylists[0].append(float(cell["rho"]))
-    ylists[1].append(float(cell["f56ni"]))
-    ylists[2].append(float(cell["fco"]))
+    # save_initelemabundances writes 0.0 for a null value, thus a short line must stop the command here
+    if dfelabundances.height != len(dict3dcellidto1dcellid) or dfelabundances.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"abundances.txt in {inputfolder} does not hold a full line of mass fractions for each of the "
+            f"{len(dict3dcellidto1dcellid)} cells of the slice"
+        )
+        raise ValueError(msg)
+    save_initelemabundances(dfelabundances, outpath=outputfolder)
 
 
 def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
