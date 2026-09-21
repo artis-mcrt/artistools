@@ -15,12 +15,16 @@ const FIRSTLEVELNUMBER: i32 = 1;
 
 /// Parse the header line of an ion block into (`atomic_number`, `ion_stage`, `transitioncount`)
 ///
-/// Returns `None` for the blank lines that separate the ion blocks.
+/// Returns `None` for the blank lines that separate the ion blocks, and for the comment lines
+/// that artisatomic writes before the header line of each ion.
 fn parse_ion_header(line: &str) -> PolarsResult<Option<(i32, i32, usize)>> {
     let mut tokens = line.split_whitespace();
     let Some(atomic_number) = tokens.next() else {
         return Ok(None);
     };
+    if atomic_number.starts_with('#') {
+        return Ok(None);
+    }
 
     Ok(Some((
         parse_field(atomic_number, "an atomic number")?,
