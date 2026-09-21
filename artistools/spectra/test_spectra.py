@@ -1364,3 +1364,67 @@ def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: p
     assert excinfo.value.code == 1
     assert "-timedayslist" in capsys.readouterr().err
     assert not list(tmp_path.glob("*.pdf"))
+
+
+def write_fake_observed_spectrum(folder: Path, *, witherror: bool) -> Path:
+    """Write a reference spectrum of 1.1 times the model of timestep 54, with an error of 0.1 times the model."""
+    dfmodel = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
+    obsfile = folder / ("fakeobs_witherror.txt" if witherror else "fakeobs.txt")
+    dfmodel.select(
+        "lambda_angstroms", (pl.col("f_lambda") * 1.1).alias("flux"), (pl.col("f_lambda") * 0.1).alias("error")
+    ).sort("lambda_angstroms").write_csv(obsfile, separator=" ", include_header=False)
+    metadata = "dist_mpc: 1\nlabel: fake observation\nt: 300\n" + ("f_lambda_err_columnindex: 2\n" if witherror else "")
+    obsfile.with_name(f"{obsfile.name}.meta.yml").write_text(metadata, encoding="utf-8")
+    return obsfile
+
+
+def test_spectra_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> None:
+    """An observed flux of 1.1 times the model with an error of 0.1 times the model lies one error from the model."""
+    obsfile = write_fake_observed_spectrum(tmp_path, witherror=True)
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residuals=True,
+        write_data=True,
+        outputfile=tmp_path / "residuals.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
+    assert dfstats.height == 1
+    assert dfstats["reference"].item() == "fake observation"
+    assert dfstats["npoints"].item() > 100
+    assert np.isclose(dfstats["chi2_reduced"].item(), 1.0, rtol=1e-6)
+    assert dfstats["rms"].item() > 0.0
+
+
+def test_spectra_residual_panel_gives_the_rms_alone_without_an_error(tmp_path: Path) -> None:
+    """An observed spectrum with no error column gives the RMS residual and no reduced chi-square."""
+    obsfile = write_fake_observed_spectrum(tmp_path, witherror=False)
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residuals=True,
+        write_data=True,
+        outputfile=tmp_path / "residuals.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
+    assert dfstats["chi2_reduced"].null_count() == 1 or math.isnan(dfstats["chi2_reduced"].item())
+    # the residual is 0.1 times the model and the observed value is 1.1 times the model at each point
+    assert 0.0 < dfstats["rms_relative"].item() < 1.0
+
+
+def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
+    """--residuals needs a model and an observed spectrum, and one frame."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
+
+    obsfile = write_fake_observed_spectrum(tmp_path, witherror=False)
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath, obsfile],
+            timedayslist=["280", "300"],
+            residuals=True,
+            outputfile=tmp_path / "b.pdf",
+        )

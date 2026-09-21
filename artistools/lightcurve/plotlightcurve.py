@@ -95,7 +95,9 @@ from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_colorbar_viewingangles
 from artistools.plottools import make_colorbar_viewingangles_colormap
 from artistools.plottools import make_frame_figure
+from artistools.plottools import plot_residual_panel
 from artistools.plottools import print_dirbin_summary
+from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_labels
@@ -190,8 +192,62 @@ def get_reflightcurve_yerr(
     return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
 
 
+# the height of the residual panel as a part of the height of the main frame
+RESIDUALROWHEIGHT: t.Final[float] = 0.35
+
+
+def make_frame_figure_with_residuals(args: argparse.Namespace) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes]:
+    """Return a figure with a main frame and a residual panel below it, and the two axes."""
+    fig, axesgrid = make_frame_figure(args, rows=2, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT))
+    mainaxis, residualaxis = axesgrid[0][0], axesgrid[1][0]
+    assert isinstance(mainaxis, mplax.Axes)
+    assert isinstance(residualaxis, mplax.Axes)
+    return fig, mainaxis, residualaxis
+
+
+def draw_residual_panel(
+    residualaxis: mplax.Axes,
+    mainaxis: mplax.Axes,
+    residualseries: list[ResidualSeries],
+    args: argparse.Namespace,
+    outputfile: Path | str,
+    *,
+    ismagnitude: bool,
+) -> None:
+    """Draw reference minus model below the main frame.
+
+    With --write_data, this function also writes the statistics to a CSV file. Call it after the
+    main frame has its labels and its x range, because the panel takes both.
+    """
+    if not any(series.isreference for series in residualseries) or all(s.isreference for s in residualseries):
+        exit_with_error(
+            "--residuals compares a model with a reference light curve, and the plot holds only one of the two",
+            "Give a model, and a reference light curve with -reflightcurves",
+        )
+
+    xmin, xmax = sorted(mainaxis.get_xlim())
+    # a ratio to the mean reference value has no meaning for a magnitude
+    dfresidualstats = plot_residual_panel(residualaxis, residualseries, xmin, xmax, relative=not ismagnitude)
+    residualargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None, "logscaley": False})
+    set_axis_properties(residualaxis, residualargs, xlimits=(args.timemin, args.timemax, "-timemin"))
+
+    residualaxis.set_xlabel(mainaxis.get_xlabel())
+    mainaxis.set_xlabel("")
+    mainaxis.tick_params(axis="x", which="both", labelbottom=False)
+
+    if args.write_data:
+        residualfile = Path(outputfile).with_name(f"{Path(outputfile).stem}_residuals.csv")
+        dfresidualstats.write_csv(residualfile)
+        print_saved(residualfile)
+
+
 def plot_bol_reflightcurve(
-    axis: mplax.Axes, lightcurvefilename: str | Path, lumunit: LumUnit, color: str, label: str | None = None
+    axis: mplax.Axes,
+    lightcurvefilename: str | Path,
+    lumunit: LumUnit,
+    color: str,
+    label: str | None = None,
+    residualseries: list[ResidualSeries] | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
@@ -230,8 +286,22 @@ def plot_bol_reflightcurve(
             caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
             for capline in limitbars.lines[1]:
                 capline.set_marker(caretdown)
+        residualyerr = (np.asarray(yerr[0], dtype=np.float64), np.asarray(yerr[1], dtype=np.float64))
     else:
         axis.scatter(time_days, yvalues, label=plotlabel, color=color, zorder=0)
+        residualyerr = None
+
+    if residualseries is not None:
+        residualseries.append(
+            ResidualSeries(
+                plotlabel,
+                time_days.astype(np.float64),
+                np.asarray(yvalues, dtype=np.float64),
+                color,
+                isreference=True,
+                yerr=residualyerr,
+            )
+        )
 
     return plotlabel
 
@@ -366,6 +436,7 @@ def plot_artis_lightcurve(
     args: argparse.Namespace,
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
+    residualseries: list[ResidualSeries] | None = None,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
     """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
@@ -581,7 +652,17 @@ def plot_artis_lightcurve(
                 f" {energy_released:.3e} [erg]"
             )
 
-        axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
+        (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
+        if residualseries is not None:
+            residualseries.append(
+                ResidualSeries(
+                    label_with_tags or "",
+                    lcdata_valid["time_days"].to_numpy().astype(np.float64),
+                    lcdata_valid[ycolumn].to_numpy().astype(np.float64),
+                    modelline.get_color(),
+                    isreference=False,
+                )
+            )
         if args.print_data:
             print_product(args, lcdata)
 
@@ -619,8 +700,14 @@ def make_lightcurve_plot(
     lumunit = get_plot_lum_unit(args)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    fig, axesgrid = make_frame_figure(args)
-    axis = axesgrid[0][0]
+    residualaxis = None
+    residualseries: list[ResidualSeries] | None = None
+    if args.residuals:
+        fig, axis, residualaxis = make_frame_figure_with_residuals(args)
+        residualseries = []
+    else:
+        fig, axesgrid = make_frame_figure(args)
+        axis = axesgrid[0][0]
     axis.margins(x=0.0)
 
     if args.plotthermalisation:
@@ -698,6 +785,7 @@ def make_lightcurve_plot(
                         else ":",
                         color=args.color[lcindex],
                         linelabel=args.label[lcindex],
+                        residualseries=residualseries,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
 
@@ -720,7 +808,9 @@ def make_lightcurve_plot(
 
     if args.reflightcurves:
         for refindex, bolreflightcurve in enumerate(args.reflightcurves):
-            plot_bol_reflightcurve(axis, bolreflightcurve, lumunit, color=args.refspeccolors[refindex])
+            plot_bol_reflightcurve(
+                axis, bolreflightcurve, lumunit, color=args.refspeccolors[refindex], residualseries=residualseries
+            )
             plottedsomething = True
 
     assert plottedsomething, "No light curve was plotted"
@@ -773,6 +863,9 @@ def make_lightcurve_plot(
         # invert last: set_ylim re-sorts the limits into the order of the pair it is given, so an inversion
         # applied before a one-sided limit is lost
         invert_magnitude_yaxis(axis)
+
+    if residualaxis is not None and residualseries is not None:
+        draw_residual_panel(residualaxis, axis, residualseries, args, filenameout, ismagnitude=lumunit == "mag")
 
     if args.plotthermalisation:
         assert axistherm is not None
@@ -877,7 +970,19 @@ def make_band_lightcurves_plot(
     modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
 ) -> None:
     """Plot band magnitude light curves for every model and save the figure."""
-    fig, ax = create_axes(args)
+    residualaxis = None
+    residualseries: list[ResidualSeries] | None = None
+    if args.residuals:
+        if len(args.filter) != 1:
+            exit_with_error(
+                "--residuals applies to a plot of one frame, and each filter takes a frame of its own",
+                "Give one filter, e.g. -filter B",
+            )
+        args.subplots = False
+        fig, ax, residualaxis = make_frame_figure_with_residuals(args)
+        residualseries = []
+    else:
+        fig, ax = create_axes(args)
     axes = iter_axes(ax)
 
     # a model with several direction bins takes its line colours from the cycle, so keep the cycle clear of
@@ -962,14 +1067,29 @@ def make_band_lightcurves_plot(
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
-                axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
+                (modelline,) = axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
+                if residualseries is not None:
+                    residualseries.append(
+                        ResidualSeries(
+                            plotkwargs["label"] or "",
+                            np.asarray(time, dtype=np.float64),
+                            np.asarray(brightness_in_mag, dtype=np.float64),
+                            modelline.get_color(),
+                            isreference=False,
+                        )
+                    )
 
     # once for the whole figure: the helper draws every band of a reference file onto its own panel, so
     # calling it per band drew each reference curve once per band and re-read the file each time. It also
     # asserted a single axes, which a figure with more than one band never has
     for refindex, reflightcurve in enumerate(args.reflightcurves):
         plot_lightcurve_from_refdata(
-            bandnames, reflightcurve, args.refspeccolors[refindex], args.refspecmarkers[refindex], ax
+            bandnames,
+            reflightcurve,
+            args.refspeccolors[refindex],
+            args.refspecmarkers[refindex],
+            ax,
+            residualseries=residualseries,
         )
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
@@ -982,6 +1102,10 @@ def make_band_lightcurves_plot(
     if args.filter and len(bandnames) == 1:
         args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
+
+    if residualaxis is not None and residualseries is not None:
+        assert isinstance(ax, mplax.Axes)
+        draw_residual_panel(residualaxis, ax, residualseries, args, args.outputfile, ismagnitude=True)
 
     save_figure(fig, args.outputfile, format="pdf", args=args)
 
@@ -1128,6 +1252,7 @@ def plot_lightcurve_from_refdata(
     color: t.Any,
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
+    residualseries: list[ResidualSeries] | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1150,6 +1275,17 @@ def plot_lightcurve_from_refdata(
             color=color,
             linewidth=4 if len(filter_names) == 1 else None,
         )
+        if residualseries is not None:
+            # the band data give no error, thus the panel shows the residual in magnitudes
+            residualseries.append(
+                ResidualSeries(
+                    linename or str(lightcurvefilename),
+                    dfband["time"].to_numpy().astype(np.float64),
+                    dfband["magnitude"].to_numpy().astype(np.float64),
+                    color,
+                    isreference=True,
+                )
+            )
     return linename
 
 
@@ -1286,6 +1422,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--print_data", action="store_true", help="Print plotted data")
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a text file")
+
+    parser.add_argument(
+        "--residuals",
+        action="store_true",
+        help=(
+            "Add a panel of reference minus model for each model, against the first reference light curve of"
+            " -reflightcurves. The command prints the RMS residual, and the reduced chi-square when the reference"
+            " light curve gives an error. A band plot takes one filter. --write_data also writes these numbers"
+        ),
+    )
 
     parser.add_argument(
         "-plot_hesma_model",

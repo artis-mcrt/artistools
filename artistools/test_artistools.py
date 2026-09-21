@@ -261,6 +261,77 @@ def test_each_package_command_is_named_plot() -> None:
         assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
+def test_residuals_take_the_model_at_each_observed_point() -> None:
+    """The residual is observed minus model, inside the x range of the panel and of the model alone."""
+    model = at.plottools.ResidualSeries(
+        "model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0", isreference=False
+    )
+    reference = at.plottools.ResidualSeries(
+        "obs",
+        np.array([-5.0, 5.0, 12.0, 15.0, 25.0]),
+        np.array([1.0, 11.0, 22.0, 33.0, 50.0]),
+        "k",
+        isreference=True,
+        yerr=(np.array([1.0, 0.5, 2.0, 0.0, 1.0]), np.array([1.0, 4.0, 2.0, 3.0, 1.0])),
+    )
+    x, residual, sigma = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
+    # the points at -5 and 25 lie outside the model, and the point at 15 lies outside the panel
+    assert x.tolist() == [5.0, 12.0]
+    assert np.allclose(residual, [11.0 - 10.0, 22.0 - 24.0])
+    # a model below the point takes the lower error, and a model above it takes the upper error
+    assert sigma is not None
+    assert np.allclose(sigma, [0.5, 2.0])
+
+    _, residual, sigma = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=20.0)
+    assert sigma is not None
+    # observed 33 lies above the model value 30, thus the lower error of zero applies, which is an upper limit
+    assert np.isnan(sigma[2])
+    stats = at.plottools.get_residual_stats(residual, sigma, yreference_mean=22.0)
+    assert stats["npoints"] == 3
+    assert np.isclose(stats["rms"], math.sqrt((1.0 + 4.0 + 9.0) / 3.0))
+    assert np.isclose(stats["rms_relative"], stats["rms"] / 22.0)
+    # the point with no error does not count: ((1/0.5)^2 + (2/2)^2) / 2
+    assert np.isclose(stats["chi2_reduced"], (4.0 + 1.0) / 2.0)
+
+    # an observed NaN, e.g. a masked telluric range, stays a gap and does not count
+    masked = reference._replace(y=np.array([1.0, np.nan, 22.0, 33.0, 50.0]))
+    x, residual, sigma = at.plottools.get_residuals(masked, model, xmin=0.0, xmax=20.0)
+    assert x.tolist() == [5.0, 12.0, 15.0]
+    assert np.isnan(residual[0])
+    assert at.plottools.get_residual_stats(residual, sigma, yreference_mean=0.0)["npoints"] == 2
+
+    noerror = reference._replace(yerr=None)
+    _, residual, sigma = at.plottools.get_residuals(noerror, model, xmin=0.0, xmax=20.0)
+    assert sigma is None
+    assert math.isnan(at.plottools.get_residual_stats(residual, sigma, yreference_mean=0.0)["chi2_reduced"])
+    assert math.isnan(at.plottools.get_residual_stats(residual, sigma, yreference_mean=0.0)["rms_relative"])
+
+
+def test_frame_figure_takes_a_shorter_row() -> None:
+    """A residual panel takes a part of the frame height, and the main frame keeps its size."""
+    fig, axes = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))
+    fig.canvas.draw()
+    mainheight = axes[0][0].get_position().height
+    residualheight = axes[1][0].get_position().height
+    assert np.isclose(residualheight / mainheight, 0.35, rtol=1e-3)
+    # row 0 is at the top
+    assert axes[0][0].get_position().y0 > axes[1][0].get_position().y1
+    plt.close(fig)
+
+    figone, axesone = at.plottools.make_frame_figure()
+    figone.canvas.draw()
+    figtwo, axestwo = at.plottools.make_frame_figure(rows=2, rowheights=(1.0, 0.35))
+    figtwo.canvas.draw()
+    inchesone = axesone[0][0].get_position().height * figone.get_figheight()
+    inchestwo = axestwo[0][0].get_position().height * figtwo.get_figheight()
+    assert np.isclose(inchesone, inchestwo, rtol=1e-3)
+    plt.close(figone)
+    plt.close(figtwo)
+
+    with pytest.raises(ValueError, match="rowheights gives"):
+        at.plottools.make_frame_figure(rows=2, rowheights=(1.0,))
+
+
 def test_package_modules_import_no_package_alias() -> None:
     """A package module must import each name from the module that defines it.
 

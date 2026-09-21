@@ -461,6 +461,7 @@ def make_frame_figure(
     sharex: bool = True,
     sharey: bool = False,
     fullwidth: bool = True,
+    rowheights: Sequence[float] | None = None,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -478,6 +479,8 @@ def make_frame_figure(
     A helper that parses no arguments passes no args, and the figure then takes a scale of 1.
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
+    rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
+    residual panel below the main frame.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
@@ -501,9 +504,12 @@ def make_frame_figure(
 
     # Divider counts the vertical sizes from the bottom, thus the lowest row comes first
     vertical = [Size.Fixed(LABELHEIGHT_INCHES)]
-    for row in range(rows):
-        vertical += [Size.Fixed(rowgap)] if row else []
-        vertical += [Size.Fixed(frameheight)]
+    if rowheights is not None and len(rowheights) != rows:
+        msg = f"rowheights gives {len(rowheights)} values for {rows} rows"
+        raise ValueError(msg)
+    for row in reversed(range(rows)):
+        vertical += [Size.Fixed(rowgap)] if row != rows - 1 else []
+        vertical += [Size.Fixed(frameheight * (rowheights[row] if rowheights is not None else 1.0))]
     vertical += [Size.Fixed(TOPMARGIN_INCHES)]
 
     figwidth = sum(size.fixed_size for size in horizontal)
@@ -621,6 +627,128 @@ def add_cax_for_fixed_frames(fig: mplfig.Figure, *, horizontal: bool) -> mplax.A
     if horizontal:
         return fig.add_axes((x0, y1 + 0.15 / figheight, x1 - x0, 0.18 / figheight))
     return fig.add_axes((x1 + 0.15 / figwidth, y0, 0.18 / figwidth, y1 - y0))
+
+
+class ResidualSeries(t.NamedTuple):
+    """One drawn series of a main panel that a residual panel compares, in the units of that panel."""
+
+    label: str
+    x: "npt.NDArray[np.float64]"
+    y: "npt.NDArray[np.float64]"
+    color: "mplt.ColorType | None"
+    isreference: bool
+    # the lower and the upper error of a reference series, or None when the data give no error
+    yerr: "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None" = None
+
+
+def get_residuals(
+    reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
+) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64] | None]":
+    """Return x, the reference value minus the model value, and the error, at each reference point.
+
+    The model takes a linear interpolation to the reference x values. A point counts only inside the
+    x range of the panel and inside the x range that the model covers. With an error of two sides,
+    the side toward the model applies. An error that is not above zero gives NaN, e.g. an upper limit.
+    A reference value of NaN gives a residual of NaN, thus a masked range stays a gap in the panel.
+    """
+    import numpy as np
+
+    modelfinite = np.isfinite(model.x) & np.isfinite(model.y)
+    order = np.argsort(model.x[modelfinite])
+    modelx = model.x[modelfinite][order]
+    modely = model.y[modelfinite][order]
+    if modelx.size < 2:
+        return np.array([]), np.array([]), None
+
+    inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
+    residual = reference.y[inrange] - np.interp(reference.x[inrange], modelx, modely)
+    if reference.yerr is None:
+        return reference.x[inrange], residual, None
+
+    errlower, errupper = reference.yerr
+    # a model above the reference point lies on the side of the upper error
+    sigma = np.where(residual < 0.0, errupper[inrange], errlower[inrange])
+    return reference.x[inrange], residual, np.where(np.isfinite(sigma) & (sigma > 0.0), sigma, np.nan)
+
+
+def get_residual_stats(
+    residual: "npt.NDArray[np.float64]", sigma: "npt.NDArray[np.float64] | None", yreference_mean: float
+) -> dict[str, float]:
+    """Return the statistics of a residual: the number of points, the RMS, and the reduced chi-square.
+
+    The ratio of the RMS to the mean reference value is NaN when that mean is not above zero.
+
+    The model has no fitted parameter, thus the reduced chi-square is the sum of the squares of
+    residual / error over the number of points that have an error. It is NaN when no point has one.
+    """
+    import numpy as np
+
+    hasvalue = np.isfinite(residual)
+    stats = {"npoints": float(hasvalue.sum()), "rms": math.nan, "rms_relative": math.nan, "chi2_reduced": math.nan}
+    if not hasvalue.any():
+        return stats
+
+    stats["rms"] = float(np.sqrt(np.mean(residual[hasvalue] ** 2)))
+    if yreference_mean > 0.0:
+        stats["rms_relative"] = stats["rms"] / yreference_mean
+    if sigma is not None and (haserror := hasvalue & np.isfinite(sigma)).any():
+        stats["chi2_reduced"] = float(np.sum((residual[haserror] / sigma[haserror]) ** 2) / haserror.sum())
+
+    return stats
+
+
+def plot_residual_panel(
+    axis: mplax.Axes, series: Sequence[ResidualSeries], xmin: float, xmax: float, *, relative: bool = True
+) -> "pl.DataFrame":
+    """Draw reference minus model for each model against the first reference series, and return the statistics.
+
+    With an error in the reference data, the panel shows the residual in units of that error, and the
+    table gives the reduced chi-square. Without one, the panel shows the residual in the units of the
+    main panel, and the table gives the RMS residual alone. relative=False applies to a magnitude,
+    where a ratio to the mean reference value has no meaning.
+    """
+    import numpy as np
+
+    references = [s for s in series if s.isreference]
+    models = [s for s in series if not s.isreference]
+    if not references or not models:
+        msg = "A residual panel needs one reference series and at least one model series"
+        raise ValueError(msg)
+
+    reference = references[0]
+    if len(references) > 1:
+        print_warning(f"the residual panel compares each model with '{reference.label}', the first reference series")
+
+    rows = []
+    for model in models:
+        x, residual, sigma = get_residuals(reference, model, xmin, xmax)
+        inpanel = np.isin(reference.x, x) & np.isfinite(reference.y)
+        yreference_mean = float(np.mean(np.abs(reference.y[inpanel]))) if relative and inpanel.any() else 0.0
+        stats = get_residual_stats(residual, sigma, yreference_mean)
+        rows.append({"model": model.label, "reference": reference.label} | stats)
+
+        yvalues = residual / sigma if sigma is not None else residual
+        # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
+        style: dict[str, t.Any] = (
+            {"linewidth": 0.8} if x.size > 200 else {"marker": "o", "markersize": 3, "linewidth": 0.8}
+        )
+        axis.plot(x, yvalues, color=model.color, **style)
+
+        strchi2 = "" if math.isnan(stats["chi2_reduced"]) else f", reduced chi-square {stats['chi2_reduced']:.3g}"
+        strrelative = (
+            "" if math.isnan(stats["rms_relative"]) else f" ({stats['rms_relative']:.1%} of the mean reference value)"
+        )
+        print(
+            f"  residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
+            f"{int(stats['npoints'])} points, RMS {stats['rms']:.3g}{strrelative}{strchi2}"
+        )
+
+    axis.axhline(0.0, color="black", linewidth=0.8, zorder=0)
+    axis.set_ylabel(r"(ref $-$ model) / $\sigma$" if reference.yerr is not None else r"ref $-$ model")
+
+    import polars as pl
+
+    return pl.DataFrame(rows).with_columns(pl.col("npoints").cast(pl.Int64))
 
 
 def save_figure(

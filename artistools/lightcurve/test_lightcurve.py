@@ -1810,3 +1810,78 @@ def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> No
 
     # each request on its own still names the file that holds it
     assert at.lightcurve.find_lightcurve_file(modelpath).name.startswith("light_curve.out")
+
+
+def test_bolometric_residual_panel_gives_the_reduced_chi_square(tmp_path: Path) -> None:
+    """Give the reduced chi-square of a bolometric residual panel.
+
+    The reference luminosity is 1.2 times the model, with an error of 0.2 times the model. Each
+    point then lies one error from the model.
+    """
+    dfmodel = (
+        at.lightcurve
+        .scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1]
+        .filter(pl.col("time_days").is_between(260.0, 330.0))
+        .gather_every(5)
+        .collect()
+    )
+    obsfile = tmp_path / "fakebolobs.txt"
+    lum = pl.col("luminosity_erg/s")
+    obstext = "#time_days luminosity_erg/s luminosity_errminus_erg/s luminosity_errplus_erg/s\n" + dfmodel.select(
+        "time_days", lum * 1.2, (lum * 0.2).alias("errminus"), (lum * 0.4).alias("errplus")
+    ).write_csv(separator=" ", include_header=False)
+    obsfile.write_text(obstext, encoding="utf-8")
+    obsfile.with_name(f"{obsfile.name}.meta.yml").write_text("dist_mpc: 1\nlabel: fake bolometric\n", encoding="utf-8")
+
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        reflightcurves=[str(obsfile)],
+        residuals=True,
+        write_data=True,
+        outputfile=tmp_path / "bolresiduals.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.csv")
+    assert dfstats["reference"].item() == "fake bolometric"
+    assert dfstats["npoints"].item() == dfmodel.height
+    # the model lies below each observed point, thus the lower error of 0.2 applies and not the upper error of 0.4
+    assert np.isclose(dfstats["chi2_reduced"].item(), 1.0, rtol=1e-4)
+    assert np.isclose(
+        dfstats["rms_relative"].item(), dfstats["rms"].item() / (1.2 * dfmodel["luminosity_erg/s"].to_numpy().mean())
+    )
+
+
+def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A band plot with one filter gives the RMS residual in magnitudes, and more than one filter stops the command."""
+    # --write_data also writes the band data to the working folder
+    monkeypatch.chdir(tmp_path)
+    refdata = pl.DataFrame({"band": ["B", "B", "B"], "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
+
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "refband"})
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            reflightcurves=["fakeref.dat"],
+            residuals=True,
+            write_data=True,
+            outputfile=tmp_path,
+        )
+        dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+        assert dfstats["npoints"].item() == 3
+        assert dfstats["rms"].item() > 0.0
+        # the band data give no error, and a ratio to a mean magnitude has no meaning
+        assert dfstats["chi2_reduced"].null_count() == 1 or np.isnan(dfstats["chi2_reduced"].item())
+        assert dfstats["rms_relative"].null_count() == 1 or np.isnan(dfstats["rms_relative"].item())
+
+        with pytest.raises(SystemExit):
+            at.lightcurve.plot(
+                argsraw=[],
+                modelpath=[modelpath],
+                filter=["B", "V"],
+                reflightcurves=["fakeref.dat"],
+                residuals=True,
+                outputfile=tmp_path,
+            )
