@@ -565,7 +565,7 @@ axes.prop_cycle: cycler('color', ['1f77b4', 'ff7f0e', '2ca02c', 'd62728', '9467b
 ## ***************************************************************************
 #legend.loc:           best
 legend.frameon:       False     # if True, draw the legend on a background patch
-legend.fontsize:      10
+#legend.fontsize:      10
 #legend.framealpha:    0.8      # legend patch transparency
 #legend.facecolor:     inherit  # inherit from axes.facecolor; or color spec
 #legend.edgecolor:     0.8      # background patch boundary color
