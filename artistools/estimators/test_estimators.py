@@ -71,7 +71,7 @@ def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.Magic
     ax = mockplot.call_args_list[0][0][0]
     ylo, yhi = ax.get_ylim()
 
-    assert ylo == pytest.approx(1e-18), "the requested floor must be applied"
+    assert ylo == pytest.approx(1e-18, rel=1e-6, abs=0.0), "the requested floor must be applied"
     assert yhi < ydata.max() * 100, f"the top {yhi:.2e} is far above the data maximum {ydata.max():.2e}"
 
 
@@ -169,7 +169,7 @@ def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
     print({key: yarr[1] for key, yarr in yvals.items()})
 
     for varname, expectedval in expectedvals.items():
-        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001), (
+        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, atol=0.0), (
             varname,
             expectedval,
             yvals[varname][1],
@@ -193,38 +193,39 @@ def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
     for x in mockplot.call_args_list:
         assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
 
-    # order of keys is important
+    # order of keys is important. Each value is the mean with the weight of the cell volume times the
+    # timestep duration
     expectedvals = {
         "init_fe": 0.10000000149011612,
         "init_nistable": 0.0,
         "init_ni56": 0.8999999761581421,
-        "nne": 811131.8125,
-        "TR": 6932.65771484375,
-        "Te": 5784.4521484375,
-        "averageionisation_Fe": 1.9466091928476605,
-        "averageionisation_Ni": 1.9673294753348698,
-        "populations_FeI": 4.668364835386799e-05,
-        "populations_FeII": 0.35026945954378863,
-        "populations_FeIII": 0.39508678896764393,
-        "populations_FeIV": 0.21220745115264195,
-        "populations_FeV": 0.042389615364484115,
+        "nne": 810901.0995481587,
+        "TR": 6932.335907807973,
+        "Te": 5784.328531336313,
+        "averageionisation_Fe": 1.9466081771665944,
+        "averageionisation_Ni": 1.967397635974239,
+        "populations_FeI": 4.6736117137644576e-05,
+        "populations_FeII": 0.35028115839743507,
+        "populations_FeIII": 0.39508757474300094,
+        "populations_FeIV": 0.2122008455814273,
+        "populations_FeV": 0.0423836836337351,
         # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
         "populations_CoII": 2891.245944314228,
         "populations_CoIII": 13177.379472537568,
         "populations_CoIV": 11617.863948679813,
-        "gamma_NT_FeI": 7.741022037400234e-06,
-        "gamma_NT_FeII": 3.7947153292832773e-06,
-        "gamma_NT_FeIII": 2.824587987164586e-06,
-        "gamma_NT_FeIV": 1.7406694591346083e-06,
-        "heating_dep": 6.849705802558503e-10,
-        "heating_coll": 2.4779998053503505e-09,
-        "heating_bf": 1.2916119454357833e-13,
-        "heating_ff": 2.1250019797070045e-16,
-        "cooling_adiabatic": 1.000458830363593e-12,
-        "cooling_coll": 3.1562059632506134e-09,
-        "cooling_fb": 5.0357105638165756e-12,
-        "cooling_ff": 1.7027620090835638e-13,
-        "collisional heating - cooling": -6.782059913668093e-10,
+        "gamma_NT_FeI": 7.739288324723703e-06,
+        "gamma_NT_FeII": 3.7938615704223145e-06,
+        "gamma_NT_FeIII": 2.823952204401649e-06,
+        "gamma_NT_FeIV": 1.7402778791153345e-06,
+        "heating_dep": 6.845760482077562e-10,
+        "heating_coll": 2.476640488323009e-09,
+        "heating_bf": 1.290929935905223e-13,
+        "heating_ff": 2.1215573636698912e-16,
+        "cooling_adiabatic": 1.0000753320736445e-12,
+        "cooling_coll": 3.154455767453852e-09,
+        "cooling_fb": 5.03282598302689e-12,
+        "cooling_ff": 1.701755526024579e-13,
+        "collisional heating - cooling": -6.77815279130843e-10,
     }
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {
@@ -234,7 +235,7 @@ def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
     print({key: yarr[1] for key, yarr in yvals.items()})
 
     for varname, expectedval in expectedvals.items():
-        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, equal_nan=True)
+        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, atol=0.0, equal_nan=True)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -321,9 +322,17 @@ def test_estimator_snapshot_classic_3d(mockplot: mock.MagicMock) -> None:
     print(f"{yvals_std=}")
 
     for varname, expectedmean in expected_yvals_mean.items():
-        assert np.isclose(expectedmean, yvals_mean[varname], rtol=0.01), (varname, expectedmean, yvals_mean[varname])
+        assert np.isclose(expectedmean, yvals_mean[varname], rtol=0.01, atol=0.0), (
+            varname,
+            expectedmean,
+            yvals_mean[varname],
+        )
     for varname, expectedstd in expected_yvals_std.items():
-        assert np.isclose(expectedstd, yvals_std[varname], rtol=0.01), (varname, expectedstd, yvals_std[varname])
+        assert np.isclose(expectedstd, yvals_std[varname], rtol=0.01, atol=0.0), (
+            varname,
+            expectedstd,
+            yvals_std[varname],
+        )
 
 
 def test_xbins_gives_the_number_of_bins() -> None:
@@ -485,7 +494,7 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     print({key: float(np.array(yarr).mean()) for key, yarr in yvals.items()})
 
     for varname, expectedval in expectedvals.items():
-        assert np.allclose(expectedval, np.array(yvals[varname]).mean(), rtol=0.001), (
+        assert np.allclose(expectedval, np.array(yvals[varname]).mean(), rtol=0.001, atol=0.0), (
             varname,
             expectedval,
             yvals[varname][1],

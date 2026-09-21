@@ -54,7 +54,8 @@ def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
 
     integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
 
-    assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
+    # the window is timesteps 44 to 72, and one more timestep at the low edge changes the integral by 2 per cent
+    assert np.isclose(integral, 7.715075e-12, rtol=1e-3, atol=0.0)
 
 
 def test_spectra_outputtext(tmp_path: Path) -> None:
@@ -93,12 +94,12 @@ def test_spectraemissionplot_nostack() -> None:
 
 
 def test_spectra_get_spectrum() -> None:
-    def check_spectrum(dfspectrumpkts: pl.DataFrame) -> None:
-        assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
+    def check_spectrum(dfspectrumpkts: pl.DataFrame, expectedmax: float, expectedmean: float) -> None:
+        assert math.isclose(max(dfspectrumpkts["f_lambda"]), expectedmax, rel_tol=1e-4)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         flambdamean = dfspectrumpkts["f_lambda"].mean()
         assert isinstance(flambdamean, float)
-        assert math.isclose(flambdamean, 1.0314682640070206e-14, abs_tol=1e-5)
+        assert math.isclose(flambdamean, expectedmean, rel_tol=1e-4)
 
     dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
@@ -107,7 +108,7 @@ def test_spectra_get_spectrum() -> None:
     assert abs(dfspectrum["lambda_angstroms"].to_numpy()[-1] - 29920.601421214415) < 1e-5
     assert abs(dfspectrum["lambda_angstroms"].to_numpy()[0] - 600.75759482509852) < 1e-5
 
-    check_spectrum(dfspectrum)
+    check_spectrum(dfspectrum, expectedmax=2.548532804918824e-13, expectedmean=1.0314682640070206e-14)
 
     timelowdays = at.get_timestep_times(modelpath)[55]
     timehighdays = at.get_timestep_times(modelpath)[65]
@@ -116,7 +117,10 @@ def test_spectra_get_spectrum() -> None:
         -1
     ].collect()
 
-    check_spectrum(dfspectrumpkts)
+    # the packets file of the test model holds a part of the packets of the run, thus its flux is
+    # below the flux of spec.out. test_spectra_get_flux_contributions_from_packets compares the two
+    # sources for a complete model
+    check_spectrum(dfspectrumpkts, expectedmax=1.4601241778685615e-14, expectedmean=3.8221552332231758e-16)
 
 
 @pytest.mark.benchmark
@@ -265,9 +269,11 @@ def test_spectra_flux_contribution_labels_from_packets(
     assert len(contributions) == expected_contribs
     for contrib, (linelabel, fluxcontrib) in zip(contributions[: len(expected_top)], expected_top, strict=True):
         assert contrib.linelabel == linelabel
-        assert np.isclose(contrib.fluxcontrib, fluxcontrib, rtol=1e-4)
+        assert np.isclose(contrib.fluxcontrib, fluxcontrib, rtol=1e-4, atol=0.0)
 
-    assert np.isclose(np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4)
+    assert np.isclose(
+        np.trapezoid(array_flambda_emission_total, x=array_lambda), 2.019784984151385e-08, rtol=1e-4, atol=0.0
+    )
 
 
 # The "ion" group makes an ion label for the absorption. The "nucmass" group makes a line label.
@@ -455,7 +461,7 @@ def test_spectra_losvelocity_shell_contributions() -> None:
     labels = [contrib.linelabel for contrib in contributions]
     assert set(labels) <= set(atspectra.get_shell_labels(shells))
     assert any(label.startswith("[-") for label in labels)
-    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
     assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
 
 
@@ -477,7 +483,7 @@ def test_spectra_ye_shell_contributions() -> None:
     _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
     assert sorted(contrib.linelabel for contrib in contributions) == ["Ye [0, 0.3)", "Ye [0.3, 0.6)"]
-    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6)
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
     assert np.trapezoid(sum(contrib.array_flambda_absorption for contrib in contributions), x=array_lambda) > 0.0
 
     with pytest.raises(ValueError, match="no Ye column"):
@@ -709,7 +715,7 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
 
     nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
     assert np.array_equal(arraylambda_window, arraylambda_full[nu_select])
-    assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12)
+    assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12, atol=0.0)
 
     contrib_full_bylabel = {c.linelabel: c for c in contributions_full}
     assert any(c.fluxcontrib < 0.999 * contrib_full_bylabel[c.linelabel].fluxcontrib for c in contributions_window), (
@@ -718,8 +724,10 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
     for contrib in contributions_window:
         full = contrib_full_bylabel[contrib.linelabel]
         assert contrib.fluxcontrib <= full.fluxcontrib * (1 + 1e-12)
-        assert np.allclose(contrib.array_flambda_emission, full.array_flambda_emission[nu_select], rtol=1e-12)
-        assert np.allclose(contrib.array_flambda_absorption, full.array_flambda_absorption[nu_select], rtol=1e-12)
+        assert np.allclose(contrib.array_flambda_emission, full.array_flambda_emission[nu_select], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            contrib.array_flambda_absorption, full.array_flambda_absorption[nu_select], rtol=1e-12, atol=0.0
+        )
 
 
 def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture) -> None:
@@ -811,7 +819,7 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
 
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 1.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
-    assert np.isclose(integrated_flux, expected_flux)
+    assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
 @pytest.mark.parametrize("beta", [0.0, 0.3, 0.6])
@@ -862,7 +870,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, 
 
     assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
     assert np.array_equal(array_lambda, dfspectrum["lambda_angstroms"].to_numpy())
-    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())
+    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), rtol=1e-12, atol=0.0)
 
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 20.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)

@@ -165,4 +165,4 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert total.shape == source.shape
         assert np.array_equal(total[0], source[0]), "the time header must not be summed"
         assert np.array_equal(total[1:, 0], source[1:, 0]), "the frequency column must not be summed"
-        assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12)
+        assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)

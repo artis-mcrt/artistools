@@ -2335,7 +2335,7 @@ def test_downscale_mass_fractions_matches_cell_loop() -> None:
             massfracs_small_expected[x, y, z, :] /= rho_small_expected[x, y, z]
 
     assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12)
-    assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12)
+    assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12, atol=0.0)
     assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0.0)
 
 
@@ -2366,8 +2366,8 @@ def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
             expected_ye[new_cell_idx - 1] = np.average(dfmodel["Ye"].to_numpy()[old_idxs], weights=masses)
 
     remap_args = (red_fact, n_r_new, n_z_new, n_r_old, delta_r, delta_z)
-    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "mass_g", *remap_args), expected_rho, rtol=1e-12)
-    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "Ye", *remap_args), expected_ye, rtol=1e-12)
+    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "mass_g", *remap_args), expected_rho, rtol=1e-12, atol=0.0)
+    assert np.allclose(remap_mass_weighted_quantity(dfmodel, "Ye", *remap_args), expected_ye, rtol=1e-12, atol=0.0)
 
 
 def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
