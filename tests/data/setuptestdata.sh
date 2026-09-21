@@ -2,17 +2,17 @@
 
 set -x
 
-if [ ! -f testmodel.tar.xz ]; then curl --fail -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/testmodel.tar.xz; fi
+if [ ! -f testmodel.tar.xz ]; then curl --fail --retry 3 --remove-on-error -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/testmodel.tar.xz; fi
 
 rm -rf testmodel/
 mkdir -p testmodel/
 tar -xf testmodel.tar.xz --directory testmodel/
 # find testmodel -size +1M -exec xz -v {} \;
 
-if [ ! -f vspecpolmodel.tar.xz ]; then curl --fail -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/vspecpolmodel.tar.xz; fi
+if [ ! -f vspecpolmodel.tar.xz ]; then curl --fail --retry 3 --remove-on-error -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/vspecpolmodel.tar.xz; fi
 tar -xf vspecpolmodel.tar.xz
 
-if [ ! -f test_classicmode_3d.tar.xz ]; then curl --fail -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/test_classicmode_3d.tar.xz; fi
+if [ ! -f test_classicmode_3d.tar.xz ]; then curl --fail --retry 3 --remove-on-error -O -L https://github.com/artis-mcrt/artistools/releases/download/v2026.5.9/test_classicmode_3d.tar.xz; fi
 tar -xf test_classicmode_3d.tar.xz
 
 # git holds this archive, because it is small. Thus it needs no download
