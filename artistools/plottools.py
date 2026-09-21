@@ -558,9 +558,12 @@ def set_legend(
     """Draw the legend of the axes and return it. Return None when -nolegend was given.
 
     A helper that parses no arguments passes no args, and the legend then always draws.
+    Each label takes the colour of its series, unless the caller gives labelcolor.
     """
     if getattr(args, "nolegend", False):
         return None
+
+    legendkwargs.setdefault("labelcolor", "linecolor")
 
     if "handles" not in legendkwargs:
         legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(

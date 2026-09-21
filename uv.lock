@@ -66,7 +66,7 @@ requires-dist = [
     { name = "extinction", specifier = ">=0.4.9" },
     { name = "george", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.4.4" },
     { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.4" },
-    { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "matplotlib", specifier = ">=3.11" },
     { name = "numpy", specifier = ">=2.5.2" },
     { name = "plotly", marker = "extra == 'extras'", specifier = ">=6.9.0" },
     { name = "polars", specifier = ">=1.43.2" },

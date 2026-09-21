@@ -1500,22 +1500,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     if leg is not None:
         leg.set_zorder(200)
 
-        # colour each legend label like the line or the patch that it names
-        for artist, text in zip(leg.legend_handles, leg.get_texts(), strict=False):
-            if artist is None:
-                continue
-
-            if hasattr(artist, "get_color") and hasattr(artist, "set_linewidth"):
-                col = artist.get_color()  # ty:ignore[call-non-callable]
-                artist.set_linewidth(2.0)  # ty:ignore[call-non-callable]
-            elif hasattr(artist, "get_facecolor"):
-                col = artist.get_facecolor()  # ty:ignore[call-non-callable]
-            else:
-                continue
-
-            if isinstance(col, np.ndarray):
-                col = col[0]
-            text.set_color(col)
+        for line in leg.get_lines():
+            line.set_linewidth(2.0)
 
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
