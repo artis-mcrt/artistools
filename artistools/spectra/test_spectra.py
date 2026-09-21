@@ -584,6 +584,25 @@ def test_spectraemissionplot_velocity_ranges(
     assert title.endswith(", packets at radial velocity [0.04, 0.06) c and line-of-sight velocity [-15000, 15000) km/s")
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The -linewidth list sets the width of the net spectrum and of a reference spectrum on the emission plot."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d, "2003du_20031213_3219_8822_00.txt"],
+        outputfile=tmp_path / "emission_linewidth.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        groupby="velocity",
+        velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
+        linewidth=[0.5, 7.0],
+    )
+
+    # the net spectrum of the model is the first line, and the reference spectrum is the second line
+    assert [callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list] == [0.5, 7.0]
+
+
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
 def test_spectraemissionplot_losvelocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
     """The default line-of-sight shells run from -vmax to vmax, plus one shell to each corner."""

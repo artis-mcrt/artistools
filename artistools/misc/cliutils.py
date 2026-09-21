@@ -565,7 +565,7 @@ def addarg_seriesstyle(
     )
     if include_linestyles:
         group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-        group.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
+        group.add_argument("-linewidth", type=float, default=[], nargs="*", help="List of line widths")
     if include_linealpha:
         group.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:

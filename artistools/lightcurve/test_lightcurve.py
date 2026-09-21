@@ -95,8 +95,6 @@ def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.
     # the -reflightcurves file continues the grey sequence rather than starting it again
     assert [callitem[1]["color"] for callitem in mockerrorbar.call_args_list] == ["0.0", "0.4"]
 
-    assert all(callitem[1]["zorder"] == 0 for callitem in mockerrorbar.call_args_list)
-
     for callitem, expected_time_d_min in zip(mockerrorbar.call_args_list, (0.5, 0.638), strict=True):
         arr_time_d = np.array(callitem[0][1])
         arr_lum = np.array(callitem[0][2])
@@ -638,6 +636,53 @@ def test_lightcurve_plot_reference_colors(mockplot: mock.MagicMock, mockerrorbar
 
     modelcolors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list if "color" in callargs.kwargs]
     assert modelcolors == ["C0"]
+
+
+@pytest.mark.parametrize("plotkwargs", [{}, {"filter": ["B"]}, {"colour_evolution": ["B-V"]}])
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_plot_linewidth_arg(
+    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, plotkwargs: dict[str, t.Any]
+) -> None:
+    """The -linewidth list sets the line width of each series on the bolometric, band, and colour plots."""
+    bolometric = not plotkwargs
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath, modelpath, *(["AT2017gfo_waxmanetal2018.txt"] if bolometric else [])],
+        linewidth=[0.5, 7.0, 2.5],
+        outputfile=outputpath,
+        **plotkwargs,
+    )
+
+    linewidths = [
+        callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list if "label" in callargs.kwargs
+    ]
+    assert linewidths == [0.5, 7.0]
+
+    if bolometric:
+        assert mockerrorbar.call_args.kwargs["elinewidth"] == 2.5
+        assert mockerrorbar.call_args.kwargs["capthick"] == 2.5
+
+
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> None:
+    """The legend and the draw order follow the model path list, whatever the position of a reference light curve."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
+        label=["first", "second", "third"],
+        outputfile=outputpath,
+    )
+
+    assert mocklegend.call_args.kwargs["labels"] == ["first", "second", "third"]
+
+    # matplotlib draws artists of equal zorder in the order that the axes received them
+    seriesartists = [
+        artist
+        for handle in mocklegend.call_args.kwargs["handles"]
+        for artist in (handle.get_children() if isinstance(handle, ErrorbarContainer) else [handle])
+    ]
+    assert len({artist.get_zorder() for artist in seriesartists}) == 1
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
