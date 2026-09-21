@@ -638,6 +638,32 @@ def test_lightcurve_plot_reference_colors(mockplot: mock.MagicMock, mockerrorbar
     assert modelcolors == ["C0"]
 
 
+@pytest.mark.parametrize("plotkwargs", [{}, {"filter": ["B"]}, {"colour_evolution": ["B-V"]}])
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_plot_linewidth_arg(
+    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, plotkwargs: dict[str, t.Any]
+) -> None:
+    """The -linewidth list sets the line width of each series on the bolometric, band, and colour plots."""
+    bolometric = not plotkwargs
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath, modelpath, *(["AT2017gfo_waxmanetal2018.txt"] if bolometric else [])],
+        linewidth=[0.5, 7.0, 2.5],
+        outputfile=outputpath,
+        **plotkwargs,
+    )
+
+    linewidths = [
+        callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list if "label" in callargs.kwargs
+    ]
+    assert linewidths == [0.5, 7.0]
+
+    if bolometric:
+        assert mockerrorbar.call_args.kwargs["elinewidth"] == 2.5
+        assert mockerrorbar.call_args.kwargs["capthick"] == 2.5
+
+
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
 def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> None:
     """The legend and the draw order follow the model path list, whatever the position of a reference light curve."""

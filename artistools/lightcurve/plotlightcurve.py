@@ -203,6 +203,7 @@ def plot_bol_reflightcurve(
     color: str,
     label: str | None = None,
     residualseries: list[ResidualSeries] | None = None,
+    linewidth: float | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
@@ -222,7 +223,18 @@ def plot_bol_reflightcurve(
             dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
             lumunit,
         )
-        errorbars = axis.errorbar(time_days, yvalues, yerr=yerr, fmt="o", capsize=3, label=plotlabel, color=color)
+        # the error bars are the only lines of this series, thus -linewidth sets their width
+        errorbars = axis.errorbar(
+            time_days,
+            yvalues,
+            yerr=yerr,
+            fmt="o",
+            capsize=3,
+            label=plotlabel,
+            color=color,
+            elinewidth=linewidth,
+            capthick=linewidth,
+        )
         refartists = errorbars.get_children()
         if unbounded.any():
             # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
@@ -693,6 +705,7 @@ def make_lightcurve_plot(
                 color=args.color[lcindex],
                 label=args.label[lcindex],
                 residualseries=residualseries,
+                linewidth=args.linewidth[lcindex] or None,
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -773,7 +786,12 @@ def make_lightcurve_plot(
     if args.reflightcurves:
         for refindex, bolreflightcurve in enumerate(args.reflightcurves):
             plot_bol_reflightcurve(
-                axis, bolreflightcurve, lumunit, color=args.refspeccolors[refindex], residualseries=residualseries
+                axis,
+                bolreflightcurve,
+                lumunit,
+                color=args.refspeccolors[refindex],
+                residualseries=residualseries,
+                linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             )
             plottedsomething = True
 
@@ -1029,8 +1047,9 @@ def make_band_lightcurves_plot(
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
+                plotkwargs["linewidth"] = args.linewidth[modelnumber] or (4 if args.subplots else 3.5)
 
-                (modelline,) = axis.plot(time, brightness_in_mag, linewidth=4 if args.subplots else 3.5, **plotkwargs)
+                (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
                 if residualseries is not None:
                     residualseries.append(
                         ResidualSeries(
@@ -1053,6 +1072,7 @@ def make_band_lightcurves_plot(
             args.refspecmarkers[refindex],
             ax,
             residualseries=residualseries,
+            linewidth=args.linewidth[len(modelpaths) + refindex] or (4 if len(bandnames) == 1 else None),
         )
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
@@ -1131,7 +1151,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                     label=get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args),
                     color=dirbincolor,
                     linestyle=args.linestyle[modelnumber],
-                    linewidth=4 if args.subplots else 3,
+                    linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
                 )
 
     # once for the whole figure, as on the band plot: the reference data does not depend on the models or
@@ -1145,7 +1165,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 args.refspecmarkers[refindex],
                 ax,
                 plotnumber,
-                args,
+                linewidth=args.linewidth[len(modelpaths) + refindex] or (4 if args.subplots else None),
             )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1218,6 +1238,7 @@ def plot_lightcurve_from_refdata(
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
     residualseries: list[ResidualSeries] | None = None,
+    linewidth: float | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1232,14 +1253,7 @@ def plot_lightcurve_from_refdata(
             continue
         dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
 
-        axis.plot(
-            dfband["time"],
-            dfband["magnitude"],
-            marker,
-            label=linename,
-            color=color,
-            linewidth=4 if len(filter_names) == 1 else None,
-        )
+        axis.plot(dfband["time"], dfband["magnitude"], marker, label=linename, color=color, linewidth=linewidth)
         if residualseries is not None:
             # the band data give no error, thus the panel shows the residual in magnitudes
             residualseries.append(
@@ -1261,7 +1275,7 @@ def plot_color_evolution_from_data(
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
-    args: argparse.Namespace,
+    linewidth: float | None = None,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89."""
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1282,7 +1296,7 @@ def plot_color_evolution_from_data(
         marker,
         label=metadata["label"],
         color=color,
-        linewidth=4 if args.subplots else None,
+        linewidth=linewidth,
     )
 
 

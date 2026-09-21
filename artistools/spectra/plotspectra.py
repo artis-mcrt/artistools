@@ -1173,6 +1173,9 @@ def plot_reference_spectra(
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
+            plotkwargs.pop("linewidth", None)
+            if args.linewidth[index]:
+                plotkwargs["linewidth"] = args.linewidth[index]
 
         plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
             filepath, axis, args, filterfunc, scale_to_peak, offset=0.3 if scale_to_peak else 0.0, **plotkwargs
@@ -1302,7 +1305,14 @@ def make_emissionabsorption_plot(
 
     if not args.hidenetspectrum:
         plotobjectlabels.append("Spectrum")
-        (line,) = axis.plot(dfspectotal["x"], dfspectotal["y"] * scalefactor, linewidth=1.5, color="black", zorder=100)
+        # the emission plot takes its model from the first series of -specpath
+        (line,) = axis.plot(
+            dfspectotal["x"],
+            dfspectotal["y"] * scalefactor,
+            linewidth=args.linewidth[0] or 1.5,
+            color="black",
+            zorder=100,
+        )
         plotobjects.append(line)
 
     dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
