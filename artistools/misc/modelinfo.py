@@ -195,8 +195,8 @@ def get_npts_model(modelpath: Path) -> int:
         nptstokens = readnoncommentline(modelfile).split("#", 1)[0].split()
 
     # one number is the cell count, and two numbers are the 2D counts along the cylindrical radius and the z axis
-    if len(nptstokens) not in {1, 2}:
-        msg = f"The first line of {modelfilepath} must hold one or two numbers, but it holds {nptstokens}"
+    if len(nptstokens) not in {1, 2} or not all(token.isdecimal() for token in nptstokens):
+        msg = f"The first line of {modelfilepath} must hold one or two integers, but it holds {nptstokens}"
         raise ValueError(msg)
     return math.prod(int(n) for n in nptstokens)
 

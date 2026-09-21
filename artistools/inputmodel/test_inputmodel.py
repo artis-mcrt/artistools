@@ -2072,8 +2072,8 @@ def test_model_header_comments_round_trip(tmp_path: Path) -> None:
     sourcefolder.mkdir()
     modelfile = write_2d_model(sourcefolder, ncoordgridrcyl, ncoordgridz, vmax_cmps=1.0e9, t_model_days=1.0)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
-    # a comment of a user can start with the same word as the creation line
-    usercomments = ["created: by hand from a test model"]
+    # a comment of a user can start with the same words as a line of the writer
+    usercomments = ["created: by hand from a test model", "column units: calibrated by hand"]
     modelmeta["headercommentlines"] = usercomments.copy()
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)

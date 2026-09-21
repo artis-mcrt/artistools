@@ -41,6 +41,7 @@ from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
 UNITS_COMMENT_PREFIX = "column units:"
+UNITS_COMMENT_END = "Each X_ column is a mass fraction"
 
 
 def get_created_comment() -> str:
@@ -51,10 +52,11 @@ def get_created_comment() -> str:
 def is_writer_comment(commentline: str) -> bool:
     """Return True for a header comment that save_modeldata writes again.
 
-    A comment of a user can also start with "created:", e.g. "created: by hand". Thus only a line
-    with the time format of get_created_comment is the creation line.
+    A comment of a user can start with the same words, e.g. "created: by hand". Thus the units line
+    must also have the end that save_modeldata writes, and the creation line must have the time format
+    of get_created_comment.
     """
-    if commentline.startswith(UNITS_COMMENT_PREFIX):
+    if commentline.startswith(UNITS_COMMENT_PREFIX) and commentline.endswith(UNITS_COMMENT_END):
         return True
     try:
         datetime.datetime.strptime(commentline, f"{CREATED_COMMENT_PREFIX} {CREATED_TIME_FORMAT}").replace(
@@ -94,8 +96,8 @@ def read_modelfile_text(
 
         # a header line can end with an inline comment, as the lines of input.txt do
         nptstokens = line.split("#", 1)[0].split()
-        if len(nptstokens) not in {1, 2}:
-            msg = f"The first line of {filename} after the comments must hold one or two numbers, not {line!r}"
+        if len(nptstokens) not in {1, 2} or not all(token.isdecimal() for token in nptstokens):
+            msg = f"The first line of {filename} after the comments must hold one or two integers, not {line!r}"
             raise ValueError(msg)
         if len(nptstokens) == 2:
             modelmeta["dimensions"] = 2
@@ -457,7 +459,8 @@ def get_text_source_cached(
     validate_metadata reads the stored metadata strings of a cache. It raises ValueError for a value
     that it cannot read, e.g. a malformed json string, and the cache is then stale.
     """
-    textsource_mtime = textfilepath.stat().st_mtime
+    textsource_stat = textfilepath.stat()
+    textsource_mtime = textsource_stat.st_mtime
     parquetfilepath = get_parquet_cache_path(textfilepath)
     # the identity of the cache that a rewrite replaces, from the same moment as the existence check
     outdatedparquet = get_file_identity(parquetfilepath)
@@ -479,8 +482,17 @@ def get_text_source_cached(
 
     df, extrametadata = read_text_source()
 
+    # a writer can replace the text file during the read. A cache of the old text would then hold a time
+    # within MTIME_TOLERANCE_S of the new file, thus write no cache in that case
+    textsource_stat_after = textfilepath.stat()
+    textsource_changed = (textsource_stat.st_ino, textsource_stat.st_mtime_ns, textsource_stat.st_size) != (
+        textsource_stat_after.st_ino,
+        textsource_stat_after.st_mtime_ns,
+        textsource_stat_after.st_size,
+    )
+
     mebibyte = 1024 * 1024
-    if hadcachefile or textfilepath.stat().st_size > 2 * mebibyte:
+    if not textsource_changed and (hadcachefile or textsource_stat.st_size > 2 * mebibyte):
         print(f"Saving {parquetfilepath}")
         write_parquet_atomic(
             df,
@@ -1051,7 +1063,7 @@ def save_modeldata(
         # sn3d reads the first comment line after the header values as the column names, thus each
         # other comment line comes before those values
         fmodel.write(get_created_comment())
-        fmodel.write(f"# {UNITS_COMMENT_PREFIX} {strunits}. Each X_ column is a mass fraction\n")
+        fmodel.write(f"# {UNITS_COMMENT_PREFIX} {strunits}. {UNITS_COMMENT_END}\n")
 
         # sn3d reads the numbers at the start of a header line, thus an inline comment can follow them
         fmodel.writelines(f"{strvalue:<24} # {comment}\n" for strvalue, comment in headerlines)
