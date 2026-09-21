@@ -1226,6 +1226,11 @@ def test_get_npts_model(tmp_path: Path) -> None:
     (two_num_dir / "model.txt").write_text("10 10\n")
     assert at.misc.get_npts_model(two_num_dir) == 100
 
+    # save_modeldata marks each header value with an inline comment
+    (two_num_dir / "model.txt").write_text("10 10   # ncoordgridrcyl ncoordgridz\n")
+    at.misc.get_npts_model.cache_clear()
+    assert at.misc.get_npts_model(two_num_dir) == 100
+
 
 def test_get_nprocs(tmp_path: Path) -> None:
     # input.txt: line index 21 (0-indexed, 22nd line) holds nprocs

@@ -1,5 +1,6 @@
 """ARTIS model folder information: input parameters, run folders, and MPI rank mappings."""
 
+import math
 import re
 import typing as t
 from collections.abc import Iterable
@@ -191,10 +192,7 @@ def get_npts_model(modelpath: Path) -> int:
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        nptsline = readnoncommentline(modelfile).split(maxsplit=1)
-        if len(nptsline) == 1:
-            return int(nptsline[0])
-        return int(nptsline[0]) * int(nptsline[1])
+        return math.prod(int(n) for n in readnoncommentline(modelfile).split("#", 1)[0].split())
 
 
 def get_inputfilepath(modelpath: Path | str) -> Path:

@@ -39,6 +39,8 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 
+UNITS_COMMENT_PREFIX = "column units:"
+
 
 def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
@@ -61,29 +63,34 @@ def read_modelfile_text(
         while line.startswith("#"):
             line = fmodel.readline()
             if line.startswith("#"):
-                modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" ").removesuffix("\n"))
+                commentline = line.removeprefix("#").removeprefix(" ").removesuffix("\n")
+                # save_modeldata writes the units line again, thus a kept copy gives two such lines
+                if not commentline.startswith(UNITS_COMMENT_PREFIX):
+                    modelmeta["headercommentlines"].append(commentline)
                 numheaderrows += 1
 
-        if len(line.strip().split(" ")) == 2:
+        # a header line can end with an inline comment, as the lines of input.txt do
+        nptstokens = line.split("#", 1)[0].split()
+        if len(nptstokens) == 2:
             modelmeta["dimensions"] = 2
-            ncoordgridr, ncoordgridz = (int(n) for n in line.strip().split(" "))
+            ncoordgridr, ncoordgridz = (int(n) for n in nptstokens)
             modelmeta["ncoordgridrcyl"] = ncoordgridr
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
             if not printwarningsonly:
                 print(f"  detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
         else:
-            npts_model = int(line)
+            npts_model = int(line.split("#", 1)[0])
 
         modelmeta["npts_model"] = npts_model
-        modelmeta["t_model_init_days"] = float(fmodel.readline())
+        modelmeta["t_model_init_days"] = float(fmodel.readline().split("#", 1)[0])
         numheaderrows += 2
         t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
 
         line = fmodel.readline()
         # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
-            modelmeta["vmax_cmps"] = float(line)  # velocity max in cm/s
+            modelmeta["vmax_cmps"] = float(line.split("#", 1)[0])
         except ValueError:
             assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
             if "dimensions" not in modelmeta:
@@ -972,19 +979,35 @@ def save_modeldata(
         if headercommentlines:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
-        fmodel.write(
-            f"{dfmodel_npts_model}\n"
-            if modelmeta["dimensions"] != 2
-            else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n"
-        )
+        # sn3d reads the first comment line after the header values as the column names, thus the
+        # units line comes before those values
+        strunits = {
+            1: "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days",
+            2: "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days",
+            3: "pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3], all at t_model_init_days",
+        }[modelmeta["dimensions"]]
+        fmodel.write(f"# {UNITS_COMMENT_PREFIX} {strunits}. Each X_ column is a mass fraction\n")
 
-        fmodel.write(f"{modelmeta['t_model_init_days']}\n")
+        # sn3d reads the numbers at the start of a header line, thus an inline comment can follow them
+        if modelmeta["dimensions"] == 1:
+            nptsline = (str(dfmodel_npts_model), "npts_model: number of radial cells")
+        elif modelmeta["dimensions"] == 2:
+            nptsline = (
+                f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}",
+                "ncoordgridrcyl ncoordgridz: number of cells along the cylindrical radius and along the z axis",
+            )
+        else:
+            nptsline = (str(dfmodel_npts_model), f"npts_model: number of cells ({griddimension}^3 Cartesian grid)")
 
-        if modelmeta["dimensions"] in {2, 3}:
-            fmodel.write(f"{vmax:.8e}\n")
+        headerlines = [nptsline, (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")]
+        if modelmeta["dimensions"] == 2:
+            headerlines.append((f"{vmax:.8e}", "vmax_cmps: maximum velocity along the radius and the z axis [cm/s]"))
+        elif modelmeta["dimensions"] == 3:
+            headerlines.append((f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"))
 
-        if customcols:
-            fmodel.write(f"#{' '.join(standardcols)} {' '.join(customcols)}\n")
+        fmodel.writelines(f"{strvalue:<24} # {comment}\n" for strvalue, comment in headerlines)
+
+        fmodel.write(f"#{' '.join([*standardcols, *customcols])}\n")
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 

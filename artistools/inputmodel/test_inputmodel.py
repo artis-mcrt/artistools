@@ -227,7 +227,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
             "abundances.txt": "3fa70e381e9d538d7c07d8447b3b8a23d34a2bcc996370b4b71990e42f219baf",
-            "model.txt": "83801b752c315925602929943a42a3fec9ea88b65b20960dcc1b30c2da681e3a",
+            "model.txt": "c5cbe9fa3b7e95e3a4efe9fbd140a9a26f14ba8dd0ac418e0823e5b371cab788",
         },
     }
 
@@ -1859,7 +1859,7 @@ def test_slice_3dmodel_matches_axis_numerically(tmp_path: Path) -> None:
     # line 3 of model.txt gives vmax in cm/s, thus the outermost face sits at vmax * t_model
     vmax_cmps = xmax / (t_model_days * at.constants.day_to_s)
     # a 2x2x2 grid written with scientific notation, as save_modeldata() does (float_scientific=True)
-    lines = ["8", str(t_model_days), f"{vmax_cmps:.4e}"]
+    lines = ["8  # npts_model", f"{t_model_days}  # t_model_init_days", f"{vmax_cmps:.4e}  # vmax_cmps"]
     cellid = 0
     for zpos in (-xmax, 0.0):
         for ypos in (-xmax, 0.0):
@@ -2023,6 +2023,36 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
     assert dfcollect.item(0, "pos_z_mid") == pytest.approx(
         -vmax_cmps * t_model_s + 0.5 * modelmeta["wid_init_z"], rel=1e-5
     )
+
+
+def test_save_modeldata_marks_the_header_values(tmp_path: Path) -> None:
+    """Each header line of a saved model.txt must name its value, and the reader must accept that comment."""
+    ncoordgridrcyl, ncoordgridz = 4, 6
+    sourcefolder = tmp_path / "source"
+    sourcefolder.mkdir()
+    modelfile = write_2d_model(sourcefolder, ncoordgridrcyl, ncoordgridz, vmax_cmps=1.0e9, t_model_days=1.0)
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+
+    unitsline, nptsline, timeline, vmaxline, columnsline = (
+        (tmp_path / "model.txt").read_text(encoding="utf-8").splitlines()[:5]
+    )
+    assert unitsline.startswith("# column units:")
+    assert "rho [g/cm^3]" in unitsline
+    assert columnsline.startswith("#inputcellid pos_rcyl_mid pos_z_mid rho ")
+    assert nptsline.split("#")[0].split() == ["4", "6"]
+    assert "ncoordgridrcyl ncoordgridz" in nptsline.split("#")[1]
+    assert "[day]" in timeline.split("#")[1]
+    assert "[cm/s]" in vmaxline.split("#")[1]
+
+    _, modelmeta_saved = at.inputmodel.get_modeldata(tmp_path)
+    # the writer adds the units line again, thus the reader must not keep it
+    assert modelmeta_saved["headercommentlines"] == []
+    assert modelmeta_saved["ncoordgridrcyl"] == ncoordgridrcyl
+    assert modelmeta_saved["ncoordgridz"] == ncoordgridz
+    assert math.isclose(modelmeta_saved["t_model_init_days"], 1.0)
+    assert math.isclose(modelmeta_saved["vmax_cmps"], 1.0e9)
 
 
 def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
