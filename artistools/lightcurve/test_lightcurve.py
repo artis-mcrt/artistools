@@ -8,7 +8,6 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
-import matplotlib.legend as mpllegend
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import numpy as np
@@ -382,6 +381,30 @@ def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot:
     assert not np.allclose(colors[0], colors[2]), "the two direction bins share a colour"
 
 
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_plot_dirbin_labels_take_the_line_colours(
+    mockplot: mock.MagicMock, mocklegend: mock.MagicMock
+) -> None:
+    """The legend label of a direction bin has the colour of its line."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        colour_evolution=["B-V"],
+        plotviewingangle=[0, 1],
+        timemin=5,
+        timemax=8,
+        outputfile=outputpath,
+    )
+
+    linecolours = [mplcolors.to_hex(callargs.kwargs["color"]) for callargs in mockplot.call_args_list]
+    assert len(set(linecolours)) == 2
+
+    mocklegend.assert_called_once()
+    legend = mocklegend.call_args.args[0].get_legend()
+    assert [mplcolors.to_hex(text.get_color()) for text in legend.get_texts()] == linecolours
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock) -> None:
     """Use the -color value when a model contributes a single line, even if that line is one direction bin."""
@@ -686,26 +709,21 @@ def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> N
     assert len({artist.get_zorder() for artist in seriesartists}) == 1
 
 
-def test_lightcurve_plot_legend_labels_take_the_series_colours() -> None:
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+def test_lightcurve_plot_legend_labels_take_the_series_colours(mocklegend: mock.MagicMock) -> None:
     """Each legend label has the colour of its series, for a model line and for a series with error bars."""
-    legends: list[mpllegend.Legend] = []
-    drawlegend = mplax.Axes.legend
+    seriescolours = ["tab:green", "tab:red", "0.4"]
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
+        color=seriescolours,
+        outputfile=outputpath,
+    )
 
-    def keep_legend(axis: mplax.Axes, *args: t.Any, **kwargs: t.Any) -> mpllegend.Legend:
-        legends.append(drawlegend(axis, *args, **kwargs))
-        return legends[-1]
-
-    with mock.patch.object(mplax.Axes, "legend", side_effect=keep_legend, autospec=True):
-        at.lightcurve.plot(
-            argsraw=[],
-            modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
-            color=["0.0", "tab:red", "0.4"],
-            outputfile=outputpath,
-        )
-
-    (legend,) = legends
-    labelcolours = [mplcolors.to_hex(text.get_color()) for text in legend.get_texts()]
-    assert labelcolours == [mplcolors.to_hex(color) for color in ("0.0", "tab:red", "0.4")]
+    mocklegend.assert_called_once()
+    legend = mocklegend.call_args.args[0].get_legend()
+    labelcolours = [mplcolors.to_hex(text.get_color(), keep_alpha=True) for text in legend.get_texts()]
+    assert labelcolours == [mplcolors.to_hex(color, keep_alpha=True) for color in seriescolours]
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)

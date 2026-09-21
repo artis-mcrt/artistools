@@ -15,7 +15,6 @@ from types import MappingProxyType
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
-import matplotlib.lines as mpllines
 import matplotlib.patches as mpatches
 import numpy as np
 import numpy.typing as npt
@@ -1501,9 +1500,8 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     if leg is not None:
         leg.set_zorder(200)
 
-        for artist in leg.legend_handles:
-            if isinstance(artist, mpllines.Line2D):
-                artist.set_linewidth(2.0)
+        for line in leg.get_lines():
+            line.set_linewidth(2.0)
 
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 

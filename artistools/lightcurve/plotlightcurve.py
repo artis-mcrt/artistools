@@ -1102,7 +1102,10 @@ def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorTy
     The whole map is the fallback for the case where every one of its colours was assigned to a series: a bin
     has to be drawn in some colour, and there is none left that no series holds.
     """
-    tab20colors = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    # a tuple and not a numpy row: matplotlib gives no label colour to a series with a numpy row as its colour
+    tab20colors: list[mplt.ColorType] = [
+        (float(r), float(g), float(b)) for r, g, b, _a in plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))
+    ]
 
     return get_unused_colors(tab20colors, seriescolors) or tab20colors
 
