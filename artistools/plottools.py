@@ -676,13 +676,20 @@ def get_residuals(
 
 
 def plot_residual_panel(
-    axis: mplax.Axes, series: Sequence[ResidualSeries], xmin: float, xmax: float, *, relative: bool = True
+    axis: mplax.Axes,
+    series: Sequence[ResidualSeries],
+    xmin: float,
+    xmax: float,
+    *,
+    relative: bool = True,
+    ratio: bool = False,
 ) -> pl.DataFrame:
     """Draw model minus reference for each model against the first reference series, and return the statistics.
 
     The panel shows the residual in the units of the main frame. The table gives the number of points
     and the root mean square (RMS) of the residual. It also gives the ratio of the RMS to the mean
     reference value. relative=False applies to a magnitude, where that ratio has no meaning.
+    ratio=True draws model / reference, which agrees with a main frame that has a log y axis.
     """
     import numpy as np
 
@@ -719,7 +726,12 @@ def plot_residual_panel(
 
         # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
         markerkwargs: dict[str, t.Any] = {} if residual.size > 200 else {"marker": "o", "markersize": 3}
-        axis.plot(reference.x[inrange], residual, color=model.color, linewidth=0.8, **markerkwargs)
+        yvalues = residual
+        if ratio:
+            yreference = reference.y[inrange]
+            # a reference value of zero gives a gap
+            yvalues = 1.0 + np.divide(residual, yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0)
+        axis.plot(reference.x[inrange], yvalues, color=model.color, linewidth=0.8, **markerkwargs)
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
@@ -727,7 +739,7 @@ def plot_residual_panel(
             f"{int(hasvalue.sum())} points, RMS {rms:.3g}{strrelative}"
         )
 
-    axis.axhline(0.0, color="black", linewidth=0.8, zorder=0)
+    axis.axhline(1.0 if ratio else 0.0, color="black", linewidth=0.8, zorder=0)
     return pl.DataFrame(
         rows,
         schema={
@@ -751,10 +763,14 @@ def draw_residual_panel(
 ) -> pl.DataFrame:
     """Draw model minus reference below the main frame, and return the statistics of each model.
 
-    Call it after the main frame has its labels and its x range, because the panel takes both.
+    With a log y axis in the main frame, the panel shows model / reference on a log y axis, because a
+    distance in that frame is a ratio. Call it after the main frame has its labels and its x range, because the panel takes both.
     """
     xlim = mainaxis.get_xlim()
-    dfresidualstats = plot_residual_panel(residualaxis, series, min(xlim), max(xlim), relative=not ismagnitude)
+    isratio = bool(getattr(args, "logscaley", False)) and not ismagnitude
+    dfresidualstats = plot_residual_panel(
+        residualaxis, series, min(xlim), max(xlim), relative=not ismagnitude, ratio=isratio
+    )
     # the shared x axis otherwise takes a new range with the margin of the residual axis
     mainaxis.set_xlim(xlim)
     set_axis_properties(residualaxis, args, xlimits=xlimits, setyaxis=False)
@@ -763,6 +779,9 @@ def draw_residual_panel(
         invert_magnitude_yaxis(residualaxis)
     if getattr(args, "logscaley", False):
         prune_log_ticks(mainaxis.yaxis)
+    if isratio:
+        residualaxis.set_yscale("log")
+        prune_log_ticks(residualaxis.yaxis)
 
     mainformatter = mainaxis.yaxis.get_major_formatter()
     mainylabel = (
@@ -770,7 +789,7 @@ def draw_residual_panel(
     )
     # the residual has the units of the main frame, which the label of that frame gives in brackets
     strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
-    residualaxis.set_ylabel(rf"model $-$ ref{strunits}")
+    residualaxis.set_ylabel("model / ref" if isratio else rf"model $-$ ref{strunits}")
     set_exponent_label(residualaxis)
 
     if mainaxis.get_xlabel():

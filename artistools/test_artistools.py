@@ -285,6 +285,10 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert dfstats["npoints"].item() == 2
     assert np.isclose(dfstats["rms"].item(), math.sqrt((4.0 + 9.0) / 2.0))
     assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / ((22.0 + 33.0) / 2.0))
+    # a main frame with a log y axis takes model / reference: 24 / 22 and 30 / 33
+    with mock.patch.object(mplax.Axes, "plot", wraps=axis.plot) as mockplot:
+        at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0, ratio=True)
+    assert np.allclose(mockplot.call_args.args[1][1:], [24.0 / 22.0, 30.0 / 33.0])
     # a ratio to the mean reference value has no meaning for a magnitude
     assert (
         at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0, relative=False)["rms_relative"].item()
