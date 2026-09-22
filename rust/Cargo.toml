@@ -1,6 +1,6 @@
 [package]
 name = "artistools"
-version = "2026.9.20"
+version = "2026.9.22"
 authors = ["Luke Shingles <luke.shingles@gmail.com>"]
 edition = "2024"
 rust-version = "1.95.1"
