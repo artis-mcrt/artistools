@@ -7,10 +7,15 @@ for the ARTIS radiative transfer code.
 # ruff:file-ignore[non-empty-init-module]
 import sys
 
-# numpy has to load before polars. Otherwise polars makes a proxy for numpy, and on a free-threaded build two
-# threads that resolve that proxy at once raise "'module' object does not support item assignment". This
-# import comes before set_lazy_imports, thus it is eager. Every command loads numpy, thus it costs no time
+# numpy must load before polars. Otherwise polars makes a proxy for numpy, and on a free-threaded build two
+# threads that resolve that proxy at once raise "'module' object does not support item assignment"
 import numpy as np  # ruff:ignore[unused-import]
+
+if sys.version_info >= (3, 15):
+    import importlib
+
+    # -X lazy_imports=all makes the import above lazy, but a call of import_module is always eager
+    importlib.import_module("numpy")
 
 if "polars._dependencies" in sys.modules:
     # the caller imported polars first, thus polars can hold the proxy. One access resolves it in this thread
@@ -18,15 +23,14 @@ if "polars._dependencies" in sys.modules:
 
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
-        # matplotlib registers docstring parts as a side effect of some of its imports, and its later modules
-        # read them at import time. Thus an import of matplotlib from inside matplotlib stays eager. Code that
-        # runs with no __name__ gives no importing module
+        # some matplotlib modules read a name that another import of matplotlib gives as a side effect, e.g. a
+        # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None
         lambda importing, imported, _fromlist: (
             not (
-                imported.startswith("polars")
+                imported.startswith(("numpy", "polars"))
                 or (
                     (importing or "").startswith(("matplotlib", "mpl_toolkits"))
-                    and imported.startswith(("matplotlib", "mpl_toolkits"))
+                    and imported.startswith(("matplotlib", "mpl_toolkits", "fontTools"))
                 )
             )
         )

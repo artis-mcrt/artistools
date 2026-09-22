@@ -90,10 +90,7 @@ def test_polarscompat_is_still_necessary() -> None:
     the repair, thus the two together say both that the repair works and that it is still needed.
     """
     # a fresh interpreter, because importing artistools applies the repair
-    code = "import polars as pl; print(pl.Series('x', [1]).unique() is None)"
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
-    )
+    result = run_fresh_python("import polars as pl; print(pl.Series('x', [1]).unique() is None)")
 
     assert result.stdout.strip() == "True", (
         f"polars {pl.__version__} rebinds its own Series methods on Python "
@@ -102,32 +99,65 @@ def test_polarscompat_is_still_necessary() -> None:
     )
 
 
-@pytest.mark.parametrize("firstimport", ["artistools", "polars"])
-def test_polars_holds_the_real_numpy(firstimport: str) -> None:
-    """Check that polars holds numpy itself, and not its lazy proxy, in either order of the imports.
-
-    On a free-threaded build, two threads that resolve that proxy at once raise with "'module' object
-    does not support item assignment". gsinetworkdecayproducts did this in parallel_map.
-    """
-    # a fresh interpreter, because the test session loaded numpy before this test
-    code = f"import {firstimport}, artistools, polars._dependencies as d; print(type(d.numpy).__name__)"
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+def run_fresh_python(code: str, *pythonflags: str) -> subprocess.CompletedProcess[str]:
+    """Run code in a new interpreter, because the test session already holds the modules that a test examines."""
+    return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, *pythonflags, "-c", code], capture_output=True, text=True, check=False
     )
 
-    assert result.stdout.strip() == "module"
+
+# an attribute access resolves a lazy import, thus each import runs in the order of the code. With
+# -X lazy_imports=all, polars itself fails with ImportCycleError when it loads first, thus that case is absent
+NUMPYCASES = [
+    pytest.param("", (), id="artistools_first"),
+    pytest.param("import polars; polars.__name__; ", (), id="polars_first"),
+    *(
+        [pytest.param("", ("-X", "lazy_imports=all"), id="artistools_first_lazy_imports_all")]
+        if sys.version_info >= (3, 15)
+        else []
+    ),
+]
+
+
+@pytest.mark.parametrize(("firstimport", "pythonflags"), NUMPYCASES)
+def test_polars_holds_the_real_numpy(firstimport: str, pythonflags: tuple[str, ...]) -> None:
+    """Check that polars reads the names of numpy itself, and not through its lazy proxy.
+
+    On a free-threaded build, two threads that resolve that proxy at once raise with "'module' object
+    does not support item assignment". gsinetworkdecayproducts did this in parallel_map. The proxy
+    also stays in the modules of polars that imported it, thus the test reads one of them too.
+    """
+    code = (
+        f"{firstimport}import artistools; artistools.__name__; import numpy, polars._dependencies, polars.series.series; "
+        "print(type(polars._dependencies.numpy).__name__, polars.series.series.np.ndarray is numpy.ndarray)"
+    )
+    result = run_fresh_python(code, *pythonflags)
+
+    assert result.stdout.split() == ["module", "True"], result.stderr
 
 
 @pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
 def test_an_import_with_no_module_name_still_works() -> None:
     """The lazy-import filter applies to the whole process, thus it must take code that has no __name__.
 
-    Python gives such code no name of the importing module. jinja2 runs its templates in this way.
+    Python gives such code no name of the module that does the import. jinja2 runs its templates in this way.
     """
-    code = 'import artistools; exec("import json", {}); print("ok")'
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    result = run_fresh_python('import artistools; exec("import json", {}); print("ok")')
+
+    assert result.stdout.strip() == "ok", result.stderr
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
+def test_matplotlib_saves_eps_with_type42_fonts() -> None:
+    """backend_ps reads fontTools.ttLib, which only an import of fontTools.subset in matplotlib gives.
+
+    A lazy import of fontTools.subset gave "module 'fontTools' has no attribute 'ttLib'".
+    """
+    code = (
+        "import io, artistools, matplotlib.pyplot as plt; plt.rcParams['ps.fonttype'] = 42; "
+        "fig, ax = plt.subplots(); ax.set_title('eps'); fig.savefig(io.BytesIO(), format='eps'); print('ok')"
     )
+    result = run_fresh_python(code)
 
     assert result.stdout.strip() == "ok", result.stderr
 
@@ -2268,11 +2298,7 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
-        flagsofdest: dict[str, list[str]] = {}
-        for action in subparser._actions:  # ruff:ignore[private-member-access]
-            flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
-
-        for flags in flagsofdest.values():
+        for flags in get_flags_of_dest(subparser).values():
             # a command that takes one of the two spellings takes the other one for the same value
             if "-lambdamin" in flags:
                 assert "-xmin" in flags, f"{subcommand} takes -lambdamin without -xmin"
@@ -2582,14 +2608,30 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
     assert "300 days falls in timestep 54" in capsys.readouterr().out
 
-    # a joined value that starts with no letter, or that is a choice of the flag, reaches the flag
+    # a joined value that looks like a value, or that is a choice of the flag, reaches the flag
     parser = artistools.__main__.build_parser()
     assert parser.parse_args(["plotspectra", "-o/plots/x.pdf"]).outputfile == Path("/plots/x.pdf")
     assert parser.parse_args(["plotspectra", "-t.5"]).timedays == ".5"
     assert parser.parse_args(["plotestimators", "-fpng", "Te"]).format == "png"
 
-    # -h and -v take no value. argparse read "-hesmafile" as -h and printed the help with exit status 0
-    for argsraw in (["plotspectra", "-hesmafile", "x.dat"], ["deposition", "-vmax", "0.3"]):
+    # argparse lets the last flag of a group of switches take a value
+    args = parser.parse_args(["plotspectra", "-qo", "/plots/x.pdf"])
+    assert args.quiet
+    assert args.outputfile == Path("/plots/x.pdf")
+    assert parser.parse_args(["timesteps", "-qt300"]).timedays == 300
+
+    # the top level must leave a flag of a subcommand to that subcommand, although it declares -h
+    assert parser.parse_args(["hesma", "plotspectrum", "-hesmafile", "x.dat"]).hesmafile == [Path("x.dat")]
+
+    # argparse read "-hesmafile" as -h and printed the help with exit status 0. The other names read as -x _e,
+    # -plot _hesma_model, and -o ~, which made a folder with the name "~"
+    for argsraw in (
+        ["plotspectra", "-hesmafile", "x.dat"],
+        ["deposition", "-vmax", "0.3"],
+        ["plotestimators", "-x_e", "0.5", "Te"],
+        ["plotestimators", "-plot_hesma_model", "x.dat"],
+        ["plotspectra", "-o~/plots/x.pdf"],
+    ):
         with pytest.raises(SystemExit) as excinfo:
             parser.parse_args(argsraw)
         assert excinfo.value.code == 2
@@ -2848,20 +2890,29 @@ def test_writecomparisondata_keeps_a_tiny_ion_fraction(tmp_path: Path) -> None:
     assert float(datalines[0].split()[2]) == pytest.approx(expected, rel=1e-4, abs=0.0)
 
 
-def test_completions_keeps_the_code_and_hides_the_instructions_from_a_redirect(
-    capsys: pytest.CaptureFixture[str],
+def test_completions_writes_the_code_to_a_redirect(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """--quiet must keep the code, and a redirect of the standard output must get no instructions.
+    """--quiet and a redirect must get the code, and a terminal must get the instructions.
 
-    --quiet sent the code to the null device, thus "completions zsh --quiet > file" wrote an empty file. The
-    instructions went to the standard output, thus the old "completions > file" wrote text that the shell ran.
+    --quiet sent the code to the null device, thus "completions zsh --quiet > file" wrote an empty file. An old
+    script runs "completions > file" and sources that file, thus a redirect with no shell gets the code too.
     """
     import artistools.__main__
+    from artistools.completions import get_completion_code
+
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    expected = get_completion_code("zsh")
 
     artistools.__main__.main(argsraw=["completions", "zsh", "--quiet"])
-    assert capsys.readouterr().out.startswith("#compdef at artistools")
+    assert capsys.readouterr().out.strip() == expected.strip()
 
+    # the captured standard output is no terminal, as a redirect to a file is not
+    artistools.__main__.main(argsraw=["completions"])
+    assert capsys.readouterr().out.strip() == expected.strip()
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     artistools.__main__.main(argsraw=["completions"])
     captured = capsys.readouterr()
     assert not captured.out
-    assert "To enable tab completion" in captured.err
+    assert "To enable tab completion in zsh" in captured.err

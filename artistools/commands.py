@@ -530,6 +530,21 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
     return parser
 
 
+def is_joined_value(value: str, action: argparse.Action) -> bool:
+    """Report whether the text that joins a flag is a value of that flag, e.g. 300, .5, ./plot.pdf, -5, or a choice.
+
+    The name of a flag of another command starts with a letter, "_", or "-", thus such text is no value. A "~"
+    also stops, because the shell does not expand it inside a word, and the command would make a folder "~".
+    """
+    isnumberstart = value[:1].isdigit() or value[:1] == "."
+    return (
+        isnumberstart
+        or value[:1] == "/"
+        or (value[:1] == "-" and value[1:2] in set("0123456789."))
+        or (value in (action.choices or ()))
+    )
+
+
 class SuggestingArgumentParser(argparse.ArgumentParser):
     """Name the closest subcommand, and the closest argument, when the given one does not match.
 
@@ -564,18 +579,19 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
         return [flag for action in self._actions if action.help != argparse.SUPPRESS for flag in action.option_strings]
 
-    def exit_with_help(self, message: str, helptext: str) -> t.NoReturn:
+    def exit_with_help(self, message: str, helptext: str = "") -> t.NoReturn:
         """Report a bad argument as an error line and a help line, then stop.
 
         argparse writes one line that holds both, thus this prints the usage itself and takes the
-        place of the error method. The exit status of 2 is the one that argparse gives.
+        place of the error method. The exit status of 2 is the one that argparse gives. With no help
+        text, the help line names the --help of the command.
         """
         import sys
 
         from artistools.misc import print_error
 
         self.print_usage(sys.stderr)
-        print_error(message, helptext)
+        print_error(message, helptext or f"Run `{self.prog} --help` to see every argument")
         raise SystemExit(2)
 
     def split_joined_flags(self, args: "Sequence[str]") -> list[str]:
@@ -586,6 +602,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         token starts with, thus this splits the token there. A token that names the start of a
         longer flag stays whole, because that token is an abbreviation that argparse resolves.
         """
+        # the top level declares only -h and -V, thus it must not test the flags of a subcommand, e.g. -hesmafile
+        if self._subparsers is not None:
+            return list(args)
+
         out: list[str] = []
         for index, argstring in enumerate(args):
             if argstring == "--":  # every argument after this one is a positional argument
@@ -600,9 +620,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
 
         argparse reads the text after a single-dash flag of one letter as its value. Thus "-obsspec 100" on a
-        command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value that starts
-        with a letter stops the command, unless it is a choice of the flag. A group of switches, e.g. -qv,
-        stays whole.
+        command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value must look
+        like a value, and a group of switches such as -qv stays whole.
         """
         if not argstring.startswith("-") or argstring.startswith("--") or len(argstring) <= 2:
             return [argstring]
@@ -614,35 +633,45 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         if any(flag.startswith(name) for flag in declared):
             return [argstring]
 
-        # the longest flag first
+        # the user names the longest flag that the token starts with, e.g. -ts70 is -ts 70 and not -t s70
         for length in range(len(argstring) - 1, 1, -1):
             flag = argstring[:length]
             action = declared.get(flag)
             if action is None or (action.nargs == 0 and length > 2):
                 continue
 
+            if action.nargs == 0 and self.is_switch_group(argstring):
+                return [argstring]
+
             value = argstring[length:]
-            if action.nargs == 0:
-                if all(getattr(declared.get(f"-{letter}"), "nargs", None) == 0 for letter in value):
-                    return [argstring]
-            elif not value[0].isalpha() or value in (action.choices or ()):
-                # e.g. -t300, -o./plot.pdf, or -fpng. argparse splits a flag of one letter from its value itself
+            if action.nargs != 0 and is_joined_value(value, action):
+                # argparse splits a flag of one letter from its value itself
                 return [flag, value] if length > 2 and not equals else [argstring]
 
             from artistools.misc import suggest_flags
 
-            if length > 2:
-                # e.g. -timesteps for -timestep. A split would give "s" to -timestep and hide the number
-                helptext = f"Did you mean {flag}?"
-            elif action.nargs == 0:
-                helptext = (
-                    suggest_flags(name, self.get_visible_flags()) or f"Run `{self.prog} --help` to see every argument"
-                )
-            else:
-                helptext = suggest_flags(name, self.get_visible_flags()) or f"Put a space between {flag} and its value"
+            helptext = f"Did you mean {flag}?" if length > 2 else suggest_flags(name, self.get_visible_flags())
+            if not helptext and action.nargs != 0:
+                helptext = f"Put a space between {flag} and its value"
             self.exit_with_help(f"{name} is not an argument of this command", helptext)
 
         return [argstring]
+
+    def is_switch_group(self, argstring: str) -> bool:
+        """Report whether argparse reads the argument as a group of flags of one letter, e.g. -qv or -qt300.
+
+        argparse lets the last flag of the group take a value, which is the rest of the argument or the next one.
+        """
+        for index, letter in enumerate(argstring[1:], start=2):
+            action = self._option_string_actions.get(f"-{letter}")
+            if action is None:
+                return False
+
+            if action.nargs != 0:
+                rest = argstring[index:]
+                return not rest or is_joined_value(rest, action)
+
+        return True
 
     @t.override
     def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
@@ -684,10 +713,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             if flag is not None and isinstance(subparser, SuggestingArgumentParser):
                 helptext = suggest_names(flag, subparser.get_visible_flags())
             # the usage of the command that the user ran, thus it holds the arguments of that command
-            subparser.exit_with_help(
-                f"unrecognized arguments: {' '.join(leftover)}",
-                helptext or f"Run `{subparser.prog} --help` to see every argument",
-            )
+            subparser.exit_with_help(f"unrecognized arguments: {' '.join(leftover)}", helptext)
 
         return parsednamespace
 
@@ -709,7 +735,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # get_visible_flags leaves out a hidden alias, thus the suggestion names a flag that the help shows
             helptext = suggest_flags(given, self.get_visible_flags())
 
-        self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
+        self.exit_with_help(message, helptext)
 
 
 def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) -> None:

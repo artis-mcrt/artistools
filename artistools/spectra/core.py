@@ -1030,7 +1030,8 @@ def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.L
 def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    The cache takes the absolute path, thus a change of the working folder gives the new model. Every caller
+    shares the returned dict, thus do not change it.
     """
     return get_vspecpol_data_cached(vspecindex, resolve_modelpath(modelpath))
 
@@ -1333,7 +1334,8 @@ def get_flux_contributions(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    The spectra cover lambda_min to lambda_max [Å] only, thus the ranking of the contributions counts the plotted
+    window alone. The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
     return get_flux_contributions_cached(
         resolve_modelpath(modelpath),

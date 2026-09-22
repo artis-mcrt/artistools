@@ -189,24 +189,24 @@ def get_ylabel(variable: str) -> str:
     return get_variablelongunits(variable) or get_units_string(variable)
 
 
-def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
-    """Return the colour with its lightness scaled by amount, so related series can share a hue.
+def get_point_colour(color: "mplt.ColorType") -> tuple[float, float, float]:
+    """Return a lighter shade of the colour of a series, for its points.
 
     The lightness stays below 0.85, because a lighter colour is almost white and a point of that colour does not
     show on the white background.
     """
     import colorsys
 
-    try:
-        c = mc.cnames[color]
-    except (SyntaxWarning, KeyError, TypeError):
-        c = color
-    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-    return colorsys.hls_to_rgb(c[0], max(0.0, min(0.85, amount * c[1])), c[2])
+    hue, lightness, saturation = colorsys.rgb_to_hls(*mc.to_rgb(color))
+    return colorsys.hls_to_rgb(hue, min(0.85, 1.5 * lightness), saturation)
 
 
 def draw_points(
-    ax: mplax.Axes, dfpoints: pl.DataFrame, seriescolor: t.Any, plotkwargs: dict[str, t.Any], label: str | None
+    ax: mplax.Axes,
+    dfpoints: pl.DataFrame,
+    seriescolor: "mplt.ColorType",
+    plotkwargs: dict[str, t.Any],
+    label: str | None,
 ) -> None:
     """Draw every point of a series in a lighter shade of the colour of the series.
 
@@ -217,12 +217,11 @@ def draw_points(
         "linestyle": "None",
         "marker": ".",
         "markersize": 5,
-        "color": adjust_lightness(seriescolor, 1.5),
+        "color": get_point_colour(seriescolor),
         "markeredgewidth": 0,
         "zorder": -1,
     }
     pointkwargs.pop("dashes", None)
-    pointkwargs.pop("label", None)
     if dfpoints.height > 10000:
         pointkwargs["rasterized"] = True
     ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), label=label, **pointkwargs)
@@ -346,15 +345,11 @@ def draw_subplot_items(
     """
     plans = [plan for series, _ in items for plan in series]
     # -xbins 0 draws the points alone, thus it needs no average line
-    drawsline = args.xbins != 0
-    lazyframes = [get_line_points(plan.dfseries, args) for plan in plans] if drawsline else []
-    if args.markers:
-        lazyframes += [plan.dfseries.select("xvalue", "yvalue") for plan in plans]
-
-    frames = pl.collect_all(lazyframes)
-    nlineframes = len(plans) if drawsline else 0
-    dflinepoints_of_plan: list[pl.DataFrame | None] = [*frames[:nlineframes]] if drawsline else [None] * len(plans)
-    dfpoints_of_plan: list[pl.DataFrame | None] = [*frames[nlineframes:]] if args.markers else [None] * len(plans)
+    linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
+    pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
+    frames: list[pl.DataFrame | None] = [*pl.collect_all([*linequeries, *pointqueries])]
+    dflinepoints_of_plan = frames[: len(linequeries)] or [None] * len(plans)
+    dfpoints_of_plan = frames[len(linequeries) :] or [None] * len(plans)
 
     planindex = 0
     for series, finish in items:

@@ -1,7 +1,7 @@
 """Give the instructions for tab completion, or print the tab-completion code for a shell.
 
-With no shell, the command writes the instructions for the shell in the SHELL environment variable to the
-standard error. With a shell, it prints the code, e.g. artistools completions zsh > ~/.zfunc/_artistools.
+With no shell, the command gives the instructions for the shell in the SHELL environment variable. With a
+shell, it prints the code, e.g. artistools completions zsh > ~/.zfunc/_artistools.
 
 The code asks artistools for the completions at each press of the Tab key, thus a new argument needs
 no other step. Only a new console script needs the file again.
@@ -89,9 +89,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Give the instructions for tab completion, or print the code for the given shell."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    if args.shell:
-        print_product(args, get_completion_code(args.shell))
+    usershell = Path(os.environ.get("SHELL", "")).name
+    productstream = getattr(args, "productstream", None) or sys.stdout
+    # an old script writes the code with "artistools completions > file". A redirect is no terminal, thus the
+    # command then prints the code for the shell of the user. The instructions go to the standard error
+    shell = args.shell or (usershell if usershell in INSTRUCTIONS and not productstream.isatty() else None)
+    if shell:
+        print_product(args, get_completion_code(shell))
     else:
-        # a redirect of the old command, "artistools completions > file", must not write this text to a file
-        # that the shell reads, thus the instructions go to the standard error
-        print(get_instructions(Path(os.environ.get("SHELL", "")).name), file=sys.stderr)
+        print(get_instructions(usershell), file=sys.stderr)
