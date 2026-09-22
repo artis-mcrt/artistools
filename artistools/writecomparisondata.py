@@ -27,11 +27,13 @@ from artistools.misc import addarg_output
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import get_deposition
+from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import zopen
+from artistools.misc.modelinfo import get_runfolder_timesteps
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
@@ -130,11 +132,23 @@ def write_edep(
     ARTIS writes the deposition rate of timestep n into the estimators of timestep n + 1, per unit volume of
     timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
     """
-    lznext = scan_estimators(modelpath=modelpath, timestep=tuple(timestep + 1 for timestep in selected_timesteps))
-    expr_total_dep = (
-        pl.col("total_dep").cast(pl.Float64) if "total_dep" in lznext.collect_schema().names() else pl.lit(0.0)
-    )
-    dfnext = lznext.select("modelgridindex", pl.col("timestep") - 1, total_dep=expr_total_dep).collect()
+    # scan_estimators refuses a request of timesteps that the run did not write, e.g. the one after the last
+    writtentimesteps = {
+        timestep for folder in get_runfolders(modelpath) for timestep in get_runfolder_timesteps(folder)
+    }
+    nexttimesteps = tuple(timestep + 1 for timestep in selected_timesteps if timestep + 1 in writtentimesteps)
+    dfnext = dfestimators.select("modelgridindex", "timestep", total_dep=pl.lit(0.0)).clear()
+    if nexttimesteps:
+        lznext = scan_estimators(modelpath=modelpath, timestep=nexttimesteps)
+        expr_total_dep = (
+            pl.col("total_dep").cast(pl.Float64) if "total_dep" in lznext.collect_schema().names() else pl.lit(0.0)
+        )
+        dfnext = (
+            lznext
+            .select("modelgridindex", pl.col("timestep") - 1, total_dep=expr_total_dep)
+            .collect()
+            .cast(dfnext.schema)
+        )
     if withoutnext := sorted(set(selected_timesteps) - set(dfnext["timestep"].to_list())):
         print_warning(
             f"The run wrote no timestep after {', '.join(str(ts) for ts in withoutnext)}, thus the deposition file"

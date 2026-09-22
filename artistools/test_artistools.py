@@ -2940,6 +2940,14 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
     nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
     assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)
 
+    # the run wrote no timestep after the last one, thus the file gives zero there and the export goes on
+    lasttimestep = len(at.get_timestep_times(modelpath)) - 1
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep])
+    datalines = [
+        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
+    ]
+    assert float(datalines[0].split()[1]) == 0.0
+
 
 def test_linefluxes_refuse_overlapping_time_bins() -> None:
     """Overlapping bins gave each shared interval to the last bin, and each bin still divided by its full width.

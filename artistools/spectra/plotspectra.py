@@ -2025,7 +2025,7 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give one bin, e.g. -plotviewingangle 0",
         )
 
-    if args.timedayslist:
+    if args.timedayslist and len(args.timedayslist) > 1:
         exit_with_error(
             "an emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
             "Give one time with -timedays, and run the command again for each other time",

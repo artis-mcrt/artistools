@@ -1825,6 +1825,15 @@ def test_plotspectra_refuses_a_quantity_that_the_series_lacks(
     assert message in capsys.readouterr().err
 
 
+def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:
+    """A -timedayslist of one time names one time, thus an emission plot takes it as -timedays."""
+    outputfile = tmp_path / "emission.pdf"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath_classic_3d], timedayslist=["5"], showemission=True, outputfile=outputfile
+    )
+    assert outputfile.is_file()
+
+
 def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     """--write_data must give the values of the plot, and not f_lambda at 1 Mpc alone.
 
