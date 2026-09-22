@@ -559,7 +559,7 @@ def test_estimparse() -> None:
     # nnelement is the sum over the ion stages of the element
     assert firstcell["nnelement_Fe"] == pytest.approx(6.226e05 + 8.059e01 + 3.940e-24 + 1.586e-27 + 1.010e-27)
     # quantities recorded as X*nne are also stored divided by the electron density
-    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3)
+    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3, rel=1e-4, abs=0.0)
 
 
 def test_estimparse_missing_file() -> None:
@@ -752,6 +752,8 @@ def test_get_averageexcitation() -> None:
     assert len(dfavgexc) == 1
 
     avgexc = dfavgexc["averageexcitation"].item()
+    assert avgexc == pytest.approx(0.2096323301213659, rel=1e-6, abs=0.0)
+
     ionlevels = (
         at.atomic.get_levels(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))["levels"].item()
     )
@@ -769,6 +771,12 @@ def test_get_averageexcitation() -> None:
     )
     avgexc_resolvedonly = float((dfresolved["energy_ev"] * dfresolved["n_NLTE"]).sum()) / float(dfts["n_NLTE"].sum())
     assert avgexc >= avgexc_resolvedonly, "adding the superlevel population can only raise the mean energy"
+
+    # the superlevel stands in for the levels above the resolved ones, thus this ion must hold one
+    assert float(dfts.filter(pl.col("level") < 0)["n_NLTE"].sum()) > 0.0
+
+    # a plain mean of the occupied level energies is 3.21 eV, thus the populations decide the result
+    assert avgexc < 0.5 * float(energiesoccupied["energy_ev"].mean())
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -877,6 +885,10 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     assert rankbatch_parquet_is_current(parquetfilepath, None, textsource_complete=False)
     assert rankbatch_parquet_is_current(parquetfilepath, mtime, textsource_complete=True)
 
+    # a text source time inside the tolerance keeps the cache, because a file system can move that
+    # time with no write
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime + 6.0, textsource_complete=True)
+
     # a text source time outside the tolerance of the stamp needs the conversion again
     assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0, textsource_complete=True)
 
@@ -892,10 +904,12 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
 
     mtime = 1000.0
 
-    # a cache that holds no version stamp counts as version 1, thus a matching time keeps it
+    # a cache that holds no version stamp is stale when the text files exist, because the reader
+    # cannot check its format. The stamp is accepted only when the text files are gone
     unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
-    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
+    assert not rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
+    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=False)
 
     # a matching text source time but a different cache version
     oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
@@ -959,15 +973,28 @@ def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
     gzfile.write_bytes(b"")
     assert get_textsource_mtimes(tmp_path)[1] == gzfile.stat().st_mtime
 
+    # the plain name of the same rank takes the place of the compressed file, even when it is older
+    plainfile = tmp_path / "estimators_0001.out"
+    plainfile.write_text("timestep 0\n")
+    os.utime(gzfile, (plainfile.stat().st_mtime + 100.0, plainfile.stat().st_mtime + 100.0))
+    assert get_textsource_mtimes(tmp_path)[1] == plainfile.stat().st_mtime
+
 
 def test_a_cached_scan_asks_for_no_progress_class() -> None:
-    """A scan that converts no text file must not build the progress class, which takes a lock."""
+    """A scan that converts no text file must not build the progress class, which takes a lock.
+
+    The guard also counts the batches of the scan. The 1D test model gives one batch, thus it asks for
+    no class whatever the caches hold. This model has two run folders, thus its scan holds two batches.
+    """
     import artistools.misc.general
+
+    # the first scan writes the parquet cache of each batch, and that conversion does take the class
+    at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
 
     with mock.patch.object(
         artistools.misc.general, "get_progress_class", side_effect=AssertionError("a cached scan made a bar")
     ) as mockprogress:
-        at.estimators.scan_estimators(modelpath=modelpath).select(pl.len()).collect()
+        at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
 
     mockprogress.assert_not_called()
 
@@ -1307,7 +1334,7 @@ def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.M
         assert np.allclose(limits, (1000.0, 4000.0))
 
 
-def test_estimator_xmin_as_a_plot_item_names_the_argument() -> None:
+def test_estimator_xmin_as_a_plot_item_names_the_argument(capsys: pytest.CaptureFixture[str]) -> None:
     """A bare list ["xmin", value] must give the same message as the "xmin=value" string.
 
     normalise_plotitems adds the underscore to the string form alone, thus the bare list reached the ion
@@ -1319,6 +1346,9 @@ def test_estimator_xmin_as_a_plot_item_names_the_argument() -> None:
         )
 
     assert excinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "-xmin" in message
+    assert "share one horizontal axis" in message
 
 
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:
@@ -1816,6 +1846,16 @@ def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
         assert not is_valid_ion(ionstr), f"{ionstr} must name no ion"
 
 
+def get_cone_cellcount(coneangle: float) -> int:
+    """Return the number of cells that -readonlymgi cone selects around the +z axis of the 3D test model."""
+    from artistools.estimators.plotestimators import select_cells_along_axis
+
+    args = argparse.Namespace(modelpath=[modelpath_classic_3d], readonlymgi="cone", axis="+z", coneangle=coneangle)
+    select_cells_along_axis(args)
+
+    return len(args.modelgridindex)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     """-readonlymgi cone selects the cells within -coneangle of the axis.
@@ -1836,6 +1876,14 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
 
     xvalues = np.concatenate([np.array(callargs[0][1], dtype=float) for callargs in mockplot.call_args_list])
     assert len(xvalues) > 0
+
+    # a cone that takes every cell, or one cell, shows nothing about the angle
+    ncells_model = at.inputmodel.get_modeldata(modelpath_classic_3d)[1]["npts_model"]
+    ncells_wide = get_cone_cellcount(60.0)
+    assert 1 < ncells_wide < ncells_model
+
+    # a narrower cone reaches fewer cells, which pins the angle to the selection
+    assert get_cone_cellcount(20.0) < ncells_wide
 
 
 def get_image_panel_calls(imagekwargs: dict[str, t.Any], outputfolder: Path) -> list[tuple[t.Any, ...]]:

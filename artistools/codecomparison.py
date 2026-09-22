@@ -111,6 +111,8 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
 
                 key = (cur_timestep, cur_modelgridindex)
 
+                # the name must not be vel_r_mid, which the model data gives in cm/s. This velocity
+                # is in km/s, and the join of the estimators with the model data drops the model column
                 estimators[key] = {
                     "vel_mid": float(row[0]),
                     "Te": float(row[1]),
@@ -118,7 +120,6 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     "nne": float(row[3]),
                     "nntot": float(row[4]),
                 }
-                estimators[key]["vel_r_max_kmps"] = estimators[key]["vel_mid"]
 
     ionfracfilepaths = inputmodelfolder.glob(f"ionfrac_*_{inputmodel}_{codename}.txt")
     for ionfracfilepath in ionfracfilepaths:

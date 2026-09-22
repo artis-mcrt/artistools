@@ -138,7 +138,7 @@ POPTYPE_YLABELS: t.Final[Mapping[str, str]] = MappingProxyType({
     "elpop": r"X$_{i}$/X$_{\rm element}$",
     "totalpop": r"X$_{i}$/X$_{\rm tot}$",
     "radialdensity": r"Radial density dN/dr $\left[\rm{cm}^{-1}\right]$",
-    "cylradialdensity": r"Cylindrical radial density dN/drcyl $\left[\rm{cm}^{-1}\right]$",
+    "cylradialdensity": r"Cylindrical radial density dN/drcyl/dz $\left[\rm{cm}^{-2}\right]$",
     "cumulative": r"Cumulative particle count",
 })
 
@@ -233,8 +233,9 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
         dfseries
-        # a null value is a cell that reported none, thus its weight must not pull the average to zero
-        .filter(pl.col("yvalue").is_not_null())
+        # a cell that reported no value must not pull the average to zero, and a NaN is not a null.
+        # A mask of the cell keeps the bin, which .drop_nans() on the aggregate took away
+        .filter(pl.col("yvalue").is_not_null() & pl.col("yvalue").cast(pl.Float64).is_not_nan())
         .group_by("xvalue_binned")
         .agg(
             # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.
@@ -247,7 +248,6 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
             yvalue_binned_max=pl.col("yvalue").max(),
         )
         .sort("xvalue_binned")
-        .drop_nans()
     )
 
     filterfunc = get_filterfunc(args)
@@ -395,15 +395,14 @@ def plot_init_abundances(
             linelabel = speciesstr
             expr_yvalue = pl.col(f"{valuetype}{elsymbol}")
 
-        plotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
-        plotkwargs.setdefault("linewidth", 1.5)
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
-        # the first species sets the line style of every species after it
-        if "linestyle" not in plotkwargs:
-            plotkwargs["linestyle"] = linestyle
+        # each species takes its own copy of the arguments. A shared copy gave the dashed style of
+        # Ni56 to every species after it. The caller still sets the style of every species
+        speciesplotkwargs: dict[str, t.Any] = {"linewidth": 1.5, "linestyle": linestyle} | plotkwargs
+        speciesplotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
 
-        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs.copy()))
+        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs))
 
     return plans
 
@@ -533,6 +532,14 @@ def plot_levelpop(
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
+    # model.txt gives the volume at t_model_init, and the homologous flow expands the cell by the cube
+    # of the time. dN/dv needs the number in the cell, thus the density takes the expanded volume
+    arr_volumefactor = (
+        (np.array(get_timestep_times(modelpath, loc="mid")) / modelmeta["t_model_init_days"]) ** 3
+        if seriestype == "levelpopulation_dn_on_dvel"
+        else np.ones(len(arr_tdelta))
+    )
+
     # this series draws one point for each cell, thus the horizontal axis must give one value for
     # each cell. A time axis gives one value for each timestep instead
     dfxofmgi = estimators.select("modelgridindex", "xvalue").unique().collect()
@@ -588,7 +595,7 @@ def plot_levelpop(
                 if levelpop is None:
                     continue
 
-                valuesum += levelpop * arr_tdelta[timestep]
+                valuesum += levelpop * arr_volumefactor[timestep] * arr_tdelta[timestep]
                 tdeltasum += arr_tdelta[timestep]
 
             if tdeltasum == 0.0:
@@ -868,6 +875,22 @@ def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -
     return f"{seriestype}_{ionstr}", ionstr
 
 
+def get_iontuple_sortkey(iontuple: tuple[int, str | int]) -> tuple[int, int, int, str]:
+    """Return a sort key that puts an element first, then its ion stages, then its isotopes.
+
+    A plain sort of the tuples compares an ion stage with the name of an isotope, which raises a
+    TypeError, e.g. for the pair of names "Fe" and "Fe II".
+    """
+    atomic_number, ion_stage = iontuple
+    if ion_stage == "ALL":
+        return (atomic_number, 0, 0, "")
+
+    if isinstance(ion_stage, int):
+        return (atomic_number, 1, ion_stage, "")
+
+    return (atomic_number, 2, 0, ion_stage)
+
+
 def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int) -> pl.Expr:
     """Return the divisor that turns the number density of an ion into the population type, e.g. elpop."""
     if seriestype == "populations" and poptype == "elpop":
@@ -893,17 +916,21 @@ def plot_multi_ion_series(
     value, thus one figure can show an absolute density in one subplot and an ion fraction in another.
     """
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
-    iontuplelist.sort()
+    iontuplelist.sort(key=get_iontuple_sortkey)
     print(f"Subplot with ions: {iontuplelist}")
 
     missingions: set[tuple[int, str | int]] = set()
-    try:
-        if not args.classicartis:
+    if not args.classicartis:
+        try:
             compositiondata = get_composition_data(modelpath)
+        except FileNotFoundError:
+            # the pass over the estimator columns below drops an ion that this run holds no column for,
+            # thus the plot still gives the other ions
+            print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
+        else:
             for atomic_number, ion_stage in iontuplelist:
                 if (
-                    not hasattr(ion_stage, "lower")
-                    and not args.classicartis
+                    isinstance(ion_stage, int)
                     and compositiondata.filter(
                         (pl.col("Z") == atomic_number)
                         & (pl.col("lowermost_ion_stage") <= ion_stage)
@@ -911,14 +938,6 @@ def plot_multi_ion_series(
                     ).is_empty()
                 ):
                     missingions.add((atomic_number, ion_stage))
-
-    except FileNotFoundError:
-        print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
-        estimatorcolumns = estimators.collect_schema().names()
-        for atomic_number, ion_stage in iontuplelist:
-            ionstr = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-            if f"nnion_{ionstr}" not in estimatorcolumns:
-                missingions.add((atomic_number, ion_stage))
 
     if missingions:
         print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
@@ -946,7 +965,8 @@ def plot_multi_ion_series(
         # a radial density and a cumulative count take the number density, and the code below converts it
         expr_normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
 
-        # convert the volumetric number density [cm^-3] to a radial density [cm^-1] with the radius of each cell
+        # convert the volumetric number density [cm^-3] with the radius of each cell. A radial density
+        # is dN/dr [cm^-1], and a cylindrical radial density is dN/drcyl/dz [cm^-2]
         expr_tmid_s = pl.col("tmid_days") * day_to_s
         if poptype == "radialdensity":
             expr_yvals *= 4 * math.pi * (pl.col("vel_r_mid") * expr_tmid_s).pow(2)
@@ -976,23 +996,22 @@ def plot_multi_ion_series(
             else get_ionstring(atomic_number, ion_stage, style="chargelatex")
         )
 
-        color = get_elemcolor(atomic_number=atomic_number)
-
-        dashes: tuple[float, ...] = ()
-        styleindex = 0
-        if isinstance(ion_stage, str):
-            if ion_stage != "ALL":
-                # isotopic abundance
-                if args.colorbyion:
-                    color = f"C{seriesindex % 10}"
-                else:
-                    styleindex = seriesindex
+        # an element takes the first style. An isotope has no ion stage, thus its place in the list
+        # separates it from the other isotopes of its element
+        if ion_stage == "ALL":
+            variantindex = 0
+        elif isinstance(ion_stage, int):
+            variantindex = ion_stage - 1
         else:
-            assert isinstance(ion_stage, int)
-            if args.colorbyion:
-                color = f"C{(ion_stage - 1) % 10}"
-            else:
-                styleindex = ion_stage - 1
+            variantindex = seriesindex
+
+        color = get_elemcolor(atomic_number=atomic_number)
+        styleindex = variantindex
+        if args.colorbyion:
+            # the colour separates the ions, thus every series keeps the first style
+            styleindex = 0
+            if ion_stage != "ALL":
+                color = f"C{variantindex % 10}"
 
         dashes_list = [(), (3, 1, 1, 1), (1.5, 1.5), (6, 3), (1, 3)]
         dashes = dashes_list[styleindex % len(dashes_list)]
@@ -1745,6 +1764,10 @@ def make_image_figure(
         nrows, ncols, figsize=(panelwidth * ncols, 4.2 * nrows * args.figscale), squeeze=False, layout="constrained"
     )
     vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
+    # -xmin and -xmax give a velocity in km/s, as a plot against the velocity takes, and the axis of
+    # an image holds v/c
+    xmin_on_c = None if args.xmin is None else args.xmin * km_to_cm / C_cm_per_s
+    xmax_on_c = None if args.xmax is None else args.xmax * km_to_cm / C_cm_per_s
     for ax, panel, grid in zip(axesgrid.flat, panels, grids, strict=False):
         norm = get_colour_norm(panel, grid)
         values = np.ma.masked_invalid(grid)
@@ -1768,8 +1791,8 @@ def make_image_figure(
             r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]", fontsize=args.labelfontsize
         )
         ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]", fontsize=args.labelfontsize)
-        if args.xmin is not None or args.xmax is not None:
-            ax.set_xlim(args.xmin, args.xmax)
+        if xmin_on_c is not None or xmax_on_c is not None:
+            ax.set_xlim(xmin_on_c, xmax_on_c)
     for ax in list(axesgrid.flat)[len(panels) :]:
         ax.set_visible(False)
 
@@ -2061,25 +2084,43 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     """Apply the default x variable and the default time range, and return the first and last timestep.
 
     A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
-    plot against a spatial variable takes one snapshot, thus it keeps the default time range.
+    gif, a listing, and a plot of one cell also take every timestep, whichever variable the horizontal
+    axis holds. A plot of a snapshot against a spatial variable needs a time, thus it keeps the
+    default time range.
     """
     # a timestep of 0 and a time of 0 are real selections, and both are falsy. Thus this tests for
     # absence and not for truth
     timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
     notimegiven = all(value is None for value in timeargs)
-    if notimegiven and (args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
+    wantswholerun = args.makegif or args.listvariables or args.listnuclides
+    if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
-        if args.x is None:
-            # a gif holds one snapshot for each timestep, thus it plots against a spatial variable
-            args.x = "velocity" if getattr(args, "makegif", False) else "time"
-            print(f"Setting x variable to {args.x}")
-    elif args.x is None:
-        args.x = "velocity"
+
+    if args.x is None:
+        # a gif holds one snapshot for each timestep, thus it plots against a spatial variable. A time
+        # that the user gave also selects one snapshot
+        args.x = "time" if notimegiven and not args.makegif else "velocity"
         print(f"Setting x variable to {args.x}")
 
+    # get_time_range returns these times, thus keep what the user gave for the message below
+    given_timemin, given_timemax = args.timemin, args.timemax
     timestepmin, timestepmax, args.timemin, args.timemax = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
+
+    if timestepmin == timestepmax == -1:
+        # the reader then found no cell and named the model, which hid the time that the user gave
+        given = " and ".join(
+            f"{name} {value}"
+            for name, value in (("-timemin", given_timemin), ("-timemax", given_timemax))
+            if value is not None
+        )
+        tstarts = get_timestep_times(modelpath, loc="start")
+        tends = get_timestep_times(modelpath, loc="end")
+        exit_with_error(
+            f"{given} lies outside the run, which goes from {tstarts[0]:.1f} to {tends[-1]:.1f} days",
+            "Give a time inside that range",
+        )
 
     return timestepmin, timestepmax
 
@@ -2130,7 +2171,7 @@ def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
     return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
 
 
-def resolve_snapshot_arguments(args: argparse.Namespace, modelpath: Path) -> list[tuple[str, float, str]]:
+def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:
     """Apply -slice and -dimensionreduce to the arguments, and return the conditions of -slice.
 
     A plane of -slice gives a colour image, and a line of -slice gives a plot against the velocity on
@@ -2186,11 +2227,6 @@ def resolve_snapshot_arguments(args: argparse.Namespace, modelpath: Path) -> lis
     elif args.x is None:
         lineaxis = next(axisname for axisname in "xyz" if axisname not in {axisname for axisname, _, _ in conditions})
         args.x = f"vel_{lineaxis}_mid_on_c"
-
-    # a gif holds each timestep, and a listing needs no time. The other snapshots need a time
-    timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
-    if all(value is None for value in timeargs) and (args.makegif or args.listvariables or args.listnuclides):
-        args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     return conditions
 
@@ -2467,7 +2503,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
     if args.modelgridindex is not None:
         args.modelgridindex = parse_range_list(args.modelgridindex)
-    sliceconditions = resolve_snapshot_arguments(args, modelpath)
+    sliceconditions = resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 

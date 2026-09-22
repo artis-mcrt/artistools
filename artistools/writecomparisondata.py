@@ -17,7 +17,7 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
-from artistools.estimators import read_estimators
+from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import find_lightcurve_file
@@ -63,12 +63,17 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
             )
 
 
-def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path) -> None:
-    """Write the header lines giving the number of times, the number of cells, and the times themselves."""
+def write_ntimes_nvel(
+    outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path, ncells: int
+) -> None:
+    """Write the header lines giving the number of times, the number of cells, and the times themselves.
+
+    ncells is the number of rows that the file holds. An empty cell has no estimators, thus the count
+    of the model cells promised more rows than the file gives.
+    """
     times = get_timestep_times(modelpath)
-    _, modelmeta = get_modeldata(modelpath)
     outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
-    outfile.write(f"#NVEL: {modelmeta['npts_model']}\n")
+    outfile.write(f"#NVEL: {ncells}\n")
     outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
@@ -86,40 +91,79 @@ def get_nonempty_cells(
     ), modelmeta
 
 
+def scan_cell_estimators(
+    modelpath: str | Path, selected_timesteps: Sequence[int], modeldata: pl.DataFrame, modelmeta: dict[str, t.Any]
+) -> pl.DataFrame:
+    """Return the estimators of the selected timesteps, joined to the model data of each non-empty cell.
+
+    The frame holds one row for each pair of cell and timestep. The rows of one timestep keep the order
+    of the model. The density comes from the model snapshot, which the homologous flow expands with the
+    cube of the time.
+    """
+    times = get_timestep_times(modelpath)
+    dftimes = pl.LazyFrame(
+        {"timestep": list(selected_timesteps), "time_days": [times[ts] for ts in selected_timesteps]},
+        schema={"timestep": pl.Int32, "time_days": pl.Float64},
+    )
+
+    return (
+        modeldata
+        .lazy()
+        .join(
+            scan_estimators(modelpath=modelpath, timestep=tuple(selected_timesteps)),
+            on="modelgridindex",
+            how="inner",
+            maintain_order="left",
+        )
+        .join(dftimes, on="timestep", how="inner", maintain_order="left")
+        .with_columns(rho=10 ** pl.col("logrho") * (modelmeta["t_model_init_days"] / pl.col("time_days")) ** 3)
+        .collect()
+    )
+
+
 def write_edep(
     modelpath: str | Path,
     selected_timesteps: Sequence[int],
-    estimators: dict[tuple[int, int], dict[str, t.Any]],
-    allnonemptymgilist: Sequence[int],
+    dfestimators: pl.DataFrame,
+    modeldata: pl.DataFrame,
     outfile: Path,
 ) -> None:
     """Write the deposition of every cell at the selected timesteps, in the format of the workshop."""
-    modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
+    # the file gives one row for each cell and one column for each timestep, thus the values of one
+    # cell come from several rows. The select puts the columns in the order that the header gives
+    dfdeposition = dfestimators.pivot(on="timestep", index=("modelgridindex", "vel_r_mid"), values="total_dep").select(
+        "vel_r_mid", *(str(timestep) for timestep in selected_timesteps)
+    )
+
     with Path(outfile).open("w", encoding="utf-8") as f:
-        write_ntimes_nvel(f, selected_timesteps, modelpath)
+        write_ntimes_nvel(f, selected_timesteps, modelpath, len(modeldata))
         f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
-        for modelgridindex, vel_r_mid in modeldata.select("modelgridindex", "vel_r_mid").iter_rows():
+        for vel_r_mid, *celldepositions in dfdeposition.iter_rows():
             f.write(f"{vel_r_mid / km_to_cm:.2f}")
-            for timestep in selected_timesteps:
-                cellvalue = estimators[timestep, modelgridindex]["total_dep"]
-                f.write(f" {cellvalue:.4e}")
+            f.write("".join(f" {celldeposition:.4e}" for celldeposition in celldepositions))
             f.write("\n")
+
+
+def get_column_or_zero(dfestimators: pl.DataFrame, colname: str) -> pl.Expr:
+    """Return the column of the estimators, or zero when this run holds no such column.
+
+    ARTIS writes no population for an ion that a cell does not hold, and a whole run can hold none.
+    """
+    return pl.col(colname).fill_null(0.0) if colname in dfestimators.columns else pl.lit(0.0)
 
 
 def write_ionfracts(
     modelpath: Path | str,
     model_id: str,
     selected_timesteps: Sequence[int],
-    estimators: dict[tuple[int, int], dict[str, t.Any]],
-    allnonemptymgilist: Sequence[int],
+    dfestimators: pl.DataFrame,
+    modeldata: pl.DataFrame,
     outputpath: Path,
 ) -> None:
     """Write the ion fractions of every element in code comparison workshop format, one file per element."""
     times = get_timestep_times(modelpath)
-    modeldata, _ = get_nonempty_cells(modelpath, allnonemptymgilist)
     elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
-    cellrows = modeldata.select("modelgridindex", "vel_r_mid").rows()
     for elementindex in range(nelements):
         atomic_number = elementlist["Z"].item(elementindex)
         elsymb = get_elsymbol(atomic_number)
@@ -133,8 +177,20 @@ def write_ionfracts(
             get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             for ion_stage in range(lowermost_ion_stage, nstages + 1)
         ]
+        expr_elabund = get_column_or_zero(dfestimators, f"nnelement_{elsymb}")
+        dfionfracs = dfestimators.select(
+            "timestep",
+            "vel_r_mid",
+            *(
+                pl
+                .when(expr_elabund > 0.0)
+                .then(get_column_or_zero(dfestimators, f"nnion_{ionstr}") / expr_elabund)
+                .otherwise(0.0)
+                .alias(ionstr)
+                for ionstr in ionstrs
+            ),
+        )
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
-        fileisallzeros = True  # will be changed when a non-zero is encountered
         with pathfileout.open("w", encoding="utf-8") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
             f.write(f"#NSTAGES: {nstages}\n")
@@ -142,20 +198,18 @@ def write_ionfracts(
             f.write("#\n")
             for timestep in selected_timesteps:
                 f.write(f"#TIME: {times[timestep]:.2f}\n")
-                f.write(f"#NVEL: {len(allnonemptymgilist)}\n")
+                f.write(f"#NVEL: {len(modeldata)}\n")
                 f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}\n")
-                for modelgridindex, vel_r_mid in cellrows:
+                dftimestep = dfionfracs.filter(pl.col("timestep") == timestep).drop("timestep")
+                for vel_r_mid, *ionfracs in dftimestep.iter_rows():
                     f.write(f"{vel_r_mid / km_to_cm:.2f}")
                     f.write(f" {0.0:.4e}" * nstagesbelowlowermost)
-                    elabund = estimators[timestep, modelgridindex].get(f"nnelement_{elsymb}", 0)
-                    for ionstr in ionstrs:
-                        ionabund = estimators[timestep, modelgridindex].get(f"nnion_{ionstr}", 0)
-                        ionfrac = ionabund / elabund if elabund > 0 else 0
-                        if ionfrac > 0.0:
-                            fileisallzeros = False
-                        f.write(f" {ionfrac:.4e}")
+                    f.write("".join(f" {ionfrac:.4e}" for ionfrac in ionfracs))
                     f.write("\n")
-        if fileisallzeros:
+
+        # a file of zeros says nothing about the model, thus the writer takes it away again
+        maxionfrac = float(dfionfracs.select(pl.max_horizontal(ionstrs).max().fill_null(0.0)).item())
+        if maxionfrac <= 0.0:
             print(f"Deleting {pathfileout} because it is all zeros")
             pathfileout.unlink()
 
@@ -164,13 +218,13 @@ def write_phys(
     modelpath: str | Path,
     model_id: str,
     selected_timesteps: Sequence[int],
-    estimators: dict[tuple[int, int], dict[str, t.Any]],
-    allnonemptymgilist: Sequence[int],
+    dfestimators: pl.DataFrame,
+    modeldata: pl.DataFrame,
     outputpath: Path,
 ) -> None:
     """Write the physical conditions of every cell in code comparison workshop format."""
     times = get_timestep_times(modelpath)
-    modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
+    dfphys = dfestimators.select("timestep", "vel_r_mid", "Te", "rho", "nne", "nntot")
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
@@ -179,17 +233,10 @@ def write_phys(
             f.write(f"#TIME: {times[timestep]:.2f}\n")
             f.write(f"#NVEL: {len(modeldata)}\n")
             f.write("#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n")
-            for cell in modeldata.iter_rows(named=True):
-                modelgridindex = cell["modelgridindex"]
-
-                estimators[timestep, modelgridindex]["rho"] = (
-                    10 ** cell["logrho"] * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
-                )
-
-                f.write(f"{cell['vel_r_mid'] / km_to_cm:.2f}")
-                for keyname in ("Te", "rho", "nne", "nntot"):
-                    estvalue = estimators[timestep, modelgridindex][keyname]
-                    f.write(f" {estvalue:.4e}")
+            dftimestep = dfphys.filter(pl.col("timestep") == timestep).drop("timestep")
+            for vel_r_mid, *cellvalues in dftimestep.iter_rows():
+                f.write(f"{vel_r_mid / km_to_cm:.2f}")
+                f.write("".join(f" {cellvalue:.4e}" for cellvalue in cellvalues))
                 f.write("\n")
 
 
@@ -251,8 +298,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         model_id = Path(modelpath).name.split("_")[0]
         print(f"{model_id=}")
 
-        estimators = read_estimators(modelpath=modelpath, timestep=tuple(selected_timesteps))
-        allnonemptymgilist = list({modelgridindex for ts, modelgridindex in estimators if ts == selected_timesteps[0]})
+        allnonemptymgilist = (
+            scan_estimators(modelpath=modelpath, timestep=(selected_timesteps[0],))
+            .select(pl.col("modelgridindex").unique())
+            .collect()
+            .get_column("modelgridindex")
+            .to_list()
+        )
+        modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
+        dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
 
         try:
             write_lbol_edep(
@@ -266,13 +320,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         write_edep(
             modelpath,
             selected_timesteps,
-            estimators,
-            allnonemptymgilist,
+            dfestimators,
+            modeldata,
             Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
         )
 
-        write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
-        write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputfile)
+        write_phys(modelpath, model_id, selected_timesteps, dfestimators, modeldata, args.outputfile)
+        write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, modeldata, args.outputfile)
 
 
 if __name__ == "__main__":
