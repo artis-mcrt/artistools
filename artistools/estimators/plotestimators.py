@@ -276,11 +276,13 @@ def draw_series(
     if args.xbins == 0:
         assert dfpoints is not None
         # no line object exists, thus the colour comes from the caller or from the cycle of the axes
+        # the ticks of the axes draw above the points, as they do above the markers of --markers
         plotkwargs_points: dict[str, t.Any] = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
             "markersize": 5,
             "markeredgewidth": 0,
+            "zorder": -1,
         }
         plotkwargs_points.pop("dashes", None)
         if dfpoints.height > 10000:
