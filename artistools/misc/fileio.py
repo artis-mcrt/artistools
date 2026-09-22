@@ -385,6 +385,9 @@ def read_wsv(
             schema_overrides=schema_overrides,
             infer_schema_length=infer_schema_length,
             null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
+            # the buffer comes from a sink that quotes nothing, thus a quotation mark in a value is
+            # data. A reader that takes it as a quote joins the fields that follow it into one column
+            quote_char=None,
         )
         return (lzscan.select(list(columns)) if columns is not None else lzscan).collect()
 
@@ -446,7 +449,9 @@ def firstexisting(
         yield Path(folder)
         if search_subfolders:
             for filename in filelist:
-                for p in Path(folder).glob(f"*/{filename}*"):
+                # a glob gives the names in the order of the file system, thus the result would
+                # differ between two machines. The natural order gives the order of the runs
+                for p in sorted(Path(folder).glob(f"*/{filename}*"), key=natural_sort_key):
                     yield p.parent
 
     for searchfolder in search_folders(filelist):
@@ -520,6 +525,24 @@ def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Pat
     return find_bundled_data_file(filename, bundledsubfolder)
 
 
+def require_reference_data_file(filename: Path | str, bundledsubfolder: str, description: str) -> Path:
+    """Return the path of a file of reference data, or stop with a message when no such file exists.
+
+    The description names the kind of the file, e.g. "Kurucz line list". The message of the error
+    gives that name to the user.
+    """
+    from artistools.misc.cliutils import exit_with_error
+
+    found = find_reference_data_file(filename, bundledsubfolder)
+    if found is None:
+        exit_with_error(
+            f"could not find the {description} file {filename}",
+            f"Put {filename} in the working folder, or in the data folder of the artistools package",
+        )
+
+    return found
+
+
 def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
     """Return whether the path names a file of reference data and not the output of an ARTIS run.
 
@@ -535,15 +558,6 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
 
     # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
     return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
-
-
-def stripallsuffixes(f: Path) -> Path:
-    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets00_0000)."""
-    f_nosuffixes = Path(f)
-    for _ in f.suffixes:
-        f_nosuffixes = f_nosuffixes.with_suffix("")  # each call removes only one suffix
-
-    return f_nosuffixes
 
 
 def get_model_folder(modelpath: str | Path) -> Path:
@@ -578,11 +592,48 @@ def path_is_codecomparison(filepath: Path | str) -> bool:
     """Return whether the path is a virtual codecomparison path and not a real folder on disk.
 
     A codecomparison path has the form "codecomparison/<model>/<code>". It names a data set of the
-    radiative transfer code comparison workshop, thus no such folder exists.
+    radiative transfer code comparison workshop, thus no such folder exists. The parts of the path
+    come first, because that test reads no disk.
     """
     filepath = Path(filepath)
 
-    return not filepath.exists() and filepath.parts[:1] == ("codecomparison",)
+    return filepath.parts[:1] == ("codecomparison",) and not filepath.exists()
+
+
+def natural_sort_key(path: Path | str) -> tuple[tuple[int, int, str], ...]:
+    """Return a sort key that orders a path by the value of each number that it holds.
+
+    A run folder carries the number of the job, e.g. "9876543.slurm". A lexical order puts
+    "10000001.slurm" in front of that folder, thus the later run would come first. The key of a
+    number holds the text as well, because "job01" and "job1" give the same number.
+    """
+    return tuple(
+        (0, int(token), token) if token.isdigit() else (1, 0, token) for token in re.split(r"(\d+)", str(path)) if token
+    )
+
+
+@lru_cache(maxsize=64)
+def resolve_path_cached(pathstr: str, workingfolder: str) -> Path:
+    """Return the absolute path of pathstr, which a relative path reads below workingfolder.
+
+    A call of resolve reads the disk for each part of the path. Every cached reader of a model calls
+    resolve_modelpath first, thus this cache keeps that call cheap.
+    """
+    return Path(workingfolder, pathstr).resolve() if workingfolder else Path(pathstr).resolve()
+
+
+def resolve_modelpath(modelpath: Path | str) -> Path:
+    """Return the absolute path of a model.
+
+    A virtual codecomparison path stays as it is. A cached function takes the absolute path. The
+    default model path is the relative Path("."), thus the working folder belongs to the key of the
+    cache. The answer would otherwise stay after the user changes that folder.
+    """
+    path = Path(modelpath)
+    if path_is_codecomparison(path):
+        return path
+
+    return resolve_path_cached(str(path), "" if path.is_absolute() else str(Path.cwd()))
 
 
 def readnoncommentline(file: t.IO[str]) -> str:
@@ -862,11 +913,17 @@ def rankbatch_parquet_staleness(
     A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
     compares in one direction only. A text file that is newer than the stamp proves a rewrite. An
     absent text file proves nothing. The cache format version applies to a batch of either kind.
+
+    A cache from before the stamps holds no stamp of its own. Such a cache stays in use for an
+    incomplete batch, because the text files that rebuild it are gone. A complete batch holds every
+    text file, thus an unstamped cache there is stale and the code converts the text files again.
     """
-    # an archived run costs hours to convert again, thus a cache from before the stamps stays in
-    # use. See the accept_unstamped argument of read_parquet_cache_metadata
+    # See the accept_unstamped argument of read_parquet_cache_metadata
     pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, cacheversion, textsource_mtime if textsource_complete else None, accept_unstamped=True
+        parquetfilepath,
+        cacheversion,
+        textsource_mtime if textsource_complete else None,
+        accept_unstamped=not textsource_complete,
     )
     if stalereason is not None or textsource_complete or textsource_mtime is None:
         return stalereason

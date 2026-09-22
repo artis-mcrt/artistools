@@ -27,9 +27,6 @@ import pytest
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    from collections.abc import Iterable
-
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
 RETIRED_COMMANDS = (
@@ -93,16 +90,76 @@ def test_polarscompat_is_still_necessary() -> None:
     the repair, thus the two together say both that the repair works and that it is still needed.
     """
     # a fresh interpreter, because importing artistools applies the repair
-    code = "import polars as pl; print(pl.Series('x', [1]).unique() is None)"
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
-    )
+    result = run_fresh_python("import polars as pl; print(pl.Series('x', [1]).unique() is None)")
 
     assert result.stdout.strip() == "True", (
         f"polars {pl.__version__} rebinds its own Series methods on Python "
         f"{'.'.join(str(part) for part in sys.version_info[:3])}. Delete artistools/_polarscompat.py, "
         "the call to repair_series_expr_dispatch in artistools/__init__.py, and this test"
     )
+
+
+def run_fresh_python(code: str, *pythonflags: str) -> subprocess.CompletedProcess[str]:
+    """Run code in a new interpreter, because the test session already holds the modules that a test examines."""
+    return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, *pythonflags, "-c", code], capture_output=True, text=True, check=False
+    )
+
+
+# an attribute access resolves a lazy import, thus each import runs in the order of the code. With
+# -X lazy_imports=all, polars itself fails with ImportCycleError when it loads first, thus that case is absent
+NUMPYCASES = [
+    pytest.param("", (), id="artistools_first"),
+    pytest.param("import polars; polars.__name__; ", (), id="polars_first"),
+    *(
+        [pytest.param("", ("-X", "lazy_imports=all"), id="artistools_first_lazy_imports_all")]
+        if sys.version_info >= (3, 15)
+        else []
+    ),
+]
+
+
+@pytest.mark.parametrize(("firstimport", "pythonflags"), NUMPYCASES)
+def test_polars_holds_the_real_numpy(firstimport: str, pythonflags: tuple[str, ...]) -> None:
+    """Check that polars reads the names of numpy itself, and not through its lazy proxy.
+
+    On a free-threaded build, two threads that resolve that proxy at once raise with "'module' object
+    does not support item assignment". gsinetworkdecayproducts did this in parallel_map. The proxy
+    also stays in the modules of polars that imported it, thus the test reads one of them too.
+    """
+    code = (
+        f"{firstimport}import artistools; artistools.__name__; import numpy, polars._dependencies, polars.series.series; "
+        "print(type(polars._dependencies.numpy).__name__, polars.series.series.np.ndarray is numpy.ndarray)"
+    )
+    result = run_fresh_python(code, *pythonflags)
+
+    assert result.stdout.split() == ["module", "True"], result.stderr
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
+def test_an_import_with_no_module_name_still_works() -> None:
+    """The lazy-import filter applies to the whole process, thus it must take code that has no __name__.
+
+    Python gives such code no name of the module that does the import. jinja2 runs its templates in this way.
+    """
+    result = run_fresh_python('import artistools; exec("import json", {}); print("ok")')
+
+    assert result.stdout.strip() == "ok", result.stderr
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
+def test_matplotlib_saves_eps_with_type42_fonts() -> None:
+    """backend_ps reads fontTools.ttLib, which only an import of fontTools.subset in matplotlib gives.
+
+    A lazy import of fontTools.subset gave "module 'fontTools' has no attribute 'ttLib'".
+    """
+    code = (
+        "import io, artistools, matplotlib.pyplot as plt; plt.rcParams['ps.fonttype'] = 42; "
+        "fig, ax = plt.subplots(); ax.set_title('eps'); fig.savefig(io.BytesIO(), format='eps'); print('ok')"
+    )
+    result = run_fresh_python(code)
+
+    assert result.stdout.strip() == "ok", result.stderr
 
 
 def get_console_scripts() -> dict[str, str]:
@@ -158,50 +215,6 @@ def test_console_script_runs_its_own_subcommand(
 
     for dispatcher in at.commands.DISPATCHERSCRIPTS:
         assert at.commands.build_script_parser(dispatcher) is None
-
-
-def test_module_entry_points_name_a_real_subcommand() -> None:
-    """Each module entry point must run through the dispatcher and name a subcommand of the tree.
-
-    A module that calls its own main function reads no --quiet, and it reports a bad argument with a
-    traceback. run_subcommand gives it the path of a console script.
-    """
-    names: dict[Path, str] = {}
-    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
-        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text()):
-            names[path] = match.group(1)
-
-    assert names, "no module entry point routes through the dispatcher"
-
-    for path, subcommand in names.items():
-        spec = at.commands.subcommandtree.get(subcommand)
-        assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
-        assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
-
-    # every command takes --quiet, thus no module may call its main function and skip run_command
-    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
-        text = path.read_text()
-        if 'if __name__ == "__main__":' not in text or path.name.startswith("test_"):
-            continue
-        block = text.split('if __name__ == "__main__":')[1]
-        if "run_subcommand" in block or "run_module_as_subcommand" in block:
-            continue
-
-        modulename = ".".join(path.relative_to(REPOPATH).with_suffix("").parts)
-        assert at.commands.get_words_of_module(modulename) is None, (
-            f"{modulename} is a subcommand, thus its entry point must run through the dispatcher"
-        )
-
-    # the tree names the module of each subcommand, thus the reverse lookup finds every one of them
-    def walkspecs(tree: dict[str, t.Any]) -> "Iterable[at.commands.CommandSpec]":
-        for node in tree.values():
-            if isinstance(node, at.commands.CommandSpec):
-                yield node
-            else:
-                yield from walkspecs(node)
-
-    for spec in walkspecs(at.commands.subcommandtree):
-        assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
 def test_transitions_alias_of_the_partition_function_still_works() -> None:
@@ -358,9 +371,8 @@ def test_package_modules_import_no_package_alias() -> None:
     offenders = [
         str(path.relative_to(packagedir))
         for path in sorted(packagedir.rglob("*.py"))
-        # a test and a top-level script can use the alias, and a name with a space is an iCloud conflict copy
+        # a test can use the alias, and a name with a space is an iCloud conflict copy
         if not path.name.startswith("test_")
-        and path.name not in {"__main__.py", "conftest.py"}
         and " " not in path.name
         and aliasimport.search(path.read_text(encoding="utf-8"))
     ]
@@ -454,11 +466,6 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args([]).atomicdatabase == "artis"
 
     parser = argparse.ArgumentParser()
-    at.plotmacroatom.addargs(parser)
-    assert parser.parse_args(["--modelpath", "amodel"]).modelpath == Path("amodel")
-    assert parser.parse_args(["-modelpath", "amodel"]).modelpath == Path("amodel")
-
-    parser = argparse.ArgumentParser()
     at.estimators.plotestimators.addargs(parser)
     assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == 2.5
     assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
@@ -521,9 +528,6 @@ def test_describeinputmodel_names() -> None:
 
     # the top-level name is an alias, thus the listing of the commands leaves it out
     assert "describeinputmodel" not in parser.format_help()
-
-    # the module gives the name that the help lists, and not the hidden alias of the top level
-    assert at.commands.get_words_of_module("artistools.inputmodel.describeinputmodel") == ("inputmodel", "describe")
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -647,28 +651,6 @@ def test_get_inputparams() -> None:
     # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
     # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
     assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
-
-
-def test_macroatom() -> None:
-    at.plotmacroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
-
-
-def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
-    """A rank writes the transitions of every cell that its packets reach, not only of its own cells."""
-    for filename in ("model.txt", "estimators_0000.out", "macroatom_0000.out.xz"):
-        (tmp_path / filename).symlink_to(modelpath / filename)
-    inputlines = (modelpath / "input.txt").read_text(encoding="utf-8").split("\n")
-    # line 22 of input.txt gives the number of MPI ranks
-    inputlines[21] = "2"
-    (tmp_path / "input.txt").write_text("\n".join(inputlines), encoding="utf-8")
-
-    dfrank0 = at.misc.read_wsv(modelpath / "macroatom_0000.out.xz").filter(
-        (pl.col("modelgridindex") == 0) & (pl.col("timestep") == 10)
-    )
-    dfrank0.head(7).write_csv(tmp_path / "macroatom_0001.out", separator=" ")
-
-    dfallranks = at.plotmacroatom.read_macroatom(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
-    assert dfallranks.height == dfrank0.height + 7
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1111,8 +1093,8 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
 def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
     """The widthluminosity action must build a file that plotwidthluminosity can read back."""
     (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
-        "peakmag risetime dm15\n"
-        + "".join(f"{-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
+        "dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit\n"
+        + "".join(f"{i} {-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
         encoding="utf-8",
     )
 
@@ -1187,20 +1169,6 @@ def test_trim_or_pad() -> None:
 
     result2 = at.misc.trim_or_pad(2, "single_string")
     assert list(result2[0]) == ["single_string", None]
-
-
-def test_vec_len() -> None:
-    assert math.isclose(at.misc.vec_len([3.0, 4.0, 0.0]), 5.0)
-    assert math.isclose(at.misc.vec_len([1.0, 0.0, 0.0]), 1.0)
-    assert math.isclose(at.misc.vec_len([0.0, 0.0, 0.0]), 0.0)
-    assert math.isclose(at.misc.vec_len([1.0, 1.0, 1.0]), math.sqrt(3.0))
-
-
-def test_stripallsuffixes() -> None:
-    assert at.misc.stripallsuffixes(Path("packets00_0000.out.gz")) == Path("packets00_0000")
-    assert at.misc.stripallsuffixes(Path("model.txt.xz")) == Path("model")
-    assert at.misc.stripallsuffixes(Path("noextension")) == Path("noextension")
-    assert at.misc.stripallsuffixes(Path("single.txt")) == Path("single")
 
 
 def test_match_closest_time() -> None:
@@ -2127,7 +2095,6 @@ def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pyt
         ),
         (["plotradfield", "-modelpath", str(modelpath), "-ts", "40", "-mgi", "0"], "plotradfield_cell00000_ts040.pdf"),
         (["plottransitions", "-modelpath", str(modelpath), "-t", "300"], "plottransitions_cell00000_ts054_300.32d.pdf"),
-        (["plotmacroatom", "-modelpath", str(modelpath), "-ts", "40"], "plotmacroatom_cell00000_ts040-040.pdf"),
     ]
     for argsraw, expectedname in runs:
         artistools.__main__.main(argsraw=argsraw)
@@ -2261,15 +2228,11 @@ def test_every_command_takes_quiet() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    for subcommand, subparser in subactions[0].choices.items():
-        flagsofdest = {
-            action.dest: action.option_strings
-            for action in subparser._actions  # ruff:ignore[private-member-access]
-        }
+    for subcommand, subparser in get_every_subcommand(parser):
         if subparser.get_default("argparser") is None:
             continue  # a group of subcommands holds no arguments of its own
 
+        flagsofdest = get_flags_of_dest(subparser)
         assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
 
 
@@ -2280,6 +2243,20 @@ def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str,
             for name, subparser in action.choices.items():
                 yield name, subparser
                 yield from get_every_subcommand(subparser)
+
+
+def get_flags_of_dest(parser: argparse.ArgumentParser) -> dict[str, list[str]]:
+    """Return the option strings of each dest.
+
+    The result merges every action that writes the same dest. A dest can hold more than one action,
+    e.g. a deprecated hidden alias. A dict that keeps the last action alone loses the flags of the
+    first one.
+    """
+    flagsofdest: dict[str, list[str]] = {}
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
+
+    return flagsofdest
 
 
 def test_an_output_template_takes_the_older_name_of_a_field() -> None:
@@ -2310,24 +2287,18 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
     """-xmin and -lambdamin name one argument on every command that reads a range of wavelengths.
 
     ejectaopacity took -lambdamin alone, thus "-xmin 100" there gave "unrecognized arguments" and a
-    suggestion of -mgi, which names a cell. Four other commands take both spellings.
+    suggestion of -mgi, which names a cell. Three other commands take both spellings.
     """
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
-        flagsofdest: dict[str, list[str]] = {}
-        for action in subparser._actions:  # ruff:ignore[private-member-access]
-            if type(action).__name__ != "UnsupportedArgument":
-                flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
-
-        for flags in flagsofdest.values():
+        for flags in get_flags_of_dest(subparser).values():
             # a command that takes one of the two spellings takes the other one for the same value
             if "-lambdamin" in flags:
                 assert "-xmin" in flags, f"{subcommand} takes -lambdamin without -xmin"
@@ -2335,7 +2306,7 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
             if "-lambdamax" in flags:
                 assert "-xmax" in flags, f"{subcommand} takes -lambdamax without -xmax"
 
-    assert checked >= 5, f"only {checked} commands take -lambdamin"
+    assert checked >= 4, f"only {checked} commands take -lambdamin"
 
 
 def test_every_command_reads_the_same_cell_grammar() -> None:
@@ -2358,15 +2329,14 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
         at.misc.get_single_modelgridindex("3-7")
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
         for action in subparser._actions:  # ruff:ignore[private-member-access]
-            if "-modelgridindex" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+            if "-modelgridindex" not in action.option_strings:
                 continue
 
             assert action.type is None, f"{subcommand} gives -modelgridindex a type of its own"
@@ -2386,10 +2356,9 @@ def test_every_command_reads_the_same_timestep_grammar() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
@@ -2402,6 +2371,64 @@ def test_every_command_reads_the_same_timestep_grammar() -> None:
             checked += 1
 
     assert checked >= 10, f"only {checked} commands take -timestep"
+
+
+def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
+    """An option that reads a list must not keep the ARTIS folder that follows its values.
+
+    argparse gives every word that follows to such an option. Thus
+    "plotspectra -label mylabel mymodel" left the model path empty, and it made "mymodel" a second
+    label. normalize_path_list then gave the working folder, and the command plotted that folder
+    with no message.
+    """
+    import artistools.__main__
+    from artistools.misc import separate_trailing_folders
+
+    parser = artistools.__main__.build_parser()
+
+    args = parser.parse_args(["plotspectra", "-label", "mylabel", str(modelpath)])
+    assert args.specpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    args = parser.parse_args(["plotlightcurves", "-label", "mylabel", str(modelpath)])
+    assert args.modelpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    # the path that the user writes in front of the option still reaches the positional argument
+    args = parser.parse_args(["plotspectra", str(modelpath), "-label", "mylabel"])
+    assert args.specpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    # a value that names no folder stays with the option that reads it
+    args = parser.parse_args(["plotspectra", "-label", "mylabel"])
+    assert args.specpath == []
+    assert args.label == ["mylabel"]
+
+    # an option that converts its values reads no folder, thus the separator must come first
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-color", "red", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.color == ["red"]
+
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-plotviewingangle", "0", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.plotviewingangle == [0]
+
+    # every folder at the end of the command line reaches the positional argument
+    args = parser.parse_args(
+        separate_trailing_folders(["plotspectra", "-label", "a", str(modelpath), str(modelpath_classic_3d)])
+    )
+    assert args.specpath == [modelpath, modelpath_classic_3d]
+    assert args.label == ["a"]
+
+    args = parser.parse_args(separate_trailing_folders(["plotestimators", "-plotlist", "Te", str(modelpath)]))
+    assert args.plotlist == [["Te"]]
+    assert args.plotitems == [str(modelpath)]
+
+    # a file is no ARTIS folder, thus it stays with the option that reads it
+    reffile = modelpath / "light_curve.out"
+    args = parser.parse_args(separate_trailing_folders(["plotlightcurves", "-reflightcurves", str(reffile)]))
+    assert args.reflightcurves == [str(reffile)]
+    assert args.modelpath == []
 
 
 def test_a_joined_value_takes_the_longest_flag() -> None:
@@ -2463,10 +2490,7 @@ def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
     }
     seen = set()
     for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
-        flagsofdest = {
-            action.dest: action.option_strings
-            for action in subparser._actions  # ruff:ignore[private-member-access]
-        }
+        flagsofdest = get_flags_of_dest(subparser)
         olddest = olddestof.get(subcommand)
         if olddest is not None and olddest in flagsofdest:
             seen.add(subcommand)
@@ -2562,41 +2586,6 @@ def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
     assert Path(opened[0]).is_file()
 
 
-def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
-    """The table of the long flag names must hold what the commands declare.
-
-    addarg_collidingflags reads that table, thus a name that no line of it holds gives no message when
-    another command reads it as a joined value. Building the tree to collect the names would import
-    every command module, which the per-command console scripts do not do.
-
-    The walk covers every depth. A command under "artistools inputmodel" declares its flags in the
-    same way, and the top level alone left 41 of those names outside the table.
-    """
-    import artistools.__main__
-
-    parser = artistools.__main__.build_parser()
-
-    def islongsingledash(flag: str) -> bool:
-        return flag.startswith("-") and not flag.startswith("--") and len(flag) > 2
-
-    names = {
-        flag
-        for _, subparser in get_every_subcommand(parser)
-        for action in subparser._actions  # ruff:ignore[private-member-access]
-        for flag in action.option_strings
-        if islongsingledash(flag) and not isinstance(action, at.misc.UnsupportedArgument)
-    }
-    names |= {
-        flag
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        for flag in action.option_strings
-        if islongsingledash(flag)
-    }
-
-    missing = names - at.commands.SINGLEDASHLONGFLAGS
-    assert not missing, f"add these names to SINGLEDASHLONGFLAGS: {sorted(missing)}"
-
-
 def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixture[str]) -> None:
     """Argparse joins a value to a flag of one letter, thus a long name of another command misparses.
 
@@ -2619,15 +2608,42 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
     assert "300 days falls in timestep 54" in capsys.readouterr().out
 
+    # a joined value that looks like a value, or that is a choice of the flag, reaches the flag
+    parser = artistools.__main__.build_parser()
+    assert parser.parse_args(["plotspectra", "-o/plots/x.pdf"]).outputfile == Path("/plots/x.pdf")
+    assert parser.parse_args(["plotspectra", "-t.5"]).timedays == ".5"
+    assert parser.parse_args(["plotestimators", "-fpng", "Te"]).format == "png"
 
-def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
+    # argparse lets the last flag of a group of switches take a value
+    args = parser.parse_args(["plotspectra", "-qo", "/plots/x.pdf"])
+    assert args.quiet
+    assert args.outputfile == Path("/plots/x.pdf")
+    assert parser.parse_args(["timesteps", "-qt300"]).timedays == 300
+
+    # the top level must leave a flag of a subcommand to that subcommand, although it declares -h
+    assert parser.parse_args(["hesma", "plotspectrum", "-hesmafile", "x.dat"]).hesmafile == [Path("x.dat")]
+
+    # argparse read "-hesmafile" as -h and printed the help with exit status 0. The other names read as -x _e,
+    # -plot _hesma_model, and -o ~, which made a folder with the name "~"
+    for argsraw in (
+        ["plotspectra", "-hesmafile", "x.dat"],
+        ["deposition", "-vmax", "0.3"],
+        ["plotestimators", "-x_e", "0.5", "Te"],
+        ["plotestimators", "-plot_hesma_model", "x.dat"],
+        ["plotspectra", "-o~/plots/x.pdf"],
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            parser.parse_args(argsraw)
+        assert excinfo.value.code == 2
+        assert f"{argsraw[1]} is not an argument of this command" in capsys.readouterr().err
+
+
+def test_a_name_that_starts_with_a_flag_of_one_letter_writes_nothing(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An abbreviation that matches a declared name of another command must stop the command.
+    """A name that starts with -o must stop the command, and not read as -o with a joined value.
 
-    addarg_collidingflags declares -outputfolder on a command that takes -o. A filter of the declared
-    names let argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder
-    of that name. Thus the parser keeps every match, and the user reads a message.
+    argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder of that name.
     """
     import artistools.__main__
 
@@ -2635,10 +2651,9 @@ def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfol", "--quiet"])
 
-    assert "ambiguous option: -outputfol" in capsys.readouterr().err
+    assert "-outputfol is not an argument of this command" in capsys.readouterr().err
     assert not list(tmp_path.iterdir()), "a command that stops must write nothing"
 
-    # the full name of another command gives its own message, because argparse reads it before a prefix
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfolder", "foo"])
 
@@ -2662,7 +2677,6 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
     modulebycommand: dict[str, str] = {}
 
@@ -2676,7 +2690,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     walktree(at.commands.subcommandtree)
 
     withoutput = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if "outputfile" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
             continue
 
@@ -2850,3 +2864,55 @@ def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
         for row in datarows:
             assert len(row) == nstages
             assert all(float(value) == 0.0 for value in row[: lowermost_of_elsymbol[elsymbol] - 1])
+
+
+def test_writecomparisondata_keeps_a_tiny_ion_fraction(tmp_path: Path) -> None:
+    """An ion fraction below 1e-38 must keep its digits.
+
+    The estimator cache stores a population as Float32. A Float32 ratio below 1e-38 is subnormal, thus it lost
+    digits or became zero. The old reader divided Python floats, and the files of the two readers differed.
+    """
+    from artistools.writecomparisondata import write_ionfracts
+
+    dfestimators = pl.DataFrame(
+        {"timestep": [0], "vel_r_mid": [1e9], "nnelement_Fe": [1e8], "nnion_Fe_II": [1e-37]},
+        schema={"timestep": pl.Int32, "vel_r_mid": pl.Float64, "nnelement_Fe": pl.Float32, "nnion_Fe_II": pl.Float32},
+    )
+    write_ionfracts(modelpath, "tiny", [0], dfestimators, tmp_path)
+
+    datalines = [
+        line
+        for line in (tmp_path / "ionfrac_fe_tiny_artisnebular.txt").read_text().splitlines()
+        if not line.startswith("#")
+    ]
+    expected = float(np.float32(1e-37)) / float(np.float32(1e8))
+    # the columns are the velocity, then the stages from the neutral stage, thus Fe II is the third value
+    assert float(datalines[0].split()[2]) == pytest.approx(expected, rel=1e-4, abs=0.0)
+
+
+def test_completions_writes_the_code_to_a_redirect(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--quiet and a redirect must get the code, and a terminal must get the instructions.
+
+    --quiet sent the code to the null device, thus "completions zsh --quiet > file" wrote an empty file. An old
+    script runs "completions > file" and sources that file, thus a redirect with no shell gets the code too.
+    """
+    import artistools.__main__
+    from artistools.completions import get_completion_code
+
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    expected = get_completion_code("zsh")
+
+    artistools.__main__.main(argsraw=["completions", "zsh", "--quiet"])
+    assert capsys.readouterr().out.strip() == expected.strip()
+
+    # the captured standard output is no terminal, as a redirect to a file is not
+    artistools.__main__.main(argsraw=["completions"])
+    assert capsys.readouterr().out.strip() == expected.strip()
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    artistools.__main__.main(argsraw=["completions"])
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "To enable tab completion in zsh" in captured.err

@@ -1,5 +1,8 @@
 """Resample a 3D ARTIS model onto a coarser Cartesian grid."""
 
+import functools
+import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +35,26 @@ def downscale_mass_fractions(
     return np.divide(mass_small, rho_small, out=np.zeros_like(mass_small), where=rho_small > 0)
 
 
+def downscaled_columns(
+    dfsource: pl.DataFrame,
+    cols: Sequence[str],
+    grid: int,
+    reduce: t.Callable[[npt.NDArray[np.float64]], npt.NDArray[np.float64]],
+) -> list[pl.Series]:
+    """Return one downscaled Series for each named column, with the dtype of the source column."""
+    if not cols:
+        return []
+
+    # the flat cell lists vary x fastest, so a Fortran-order reshape gives arrays indexed [x, y, z, i]
+    values = dfsource.select(cols).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F")
+    values_small = reduce(values)
+
+    return [
+        pl.Series(col, values_small[:, :, :, i].ravel(order="F")).cast(dfsource.schema[col])
+        for i, col in enumerate(cols)
+    ]
+
+
 def make_downscaled_3d_grid(
     modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
@@ -42,7 +65,11 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = get_modeldata(modelpath)
-    dfmodel = pldfmodel.select("rho", cs.starts_with("X_")).collect()
+    # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
+    modelcolnames = pldfmodel.collect_schema().names()
+    massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
+    summedcols = [col for col in ("tracercount",) if col in modelcolnames]
+    dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
     dfelemabund = get_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
@@ -59,21 +86,24 @@ def make_downscaled_3d_grid(
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
 
-    print("reading abundance file")
-
-    # the flat cell lists vary x fastest, so a Fortran-order reshape gives arrays indexed [x, y, z]
-    abund = dfelemabund.select(elemcolnames).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F")
-
     print("reading model file")
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
+    # the flat cell lists vary x fastest, so a Fortran-order reshape gives an array indexed [x, y, z]
     rho = dfmodel["rho"].to_numpy().astype(np.float64).reshape((grid, grid, grid), order="F")
-    radioabunds = dfmodel.select(abundcols).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F")
-
     rho_small = downscale_cell_sums(rho, merge) / merge**3
-    radioabunds_small = downscale_mass_fractions(radioabunds, rho, merge)
-    abund_small = downscale_mass_fractions(abund, rho, merge)
+
+    massweightedmean = functools.partial(downscale_mass_fractions, rho=rho, merge=merge)
+    blocksum = functools.partial(downscale_cell_sums, merge=merge)
+
+    # Ye and q are per unit mass, thus each block takes the mean over its mass. tracercount counts the
+    # trajectories of a cell, thus each block takes the sum
+    modelcols_small = [
+        *downscaled_columns(dfmodel, abundcols, grid, massweightedmean),
+        *downscaled_columns(dfmodel, massweightedcols, grid, massweightedmean),
+        *downscaled_columns(dfmodel, summedcols, grid, blocksum),
+    ]
 
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
@@ -86,13 +116,11 @@ def make_downscaled_3d_grid(
         "pos_y_min": np.tile(np.repeat(axispos, smallgrid), smallgrid),
         "pos_z_min": np.repeat(axispos, smallgrid**2),
         "rho": rho_small.ravel(order="F"),
-    }).with_columns([
-        pl.Series(abundcol, radioabunds_small[:, :, :, i].ravel(order="F")) for i, abundcol in enumerate(abundcols)
-    ])
+    }).with_columns(modelcols_small)
 
-    dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns([
-        pl.Series(elemcol, abund_small[:, :, :, i].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)
-    ])
+    dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns(
+        downscaled_columns(dfelemabund, elemcolnames, grid, massweightedmean)
+    )
 
     modelmeta_small = modelmeta | {
         "npts_model": smallgrid**3,

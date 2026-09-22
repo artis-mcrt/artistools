@@ -13,7 +13,6 @@ from types import MappingProxyType
 if t.TYPE_CHECKING:
     from collections.abc import Generator
     from collections.abc import Sequence
-    from importlib.machinery import ModuleSpec
 
 
 def get_examples() -> tuple[tuple[str, str], ...]:
@@ -46,7 +45,7 @@ def get_epilog() -> str:
     lines = [f"  artistools {command:{width}}  # {description}" for command, description in examples]
 
     return (
-        "examples (a path of . reads the model in the working folder):\n"
+        "examples (a path of . reads the model in the working folder, and the path is the last argument):\n"
         + "\n".join(lines)
         + '\n\nRun "artistools <command> --help" for the arguments of one command.'
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
@@ -90,7 +89,6 @@ type CommandTree = dict[str, CommandSpec | CommandTree]
 COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "plot commands": (
         "comparetogsinetwork",
-        "leptontransport",
         "plotdensity",
         "plotestimators",
         "plotinitialcomposition",
@@ -98,7 +96,6 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotlightcurves",
         "plotlinefluxes",
         "plotlogfiles",
-        "plotmacroatom",
         "plotnltepops",
         "plotradfield",
         "plotspectra",
@@ -136,7 +133,9 @@ subcommandtree: CommandTree = {
         note="The comparison covers the energy release and the abundances.",
     ),
     "completions": CommandSpec(
-        "commands", funcname="setup_completions", helptext="Write a tab-completion script for a shell."
+        "completions",
+        helptext="Give the instructions for tab completion.",
+        note="With a shell name, e.g. zsh, the command prints the code that the instructions write to a file.",
     ),
     "deposition": CommandSpec(
         "estimators.deposition",
@@ -186,13 +185,9 @@ subcommandtree: CommandTree = {
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
         ),
-        "makeartismodel": CommandSpec(
-            "inputmodel.makeartismodel", script="makeartismodel", helptext="Tools to create an ARTIS input model."
-        ),
+        "makeartismodel": CommandSpec("inputmodel.makeartismodel", helptext="Tools to create an ARTIS input model."),
         "makeartismodel1dslicefromcone": CommandSpec(
-            "inputmodel.slice1dfromconein3dmodel",
-            script="makeartismodel1dslicefromcone",
-            helptext="Make a 1D model from a cone in a 3D model.",
+            "inputmodel.slice1dfromconein3dmodel", helptext="Make a 1D model from a cone in a 3D model."
         ),
         "makeartismodelfromparticlegridmap": CommandSpec(
             "inputmodel.modelfromhydro", helptext="Create an ARTIS format model from grid.dat."
@@ -215,19 +210,12 @@ subcommandtree: CommandTree = {
         ),
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
-    "leptontransport": CommandSpec(
-        "nonthermal.leptontransport",
-        helptext="Plot the energy loss of a fast lepton.",
-        note="The plot gives the loss to plasma, to ionisation, and to excitation against distance.",
-    ),
     "makevpktinput": CommandSpec(
         "make_vpkt_input",
         helptext="Write a vpkt.txt for a run.",
         note="The file holds the configuration of the virtual packets.",
     ),
-    "plotdensity": CommandSpec(
-        "inputmodel.plotdensity", script="plotartisdensity", helptext="Plot the density against the radius."
-    ),
+    "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the density against the radius."),
     "plotestimators": CommandSpec(
         "estimators.plotestimators",
         script="plotartisestimators",
@@ -240,9 +228,7 @@ subcommandtree: CommandTree = {
         aliases=("estimators",),
     ),
     "plotinitialcomposition": CommandSpec(
-        "inputmodel.plotinitialcomposition",
-        script="plotartisinitialcomposition",
-        helptext="Plot ARTIS input model composition.",
+        "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."
     ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.plotlastpacketinteraction",
@@ -258,7 +244,6 @@ subcommandtree: CommandTree = {
     ),
     "plotlinefluxes": CommandSpec(
         "plotlinefluxes",
-        script="plotartislinefluxes",
         helptext="Plot the ratios of the line fluxes.",
         note="The ratios serve a comparison to Floers.",
     ),
@@ -267,12 +252,8 @@ subcommandtree: CommandTree = {
         helptext="Plot the time that each rank took.",
         note="The times come from the log files of a run.",
     ),
-    "plotmacroatom": CommandSpec(
-        "plotmacroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."
-    ),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
-        script="plotartisnltepops",
         helptext="Plot ARTIS non-LTE populations.",
         examples=(("-modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),),
         note=(
@@ -280,9 +261,7 @@ subcommandtree: CommandTree = {
             " which -modelgridindex or -velocity gives."
         ),
     ),
-    "plotradfield": CommandSpec(
-        "plotradfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
-    ),
+    "plotradfield": CommandSpec("plotradfield", helptext="Plot the radiation field estimators."),
     "plotspectra": CommandSpec(
         "spectra.plotspectra",
         script="plotartisspectrum",
@@ -293,19 +272,16 @@ subcommandtree: CommandTree = {
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
     "plottransitions": CommandSpec(
         "plottransitions",
-        script="plotartistransitions",
         helptext="Plot the spectrum of the transitions.",
         note="The spectrum comes from the bound-bound transitions.",
     ),
     "plotviewingangles": CommandSpec(
         "plotviewingangles",
-        script="plotartisviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
     ),
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",
-        script="plotartisnonthermal",
         helptext="Solve the Spencer-Fano equation for a cell.",
         note="The data comes from one cell of an ARTIS run at one timestep.",
     ),
@@ -517,15 +493,12 @@ def get_subcommand_of_script(scriptname: str) -> tuple[str, ...]:
 
 def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
     """Add the arguments of one subcommand to a parser, and record how to run it."""
-    from artistools.misc import addarg_collidingflags
     from artistools.misc import addarg_quiet
 
     submodule = importlib.import_module(f"artistools.{spec.module}")
     submodule.addargs(parser)
     # run_command alone implements --quiet, thus every command takes it and no module declares it
     addarg_quiet(parser)
-    # the flags of the other commands come last, thus they take no name that this command declares
-    addarg_collidingflags(parser)
     # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
     # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
     # what the dispatcher gives it
@@ -555,6 +528,21 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
     addcommandargs(parser, node)
 
     return parser
+
+
+def is_joined_value(value: str, action: argparse.Action) -> bool:
+    """Report whether the text that joins a flag is a value of that flag, e.g. 300, .5, ./plot.pdf, -5, or a choice.
+
+    The name of a flag of another command starts with a letter, "_", or "-", thus such text is no value. A "~"
+    also stops, because the shell does not expand it inside a word, and the command would make a folder "~".
+    """
+    isnumberstart = value[:1].isdigit() or value[:1] == "."
+    return (
+        isnumberstart
+        or value[:1] == "/"
+        or (value[:1] == "-" and value[1:2] in set("0123456789."))
+        or (value in (action.choices or ()))
+    )
 
 
 class SuggestingArgumentParser(argparse.ArgumentParser):
@@ -591,18 +579,19 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
         return [flag for action in self._actions if action.help != argparse.SUPPRESS for flag in action.option_strings]
 
-    def exit_with_help(self, message: str, helptext: str) -> t.NoReturn:
+    def exit_with_help(self, message: str, helptext: str = "") -> t.NoReturn:
         """Report a bad argument as an error line and a help line, then stop.
 
         argparse writes one line that holds both, thus this prints the usage itself and takes the
-        place of the error method. The exit status of 2 is the one that argparse gives.
+        place of the error method. The exit status of 2 is the one that argparse gives. With no help
+        text, the help line names the --help of the command.
         """
         import sys
 
         from artistools.misc import print_error
 
         self.print_usage(sys.stderr)
-        print_error(message, helptext)
+        print_error(message, helptext or f"Run `{self.prog} --help` to see every argument")
         raise SystemExit(2)
 
     def split_joined_flags(self, args: "Sequence[str]") -> list[str]:
@@ -613,6 +602,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         token starts with, thus this splits the token there. A token that names the start of a
         longer flag stays whole, because that token is an abbreviation that argparse resolves.
         """
+        # the top level declares only -h and -V, thus it must not test the flags of a subcommand, e.g. -hesmafile
+        if self._subparsers is not None:
+            return list(args)
+
         out: list[str] = []
         for index, argstring in enumerate(args):
             if argstring == "--":  # every argument after this one is a positional argument
@@ -624,34 +617,61 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         return out
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:
-        """Give the flag and the value of one argument that joins them, or that argument alone."""
+        """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
+
+        argparse reads the text after a single-dash flag of one letter as its value. Thus "-obsspec 100" on a
+        command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value must look
+        like a value, and a group of switches such as -qv stays whole.
+        """
+        if not argstring.startswith("-") or argstring.startswith("--") or len(argstring) <= 2:
+            return [argstring]
+
+        name, equals, _ = argstring.partition("=")
         declared = self._option_string_actions
-        # argparse reads the first two characters as the flag, thus it splits a flag of one letter
-        # and its value without help. It also splits the "=" form itself.
-        if not argstring.startswith("-") or argstring.startswith("--") or "=" in argstring or len(argstring) <= 3:
+        # a declared flag starts with itself, thus this one test also keeps an abbreviation of a flag,
+        # which argparse resolves or reports as ambiguous
+        if any(flag.startswith(name) for flag in declared):
             return [argstring]
 
-        # a flag that the parser declares starts with itself, thus this one test also keeps an
-        # abbreviation of a longer flag, which argparse resolves or reports as ambiguous
-        if any(flag.startswith(argstring) for flag in declared):
-            return [argstring]
-
-        # the longest flag first, down to the two characters that argparse reads without help
-        for length in range(len(argstring) - 1, 2, -1):
-            action = declared.get(argstring[:length])
-            if action is None or action.nargs == 0:
+        # the user names the longest flag that the token starts with, e.g. -ts70 is -ts 70 and not -t s70
+        for length in range(len(argstring) - 1, 1, -1):
+            flag = argstring[:length]
+            action = declared.get(flag)
+            if action is None or (action.nargs == 0 and length > 2):
                 continue
 
-            flag, value = argstring[:length], argstring[length:]
-            if value[0].isdigit():
-                return [flag, value]
+            if action.nargs == 0 and self.is_switch_group(argstring):
+                return [argstring]
 
-            # a whole flag with letters after it is a mistake, e.g. -timesteps for -timestep. A split
-            # would give "s" to -timestep, and the number that follows would become a positional
-            # argument. Thus the message names the flag that the user means.
-            self.exit_with_help(f"{argstring} is not an argument of this command", f"Did you mean {flag}?")
+            value = argstring[length:]
+            if action.nargs != 0 and is_joined_value(value, action):
+                # argparse splits a flag of one letter from its value itself
+                return [flag, value] if length > 2 and not equals else [argstring]
+
+            from artistools.misc import suggest_flags
+
+            helptext = f"Did you mean {flag}?" if length > 2 else suggest_flags(name, self.get_visible_flags())
+            if not helptext and action.nargs != 0:
+                helptext = f"Put a space between {flag} and its value"
+            self.exit_with_help(f"{name} is not an argument of this command", helptext)
 
         return [argstring]
+
+    def is_switch_group(self, argstring: str) -> bool:
+        """Report whether argparse reads the argument as a group of flags of one letter, e.g. -qv or -qt300.
+
+        argparse lets the last flag of the group take a value, which is the rest of the argument or the next one.
+        """
+        for index, letter in enumerate(argstring[1:], start=2):
+            action = self._option_string_actions.get(f"-{letter}")
+            if action is None:
+                return False
+
+            if action.nargs != 0:
+                rest = argstring[index:]
+                return not rest or is_joined_value(rest, action)
+
+        return True
 
     @t.override
     def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
@@ -693,10 +713,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             if flag is not None and isinstance(subparser, SuggestingArgumentParser):
                 helptext = suggest_names(flag, subparser.get_visible_flags())
             # the usage of the command that the user ran, thus it holds the arguments of that command
-            subparser.exit_with_help(
-                f"unrecognized arguments: {' '.join(leftover)}",
-                helptext or f"Run `{subparser.prog} --help` to see every argument",
-            )
+            subparser.exit_with_help(f"unrecognized arguments: {' '.join(leftover)}", helptext)
 
         return parsednamespace
 
@@ -715,291 +732,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # argparse names the whole token, thus "-ti=300" carries its value. The flag alone
             # matches a name and gives a suggestion
             given = ambiguous.group(1).partition("=")[0]
-            # addarg_collidingflags declares the names of the other commands, which get_visible_flags
-            # leaves out, thus the suggestion names a flag of this command
+            # get_visible_flags leaves out a hidden alias, thus the suggestion names a flag that the help shows
             helptext = suggest_flags(given, self.get_visible_flags())
 
-        self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
-
-
-# argparse joins a value to a flag of one letter, thus "-obsspec 100" on a command that takes -o but no
-# -obsspec reads as "-o bsspec" and leaves 100 for a positional argument. This holds every single-dash
-# long flag name of the tree, so that a command can declare the ones that collide with its own one-letter
-# flags and give a message. A test holds this table to the names that the tree gives.
-SINGLEDASHLONGFLAGS = frozenset({
-    "-abundtype",
-    "-atomic_number",
-    "-atomicdatabase",
-    "-axis",
-    "-band",
-    "-binwidth",
-    "-cell",
-    "-cell-is-optically-thick",
-    "-channel",
-    "-channels",
-    "-cmap",
-    "-color",
-    "-colors",
-    "-colour_evolution",
-    "-composition",
-    "-coneangle",
-    "-coneshellspacingexponent",
-    "-dashes",
-    "-deltalambda",
-    "-deltalogx",
-    "-deltax",
-    "-dilution_factor",
-    "-dim",
-    "-dimensionreduce",
-    "-dimensions",
-    "-dirbin",
-    "-directions",
-    "-dist",
-    "-dist_mpc",
-    "-distmpc",
-    "-dlogx",
-    "-downsamplefactor",
-    "-dpi",
-    "-dtextra_seconds",
-    "-dx",
-    "-elem",
-    "-element",
-    "-emax",
-    "-emfeaturesearch",
-    "-emin",
-    "-emissionlosvelocityrange",
-    "-emissionvelocityrange",
-    "-energy",
-    "-escape_type",
-    "-exc-temperature",
-    "-figscale",
-    "-figwidthscale",
-    "-filter",
-    "-filtermovingavg",
-    "-filtersavgol",
-    "-fixedionlist",
-    "-floersmodelratiofile",
-    "-floorval",
-    "-fluxdistmpc",
-    "-format",
-    "-gaussian_sigma",
-    "-gaussian_window",
-    "-gridfolderpath",
-    "-groupby",
-    "-hesmafile",
-    "-inputfolder",
-    "-inputpath",
-    "-interpolrescale",
-    "-ion_stage",
-    "-ion_stages",
-    "-ionpoptype",
-    "-ionstage",
-    "-iso",
-    "-isomax",
-    "-isomin",
-    "-kappa",
-    "-label",
-    "-labelfontsize",
-    "-lambdamax",
-    "-lambdamin",
-    "-lambdaranges",
-    "-legendposition",
-    "-legendsubplotnumber",
-    "-levels",
-    "-linealpha",
-    "-linelength",
-    "-linestyle",
-    "-linewidth",
-    "-localdynscale",
-    "-maxatomicnumber",
-    "-maxlevel",
-    "-maxpacketfiles",
-    "-maxpacketsfiles",
-    "-maxseriescount",
-    "-mergecells",
-    "-mergerroot",
-    "-mgi",
-    "-modelgridindex",
-    "-modelname",
-    "-modelpath",
-    "-modeltag",
-    "-modifysmoothinglength",
-    "-nbins",
-    "-ncolslegend",
-    "-ncoordgrid",
-    "-ncosthetabins",
-    "-ngridrcyl",
-    "-ngridx",
-    "-ngridy",
-    "-ngridz",
-    "-nnebound",
-    "-nnefree",
-    "-nphibins",
-    "-npts",
-    "-npz",
-    "-nshells",
-    "-nsteps",
-    "-nucdata",
-    "-obsspec",
-    "-opacity",
-    "-opacityexclusions",
-    "-opdf",
-    "-ostat",
-    "-outputfile",
-    "-outputfolder",
-    "-outputgridsize",
-    "-outputpath",
-    "-pathtofiles",
-    "-pathtogriddata",
-    "-perturb3Dmodel",
-    "-plot",
-    "-plot_hesma_model",
-    "-plotfile",
-    "-plotlist",
-    "-plotstats",
-    "-plotvars",
-    "-plotviewingangle",
-    "-plotvspecpol",
-    "-poptype",
-    "-readonlymgi",
-    "-redshifttoz",
-    "-reflightcurves",
-    "-refspeccolors",
-    "-refspecfiles",
-    "-refspecmarkers",
-    "-replacedyn",
-    "-replacethr",
-    "-rhoscale",
-    "-scalefigwidth",
-    "-scalemass",
-    "-scaletoreftime",
-    "-scalevelocity",
-    "-selected_timesteps",
-    "-setgrid_fractionrmax",
-    "-sigma_v",
-    "-slice",
-    "-snapshot",
-    "-sort",
-    "-species",
-    "-specpath",
-    "-stokesparam",
-    "-surface_count",
-    "-surfaces3d",
-    "-targetmodeltime_days",
-    "-tau-max",
-    "-tdays",
-    "-temperature",
-    "-thetamax",
-    "-thetamin",
-    "-time",
-    "-timebins_tend",
-    "-timebins_tstart",
-    "-timedays",
-    "-timedayslist",
-    "-timedaysmax",
-    "-timedaysmin",
-    "-timemax",
-    "-timemin",
-    "-timestep",
-    "-timestepmax",
-    "-title",
-    "-tmax",
-    "-tmin",
-    "-topnucs",
-    "-trajectoryroot",
-    "-trajroot",
-    "-trajthermofile",
-    "-ts",
-    "-vary",
-    "-velocity",
-    "-velocityshells",
-    "-vgrid-lambdaranges",
-    "-vgrid-tmax",
-    "-vgrid-tmin",
-    "-vmax",
-    "-vmax_on_c",
-    "-vmin",
-    "-vspec-tmax",
-    "-vspec-tmin",
-    "-wavelen",
-    "-x_e",
-    "-xaxis",
-    "-xbins",
-    "-xmax",
-    "-xmin",
-    "-xunit",
-    "-xunits",
-    "-yaxis",
-    "-ye",
-    "-yemax",
-    "-yeshells",
-    "-ymax",
-    "-ymin",
-    "-yscale",
-    "-yvar",
-    "-yvariable",
-})
-
-# the same names, under the flag of one letter that reads each one as a joined value. Each parser of
-# the tree asks for the names of its own one-letter flags, thus it walks those names alone
-SINGLEDASHLONGFLAGS_BYLETTER: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    letterflag: tuple(sorted(name for name in SINGLEDASHLONGFLAGS if name.startswith(letterflag)))
-    for letterflag in sorted({name[:2] for name in SINGLEDASHLONGFLAGS})
-})
-
-
-def get_words_of_module(modulename: str) -> tuple[str, ...] | None:
-    """Return the words that name the subcommand of a module, or None when the tree holds no such module.
-
-    A hidden name is an alias of a visible one, thus the walk skips it. The usage text of
-    `python -m artistools.inputmodel.describeinputmodel` then gives the name that the help lists.
-    """
-    modulename = modulename.removeprefix("artistools.")
-
-    def walk(tree: CommandTree, prefix: tuple[str, ...]) -> tuple[str, ...] | None:
-        for name, node in tree.items():
-            if isinstance(node, CommandSpec):
-                if node.module == modulename and not node.hidden:
-                    return (*prefix, name)
-            elif (found := walk(node, (*prefix, name))) is not None:
-                return found
-
-        return None
-
-    return walk(subcommandtree, ())
-
-
-def run_module_as_subcommand(modulespec: "ModuleSpec | None") -> None:
-    """Run the subcommand of a module through the dispatcher.
-
-    A module that runs as `python -m artistools.plotlogfiles` gives its own __spec__, and the tree names
-    the module of each subcommand. Thus no module holds the name of its own subcommand, which can
-    drift. A module that runs as a file path carries no spec, and it has no name to look up.
-    """
-    if modulespec is None:
-        msg = "This module holds no spec. Run it as `python -m artistools.<module>` or `artistools <command>`"
-        raise ValueError(msg)
-
-    words = get_words_of_module(modulespec.name)
-    if words is None:
-        msg = f"No subcommand of the tree names the module {modulespec.name}"
-        raise ValueError(msg)
-
-    run_subcommand(*words)
-
-
-def run_subcommand(*words: str) -> None:
-    """Run one subcommand of the tree through the dispatcher.
-
-    A module that runs as `python -m artistools.plotradfield` calls its own main function, thus it read no
-    --quiet, and it reported a bad argument with a traceback. This gives it the path of a console
-    script.
-    """
-    import sys
-
-    from artistools.__main__ import main
-
-    main(argsraw=[*words, *sys.argv[1:]])
+        self.exit_with_help(message, helptext)
 
 
 def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) -> None:
@@ -1037,42 +773,6 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
                 **addparserkwargs,
             )
             addcommandargs(subparser, spec)
-
-
-def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
-    """Generate a shell tab-completion script and print instructions for enabling it."""
-    import subprocess
-
-    path_package_source = Path(__file__).absolute().parent
-    completionscriptpath = path_package_source / "artistoolscompletions.sh"
-    with (completionscriptpath).open("w", encoding="utf-8") as f:
-        f.write("#!/usr/bin/env zsh\n")
-        f.write("# automatically generated by artistools completions\n")
-
-        proc = subprocess.run(
-            ["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True, check=True
-        )
-
-        if proc.stderr:
-            print(proc.stderr)
-
-        strfunctiondefs, strsplit, strcommandregister = proc.stdout.rpartition("}\n")
-
-        f.write(strfunctiondefs)
-        f.write(strsplit)
-        f.write("\n")
-
-        for command in (*DISPATCHERSCRIPTS, *sorted(get_script_subcommands())):
-            completecommand = strcommandregister.replace("__MY_COMMAND__", command)
-            f.write(f"\n{completecommand}")
-
-    print("To enable completions, add these lines to your .zshrc or .bashrc file:")
-    print("\n.zshrc:")
-    print(f'source "{completionscriptpath}"')
-    print("autoload -Uz compinit && compinit")
-
-    print("\n.bashrc:")
-    print(f"source {completionscriptpath}")
 
 
 def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]

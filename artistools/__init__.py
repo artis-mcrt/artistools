@@ -7,19 +7,35 @@ for the ARTIS radiative transfer code.
 # ruff:file-ignore[non-empty-init-module]
 import sys
 
+# numpy must load before polars. Otherwise polars makes a proxy for numpy, and on a free-threaded build two
+# threads that resolve that proxy at once raise "'module' object does not support item assignment"
+import numpy as np  # ruff:ignore[unused-import]
+
+if sys.version_info >= (3, 15):
+    import importlib
+
+    # -X lazy_imports=all makes the import above lazy, but a call of import_module is always eager
+    importlib.import_module("numpy")
+
+if "polars._dependencies" in sys.modules:
+    # the caller imported polars first, thus polars can hold the proxy. One access resolves it in this thread
+    _ = sys.modules["polars._dependencies"].numpy.ndarray
+
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
-        lambda _importing, imported, _fromlist: (
-            not imported.startswith(("matplotlib.", "numpy", "polars", "polars.exceptions", "polars.selectors"))
+        # some matplotlib modules read a name that another import of matplotlib gives as a side effect, e.g. a
+        # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None
+        lambda importing, imported, _fromlist: (
+            not (
+                imported.startswith(("numpy", "polars"))
+                or (
+                    (importing or "").startswith(("matplotlib", "mpl_toolkits"))
+                    and imported.startswith(("matplotlib", "mpl_toolkits", "fontTools"))
+                )
+            )
         )
     )
     sys.set_lazy_imports("all")
-
-    # numpy has to reach sys.modules before anything imports polars. polars substitutes its own lazy proxy for
-    # numpy whenever numpy is absent at that moment, and on free-threaded 3.15 that proxy cannot resolve itself:
-    # polars._dependencies captures globals() to publish the real module, which raises there with
-    # "'module' object does not support item assignment".
-    import numpy as np  # ruff:ignore[unused-import]
 
 if sys.version_info >= (3, 15):
     from artistools._polarscompat import repair_series_expr_dispatch
@@ -43,7 +59,6 @@ from artistools import nonthermal as nonthermal
 from artistools import packets as packets
 from artistools import plotlinefluxes as plotlinefluxes
 from artistools import plotlogfiles as plotlogfiles
-from artistools import plotmacroatom as plotmacroatom
 from artistools import plotradfield as plotradfield
 from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools

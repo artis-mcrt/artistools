@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 """Map SPH ejecta particles onto a Cartesian grid using a cubic spline kernel."""
@@ -35,7 +34,7 @@ def get_wij() -> npt.NDArray[np.float64]:
     # --normalisation constant
     #
     cnormk = 1.0 / math.pi
-    # --build tables. Entry 0 and the entries above itable stay zero
+    # build the tables. The entries above itable stay zero
     wij = np.zeros(itab + 1)
     i = np.arange(1, itable + 1)
     v2 = i * dvtable
@@ -44,6 +43,9 @@ def get_wij() -> npt.NDArray[np.float64]:
     # v less than 1 for the entries up to i1, and v greater than 1 above
     vsum = np.where(i <= i1, 1.0 - 1.5 * v2 + 0.75 * (v * v2), 0.25 * dif2 * dif2 * dif2)
     wij[1 : itable + 1] = cnormk * vsum
+    # the kernel at v = 0 takes the v < 1 branch, which gives 1 before the normalisation. Entry 0 held
+    # zero, thus kernelvals2 gave too small a weight to each pair inside one step of the table
+    wij[0] = cnormk
 
     return wij
 
@@ -449,9 +451,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         setgrid_fractionrmax=args.setgrid_fractionrmax,
         modifysmoothinglength=args.modifysmoothinglength,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

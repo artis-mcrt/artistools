@@ -76,6 +76,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     from artistools.misc import check_time_selection
     from artistools.misc import resolve_output_argument
     from artistools.misc import resolve_yscale
+    from artistools.misc import separate_trailing_folders
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
     # started it selects one subcommand, and that parser holds no other command. Every entry point then
@@ -86,7 +87,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     argcomplete.autocomplete(parser)
 
     if args is None:
-        args = parser.parse_args(argsraw)
+        args = parser.parse_args(separate_trailing_folders(argsraw))
 
     func = getattr(args, "func", None)
     if func is None:

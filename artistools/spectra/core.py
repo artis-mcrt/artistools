@@ -12,7 +12,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -50,6 +49,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.fileio import resolve_modelpath
 from artistools.packets import bin_and_sum
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -59,6 +59,9 @@ from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
+
 
 class FluxContributionTuple(t.NamedTuple):
     """One emission/absorption series (an ion, line, or nuclide) and its total contribution to the flux."""
@@ -67,7 +70,8 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: mplt.ColorType | None = None
+    # mplt exists only for the type checkers, and Python 3.13 and 3.15 evaluate a NamedTuple annotation at once
+    color: "mplt.ColorType | None" = None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
@@ -487,13 +491,21 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
 
 
 @lru_cache(maxsize=16)
-def get_escape_surface_gamma(modelpath: Path | str) -> float:
+def get_escape_surface_gamma_cached(modelpath: Path) -> float:
     """Return the Lorentz factor correction at the outer model boundary."""
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
     return math.sqrt(1 - vmax_beta**2)
+
+
+def get_escape_surface_gamma(modelpath: Path | str) -> float:
+    """Return the Lorentz factor correction at the outer model boundary.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return get_escape_surface_gamma_cached(resolve_modelpath(modelpath))
 
 
 def filter_packets_by_time(
@@ -678,7 +690,7 @@ def bin_packet_flux(
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
 @lru_cache(maxsize=2)
-def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
+def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
 
     Callers must not mutate the returned frame, which is shared between calls.
@@ -695,10 +707,17 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-# maxsize is small because, unlike read_spec above, this reads eagerly and every cached entry
-# retains a whole spec_res file: the per-dirbin frames are all slices of one parsed frame
+def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
+    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return read_spec_cached(resolve_modelpath(modelpath), gamma)
+
+
+# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
 @lru_cache(maxsize=2)
-def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     Callers must not mutate the returned dict, which is shared between calls.
@@ -739,6 +758,14 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
         )
 
     return res_specdata
+
+
+def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return read_spec_res_cached(resolve_modelpath(modelpath), gamma)
 
 
 def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
@@ -897,27 +924,89 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
         )
 
 
-def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
-    """Return the I, Q, and U spectra of one direction bin, read from specpol.out or specpol_res_<dirbin>.out."""
-    assert modelpath is not None
-    specfilename = (
-        firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-        if dirbin == -1
-        else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
-    )
+def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
+    """Return the names with a _duplicated_<n> suffix on each repeat, as polars names a repeated header.
 
+    split_dataframe_stokesparams reads those suffixes. Thus a file with no header row must get the
+    same names as a file that polars reads with a header row.
+    """
+    countofname: dict[str, int] = {}
+    newcolnames: list[str] = []
+    for name in colnames:
+        count = countofname.get(name, 0)
+        countofname[name] = count + 1
+        newcolnames.append(name if count == 0 else f"{name}_duplicated_{count - 1}")
+
+    return newcolnames
+
+
+# maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
+# bin at a time, thus a cache miss on each call would parse the file again for every bin.
+@lru_cache(maxsize=2)
+def read_specpol_res_cached(modelpath: Path) -> dict[int, pl.LazyFrame]:
+    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    This function collects the scan one time, because each collect call of a lazy frame reads the
+    file again. A caller collects the I, the Q, and the U frame of each direction bin. Do not change
+    a frame of the returned dict. Every caller shares the same object.
+    """
+    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
-    specdata = drop_trailing_null_column(
-        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
-    ).with_columns(pl.all().cast(pl.Float64))
+    alldata = drop_trailing_null_column(
+        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False)
+    ).collect()
 
-    return split_dataframe_stokesparams(specdata)
+    dirbintables: dict[int, pl.LazyFrame] = {}
+    for dirbin, table in split_multitable_dataframe(alldata).items():
+        # the first row of each table holds the times, which the file repeats for the Q and the U block
+        oldcolnames = table.collect_schema().names()
+        timerow = [str(value) for value in table.select(pl.all().slice(0, 1)).collect().row(0)]
+        dirbintables[dirbin] = (
+            table
+            .select(pl.all().slice(offset=1))
+            .with_columns(pl.all().cast(pl.Float64))
+            .rename(dict(zip(oldcolnames, name_repeated_columns(timerow), strict=True)))
+        )
+
+    return dirbintables
+
+
+def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
+    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return read_specpol_res_cached(resolve_modelpath(modelpath))
+
+
+def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U spectra of one direction bin.
+
+    specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
+    one table for each direction bin, in the layout of spec_res.out.
+    """
+    assert modelpath is not None
+    if dirbin == -1:
+        specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+        print(f"Reading {specfilename}")
+        specdata = drop_trailing_null_column(
+            pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
+        ).with_columns(pl.all().cast(pl.Float64))
+
+        return split_dataframe_stokesparams(specdata)
+
+    tables = read_specpol_res(modelpath)
+    if dirbin not in tables:
+        msg = f"specpol_res.out of {modelpath} holds {len(tables)} direction bins, and not bin {dirbin}"
+        raise ValueError(msg)
+
+    return split_dataframe_stokesparams(tables[dirbin])
 
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
 @lru_cache(maxsize=2)
-def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
     Callers must not mutate the returned dict, which is shared between calls.
@@ -936,6 +1025,15 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
+
+
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model. Every caller
+    shares the returned dict, thus do not change it.
+    """
+    return get_vspecpol_data_cached(vspecindex, resolve_modelpath(modelpath))
 
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
@@ -1042,7 +1140,7 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
 
 
 @lru_cache(maxsize=4)
-def get_flux_contributions(
+def get_flux_contributions_cached(
     modelpath: Path,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timestepmin: int = -1,
@@ -1218,6 +1316,41 @@ def get_flux_contributions(
                 )
 
     return contribution_list, array_flambda_emission_total, arraylambda
+
+
+def get_flux_contributions(
+    modelpath: Path | str,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    timestepmin: int = -1,
+    timestepmax: int = -1,
+    getemission: bool = True,
+    getabsorption: bool = True,
+    use_lastemissiontype: bool = True,
+    directionbin: int | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    lambda_min: float = 0.0,
+    lambda_max: float = math.inf,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+
+    The spectra cover lambda_min to lambda_max [Å] only, thus the ranking of the contributions counts the plotted
+    window alone. The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return get_flux_contributions_cached(
+        resolve_modelpath(modelpath),
+        filterfunc,
+        timestepmin,
+        timestepmax,
+        getemission,
+        getabsorption,
+        use_lastemissiontype,
+        directionbin,
+        average_over_phi,
+        average_over_theta,
+        lambda_min,
+        lambda_max,
+    )
 
 
 def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFrame:
@@ -1771,30 +1904,14 @@ def get_flux_contributions_from_packets(
         for groupname, dfgroup in groups.items():
             group_energy_sum[groupname] = group_energy_sum.get(groupname, 0.0) + float(dfgroup[energy_column].sum())
 
-    allgroupnames = list(group_energy_sum)
-
-    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
+    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in group_energy_sum]):
         print_warning(f"(packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-    def sortkey(groupname: str) -> tuple[int, float | int]:
-        grouptotal = group_energy_sum[groupname]
+    # the small contributions join one group here, thus the code below bins one spectrum for them
+    allgroupnames, other_groupnames = rank_flux_series_names(group_energy_sum, maxseriescount, fixedionlist)
 
-        if fixedionlist is None:
-            return (0, -grouptotal)
-
-        return (
-            (fixedionlist.index(groupname), 0.0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
-        )
-
-    # group small contributions together to avoid the cost of binning individual spectra for them
-
-    allgroupnames.sort(key=sortkey)
-
-    if maxseriescount is None:
-        maxseriescount = len(allgroupnames)
-    if len(allgroupnames) > maxseriescount:
-        other_groupnames = allgroupnames[maxseriescount:]
-        allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
+    if other_groupnames:
+        allgroupnames = [*allgroupnames, "Other"]
 
         # a group name can be present for only one of emission and absorption (e.g. "Fe II bound-free" is never an
         # absorption label), so each dict is combined independently and may get no contributions at all
@@ -1885,6 +2002,31 @@ def get_flux_contributions_from_packets(
     return contribution_list, array_flambda_emission_total, array_lambda
 
 
+def rank_flux_series_names(
+    fluxofname: Mapping[str, float], maxseriescount: int | None, fixedionlist: Sequence[str] | None = None
+) -> tuple[list[str], list[str]]:
+    """Return the names that the plot draws, in the order of the series, and the names of the "Other" series.
+
+    A -fixedionlist keeps every one of its entries, in the order that the list gives, thus
+    maxseriescount does not apply to it. Without that list, the names come in the order of the flux,
+    and each name after maxseriescount joins "Other". A name that is already "Other" joins it as well.
+    """
+
+    def flux_of_name(name: str) -> float:
+        return fluxofname[name]
+
+    namesbyflux = sorted(fluxofname, key=flux_of_name, reverse=True)
+    if fixedionlist:
+        keptnames = [name for name in fixedionlist if name in fluxofname]
+    else:
+        limit = len(namesbyflux) if maxseriescount is None else maxseriescount
+        keptnames = [name for name in namesbyflux if name != "Other"][:limit]
+
+    keptset = set(keptnames)
+
+    return keptnames, [name for name in namesbyflux if name not in keptset]
+
+
 def sort_and_reduce_flux_contribution_list(
     contribution_list_in: list[FluxContributionTuple],
     maxseriescount: int,
@@ -1893,24 +2035,15 @@ def sort_and_reduce_flux_contribution_list(
     hideother: bool = False,
 ) -> list[FluxContributionTuple]:
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
-    if fixedionlist:
-        if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
-            print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
+    rowofname = {row.linelabel: row for row in contribution_list_in}
+    if fixedionlist and (unrecognised_items := [x for x in fixedionlist if x not in rowofname]):
+        print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
 
-        # sort in manual order
-        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
-            assert fixedionlist is not None
-            return (
-                fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1,
-                -x.fluxcontrib,
-            )
-
-    else:
-        # sort descending by flux contribution
-        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
-            return (0, -x.fluxcontrib)
-
-    contribution_list = sorted(contribution_list_in, key=sortkey)
+    keptnames, othernames = rank_flux_series_names(
+        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+    )
+    kept = [rowofname[name] for name in keptnames]
+    other = [rowofname[name] for name in othernames]
 
     import matplotlib.pyplot as plt
 
@@ -1925,16 +2058,6 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    # the series past maxseriescount, or outside the manual list, join one "Other" series. A row that
-    # already carries that name goes there without a line of its own
-    kept: list[FluxContributionTuple] = []
-    other: list[FluxContributionTuple] = []
-    for row in contribution_list:
-        if row.linelabel != "Other" and (row.linelabel in fixedionlist if fixedionlist else len(kept) < maxseriescount):
-            kept.append(row)
-        else:
-            other.append(row)
-
     for row in kept:
         print_contribution(row, arraylambda_angstroms)
 
@@ -1945,8 +2068,9 @@ def sort_and_reduce_flux_contribution_list(
         for row in othernamed[:maxnumotherprinted]:
             print_contribution(row, arraylambda_angstroms)
 
+    # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
     contribution_list_out = [
-        row._replace(color=color_list[fixedionlist.index(row.linelabel) if fixedionlist else index])
+        row._replace(color=color_list[(fixedionlist.index(row.linelabel) if fixedionlist else index) % len(color_list)])
         for index, row in enumerate(kept)
     ]
 
@@ -2040,7 +2164,12 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
 
     if "z" in metadata:
-        specdata = specdata.with_columns(lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]))
+        # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
+        # is (1 + z) times the observed one, because the same energy falls in a narrower band
+        specdata = specdata.with_columns(
+            lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]),
+            f_lambda=pl.col("f_lambda") * (1 + metadata["z"]),
+        )
         print(f"Correcting for redshift z = {metadata['z']}")
 
     return specdata

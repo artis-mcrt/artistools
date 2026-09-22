@@ -34,10 +34,8 @@ pip install --group dev --editable .[extras]
 prek install
 ```
 
-To learn how to enable command-line autocompletions, run:
-```sh
-artistools completions
-```
+To enable tab completion, run `artistools completions`. The command detects your shell and gives the
+steps for it.
 
 ## Citing artistools
 

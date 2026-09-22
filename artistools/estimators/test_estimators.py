@@ -50,7 +50,7 @@ PLOTLIST_IONS: t.Final = (
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.MagicMock) -> None:
+def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A _ymin of the plot list must not freeze the top of the axis far above the data.
 
     set_ylim turns the autoscaling of the whole axis off, thus applying _ymin before the series were
@@ -59,7 +59,7 @@ def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.Magic
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-18]]],
     )
@@ -77,7 +77,7 @@ def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.Magic
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_ymin_does_not_hide_the_whole_series(
-    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str]
+    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     """A fixed y limit of the plot list must give way when no data point would stay in view.
 
@@ -87,7 +87,7 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-16]]],
     )
@@ -359,6 +359,30 @@ def test_xbins_below_minus_one_selects_automatic_bins() -> None:
     assert np.array_equal(xvalues_minus1, xvalues_minus2)
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_xbins_zero_draws_the_points_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-xbins 0 draws every point and no average line, as it did before commit b4365703.
+
+    A later check refused the value, thus a script that gave -xbins 0 stopped.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te", "TR"]],
+        timedays=4,
+        xbins=0,
+        outputfile=tmp_path / "test_xbins_zero.pdf",
+    )
+
+    seriescalls = [call for call in mockplot.call_args_list if len(call.args) >= 3 and np.ndim(call.args[1]) > 0]
+    assert len(seriescalls) == 2, "one call of markers for each series, and no call of a line"
+    assert all(call.kwargs.get("linestyle") == "None" for call in seriescalls)
+    assert all(call.kwargs.get("marker") for call in seriescalls)
+
+    # the legend reads the label of the markers, because no line carries it
+    assert all(call.kwargs.get("label") for call in seriescalls)
+
+
 def test_automatic_xbins_with_one_x_value() -> None:
     """Automatic bins for data of one x value draw finite values. Before, the equal edges made cut() raise an error."""
     drawnyvalues: list[npt.NDArray[np.float64]] = []
@@ -559,7 +583,7 @@ def test_estimparse() -> None:
     # nnelement is the sum over the ion stages of the element
     assert firstcell["nnelement_Fe"] == pytest.approx(6.226e05 + 8.059e01 + 3.940e-24 + 1.586e-27 + 1.010e-27)
     # quantities recorded as X*nne are also stored divided by the electron density
-    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3)
+    assert firstcell["Alpha_R_Fe_II"] == pytest.approx(1.821e-07 / 71393.3, rel=1e-4, abs=0.0)
 
 
 def test_estimparse_missing_file() -> None:
@@ -752,6 +776,8 @@ def test_get_averageexcitation() -> None:
     assert len(dfavgexc) == 1
 
     avgexc = dfavgexc["averageexcitation"].item()
+    assert avgexc == pytest.approx(0.2096323301213659, rel=1e-6, abs=0.0)
+
     ionlevels = (
         at.atomic.get_levels(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))["levels"].item()
     )
@@ -769,6 +795,12 @@ def test_get_averageexcitation() -> None:
     )
     avgexc_resolvedonly = float((dfresolved["energy_ev"] * dfresolved["n_NLTE"]).sum()) / float(dfts["n_NLTE"].sum())
     assert avgexc >= avgexc_resolvedonly, "adding the superlevel population can only raise the mean energy"
+
+    # the superlevel stands in for the levels above the resolved ones, thus this ion must hold one
+    assert float(dfts.filter(pl.col("level") < 0)["n_NLTE"].sum()) > 0.0
+
+    # a plain mean of the occupied level energies is 3.21 eV, thus the populations decide the result
+    assert avgexc < 0.5 * float(energiesoccupied["energy_ev"].mean())
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -877,6 +909,10 @@ def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
     assert rankbatch_parquet_is_current(parquetfilepath, None, textsource_complete=False)
     assert rankbatch_parquet_is_current(parquetfilepath, mtime, textsource_complete=True)
 
+    # a text source time inside the tolerance keeps the cache, because a file system can move that
+    # time with no write
+    assert rankbatch_parquet_is_current(parquetfilepath, mtime + 6.0, textsource_complete=True)
+
     # a text source time outside the tolerance of the stamp needs the conversion again
     assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0, textsource_complete=True)
 
@@ -892,10 +928,12 @@ def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
 
     mtime = 1000.0
 
-    # a cache that holds no version stamp counts as version 1, thus a matching time keeps it
+    # a cache that holds no version stamp is stale when the text files exist, because the reader
+    # cannot check its format. The stamp is accepted only when the text files are gone
     unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
-    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
+    assert not rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
+    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=False)
 
     # a matching text source time but a different cache version
     oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
@@ -959,15 +997,28 @@ def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
     gzfile.write_bytes(b"")
     assert get_textsource_mtimes(tmp_path)[1] == gzfile.stat().st_mtime
 
+    # the plain name of the same rank takes the place of the compressed file, even when it is older
+    plainfile = tmp_path / "estimators_0001.out"
+    plainfile.write_text("timestep 0\n")
+    os.utime(gzfile, (plainfile.stat().st_mtime + 100.0, plainfile.stat().st_mtime + 100.0))
+    assert get_textsource_mtimes(tmp_path)[1] == plainfile.stat().st_mtime
+
 
 def test_a_cached_scan_asks_for_no_progress_class() -> None:
-    """A scan that converts no text file must not build the progress class, which takes a lock."""
+    """A scan that converts no text file must not build the progress class, which takes a lock.
+
+    The guard also counts the batches of the scan. The 1D test model gives one batch, thus it asks for
+    no class whatever the caches hold. This model has two run folders, thus its scan holds two batches.
+    """
     import artistools.misc.general
+
+    # the first scan writes the parquet cache of each batch, and that conversion does take the class
+    at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
 
     with mock.patch.object(
         artistools.misc.general, "get_progress_class", side_effect=AssertionError("a cached scan made a bar")
     ) as mockprogress:
-        at.estimators.scan_estimators(modelpath=modelpath).select(pl.len()).collect()
+        at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
 
     mockprogress.assert_not_called()
 
@@ -1199,12 +1250,14 @@ def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.C
 
 
 @pytest.mark.parametrize("prefix", ["", "_"])
-def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.CaptureFixture[str]) -> None:
+def test_estimator_directive_underscore_is_optional(
+    prefix: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
     """A plot directive works with or without its underscore, and each subplot keeps its own scale."""
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["TR", [f"{prefix}yscale", "lin"]], ["rho", [f"{prefix}yscale", "log"]]],
     )
@@ -1215,14 +1268,14 @@ def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock) -> None:
+def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """Each subplot carries its own ion population type, thus one figure holds more than one of them."""
     from artistools.estimators.plotestimators import POPTYPE_YLABELS
 
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[
             [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "absolute"]],
@@ -1236,14 +1289,14 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock) 
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock) -> None:
+def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A population series with no directive gives an absolute number density."""
     from artistools.estimators.plotestimators import POPTYPE_YLABELS
 
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[[["populations", ["Fe II", "Fe III"]]]],
     )
@@ -1284,12 +1337,12 @@ def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.
 
 
 @mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
-def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.MagicMock) -> None:
+def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.MagicMock, tmp_path: Path) -> None:
     """-xmin and -xmax reach the whole figure, because one horizontal axis serves every subplot."""
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["TR"], ["rho"]],
         xmin=1000,
@@ -1307,7 +1360,7 @@ def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.M
         assert np.allclose(limits, (1000.0, 4000.0))
 
 
-def test_estimator_xmin_as_a_plot_item_names_the_argument() -> None:
+def test_estimator_xmin_as_a_plot_item_names_the_argument(capsys: pytest.CaptureFixture[str]) -> None:
     """A bare list ["xmin", value] must give the same message as the "xmin=value" string.
 
     normalise_plotitems adds the underscore to the string form alone, thus the bare list reached the ion
@@ -1319,6 +1372,9 @@ def test_estimator_xmin_as_a_plot_item_names_the_argument() -> None:
         )
 
     assert excinfo.value.code == 1
+    message = capsys.readouterr().err
+    assert "-xmin" in message
+    assert "share one horizontal axis" in message
 
 
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:
@@ -1816,6 +1872,16 @@ def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
         assert not is_valid_ion(ionstr), f"{ionstr} must name no ion"
 
 
+def get_cone_cellcount(coneangle: float) -> int:
+    """Return the number of cells that -readonlymgi cone selects around the +z axis of the 3D test model."""
+    from artistools.estimators.plotestimators import select_cells_along_axis
+
+    args = argparse.Namespace(modelpath=[modelpath_classic_3d], readonlymgi="cone", axis="+z", coneangle=coneangle)
+    select_cells_along_axis(args)
+
+    return len(args.modelgridindex)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     """-readonlymgi cone selects the cells within -coneangle of the axis.
@@ -1836,6 +1902,14 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
 
     xvalues = np.concatenate([np.array(callargs[0][1], dtype=float) for callargs in mockplot.call_args_list])
     assert len(xvalues) > 0
+
+    # a cone that takes every cell, or one cell, shows nothing about the angle
+    ncells_model = at.inputmodel.get_modeldata(modelpath_classic_3d)[1]["npts_model"]
+    ncells_wide = get_cone_cellcount(60.0)
+    assert 1 < ncells_wide < ncells_model
+
+    # a narrower cone reaches fewer cells, which pins the angle to the selection
+    assert get_cone_cellcount(20.0) < ncells_wide
 
 
 def get_image_panel_calls(imagekwargs: dict[str, t.Any], outputfolder: Path) -> list[tuple[t.Any, ...]]:

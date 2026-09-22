@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 
 import argparse
@@ -25,7 +24,6 @@ from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
 from artistools.commands import get_path
-from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
@@ -209,8 +207,8 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     msg = f"Unknown y-variable {args.yvariable}"
                     raise AssertionError(msg)
 
-            if args.groupby is not None:
-                # emission plots add an offset to the reference spectra
+            if args.showemission or args.showabsorption:
+                # plot_reference_spectra adds an offset to each normalised reference spectrum
                 ylabel += " + offset"
         else:
             strdist = str(args.distmpc).removesuffix(".0") + " Mpc"
@@ -289,28 +287,29 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 
+    # main gives args.xmin and args.xmax in the unit of -xunit, thus the axis takes that same unit
+    dfspectrum = dfspectrum.with_columns(
+        x=pl.Series(convert_angstroms_to_unit(dfspectrum["lambda_angstroms"].to_numpy(), args.xunit))
+    )
+
     if args.binflux:
-        dfbinned = bin_spectrum(dfspectrum, 5, "lambda_angstroms", timecolname)
-        axis.plot(dfbinned["lambda_angstroms"], dfbinned[timecolname])
+        dfbinned = bin_spectrum(dfspectrum, 5, "x", timecolname)
+        axis.plot(dfbinned["x"], dfbinned[timecolname])
     else:
-        axis.plot(dfspectrum["lambda_angstroms"], dfspectrum[timecolname], label=linelabel)
+        axis.plot(dfspectrum["x"], dfspectrum[timecolname], label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
     if args.ymin is None:
         args.ymin = -0.5
-    if args.xmax is None:
-        args.xmax = 10000
-    if args.xmin is None:
-        args.xmin = 0
-    assert args.xmin < args.xmax
     assert args.ymin < args.ymax
 
     axis.set_ylim(args.ymin, args.ymax)
     axis.set_xlim(args.xmin, args.xmax)
 
+    xlabel, _ylabel = get_axis_labels(args)
     axis.set_ylabel(str(args.stokesparam))
-    axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
+    axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
     save_figure(fig, outpath, format="pdf", args=args)
@@ -503,7 +502,10 @@ def plot_artis_spectrum(
     if not modelpath.is_dir():
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
-    dfspectrum = None
+
+    # --write_data names one column for each drawn series, thus the loops below collect every one of
+    # them. The suffix names the direction bin and the epoch of the panel
+    drawnseries: list[tuple[str, pl.DataFrame]] = []
     use_time: t.Literal["escape", "emission", "arrival"]
     if args.use_escapetime:
         use_time = "escape"
@@ -708,7 +710,10 @@ def plot_artis_spectrum(
                 dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
 
             if args.binflux:
-                assert args.xunit.lower() == "angstroms"
+                if args.xunit.lower() != "angstroms":
+                    exit_with_error(
+                        f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstroms"
+                    )
                 # bin f_lambda as well, because --write_data returns that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
@@ -716,6 +721,11 @@ def plot_artis_spectrum(
                     .rename({"lambda_angstroms": "x"})
                     .with_columns(lambda_angstroms=pl.col("x"))
                 )
+
+            seriessuffix = f"_dirbin{dirbin:02d}" if dirbin >= 0 else ""
+            if args.multispecplot:
+                seriessuffix += f"_{args.timedayslist[axindex]}d"
+            drawnseries.append((seriessuffix, dfspectrum))
 
             (modelline,) = axis.plot(
                 dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
@@ -731,7 +741,24 @@ def plot_artis_spectrum(
                     )
                 )
 
-    return dfspectrum[["lambda_angstroms", "f_lambda"]] if dfspectrum is not None else None
+    if not drawnseries:
+        return None
+
+    if not args.write_data:
+        # the caller counts a frame that is not None as a drawn series, and --write_data alone
+        # reads the columns. One table needs one wavelength grid, which a plot does not need
+        return pl.DataFrame()
+
+    dfseriesdata = pl.DataFrame({"lambda_angstroms": drawnseries[0][1]["lambda_angstroms"]})
+    for seriessuffix, dfspectrum in drawnseries:
+        if not np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy()):
+            exit_with_error(
+                "--write_data gives one table, and the drawn series have different wavelength grids",
+                "Remove --write_data, or give one direction bin and one epoch",
+            )
+        dfseriesdata = dfseriesdata.with_columns(dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"))
+
+    return dfseriesdata
 
 
 def make_spectrum_plot(
@@ -747,8 +774,7 @@ def make_spectrum_plot(
     residualseries takes each drawn series for a residual panel.
     """
     dfalldata = pl.DataFrame()
-    artisindex = 0
-    refspecindex = 0
+    nseriesplotted = 0
 
     set_prop_cycle_unusedcolors(axes, args.color)
     for axis in axes:
@@ -776,18 +802,15 @@ def make_spectrum_plot(
                 plotkwargs["linewidth"] = 1.1
 
             if args.multispecplot:
+                # each panel shows one epoch of the models, and the reference spectrum goes on all of them
                 plotkwargs["color"] = "k"
+            if args.label[seriesindex]:
+                plotkwargs["label"] = args.label[seriesindex]
+            for axis in axes:
                 plot_reference_spectrum_for_args(
-                    specpath, axes[refspecindex], args, filterfunc, scale_to_peak, **plotkwargs
+                    specpath, axis, args, filterfunc, scale_to_peak, residualseries=residualseries, **plotkwargs
                 )
-            else:
-                if args.label[seriesindex]:
-                    plotkwargs["label"] = args.label[seriesindex]
-                for axis in axes:
-                    plot_reference_spectrum_for_args(
-                        specpath, axis, args, filterfunc, scale_to_peak, residualseries=residualseries, **plotkwargs
-                    )
-            refspecindex += 1
+            nseriesplotted += 1
         elif path_is_codecomparison(specpath):
             timeavg = args.timedays
             from artistools.codecomparison import plot_spectrum
@@ -795,7 +818,7 @@ def make_spectrum_plot(
             plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
             if residualseries is not None:
                 print_warning("the residual panel does not include the code comparison series")
-            refspecindex += 1
+            nseriesplotted += 1
         else:
             # ARTIS model spectrum
             if "linewidth" not in plotkwargs:
@@ -827,7 +850,7 @@ def make_spectrum_plot(
 
             if seriesdata is not None:
                 seriesname = get_model_name(specpath)
-                artisindex += 1
+                nseriesplotted += 1
 
         if args.write_data and seriesdata is not None:
             if dfalldata.is_empty():
@@ -835,9 +858,14 @@ def make_spectrum_plot(
             else:
                 # make sure we can share the same set of wavelengths for this series
                 assert np.allclose(dfalldata["lambda_angstroms"], seriesdata["lambda_angstroms"].to_numpy())
-            dfalldata = dfalldata.with_columns(seriesdata["f_lambda"].alias(f"f_lambda.{seriesname}"))
+            # one column for each direction bin and each panel, e.g. f_lambda.mymodel_dirbin05_300d
+            dfalldata = dfalldata.with_columns(
+                seriesdata[colname].alias(f"f_lambda.{seriesname}{colname.removeprefix('f_lambda')}")
+                for colname in seriesdata.columns
+                if colname != "lambda_angstroms"
+            )
 
-    if artisindex == refspecindex == 0:
+    if nseriesplotted == 0:
         exit_with_error(
             "no spectra were plotted. Check that each given path holds an ARTIS run or a reference spectrum"
         )
@@ -848,12 +876,12 @@ def make_spectrum_plot(
                 print_warning("the filter functions plot normalised values, thus give -normalised as well")
             plot_filter_functions(axis)
 
-        # make_plot has already applied args.ymax, thus reading the top back would inflate the value
-        # that the user asked for by five percent
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is args.ymin is None:
+        # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
+        # inflate a value that -ymax gives by five percent, thus the rescue leaves that side alone
+        if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
             # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
-            axis.set_ylim(bottom=0.0, top=datatop * 1.05)
+            axis.set_ylim(bottom=0.0 if args.ymin is None else None, top=datatop * 1.05)
 
         set_plot_title(axis, args.title, args)
 
@@ -966,7 +994,8 @@ def order_and_color_shells(
     """
     import matplotlib.pyplot as plt
 
-    if args.fixedionlist is None:
+    fixedionlist = args.fixedionlist
+    if fixedionlist is None:
         # a shell that holds no packet gives no series, and the name of such a shell gives a warning. The packet
         # reducer can already hold an Other series, which must not take the place of a shell. The NOT SET
         # series of the packets with no thermal emission record counts against the limit as a shell does
@@ -975,16 +1004,12 @@ def order_and_color_shells(
             contribution.linelabel
             for contribution in sorted(named, key=lambda c: -c.fluxcontrib)[: args.maxseriescount]
         }
-        args.fixedionlist = [
+        fixedionlist = [
             label for label in (*get_shell_labels(args.shelledges, args.shellunit), "NOT SET") if label in keptlabels
         ]
 
     contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
-        contributions,
-        args.maxseriescount,
-        arraylambda_angstroms,
-        fixedionlist=args.fixedionlist,
-        hideother=args.hideother,
+        contributions, args.maxseriescount, arraylambda_angstroms, fixedionlist=fixedionlist, hideother=args.hideother
     )
 
     shells = [
@@ -1238,17 +1263,6 @@ def make_emissionabsorption_plot(
 
     check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
 
-    if args.plotvspecpol and not args.frompackets:
-        args.frompackets = True
-        print("Enabling --frompackets, since --plotvspecpol was specified")
-
-    if args.gamma and not args.frompackets:
-        args.frompackets = True
-        print("Enabling --frompackets, since --gamma and --showemission were specified")
-
-    if args.groupby is None:
-        args.groupby = "nuc" if args.gamma else "ion"
-
     assert timemin is not None
     assert timemax is not None
 
@@ -1406,14 +1420,62 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     scale_to_peak = 1.0 if args.normalised else None
 
-    xlabel, ylabel = get_axis_labels(args)
-
     if args.normalised and args.ymax is None:
         args.ymax = 1.10
 
-    # make_emissionabsorption_plot reads the x range back from the axes, thus the scales and the
-    # limits go on before the plot calls draw the data
+    # the plot functions read the x range back from the axes, thus the x scale and the x limits go on
+    # before the data. The y properties wait until set_auto_yscale has read the drawn values
+    set_axis_properties(axes, args, setyaxis=False)
+
+    residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
+    if args.showemission or args.showabsorption:
+        legendncol = 2
+        defaultoutputfile = Path("plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf")
+        plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
+            modelpath=Path(args.modelspecpaths[0]),
+            axis=axes[-1],
+            filterfunc=filterfunc,
+            args=args,
+            scale_to_peak=scale_to_peak,
+        )
+    else:
+        legendncol = 1
+        defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
+
+        # the legend comes from the first axis that a plot used, which is axes[0] for
+        # --multispecplot and axes[-1] otherwise
+        specaxes = list(axes) if args.multispecplot else [axes[-1]]
+        dfalldata = make_spectrum_plot(
+            args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
+        )
+        plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
+
+    # -yscale auto reads the drawn values, thus the scale of the y axis follows the data
+    set_auto_yscale(list(axes), args)
+
+    # the y limits, the locators and the labels all follow the scale that set_auto_yscale chose.
+    # A y limit also goes on after the data, so that -ymin alone keeps the top that the data set
+    xlabel, ylabel = get_axis_labels(args)
     set_axis_properties(axes, args)
+
+    # the text of the epoch takes a position from the y limits, thus the code adds it after
+    # set_axis_properties
+    if args.showtime:
+        for index, axis in enumerate(axes):
+            if args.multispecplot:
+                _ymin, ymax = axis.get_ylim()
+                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+            else:
+                timeavg = (args.timemin + args.timemax) / 2.0
+                axis.annotate(
+                    f"{timeavg:.2f} days",
+                    xy=(0.03, 0.97),
+                    xycoords="axes fraction",
+                    horizontalalignment="left",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
+
     for axis in axes:
         if not args.logscalex:
             axis.xaxis.set_major_locator(ticker.MaxNLocator(nbins="auto", steps=[1, 2, 2.5, 5, 10], prune="both"))
@@ -1435,48 +1497,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     if not args.hidexticklabels:
         axes[-1].set_xlabel(xlabel)
 
-    residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
-    if args.showemission or args.showabsorption:
-        legendncol = 2
-        defaultoutputfile = Path("plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf")
-        plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
-            modelpath=Path(args.specpath[0]),
-            axis=axes[-1],
-            filterfunc=filterfunc,
-            args=args,
-            scale_to_peak=scale_to_peak,
-        )
-    else:
-        legendncol = 1
-        defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
-
-        # the legend comes from the first axis that a plot used, which is axes[0] for
-        # --multispecplot and axes[-1] otherwise
-        specaxes = list(axes) if args.multispecplot else [axes[-1]]
-        dfalldata = make_spectrum_plot(
-            args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
-        )
-        plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
-
-    if args.showtime:
-        for index, axis in enumerate(axes):
-            if args.multispecplot:
-                _ymin, ymax = axis.get_ylim()
-                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
-            else:
-                timeavg = (args.timemin + args.timemax) / 2.0
-                axis.annotate(
-                    f"{timeavg:.2f} days",
-                    xy=(0.03, 0.97),
-                    xycoords="axes fraction",
-                    horizontalalignment="left",
-                    verticalalignment="top",
-                    fontsize="x-large",
-                )
-
-    # the loop above sets the scale before the data exists, because make_emissionabsorption_plot reads
-    # the x range back from the axes. Thus -yscale auto reads the values here and sets the scale itself
-    set_auto_yscale(list(axes), args)
     # the panel shows a ratio below a log y axis, thus it follows the choice of -yscale auto
     if residualaxis is not None and residualseries is not None:
         dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
@@ -1889,13 +1909,11 @@ def resolve_velocity_ranges(args: argparse.Namespace) -> None:
     if not args.velocityranges_kmps:
         return
 
-    if not (args.showemission or args.showabsorption or args.emissionabsorption):
+    if not (args.showemission or args.showabsorption):
         exit_with_error(
             "a velocity range selects the packets of the contributions, and the plot shows no contribution",
             "Give --showemission, --showabsorption, or --emissionabsorption",
         )
-    # the spectrum files of exspec hold no emission position
-    args.frompackets = True
 
 
 def resolve_shell_args(args: argparse.Namespace) -> None:
@@ -1906,11 +1924,86 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         args.shelledges = list(args.yeshells) if args.yeshells is not None else list(DEFAULT_YE_SHELLS)
         args.shellunit = "ye"
     elif args.groupby in SHELLCOLUMNS and args.velocityshells is None:
-        # the plot draws the model of the first path, thus the shells come from that model
+        # the plot draws the first ARTIS model, thus the shells come from that model
         getdefault = get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
-        args.shelledges, args.shellunit = getdefault(args.specpath[0])
+        args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
     elif args.velocityshells is not None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
+
+
+def resolve_frompackets(args: argparse.Namespace) -> None:
+    """Set args.frompackets and the default of -groupby, from the options that the exspec files cannot serve.
+
+    Call this after main sets args.showemission and args.showabsorption. The default of -groupby
+    applies to an emission plot alone, and that default selects the reader of the contributions.
+    """
+    showcontributions = args.showemission or args.showabsorption
+    if showcontributions and args.groupby is None:
+        args.groupby = "nuc" if args.gamma else "ion"
+
+    # each entry names an option in the message, and gives the condition under which it needs the packets
+    packetreasons = {
+        "--plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
+        "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
+        f"-groupby {args.groupby}": args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS},
+        "a velocity range": bool(args.velocityranges_kmps),
+        "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
+        "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),
+    }
+    if args.frompackets:
+        return
+
+    for option, needspackets in packetreasons.items():
+        if needspackets:
+            args.frompackets = True
+            print(f"Enabling --frompackets, since {option} was specified")
+            return
+
+
+def check_emission_plot_args(args: argparse.Namespace) -> None:
+    """Stop the command when an emission plot cannot draw what the arguments name.
+
+    Such a plot draws the contributions of one ARTIS model and of one direction bin. The name of the
+    output file gives the model and the bins, thus more than one of either would not match the figure.
+    """
+    if args.vpkt_match_emission_exclusion_to_opac:
+        missing = [
+            option
+            for option, given in (
+                ("--showemission", args.showemission),
+                ("--frompackets", args.frompackets),
+                ("-plotvspecpol", args.plotvspecpol),
+            )
+            if not given
+        ]
+        if missing:
+            exit_with_error(
+                "--vpkt_match_emission_exclusion_to_opac reads the emission type of the virtual packets, and the"
+                f" command gives no {' and no '.join(missing)}",
+                "Give --showemission (or --emissionabsorption) and -plotvspecpol",
+            )
+
+    if not (args.showemission or args.showabsorption):
+        return
+
+    if not args.modelspecpaths:
+        exit_with_error(
+            "an emission plot draws the contributions of one ARTIS model, and no path names such a model",
+            "Give the folder of an ARTIS run",
+        )
+
+    if len(args.modelspecpaths) > 1:
+        exit_with_error(
+            f"an emission plot draws one ARTIS model, and the command gives {len(args.modelspecpaths)} of them",
+            "Give one model folder, and run the command again for each other model",
+        )
+
+    dirbins = args.plotviewingangle or args.plotvspecpol
+    if dirbins and len(dirbins) > 1:
+        exit_with_error(
+            f"an emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
+            "Give one bin, e.g. -plotviewingangle 0",
+        )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1953,7 +2046,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # one time axis serves every model, thus the range resolves one time and before any plot runs. A path
     # that is not a run gives no timesteps, and the plot loop skips it with a warning
     clamp_to_timesteps = not args.notimeclamp
-    modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
+    # the emission plot and the default shells read the first model, thus every reader takes the same list
+    args.modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
+    modelspecpaths = args.modelspecpaths
     artispaths = [
         get_model_folder(path)
         for path in modelspecpaths
@@ -2047,34 +2142,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = f"-distmpc gives the distance of the observer in Mpc, thus it must be above zero, not {args.distmpc}"
         raise ValueError(msg)
 
-    if args.vpkt_match_emission_exclusion_to_opac:
-        assert args.showemission
-        assert args.frompackets
-        assert args.plotvspecpol
+    if args.emissionabsorption:
+        args.showemission = True
+        args.showabsorption = True
 
     if args.groupby is not None:
         args.showemission = True
 
-    if args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS}:
-        args.frompackets = True
-
     resolve_velocity_ranges(args)
     resolve_shell_args(args)
     exit_if_no_emission_position(args)
-
-    if args.gamma and args.plotviewingangle:
-        # exspec does not generate angle-resolved gamma spectra files,
-        # so we need to use the packets instead
-        args.frompackets = True
-
-    if args.use_emissiontime or args.use_escapetime:
-        # exspec spectra are binned by arrival time at the observer
-        # so we need to use the packets instead
-        args.frompackets = True
-
-    if not args.frompackets and any(x is not None for x in (args.deltax, args.deltalogx, args.deltalambda)):
-        args.frompackets = True
-        print("Enabling --frompackets, since custom bin width was specified")
+    resolve_frompackets(args)
+    check_emission_plot_args(args)
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.specpath[0])
@@ -2105,10 +2184,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
 
     else:
-        if args.emissionabsorption:
-            args.showemission = True
-            args.showabsorption = True
-
         fig, _axes, dfalldata, dfresidualstats = make_plot(args)
 
         strdirectionbins = (
@@ -2132,7 +2207,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             write_residual_stats(dfresidualstats, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotspectra")

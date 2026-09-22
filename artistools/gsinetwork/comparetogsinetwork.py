@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Compare ARTIS heating rates and abundances against GSI nuclear network trajectory calculations."""
 
 import argparse
@@ -78,7 +77,7 @@ def get_abundance_correction_factors(
     else:
         ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
         propcellcount = ncoordgridx**3
-        print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
+        print(f" inferring a {ncoordgridx}^3 propagation grid from the grid mapping file")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
         wid_init = get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
@@ -280,70 +279,33 @@ def plot_qdot(
     axis.set_yscale("log")
     axis.set_ylabel(r"$\dot{Q}$ [erg/s/g]")
 
-    if dfgsiglobalheating is not None:
-        assert arr_time_gsi_days is not None
-        axis.plot(
-            arr_time_gsi_days,
-            dfgsiglobalheating["hbeta"],
-            linewidth=2,
-            color="black",
-            linestyle="solid",
-            # marker='x', markersize=8,
-            label=r"$\dot{Q}_\beta$ GSINET",
-        )
-
-    axis.plot(
-        depdata["tmid_days"],
-        depdata["Qdot_betaminus_ana_erg/s/g"],
-        linewidth=2,
-        color="red",
-        linestyle="solid",
-        # marker='+', markersize=15,
-        label=r"$\dot{Q}_\beta$ ARTIS",
+    # ARTIS writes the fission column only when the run held spontaneous fission
+    qdotseries = (
+        ("hbeta", "Qdot_betaminus_ana_erg/s/g", "solid", r"$\dot{Q}_\beta$"),
+        ("halpha", "Qdotalpha_ana_erg/s/g", "dashed", r"$\dot{Q}_\alpha$"),
+        ("hspof", "Qdotspfission_ana_erg/s/g", "dotted", r"$\dot{Q}_{sponfis}$"),
     )
 
-    if dfgsiglobalheating is not None:
-        axis.plot(
-            dfgsiglobalheating["time_days"],
-            dfgsiglobalheating["halpha"],
-            linewidth=2,
-            color="black",
-            linestyle="dashed",
-            # marker='x', markersize=8,
-            label=r"$\dot{Q}_\alpha$ GSINET",
-        )
+    for gsicol, artiscol, linestyle, label in qdotseries:
+        if dfgsiglobalheating is not None:
+            axis.plot(
+                dfgsiglobalheating["time_days"],
+                dfgsiglobalheating[gsicol],
+                linewidth=2,
+                color="black",
+                linestyle=linestyle,
+                label=f"{label} GSINET",
+            )
 
-    axis.plot(
-        depdata["tmid_days"],
-        depdata["Qdotalpha_ana_erg/s/g"],
-        linewidth=2,
-        color="red",
-        linestyle="dashed",
-        # marker='+', markersize=15,
-        label=r"$\dot{Q}_\alpha$ ARTIS",
-    )
-
-    if dfgsiglobalheating is not None:
-        axis.plot(
-            dfgsiglobalheating["time_days"],
-            dfgsiglobalheating["hspof"],
-            linewidth=2,
-            color="black",
-            linestyle="dotted",
-            # marker='x', markersize=8,
-            label=r"$\dot{Q}_{sponfis}$ GSINET",
-        )
-
-    if "Qdotspfission_ana_erg/s/g" in depdata.columns:
-        axis.plot(
-            depdata["tmid_days"],
-            depdata["Qdotspfission_ana_erg/s/g"],
-            linewidth=2,
-            color="red",
-            linestyle="dotted",
-            # marker='+', markersize=15,
-            label=r"$\dot{Q}_{sponfis}$ ARTIS",
-        )
+        if artiscol in depdata.columns:
+            axis.plot(
+                depdata["tmid_days"],
+                depdata[artiscol],
+                linewidth=2,
+                color="red",
+                linestyle=linestyle,
+                label=f"{label} ARTIS",
+            )
 
     set_legend(axis, ncol=3)
 
@@ -370,7 +332,7 @@ def plot_cell_abund_evolution(
         frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
         print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
 
-        # we didn't include all cells (maybe), so we need a normalization factor here
+        # the cells of this plot can be a part of the model, thus a normalisation factor is necessary
         normfactor = (
             dfpartcontrib_thiscell
             .group_by("modelgridindex")
@@ -764,9 +726,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

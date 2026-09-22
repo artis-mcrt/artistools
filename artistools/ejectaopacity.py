@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Script for computing binned expansion opacities and Planck-mean opacities in postprocessing."""
 
 import argparse
@@ -290,9 +289,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print()
     globalplanckmeanopacity = planckmeanopacity_times_mass / mass_g_sum
     print(f"Global Planck mean opacity: {globalplanckmeanopacity:.2f} cm^2/g")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

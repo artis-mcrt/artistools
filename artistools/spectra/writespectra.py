@@ -85,9 +85,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     write_flambda_spectra(args.modelpath, outdirectory=args.outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

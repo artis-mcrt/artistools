@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -20,7 +19,6 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import parse_cli_args
@@ -30,7 +28,7 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_or_show
 from artistools.plottools import set_legend
-from artistools.spectra import get_specpol_data
+from artistools.spectra import get_vspecpol_data
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
@@ -76,13 +74,24 @@ def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
 
 
 def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
-    """Write the virtual packet spectra of the first five direction bins in HESMA format."""
+    """Write the first five virtual packet spectra of a model in HESMA format.
+
+    vpkt.txt names one observer direction for each group of nspectraperobs spectra. The spectra of one
+    observer differ in the opacity that ARTIS excluded, thus the label names both indexes.
+    """
     if not outpath:
         outpath = modelpath
     modelname = get_model_name(modelpath)
-    angles = [0, 1, 2, 3, 4]
     vpkt_config = get_vpkt_config(modelpath)
-    angle_names = [rf"cos(theta) = {vpkt_config['cos_theta'][dirbin]}" for dirbin in angles]
+    nspectraperobs = vpkt_config["nspectraperobs"]
+    vspecindexes = list(range(min(5, vpkt_config["nobsdirections"] * nspectraperobs)))
+    angle_names = []
+    for vspecindex in vspecindexes:
+        obsdirindex, opacchoiceindex = divmod(vspecindex, nspectraperobs)
+        angle_name = rf"cos(theta) = {vpkt_config['cos_theta'][obsdirindex]}"
+        if nspectraperobs > 1:
+            angle_name += f", opacity choice {opacchoiceindex}"
+        angle_names.append(angle_name)
 
     with (outpath / f"{modelname}_vspec_res.dat").open("w", encoding="utf-8") as fout:
         fout.write(
@@ -92,9 +101,9 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             "\n"
         )
 
-        for dirbin, angle_name in zip(angles, angle_names, strict=True):
+        for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
             print(angle_name)
-            vspecdata = get_specpol_data(dirbin=dirbin, modelpath=modelpath)["I"].collect()
+            vspecdata = get_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
 
             timearray = vspecdata.columns[1:]
             vspecdata = (
@@ -127,25 +136,35 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
 def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
-    """Write a HESMA-format file of peak magnitude, rise time, and decline rate per viewing angle."""
-    dm15filename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    dm15data = read_wsv(
-        pathtofiles / dm15filename, has_header=False, new_columns=["peakmag", "risetime", "dm15"], skip_rows=1
-    )
+    """Write a HESMA-format file of peak magnitude and decline rate per direction bin.
 
-    if dm40:
-        dm40filename = f"{band}band_{modelname}_viewing_angle_data_deltam40.txt"
-        dm40data = read_wsv(
-            pathtofiles / dm40filename, has_header=False, new_columns=["peakmag", "risetime", "dm40"], skip_rows=1
+    plotlightcurves writes one row for each selected direction bin, in the columns dirbin,
+    peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include_delta_m40 adds the column
+    deltam40_polyfit to that same file.
+    """
+    viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
+    dfviewingangle = read_wsv(pathtofiles / viewinganglefilename)
+    columns = dfviewingangle.columns
+
+    if "peak_mag_polyfit" not in columns:
+        exit_with_error(
+            f"{viewinganglefilename} holds no peak_mag_polyfit column",
+            "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
         )
 
     outdata = {
-        "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
-        "dm15": dm15data["dm15"],
-        "angle_bin": np.arange(get_viewingdirectionbincount()),
+        "peakmag": dfviewingangle["peak_mag_polyfit"],
+        "dm15": dfviewingangle["deltam15_polyfit"],
+        # the file holds one row for each selected direction bin, and not one row for every bin
+        "angle_bin": dfviewingangle["dirbin"],
     }
     if dm40:
-        outdata["dm40"] = dm40data["dm40"]
+        if "deltam40_polyfit" not in columns:
+            exit_with_error(
+                f"{viewinganglefilename} holds no deltam40 column",
+                "Run plotlightcurves with --include_delta_m40, then run this action again",
+            )
+        outdata["dm40"] = dfviewingangle["deltam40_polyfit"]
 
     outdataframe = pl.DataFrame(outdata).with_columns(cs.float().round(4))
     outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
@@ -262,9 +281,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis = axesgrid[0][0]
         plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action))
         save_or_show(fig, args.plotfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

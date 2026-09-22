@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot the mass fractions of an ARTIS input model against atomic or mass number."""
 
 import argparse
@@ -242,9 +241,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     make_plot(args)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

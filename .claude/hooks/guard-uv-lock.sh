@@ -2,7 +2,7 @@
 # PreToolUse hook: refuse a direct change to uv.lock.
 #
 # `uv lock` writes this file. A change by hand passes ruff, pyrefly, and ty, and
-# then fails CI, because .github/workflows/pytest.yml sets UV_FROZEN=1.
+# then fails the `uv lock --check` step of .github/workflows/pytest.yml.
 
 set -u
 
@@ -14,8 +14,8 @@ case "$filepath" in
 esac
 
 cat >&2 <<'MSG'
-Do not change uv.lock by hand. `uv lock` writes this file, and CI sets
-UV_FROZEN=1, thus a change by hand fails the build.
+Do not change uv.lock by hand. `uv lock` writes this file, and CI runs
+`uv lock --check`, thus a change by hand fails the build.
 
 To add or to change a dependency:
   1. Edit the applicable table in pyproject.toml:

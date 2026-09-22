@@ -158,9 +158,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     save_modeldata(dfmodel, outpath=outputpath, t_model_init_days=a["time"], dimensions=1)
     save_initelemabundances(dfelabundances, outpath=outputpath)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

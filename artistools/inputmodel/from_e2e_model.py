@@ -1,6 +1,5 @@
 """Prepare data for ARTIS KN calculation from end-to-end hydro models. Original script by Oliver Just with modifications by Gerrit Leck for abundance mapping."""
 
-# PYTHON_ARGCOMPLETE_OK
 import argparse
 import itertools
 import typing as t
@@ -142,29 +141,35 @@ def get_grid(
 
     mass_arr = dat.f.mass.copy()
     qdot_arr = dat.f.qdot.copy()
+    # the exclusion of an ejecta type must also remove its neutrino loss, thus this array comes first
+    hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
 
     # ... non-dynamical ejecta
     if nohmns:
         # exclude HMNS ejecta
         mass_arr[np.where(state == 0)] = 1e-30
         qdot_arr[np.where(state == 0)] = 1e-30
+        hnuloss_arr[np.where(state == 0)] = 1e-30
     if notorus:
         # exclude torus ejecta
         mass_arr[np.where(state == 1)] = 1e-30
         qdot_arr[np.where(state == 1)] = 1e-30
-
-    hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
+        hnuloss_arr[np.where(state == 1)] = 1e-30
 
     # no multiplication with mass to keep it a specific energy release
     time_by_t_snap = time_s / t_model_init_s
+
+    # closest_idx names the row of the snapshot time, thus the slice must end one row after it
+    snapshot_end_idx = closest_idx + 1
 
     for i1 in nodid:  # index of Oli's original list
         i += 1  # index in the new list accounting for unprocessed trajs.
         i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx] * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:closest_idx],
-            time_s[starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:snapshot_end_idx]
+            * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:snapshot_end_idx],
+            time_s[starting_idx:snapshot_end_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
 
@@ -180,9 +185,9 @@ def get_grid(
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:closest_idx]
-            * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:closest_idx],
-            time_s[starting_idx:closest_idx],
+            time_by_t_snap[starting_idx:snapshot_end_idx]
+            * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:snapshot_end_idx],
+            time_s[starting_idx:snapshot_end_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
 
@@ -422,8 +427,9 @@ def get_grid(
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
     # write file containing the contribution of each trajectory to each interpolated grid cell.
-    # wloc is the weight of each particle in each cell, normalised over the particles of the cell
-    wloc = wall * rho2dtraj / rho2dhat
+    # wloc is the weight of each particle in each cell, normalised over the particles of the cell.
+    # The mass of the particle is a factor of the cell density above, thus wloc must also hold it
+    wloc = wall * mtraj * rho2dtraj / rho2dhat
     with np.errstate(divide="ignore", invalid="ignore"):
         wloc /= np.sum(wloc, axis=-1, keepdims=True)
     cellhasmass = dmgrid > (1e-100 * mtot)
@@ -470,6 +476,50 @@ def get_grid(
         return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
     # 3D case
     return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
+
+
+def get_model_interpolation_weights(dens_3D: pl.Series, dens_2D: pl.Series) -> pl.DataFrame:
+    """Return the weight beta_3D of the 3D model, the weight beta_2D of the 2D model, and the density rho.
+
+    Each weight is the share of the combined density that one model gives. A cell that both models leave
+    empty holds no mass, thus both weights are zero there. A plain quotient gives 0/0, which is NaN, and
+    such a NaN passes into each isotope column and into the files that the writer makes.
+    """
+    return (
+        pl
+        .DataFrame({"beta_3D": dens_3D, "beta_2D": dens_2D})
+        .with_columns((pl.col("beta_3D") + pl.col("beta_2D")).alias("rho"))
+        .with_columns([
+            pl.when(pl.col("rho") > 0.0).then(pl.col(col) / pl.col("rho")).otherwise(0.0).fill_null(0.0).alias(col)
+            for col in ("beta_3D", "beta_2D")
+        ])
+    )
+
+
+def align_composition_columns(dfmain: pl.DataFrame, dfother: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the two dataframes with the same columns in the same order, ready for a concatenation.
+
+    A column that both dataframes hold stays. A mass fraction column that only one dataframe holds also
+    stays, and the other dataframe gets zeros for it. An intersection of the two column sets took away
+    an isotope or an element that only one model holds. A zero electron fraction and a zero energy
+    release are real values and not an absence, thus such a column goes if only one model holds it.
+    """
+    maincols = set(dfmain.columns)
+    othercols = set(dfother.columns)
+    for col in ("q", "Ye"):
+        if (col in maincols) != (col in othercols):
+            print_warning(f"{col} is missing from one model, thus the output holds no {col}")
+
+    cols = [
+        col
+        for col in dict.fromkeys([*dfmain.columns, *dfother.columns])
+        if (col in maincols and col in othercols) or col.startswith("X_")
+    ]
+    aligned = [
+        df.with_columns(**{col: pl.lit(0.0) for col in cols if col not in dfcols}).select(cols)
+        for df, dfcols in ((dfmain, maincols), (dfother, othercols))
+    ]
+    return aligned[0], aligned[1]
 
 
 def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
@@ -616,7 +666,8 @@ def map_to_artis(
         )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
         dyn_abunds = get_initelemabundances(modelpath=Path(replacedyn))
-        dyn_model = dyn_model.drop(["tracercount", "modelgridindex"])
+        # get_modeldata adds tracercount only for a model.txt that holds it
+        dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 
         # Step 2) Model modification
         if interpolate:
@@ -631,20 +682,11 @@ def map_to_artis(
                 print(f"Scaling factor to obtain 2D dynamical ejecta mass: {resc_factor}")
 
             # now interpolate all model quantities
-            beta_3D = dyn_model["rho"] * dfmodel["bin_state"] * resc_factor
-            beta_2D = dfmodel["rho"] * (1 - dfmodel["bin_state"])
-            rho = beta_3D + beta_2D
-
-            dfmodel = dfmodel.with_columns([
-                pl.Series("beta_3D", beta_3D / rho),
-                pl.Series("beta_2D", beta_2D / rho),
-                pl.Series("rho", rho),
-            ])
-
-            dfmodel = dfmodel.with_columns([
-                pl.when(pl.col(col).is_infinite()).then(0.0).otherwise(pl.col(col)).fill_null(0.0).alias(col)
-                for col in ("beta_3D", "beta_2D")
-            ])
+            dfweights = get_model_interpolation_weights(
+                dens_3D=dyn_model["rho"] * dfmodel["bin_state"] * resc_factor,
+                dens_2D=dfmodel["rho"] * (1 - dfmodel["bin_state"]),
+            )
+            dfmodel = dfmodel.with_columns([dfweights.get_column(col) for col in dfweights.columns])
 
             # interpolate q and Ye and threshold small values
             dfmodel = dfmodel.with_columns([
@@ -698,13 +740,13 @@ def map_to_artis(
                 extracols=dyn_extracols,
             )
 
-            # mass fractions, avoid looping
-            X_list = [c for c in dfmodel.columns if c.startswith("X_")]
-            X_list_dyn_model = [c for c in dyn_model.columns if c.startswith("X_")]
-            els_missing_in_dyn = [value for value in X_list if value not in X_list_dyn_model]
-            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in els_missing_in_dyn})
-            X_list.remove("X_Fegroup")
-            X_list_dyn_model.remove("X_Fegroup")
+            # each model can hold a mass fraction column that the other does not. Both frames take the
+            # union of those columns, thus the interpolation below finds each one in both frames
+            X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
+            dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
+            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
+            # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
+            X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
             # properly set mass fractions to zero in empty cells
             dfmodel = dfmodel.with_columns([
                 pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
@@ -762,36 +804,24 @@ def map_to_artis(
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
             dyn_abunds = dyn_abunds.collect()
-            common_cols = list(set(dfelabundances.columns).intersection(dyn_abunds.columns))
-            dfelabundances_cast = (
-                dfelabundances
-                .select(common_cols)
-                .with_columns(cs.float().cast(pl.Float64), pl.col("inputcellid").cast(pl.Int32))
-                .filter(~pl.col("inputcellid").is_in(id_list))
-            )
+            dfelabundances_aligned, dyn_abunds_aligned = align_composition_columns(dfelabundances, dyn_abunds)
+            dfelabundances_cast = dfelabundances_aligned.with_columns(
+                cs.float().cast(pl.Float64), pl.col("inputcellid").cast(pl.Int32)
+            ).filter(~pl.col("inputcellid").is_in(id_list))
 
-            dyn_abunds_cast = (
-                dyn_abunds
-                .select(common_cols)
-                .with_columns([cs.float().cast(pl.Float64)])
-                .filter(pl.col("inputcellid").is_in(id_list))
+            dyn_abunds_cast = dyn_abunds_aligned.with_columns([cs.float().cast(pl.Float64)]).filter(
+                pl.col("inputcellid").is_in(id_list)
             )
 
             dfabundances = pl.concat([dfelabundances_cast, dyn_abunds_cast]).sort("inputcellid")
 
             # ... and in the model dataframe
-            common_cols = list(set(dfmodel.columns).intersection(dyn_model.columns))
-            dfmodel_cast = (
-                dfmodel
-                .select(common_cols)
-                .with_columns(cs.float().cast(pl.Float32), pl.col("inputcellid").cast(pl.Int32))
-                .filter(~pl.col("inputcellid").is_in(id_list))
-            )
-            dyn_model_cast = (
-                dyn_model
-                .select(common_cols)
-                .with_columns(cs.float().cast(pl.Float32))
-                .filter(pl.col("inputcellid").is_in(id_list))
+            dfmodel_aligned, dyn_model_aligned = align_composition_columns(dfmodel, dyn_model)
+            dfmodel_cast = dfmodel_aligned.with_columns(
+                cs.float().cast(pl.Float32), pl.col("inputcellid").cast(pl.Int32)
+            ).filter(~pl.col("inputcellid").is_in(id_list))
+            dyn_model_cast = dyn_model_aligned.with_columns(cs.float().cast(pl.Float32)).filter(
+                pl.col("inputcellid").is_in(id_list)
             )
             dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
 
@@ -1366,9 +1396,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

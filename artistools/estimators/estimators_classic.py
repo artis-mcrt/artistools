@@ -6,13 +6,13 @@ from pathlib import Path
 
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
-from artistools.inputmodel import get_modeldata
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_inputparams
+from artistools.misc import get_run_subfolders
 from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import resolve_modelpath
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:
@@ -61,11 +61,9 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
 
 def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     """Return the first timestep contained in each run folder, since classic estimator files restart their numbering."""
-    folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
-
     first_timesteps_in_dir = {}
 
-    for folder in folderlist_all:
+    for folder in get_run_subfolders(modelpath):
         outputfile = firstexisting_or_none("output_0-0.txt", folder=folder, tryzipped=True, search_subfolders=False)
         if outputfile is not None:
             with zopen(outputfile, encoding="utf-8") as output_0:
@@ -107,7 +105,7 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     The copy of the dictionary and of the dictionary of each cell keeps a caller that changes one of
     them from changing what the next caller reads.
     """
-    estimators = read_classic_estimators_cached(modelpath)
+    estimators = read_classic_estimators_cached(resolve_modelpath(modelpath))
 
     return None if estimators is None else {key: dict(estimcell) for key, estimcell in estimators.items()}
 
@@ -127,13 +125,6 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
     atomic_composition = get_atomic_composition(modelpath)
-
-    inputparams = get_inputparams(modelpath)
-    ndimensions = inputparams["n_dimensions"]
-    # only a 1D model gives the outer velocity of each cell
-    vel_r_max_kmps = (
-        get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect().to_series() if ndimensions == 1 else None
-    )
 
     estimators: dict[tuple[int, int], t.Any] = {}
     # a classic estimator file numbers its timesteps from zero, thus a folder of a restarted run needs
@@ -185,9 +176,6 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
 
                 folderofkey[timestep, modelgridindex] = estfilepath.parent
                 estimators[timestep, modelgridindex] = estimcell
-
-                if vel_r_max_kmps is not None:
-                    estimcell["vel_r_max_kmps"] = vel_r_max_kmps[modelgridindex]
 
                 estimcell["TR"] = float(row[1])
                 estimcell["Te"] = float(row[2])

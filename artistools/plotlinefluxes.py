@@ -15,13 +15,11 @@ import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from matplotlib import markers as mplmarkers
 from matplotlib.typing import MarkerType
 
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.atomic import get_linelist_pldf
-from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
@@ -45,7 +43,9 @@ from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
+from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.nltepops import read_nltepops
@@ -53,6 +53,7 @@ from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 
 # the Fe II 7155 Å / 12570 Å pair used for the Flörs et al. (2020) ratio comparison
@@ -486,8 +487,11 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     tmin = math.inf
     tmax = -math.inf
+    plotteddata: list[pl.DataFrame] = []
 
-    for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color, strict=False):
+    for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
+        zip(args.modelpath, args.label, args.color, strict=False)
+    ):
         print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -515,18 +519,26 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         # \mathrm{\AA}
         print(dflcdata)
 
-        axis.plot(
-            dflcdata["time"],
-            dflcdata["fratio"],
-            label=modellabel,
-            marker="x",
-            lw=0,
-            markersize=10,
-            markeredgewidth=2,
-            color=modelcolor,
-            alpha=0.8,
-            fillstyle="none",
-        )
+        plotkwargs: dict[str, t.Any] = {
+            "marker": "x",
+            "lw": 0,
+            "markersize": 10,
+            "markeredgewidth": 2,
+            "color": modelcolor,
+            "alpha": 0.8,
+            "fillstyle": "none",
+        }
+        if args.linestyle[modelindex]:
+            plotkwargs["linestyle"] = args.linestyle[modelindex]
+            plotkwargs["lw"] = 1.0
+        if args.linewidth[modelindex]:
+            plotkwargs["lw"] = args.linewidth[modelindex]
+        if args.dashes[modelindex]:
+            plotkwargs["dashes"] = args.dashes[modelindex]
+
+        axis.plot(dflcdata["time"], dflcdata["fratio"], label=modellabel, **plotkwargs)
+
+        plotteddata.append(dflcdata.select("time", "fratio").rename({"fratio": f"fratio_{get_model_name(modelpath)}"}))
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
@@ -555,9 +567,27 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         ax.set_xlabel(r"Time [days]")
         set_legend(ax, args, loc="upper right", frameon=False, handlelength=1, ncol=2, numpoints=1)
 
+    # the x axis of this plot is a time in days, thus -xmin and -xmax give a range of days. This call
+    # follows the fixed limits above, thus a limit that the user gave replaces the fixed limit
+    set_axis_properties(axes, args)
+
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
+    if args.write_data and plotteddata:
+        write_plotted_data(plotteddata, args.outputfile)
+
     save_figure(fig, args.outputfile, format="pdf", args=args)
+
+
+def write_plotted_data(plotteddata: Sequence[pl.DataFrame], outputfile: Path | str) -> None:
+    """Write one column of times and one column for each model to a CSV file in the folder of the figure."""
+    dfalldata = plotteddata[0]
+    for dfmodel in plotteddata[1:]:
+        dfalldata = dfalldata.join(dfmodel, on="time", how="full", coalesce=True)
+
+    datafilenameout = Path(outputfile).with_suffix(".txt")
+    dfalldata.sort("time").write_csv(datafilenameout, separator=" ")
+    print_saved(datafilenameout)
 
 
 def plot_nne_te_points(
@@ -592,223 +622,138 @@ def plot_nne_te_points(
     axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle="None", label=serieslabel, alpha=alpha)
 
 
+def read_te_nne_refdata(
+    refdatafilename: str,
+) -> tuple[list[str], npt.NDArray[np.floating], list[dict[str, list[float]]]]:
+    """Return the time keys, the times in days, and the points of one file of reference data.
+
+    The file is either in the working folder or in the data folder of the package.
+    """
+    refdatapath = require_reference_data_file(refdatafilename, "data", "reference data")
+
+    te_nne: dict[str, dict[str, list[float]]] = json.loads(refdatapath.read_text(encoding="utf-8"))
+    # the keys are strings and not floats, thus the sort takes a key function
+    refdatakeys = sorted(te_nne, key=float)
+    print(f"{refdatafilename} data available for times: {refdatakeys}")
+
+    return refdatakeys, np.array([float(timekey) for timekey in refdatakeys]), [te_nne[key] for key in refdatakeys]
+
+
+def get_emitting_regions_data(
+    modelpath: Path, args: argparse.Namespace, times_days: Sequence[float]
+) -> dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]:
+    """Return the electron density and the temperature of the cells that emit each feature in each time bin."""
+    emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
+
+    linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
+
+    em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
+
+    _nprocs_read, dfpackets = get_packets(
+        modelpath=modelpath, maxpacketfiles=args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
+
+    dfpackets = add_derived_columns_lazy(
+        dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
+    )
+
+    dfestimators = (
+        scan_estimators(modelpath=modelpath, verbose=args.verbose)
+        .select(["timestep", "modelgridindex", "Te", "nne"])
+        .drop_nulls()
+        .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
+    ).with_columns(em_log10nne=pl.col("em_nne").log10())
+
+    dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner", maintain_order="left")
+
+    # one collect gives all the time bins and features, then the loop filters the eager frame
+    dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()
+
+    emdata: dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]] = {}
+    for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
+        dfpackets_timebin = dfpackets_collected.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
+        for feature in emfeatures:
+            dfpackets_selected = dfpackets_timebin.filter(pl.col(args.emtypecolumn).is_in(feature.linelistindices))
+            emdata[tmid, feature.colname] = {
+                "em_log10nne": dfpackets_selected["em_log10nne"].to_numpy(),
+                "em_Te": dfpackets_selected["em_Te"].to_numpy(),
+            }
+
+    return emdata
+
+
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
-    refdatafilenames = ["floers_te_nne.json"]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ["Flörs+2020"]  # , 'Floers CMFGEN', 'Floers Smyth']
+    refdatafilenames = ["floers_te_nne.json"]
+    refdatalabels = ["Flörs+2020"]
     refdatacolors = ["0.0", "C1", "C2", "C4"]
-    refdatakeys: list[list[str]] = [[] for _ in refdatafilenames]
-    refdatatimes = [np.array([], dtype=np.float64) for _ in refdatafilenames]
-    refdatapoints: list[list[dict[str, list[float]]]] = [[] for _ in refdatafilenames]
-    for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        floers_te_nne: dict[str, dict[str, list[float]]] = json.loads(Path(refdatafilename).read_text(encoding="utf-8"))
+    refdata = [read_te_nne_refdata(refdatafilename) for refdatafilename in refdatafilenames]
 
-        # give an ordering and index to dict items
-        refdatakeys_thisseries = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
-        assert refdatakeys_thisseries is not None
-        refdatakeys[refdataindex] = refdatakeys_thisseries
-        refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys_thisseries])
-        refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys_thisseries]
-        print(f"{refdatafilename} data available for times: {refdatakeys_thisseries}")
-
-    times_days = ((np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0).tolist()
+    times_days: list[float] = ((np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0).tolist()
 
     print(f"Chosen times: {times_days}")
 
-    emdata_all: dict[int, dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]] = {}
-    log10nnedata_all: dict[int, dict[int, list[float]]] = {}
-    Tedata_all: dict[int, dict[int, list[float]]] = {}
+    emdata_all = []
+    for modelpath, modellabel in zip(args.modelpath, args.label, strict=False):
+        print(f"Getting packets/nne/Te data for ARTIS model: '{get_model_logname(modelpath, modellabel)}'")
+        emdata_all.append(get_emitting_regions_data(modelpath, args, times_days))
 
-    # data is collected, now make plots
+    # the code has the data of every model, thus each figure shows all the models
     args.outputfile = resolve_outputfile(args.outputfile, "emittingregions.pdf")
 
-    args.modelpath.append(None)
-    args.label.append(f"All models: {', '.join(args.label)}")
-    args.modeltag.append("all")
-    for modelindex, (modelpath, modellabel, modeltag) in enumerate(
-        zip(args.modelpath, args.label, args.modeltag, strict=False)
-    ):
-        print(f"ARTIS model: '{modellabel}'")
+    for tmid in times_days:
+        print(f"  Plot at {tmid} days")
 
-        if modelpath is not None:
-            print(f"Getting packets/nne/Te data for ARTIS model: '{get_model_logname(modelpath, modellabel)}'")
+        fig, axesgrid = make_frame_figure(args, rows=1, aspect=0.955, sharex=False, sharey=False)
+        axis = axesgrid[0][0]
+        assert isinstance(axis, mplax.Axes)
 
-            emdata_all[modelindex] = {}
-
-            emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
-
-            linelistindices_allfeatures = tuple(
-                lineindex for feature in emfeatures for lineindex in feature.linelistindices
+        for refdataindex, (refdatakeys, refdatatimes, refdatapoints) in enumerate(refdata):
+            timeindex = int(np.abs(refdatatimes - tmid).argmin())
+            axis.plot(
+                refdatapoints[timeindex]["ne"],
+                refdatapoints[timeindex]["temp"],
+                color=refdatacolors[refdataindex],
+                lw=2,
+                label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindex]}d",
             )
 
-            em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
-
-            _nprocs_read, dfpackets = get_packets(
-                modelpath=modelpath,
-                maxpacketfiles=args.maxpacketfiles,
-                packet_type="TYPE_ESCAPE",
-                escape_type="TYPE_RPKT",
-            )
-
-            dfpackets = add_derived_columns_lazy(
-                dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
-            )
-
-            dfestimators = (
-                scan_estimators(modelpath=modelpath, verbose=args.verbose)
-                .select(["timestep", "modelgridindex", "Te", "nne"])
-                .drop_nulls()
-                .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
-            ).with_columns(em_log10nne=pl.col("em_nne").log10())
-
-            dfpackets = dfpackets.join(
-                dfestimators, on=["em_timestep", em_mgicolumn], how="inner", maintain_order="left"
-            )
-
-            # one collect gives all the time bins and features, then the loop filters the eager frame
-            dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()
-
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-                dfpackets_timebin = dfpackets_collected.filter(
-                    pl.col("t_arrive_d").is_between(tstart, tend, closed="both")
-                )
-                for feature in emfeatures:
-                    dfpackets_selected = dfpackets_timebin.filter(
-                        pl.col(args.emtypecolumn).is_in(feature.linelistindices)
-                    )
-                    emdata_all[modelindex][tmid, feature.colname] = {
-                        "em_log10nne": dfpackets_selected["em_log10nne"].to_numpy(),
-                        "em_Te": dfpackets_selected["em_Te"].to_numpy(),
-                    }
-
-            dfestimators_collected = dfestimators.select("em_timestep", "em_Te", "em_log10nne").collect()
-            tstartlist = get_timestep_times(modelpath, loc="start")
-            tendlist = get_timestep_times(modelpath, loc="end")
-            Tedata_all[modelindex] = {}
-            log10nnedata_all[modelindex] = {}
-            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-                tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
-                dfestimators_timebin = dfestimators_collected.filter(pl.col("em_timestep").is_in(tslist))
-                Tedata_all[modelindex][tmid] = dfestimators_timebin["em_Te"].to_list()
-                log10nnedata_all[modelindex][tmid] = dfestimators_timebin["em_log10nne"].to_list()
-
-        if modeltag != "all":
-            continue
-
-        nrows = 1
-        for tmid in times_days:
-            print(f"  Plot at {tmid} days")
-
-            fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=0.955, sharex=False, sharey=False)
-            axis = axesgrid[0][0]
-            assert isinstance(axis, mplax.Axes)
-
-            for refdataindex in range(len(refdatafilenames)):
-                timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
+            timeindexb = int(np.abs(refdatatimes - tmid - 50).argmin())
+            if timeindexb != timeindex:
                 axis.plot(
-                    refdatapoints[refdataindex][timeindex]["ne"],
-                    refdatapoints[refdataindex][timeindex]["temp"],
-                    color=refdatacolors[refdataindex],
-                    lw=2,
-                    label=f"{refdatalabels[refdataindex]} +{refdatakeys[refdataindex][timeindex]}d",
-                )
-
-                timeindexb = np.abs(refdatatimes[refdataindex] - tmid - 50).argmin()
-                if timeindexb < len(refdatakeys[refdataindex]):
-                    axis.plot(
-                        refdatapoints[refdataindex][timeindexb]["ne"],
-                        refdatapoints[refdataindex][timeindexb]["temp"],
-                        color="0.4",
-                        lw=2,
-                        label=f"{refdatalabels[refdataindex]} +{refdatakeys[refdataindex][timeindexb]}d",
-                    )
-
-            if modeltag == "all":
-                for truemodelindex in range(modelindex):
-                    emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
-
-                    em_log10nne = np.concatenate([
-                        emdata_all[truemodelindex][tmid, feature.colname]["em_log10nne"] for feature in emfeatures
-                    ])
-
-                    em_Te = np.concatenate([
-                        emdata_all[truemodelindex][tmid, feature.colname]["em_Te"] for feature in emfeatures
-                    ])
-
-                    normtotalpackets = len(em_log10nne) * 8.0  # circles have more area than triangles, so decrease
-                    modelcolor = args.color[truemodelindex]
-                    label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
-                    plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor, marker="s")
-            else:
-                assert isinstance(modelpath, Path | str)
-                emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
-
-                featurecolours = ["blue", "red"]
-                markers: list[MarkerType] = [
-                    mplmarkers.MarkerStyle(mplmarkers.CARETUPBASE),
-                    mplmarkers.MarkerStyle(mplmarkers.CARETDOWNBASE),
-                ]
-
-                normtotalpackets = float(
-                    np.sum([
-                        len(emdata_all[modelindex][tmid, feature.colname]["em_log10nne"]) for feature in emfeatures
-                    ])
-                )
-
-                axis.scatter(
-                    log10nnedata_all[modelindex][tmid],
-                    Tedata_all[modelindex][tmid],
-                    s=1.0,
-                    marker="o",
+                    refdatapoints[timeindexb]["ne"],
+                    refdatapoints[timeindexb]["temp"],
                     color="0.4",
-                    lw=0,
-                    edgecolors="none",
-                    label="All cells",
+                    lw=2,
+                    label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindexb]}d",
                 )
 
-                for featureindex, feature in enumerate(emfeatures):
-                    emdata = emdata_all[modelindex][tmid, feature.colname]
+        for modelindex, emdata in enumerate(emdata_all):
+            emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
 
-                    print(f"   {len(emdata['em_log10nne'])} points plotted for {feature.featurelabel}")
+            em_log10nne = np.concatenate([emdata[tmid, feature.colname]["em_log10nne"] for feature in emfeatures])
+            em_Te = np.concatenate([emdata[tmid, feature.colname]["em_Te"] for feature in emfeatures])
 
-                    serieslabel = (
-                        (modellabel + " " + feature.featurelabel)
-                        .format(timeavg=tmid, modeltag=modeltag)
-                        .replace("Å", r" $\mathrm{\AA}$")
-                    )
+            # a circle has more area than a triangle, thus this factor decreases the marker size
+            normtotalpackets = len(em_log10nne) * 8.0
+            label = args.label[modelindex].format(timeavg=tmid, modeltag=args.modeltag[modelindex] or "all")
+            plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
-                    plot_nne_te_points(
-                        axis,
-                        serieslabel,
-                        emdata["em_log10nne"],
-                        emdata["em_Te"],
-                        normtotalpackets,
-                        featurecolours[featureindex],
-                        marker=markers[featureindex],
-                    )
+        if tmid == times_days[-1]:
+            set_legend(
+                axis, args, loc="best", frameon=False, handlelength=1, ncol=1, borderpad=0, numpoints=1, markerscale=2.5
+            )
 
-            if tmid == times_days[-1]:
-                set_legend(
-                    axis,
-                    args,
-                    loc="best",
-                    frameon=False,
-                    handlelength=1,
-                    ncol=1,
-                    borderpad=0,
-                    numpoints=1,
-                    markerscale=2.5,
-                )
+        axis.set_ylim(3000, 10000)
+        axis.set_xlim(4.5, 7.15)
 
-            axis.set_ylim(ymin=3000)
-            axis.set_ylim(ymax=10000)
-            axis.set_xlim(xmin=4.5, xmax=7.15)
+        axis.set_xlabel(r"log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])")
+        axis.set_ylabel(r"Electron Temperature [K]")
 
-            axis.set_xlabel(r"log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])")
-            axis.set_ylabel(r"Electron Temperature [K]")
-
-            outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
-            save_figure(fig, outputfile, format="pdf", args=args)
+        # one figure holds every model, thus the name of the file joins the tags of all of them
+        filetag = "_".join(tag for tag in args.modeltag if tag) or "all"
+        outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=filetag)
+        save_figure(fig, outputfile, format="pdf", args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -862,10 +807,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the x axis of this command is a time in days, thus it takes no wavelength aliases
     addarg_axislimits(
         parser,
-        xmindefault=50,
-        xmaxdefault=450,
-        xminhelp="Plot range: minimum time in days",
-        xmaxhelp="Plot range: maximum time in days",
+        xmindefault=None,
+        xmaxdefault=None,
+        xminhelp="Plot range: minimum time in days (default: the data range)",
+        xmaxhelp="Plot range: maximum time in days (default: the data range)",
     )
 
     parser.add_argument(
@@ -899,7 +844,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.label, args.modeltag, args.color = trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
+    args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes = trim_or_pad(
+        len(args.modelpath), args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes
+    )
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
 
@@ -933,8 +880,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # this plot needs concrete time bins, so fall back to the first model's timesteps. The flux ratio plot
         # leaves them as None, which makes each model use its own timesteps
         # copy the lists, because get_timestep_times() is lru_cached
-        args.timebins_tstart = list(get_timestep_times(args.modelpath[0], loc="start"))
-        args.timebins_tend = list(get_timestep_times(args.modelpath[0], loc="end"))
+        args.timebins_tstart = get_timestep_times(args.modelpath[0], loc="start").copy()
+        args.timebins_tend = get_timestep_times(args.modelpath[0], loc="end").copy()
 
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
@@ -944,7 +891,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_emitting_regions_plot(args)
     else:
         make_luminosity_ratio_plot(args)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotlinefluxes")

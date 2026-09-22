@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot density, Ye, and abundances of a multidimensional ARTIS model as 2D slices or 3D surfaces."""
 
 import argparse
@@ -240,7 +239,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
 
     if "Ye" in args.plotvars and "Ye" not in model.columns:
-        file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1)
+        # ndmin keeps the (cellid, Ye) columns separate even for a single-cell model
+        file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1, ndmin=2)
         model = model.with_columns(Ye=pl.Series(file_contents[1]))
 
     # generate grid from data
@@ -350,9 +350,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     plot_2d_initial_abundances(args.modelpath, args)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

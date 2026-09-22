@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Give the deposition rate of a model per unit volume, per ion, and per unit mass."""
 
 import argparse
@@ -398,9 +397,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
         outputfile.write_text("\n\n".join(tables) + "\n", encoding="utf-8")
         print_saved(outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
 
 import argparse
@@ -19,7 +18,6 @@ from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import parse_cli_args
 from artistools.packets.core import filter_packets_dirbin
@@ -37,6 +35,14 @@ def get_required_packets(
     A None list selects every element or every ion stage. The Sr II triplet takes the place of both lists.
     """
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
+    nprocs_read, dfpackets = get_packets(
+        modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
+
+    if not srII_triplet and Z_list is ion_stage_list is None:
+        # the plot keeps every line, thus the filter needs no list of line indices. A packet
+        # that no line absorbed has a negative absorption_type
+        return nprocs_read, dfpackets.filter(pl.col("absorption_type") >= 0)
 
     linelist_lazyframe = get_linelist_pldf(modelpath)
     if srII_triplet:
@@ -55,12 +61,8 @@ def get_required_packets(
         if ion_stage_list is not None:
             linelist_lazyframe = linelist_lazyframe.filter(pl.col("ion_stage").is_in(ion_stage_list))
     lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
-    nprocs_read, dfpackets = get_packets(
-        modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
-    dfpackets_selected = dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
 
-    return nprocs_read, dfpackets_selected
+    return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
 
 
 def get_reduced_packet_set(
@@ -71,13 +73,13 @@ def get_reduced_packet_set(
     wavelen: float | None = None,
     binwidth: float | None = None,
     srII_triplet: bool = False,
-) -> tuple[int, pl.LazyFrame]:
+) -> tuple[int, pl.LazyFrame, float]:
     """Get packets in specific escape angle bins for observer direction.
 
-    Selection is based on the packets returned by `get_required_packets()`
-    for the requested element/ion filters. If both `wavelen` and `binwidth`
-    are provided, the packets are additionally restricted to that wavelength
-    slice before filtering to the requested escape-angle bins.
+    The function returns the number of MPI ranks, the packets, and the solid-angle factor
+    (4 pi / solidangle) of the direction bin. `get_required_packets()` selects the packets for the
+    given element and ion filters. If `wavelen` and `binwidth` both have a value, the function keeps
+    only the packets in that wavelength slice. It then keeps only the packets of the direction bin.
     """
     nprocs_read, dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / pl.col("nu_rf")).alias("lambda_rf"))
@@ -89,10 +91,9 @@ def get_reduced_packet_set(
         dfpackets_selected = dfpackets_selected.filter(
             (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
         )
-    if dirbin >= 0:
-        dfpackets_selected, _ = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
+    dfpackets_selected, solidangle_factor = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
 
-    return nprocs_read, dfpackets_selected
+    return nprocs_read, dfpackets_selected, solidangle_factor
 
 
 def packets_2d_hist_bin_and_ejecta_vel(
@@ -118,7 +119,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     Z_list = [Z] if Z else None
     ion_stage_list = [decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
 
-    nprocs_read, dfpackets = get_reduced_packet_set(
+    nprocs_read, dfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
         modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet
     )
 
@@ -164,7 +165,6 @@ def packets_2d_hist_bin_and_ejecta_vel(
             * emtime
         ).alias("hollow_cyl_vol_em")
     ).collect()
-    inverse_solidangle_fraction = get_viewingdirection_costhetabincount() if dirbin >= 0 else 1.0
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(
         f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
@@ -259,9 +259,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         wavelen=args.wavelen,
         binwidth=args.binwidth,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

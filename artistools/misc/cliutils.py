@@ -121,7 +121,7 @@ class KeepGivenPaths(argparse.Action):
 
     def __call__(
         self,
-        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: "str | Sequence[t.Any] | None",
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
@@ -130,6 +130,109 @@ class KeepGivenPaths(argparse.Action):
         userwrote = bool(values) and values != self.default
         if userwrote or getattr(namespace, self.dest, None) is None:
             setattr(namespace, self.dest, values)
+
+        if not userwrote:
+            take_back_swallowed_folder(parser, namespace, self)
+
+
+def trailing_folder_count(values: list[t.Any]) -> int:
+    """Return how many values at the end of a list name an ARTIS run folder."""
+    from artistools.misc.fileio import folder_is_artis_run
+
+    count = 0
+    for value in reversed(values):
+        if not isinstance(value, str) or not folder_is_artis_run(value):
+            break
+        count += 1
+
+    return count
+
+
+def separate_trailing_folders(argsraw: "Sequence[str] | None") -> list[str]:
+    """Return the command line with a "--" in front of the ARTIS folders that end it.
+
+    argparse gives every word that follows to an option that reads a list. The separator marks the
+    end of that list, thus each folder reaches the positional path argument.
+    """
+    tokens = list(sys.argv[1:] if argsraw is None else argsraw)
+    if "--" in tokens:
+        return tokens
+
+    count = trailing_folder_count(tokens)
+    # a command line of folders alone gives the folders to the positional argument already
+    if count in {0, len(tokens)}:
+        return tokens
+
+    start = len(tokens) - count
+    # a flag in front of the folders takes them as its own values, e.g. "-modelpath mymodel". The
+    # separator would leave that option with no value at all
+    if tokens[start - 1].startswith("-"):
+        return tokens
+
+    return [*tokens[:start], "--", *tokens[start:]]
+
+
+def take_back_swallowed_folder(
+    parser: argparse.ArgumentParser, namespace: argparse.Namespace, pathaction: argparse.Action
+) -> None:
+    """Give the ARTIS folders back to the positional path argument when an option took them.
+
+    argparse gives every word that follows to an option that reads a list. Thus
+    "plotspectra -label mylabel mymodel" left the model path empty and made "mymodel" a second
+    label. The command then plotted the working folder, and it gave no message. The folders come
+    back to the positional argument here, and the option keeps its other values.
+
+    Only the last values of an option can be folders, because the user writes the paths last. Two
+    options that each end with the name of a folder are ambiguous. The command then reads them as
+    the user wrote them.
+    """
+    given = getattr(namespace, pathaction.dest, None)
+    if given and given != pathaction.default:
+        return
+
+    def taken_folder_count(action: argparse.Action) -> int:
+        values = getattr(namespace, action.dest, None)
+        takesalist = (
+            bool(action.option_strings)
+            and action.nargs in {"*", "+"}
+            and isinstance(values, list)
+            # the default list belongs to the parser, thus the user gave no value in that list
+            and values is not action.default
+            and bool(values)
+        )
+        if not takesalist:
+            return 0
+
+        assert isinstance(values, list)
+        count = trailing_folder_count(values)
+
+        # every value of the option names a folder, thus which one is the model path is unknown
+        return 0 if count == len(values) else count
+
+    candidates = [
+        (action, count)
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if (count := taken_folder_count(action))
+    ]
+    if len(candidates) != 1:
+        return
+
+    action, count = candidates[0]
+    taken = getattr(namespace, action.dest)
+    takesalist = pathaction.nargs in {"*", "+"}
+    # a positional argument that holds one path takes the last folder alone
+    folders = taken[-count:] if takesalist else taken[-1:]
+    setattr(namespace, action.dest, taken[: len(taken) - len(folders)])
+    converter = pathaction.type
+    paths = [converter(folder) for folder in folders] if callable(converter) else list(folders)
+    setattr(namespace, pathaction.dest, paths if takesalist else paths[0])
+
+    flag = action.option_strings[0]
+    folderword = "folder" if len(folders) == 1 else "folders"
+    print_warning(
+        f"{flag} read the ARTIS {folderword} {', '.join(folders)} as a value. The model path gets "
+        f"the {folderword} back. Write the model path in front of {flag}"
+    )
 
 
 def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
@@ -390,7 +493,7 @@ def get_single_modelgridindex(modelgridindex: str | int | None) -> int | None:
 class UnsupportedArgument(argparse.Action):
     """Stop the command, and name the argument to give in place of the one that the user gave."""
 
-    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str = "", **kwargs: t.Any) -> None:
+    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str, **kwargs: t.Any) -> None:
         """Take the name of the argument that this command does take."""
         super().__init__(option_strings, dest, nargs="?", help=argparse.SUPPRESS, **kwargs)
         self.instead = instead
@@ -405,38 +508,7 @@ class UnsupportedArgument(argparse.Action):
     ) -> None:
         """Report that this command does not take the argument."""
         assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
-        helptext = self.instead and f"Give {self.instead} instead"
-        parser.exit_with_help(
-            f"{option_string} is not an argument of this command",
-            helptext
-            or suggest_flags(str(option_string), parser.get_visible_flags())
-            or f"Run `{parser.prog} --help` to see every argument",
-        )
-
-
-def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
-    """Declare the flag names of other commands that this command would read as a joined value.
-
-    argparse joins a value to a flag of one letter, thus "-obsspec 100" on a command that takes -o but
-    no -obsspec reads as "-o bsspec" and writes the plot to a file named bsspec. A declared name gives
-    a message in place of that.
-
-    An exact name comes before a prefix for argparse, thus a declared name keeps every flag of this
-    command and every abbreviation of one. A measurement over the tree gives the same 2208 abbreviations
-    with these names and without them.
-    """
-    from artistools.commands import SINGLEDASHLONGFLAGS_BYLETTER
-
-    declared = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
-    oneletter = [flag for flag in declared if len(flag) == 2 and not flag.startswith("--")]
-
-    # only a name that starts with a flag of this command can collide, thus each letter reads the
-    # names that start with it rather than the whole set of 155 names
-    for letterflag in sorted(oneletter):
-        for name in SINGLEDASHLONGFLAGS_BYLETTER.get(letterflag, ()):
-            # a command that spells the same name with two dashes does take that argument
-            if name not in declared and f"-{name}" not in declared:
-                parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
+        parser.exit_with_help(f"{option_string} is not an argument of this command", f"Give {self.instead} instead")
 
 
 def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
@@ -451,9 +523,9 @@ def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: st
 def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None) -> None:
     """Add the -timestep/-ts argument that selects the timestep or the timesteps.
 
-    Every command reads the same text: a number, a range such as 45-65, a list such as 4,9, or
-    "last". parse_range_list expands it, and get_single_timestep gives the one timestep that a
-    command which plots one timestep needs.
+    Every command reads the same text: a number, a range such as 45-65, or "last". get_time_range
+    refuses a list such as 4,9, because a plot reads one range of timesteps. get_single_timestep
+    gives the one timestep that a command which plots one timestep needs.
     """
     arggroup(parser, "time selection").add_argument(
         "-timestep",
@@ -543,6 +615,29 @@ def color_arg(value: str) -> str:
     return value
 
 
+def dashes_arg(value: str) -> tuple[float, ...]:
+    """Return the dash pattern of one line, which matplotlib reads as a sequence of lengths.
+
+    The user writes the lengths of the dash and of the gap with a comma between them, e.g. 5,2.
+    matplotlib refuses the text, thus this function converts the numbers. The error message then
+    names -dashes.
+
+    A pattern holds a pair of lengths for each dash. matplotlib refuses an odd number of lengths at
+    the time of the plot, and it gives no line for an empty pattern, thus this function refuses both.
+    """
+    try:
+        lengths = tuple(float(part) for part in value.replace(" ", ",").split(",") if part)
+    except ValueError as exc:
+        msg = f"The value {value} is not a dash pattern such as 5,2"
+        raise argparse.ArgumentTypeError(msg) from exc
+
+    if not lengths or len(lengths) % 2 != 0:
+        msg = f"The dash pattern {value} must hold the length of a dash and the length of a gap, e.g. 5,2"
+        raise argparse.ArgumentTypeError(msg)
+
+    return lengths
+
+
 def addarg_seriesstyle(
     parser: argparse.ArgumentParser,
     *,
@@ -565,11 +660,23 @@ def addarg_seriesstyle(
     )
     if include_linestyles:
         group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-        group.add_argument("-linewidth", type=float, default=[], nargs="*", help="List of line widths")
+        group.add_argument(
+            "-linewidth",
+            type=float,
+            default=[],
+            nargs="*",
+            help="List of line widths. For a reference series the value gives the size of the marker",
+        )
     if include_linealpha:
-        group.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
+        group.add_argument("-linealpha", type=float, default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:
-        group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+        group.add_argument(
+            "-dashes",
+            type=dashes_arg,
+            default=[],
+            nargs="*",
+            help="List of dash patterns of lines, each one a list such as 5,2",
+        )
 
 
 def addarg_figscale(
@@ -909,17 +1016,13 @@ def parse_cli_args(
     if args is not None:
         return args
 
-    import argcomplete
-
     parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
-    # the dispatcher adds these to the parser that it builds, thus a direct call needs them here
+    # the dispatcher adds --quiet to the parser that it builds, thus a direct call needs it here
     addarg_quiet(parser)
-    addarg_collidingflags(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
-    argcomplete.autocomplete(parser)
-    args = parser.parse_args([] if kwargs else argsraw)
+    args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)
     resolve_yscale(args)
@@ -1041,12 +1144,17 @@ def resolve_frameset_paths(
     return FrameSet(frametemplate, productpath, combines, gifduration)
 
 
+def takes_a_list(action: argparse.Action) -> bool:
+    """Return whether the command line gives this argument a list of values."""
+    return action.nargs in {"*", "+"} or (isinstance(action.nargs, int) and action.nargs > 1)
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary.
 
-    A name that this command does not take raises. addarg_collidingflags declares the flag of another
-    command, so that a user of the command line gets a message. Such a flag is no argument of this
-    command, thus a keyword of that name raises as it did before those declarations.
+    A name that this command does not take raises. addarg_unsupported declares an old name, so that a
+    user of the command line gets a message. Such a name is no argument of this command, thus a keyword
+    of that name also raises.
     """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
     realactions = [
@@ -1059,6 +1167,16 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
+
+    # an option that reads a list gets a list from the command line, thus main(plotviewingangle=0)
+    # must mean the same as -plotviewingangle 0
+    for arg in realactions:
+        value = kwargs.get(arg.dest)
+        # -dashes reads one tuple for each series, thus a single tuple is one item and not a list
+        istupleitem = arg.type is dashes_arg and isinstance(value, tuple)
+        # pyrefly: ignore[implicit-any-type-argument]
+        if value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
+            kwargs[arg.dest] = [value]
 
     parser.set_defaults(**kwargs)
     # every argument takes required=False. A keyword argument can give the value instead, thus a

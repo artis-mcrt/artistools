@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that an installed artistools wheel contains a rustext extension that loads.
+"""Check the rustext extension and the data files of an installed artistools wheel.
 
 cibuildwheel runs this as its test command. A full run of the command-line interface would prove
 more, but it needs every run-time dependency, and the installation of those on Linux arm64 takes
@@ -43,6 +43,13 @@ def main() -> None:
         raise RuntimeError(msg)
 
     extspec.loader.exec_module(importlib.util.module_from_spec(extspec))
+
+    # a wheel that holds no matplotlibrc gives every plot another style, and a wheel that holds no
+    # elements.csv stops each command that names an element. The import above passes with both faults
+    datafiles = ("matplotlibrc", "data/elements.csv", "rustext.pyi", "py.typed")
+    if missing := [name for name in datafiles if not (pkgpath / name).is_file()]:
+        msg = f"The wheel in {pkgpath} must hold these files: {', '.join(missing)}"
+        raise RuntimeError(msg)
 
     print(f"Loaded {extpaths[0]} on Python {sys.version}")
 

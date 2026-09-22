@@ -81,8 +81,18 @@ def test_nltepops_config_labels_skip_a_last_cell_without_data(mockticklabels: mo
     # the NLTE file holds cell 0 alone, thus cell 1 has no data
     at.nltepops.plot(argsraw=[], modelpath=tmp_path, outputfile=tmp_path, cell="0,1", timestep=40, x="config")
 
-    labelsets = [list(callargs[0][1]) for callargs in mockticklabels.call_args_list]
-    assert any(any(label for label in labels) for labels in labelsets)
+    # autospec records the axes as the first argument, thus the test knows which subplot took the names
+    labelledaxes = [
+        callargs[0][0] for callargs in mockticklabels.call_args_list if any(label for label in callargs[0][1])
+    ]
+    assert len(labelledaxes) == 1
+
+    figure = labelledaxes[0].get_figure()
+    assert figure is not None
+    figureaxes = figure.axes
+    # each cell has a block of subplots of the same size. Cell 1 holds no data, thus the last subplot
+    # of the block of cell 0 shows the names. The last subplot of the figure shows no name
+    assert figureaxes.index(labelledaxes[0]) == len(figureaxes) // 2 - 1
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
@@ -134,7 +144,8 @@ def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> N
     expected_yvals = [5.31208, 3.07492]
     for callargs, expected_yval in zip(mockplot.call_args_list, expected_yvals, strict=True):
         xarr, yarr = get_plot_xy(callargs)
-        assert np.allclose(xarr, [8000.0], rtol=1e-4)
+        # vel_r_mid is the mid-point velocity of the only cell, whose outer velocity is 8000 km/s
+        assert np.allclose(xarr, [4000.0], rtol=1e-4)
         assert np.allclose(yarr, [expected_yval], rtol=1e-4)
 
     assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
@@ -207,7 +218,8 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
 
     assert math.isclose(result.filter(pl.col("level") == 0)["lte_10000"].item(), 1.0, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 1)["lte_10000"].item(), expected_level1, rel_tol=1e-12)
-    assert math.isclose(result.filter(pl.col("level") == 4)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
+    # the superlevel takes the position two places above the highest resolved level, which is level 1 here
+    assert math.isclose(result.filter(pl.col("level") == 3)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
 
 
 @pytest.mark.parametrize("maxlevel", [-1, 0, 3])
@@ -285,7 +297,8 @@ def test_add_lte_pops_matches_a_row_by_row_reference(maxlevel: int) -> None:
             else:
                 expected[columnname] = ltepop(ion, row["level"], T_exc)
         if row["level"] == -1:
-            expected["level"] = levelnumber_sl + 2
+            # the superlevel takes the position two places above the highest resolved level
+            expected["level"] = levelnumber_sl + 1
         expectedrows.append(expected)
 
     result = at.nltepops.add_lte_pops(dfpop, adata, temperatures, noprint=True, maxlevel=maxlevel)

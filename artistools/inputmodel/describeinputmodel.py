@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Summarise the mass, velocity structure, and abundances of an ARTIS input model."""
 
 import argparse
@@ -21,8 +20,10 @@ from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import get_grid_mapping
+from artistools.misc import get_single_modelgridindex
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
@@ -82,8 +83,6 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
-        vmax = vmax_kmps * km_to_cm
         print(
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / km_to_cm} km/s"
             f" ({vmax / C_cm_per_s:.2f} * c)"
@@ -105,13 +104,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         cellcount = dfmodel.filter(pl.col("rho") == rho).select(pl.len()).collect().item()
         print(f"  {minmaxlabel} density: {rho:.2e} g/cm³. Cells with this density: {cellcount}")
 
-    if args.cell is not None:
-        mgi = int(args.cell)
-        if mgi >= 0:
-            print(f"Selected single cell mgi {mgi}:")
-            dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
+    mgi = get_single_modelgridindex(args.modelgridindex)
+    # a negative cell number selects no cell, as -cell -1 did before
+    if mgi is not None and mgi >= 0:
+        print(f"Selected single cell mgi {mgi}:")
+        dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
 
-            print(dfmodel.collect())
+        print(dfmodel.collect())
 
     try:
         assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
@@ -313,6 +312,9 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
 
     mass_g_min = min(speciesmasses.values())
     mass_g_max = max(speciesmasses.values())
+    mass_g_min_lim = max(mass_g_min, mass_g_max * 1e-4)
+    # one species alone gives a range of zero, and the bar of each species then divided by zero
+    logmassrange = math.log(mass_g_max / mass_g_min_lim) if mass_g_max > mass_g_min_lim > 0.0 else 0.0
     try:
         maxbarchars = os.get_terminal_size()[0] - 57
     except OSError:
@@ -334,8 +336,9 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
                 strcomment += " ERROR! isotope sum is greater than element abundance"
 
         zstr = str(atomic_number)
-        mass_g_min_lim = max(mass_g_min, mass_g_max * 1e-4)
-        barsize = int(maxbarchars * (math.log(mass_g / mass_g_min_lim)) / (math.log(mass_g_max / mass_g_min_lim)))
+        barsize = (
+            int(maxbarchars * math.log(mass_g / mass_g_min_lim) / logmassrange) if logmassrange > 0.0 else maxbarchars
+        )
         barstr = "-" * barsize
         print(f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:
@@ -352,7 +355,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path of input file or folder containing model.txt",
     )
 
-    parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
+    addarg_modelgridindex(parser, helptext="Focus on particular cell number (0-indexed)")
 
     parser.add_argument(
         "--noabund", action="store_true", help="Give total masses only, no nuclear or elemental abundances"
@@ -378,9 +381,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for modelpath in args.modelpath:
         describe_model(modelpath, args)
         print()
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

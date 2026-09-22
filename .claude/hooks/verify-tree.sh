@@ -37,7 +37,12 @@ tycheck="$(XDG_CONFIG_HOME="${TMPDIR:-/tmp}/artistools-hook-no-user-config" uv r
 
 # the git ignore files hide every path below .claude/worktrees, thus a plain pyrefly check in a
 # worktree finds no files and checks nothing. The explicit file list makes pyrefly check the tree
-pyreflycheck="$(git ls-files -z -- '*.py' | xargs -0 uv run --no-sync -- pyrefly check 2>&1)"; pyreflystatus=$?
+# CI checks an untracked file as well, thus the list holds those files.
+# sort -u drops a name that both commands give. The pathspec leaves out the conflict copies that
+# iCloud writes, e.g. "core 2.py", because those files are no part of the tree
+pyreflycheck="$({ git ls-files -z -- '*.py' ':(exclude)* [0-9].py'; \
+    git ls-files -z --others --exclude-standard -- '*.py' ':(exclude)* [0-9].py'; } \
+    | sort -z -u | xargs -0 uv run --no-sync -- pyrefly check 2>&1)"; pyreflystatus=$?
 pyreflycheck="$(printf '%s\n' "$pyreflycheck" | grep -v '^ *INFO ')"
 
 if [ "$lintstatus" -eq 0 ] && [ "$tystatus" -eq 0 ] && [ "$pyreflystatus" -eq 0 ]; then

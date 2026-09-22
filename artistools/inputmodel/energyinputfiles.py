@@ -77,24 +77,15 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     tmax = 50
 
     times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
-    qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
+    qdot = 5e9 * times ** (-1.3)  # define energy power law (5e9*t^-1.3)
 
-    cumulative_energy = cumulative_trapezoid(y=qdot, x=times)
+    # qdot is a rate for each second, thus the integration variable must also be a time in seconds
+    cumulative_energy = cumulative_trapezoid(y=qdot, x=times * day_to_s)
     E_tot = float(cumulative_energy[-1])
 
     rate = cumulative_energy / E_tot
 
-    times_and_rate = {"times": times, "rate": rate}
-    dftimes_and_rate = pl.DataFrame(data=times_and_rate)
-
-    dE = np.diff(dftimes_and_rate["rate"] * E_tot)
-    dt = np.diff(times * 24 * 60 * 60)
-
-    integrated_rate = dE / dt
-    scale_factor_energy_diff = max(qdot[1:] / integrated_rate)
-    E_tot *= scale_factor_energy_diff
-
-    return dftimes_and_rate, E_tot
+    return pl.DataFrame({"times": times, "rate": rate}), E_tot
 
 
 def make_energydistribution_weightedbyrho(
@@ -280,9 +271,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(result, tuple)
         dftimes_and_rate, e_tot = result
         print(f"E_tot {e_tot:.4e} erg/g over {len(dftimes_and_rate)} times")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

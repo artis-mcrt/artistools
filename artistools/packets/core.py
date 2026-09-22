@@ -28,7 +28,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import polars_source
 from artistools.misc import print_warning
-from artistools.misc import vec_len
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -640,9 +639,9 @@ def get_packets(
     packetsdatasize_gb = sum(f.stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
     print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
 
-    # a cache file from an old artistools names the Stokes columns stokes1/2/3, where stokes1 holds the
-    # redundant I=1.0 that new cache files omit. Thus stokes2 is Q and stokes3 is U. Such a cache is
-    # accepted without a version check when the run has no packet text files any more
+    # ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2
+    # is Q and stokes3 is U. The cache keeps stokes1, because a cache file that omits it would need a
+    # new cache version, and every older cache would then be converted again
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
         {"stokes2": "stokes_q", "stokes3": "stokes_u"}, strict=False
     )
@@ -668,44 +667,6 @@ def get_packets(
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return nprocs_read, pldfpackets
-
-
-def get_directionbin(
-    dirx: float,
-    diry: float,
-    dirz: float,
-    nphibins: int,
-    ncosthetabins: int,
-    syn_dir: tuple[float | int, float | int, float | int],
-) -> int:
-    """Return the viewing direction bin index for a single packet direction vector."""
-    dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
-    pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
-    costheta = np.dot(pkt_dir, syn_dir)
-    costhetabin = min(int((costheta + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
-
-    vec1 = np.cross(pkt_dir, syn_dir)
-    if vec_len(vec1) == 0.0:
-        # if the direction is parallel to the syn_dir, we cannot determine phi
-        phibin = 0
-    else:
-        xhat = np.array([1.0, 0.0, 0.0])
-        vec2 = np.cross(xhat, syn_dir)
-        cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
-
-        vec3 = np.cross(vec2, syn_dir)
-        testphi = np.dot(vec1, vec3)
-
-        # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of
-        # the next costheta ring, so clamp to the last bin
-        phibin = min(
-            int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
-            if testphi > 0
-            else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins),
-            nphibins - 1,
-        )
-
-    return (costhetabin * nphibins) + phibin
 
 
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
@@ -753,7 +714,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
         vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
 
         # arr_testphi = np.dot(arr_vec1, vec3). vec1 was already normalised by dirmag above, and only the sign of
-        # testphi is used, so there is no further division here (matching get_directionbin)
+        # testphi is used, so there is no further division here
         dfpackets = dfpackets.with_columns(
             (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
             .cast(pl.Float32)

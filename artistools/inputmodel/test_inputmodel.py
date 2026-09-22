@@ -13,6 +13,7 @@ from functools import partial
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.axes as mplax
 import numpy as np
 import polars as pl
 import polars.selectors as cs
@@ -21,7 +22,63 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.constants import day_to_s
+from artistools.inputmodel.core import CACHEVERSION
 from artistools.inputmodel.core import CREATED_COMMENT_PREFIX
+from artistools.inputmodel.core import get_standard_columns
+
+
+def get_empty_3d_model(
+    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    """Return a zero-density 3D model of ncoordgrid^3 cells, and its metadata, ready to be filled in."""
+    xmax = vmax * t_model_init_days * day_to_s
+
+    modelmeta: dict[str, t.Any] = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_init_days,
+        "vmax_cmps": vmax,
+        "npts_model": ncoordgrid**3,
+        "wid_init": 2 * xmax / ncoordgrid,
+        "wid_init_x": 2 * xmax / ncoordgrid,
+        "wid_init_y": 2 * xmax / ncoordgrid,
+        "wid_init_z": 2 * xmax / ncoordgrid,
+        "ncoordgrid": ncoordgrid,
+        "ncoordgridx": ncoordgrid,
+        "ncoordgridy": ncoordgrid,
+        "ncoordgridz": ncoordgrid,
+        "headercommentlines": [],
+    }
+
+    dfmodel = (
+        pl
+        .DataFrame(
+            {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
+            schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
+        )
+        .lazy()
+        .with_columns([
+            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
+            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
+            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
+        ])
+        .with_columns([
+            (-xmax + 2.0 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2.0 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2.0 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+        ])
+    )
+
+    standardcols = get_standard_columns(3, includenico57=includenico57)
+
+    dfmodel = dfmodel.with_columns([
+        pl.lit(0.0, dtype=pl.Float32).alias(colname)
+        for colname in standardcols
+        if colname not in dfmodel.collect_schema().names()
+    ]).select([*standardcols, "modelgridindex"])
+
+    return dfmodel, modelmeta
+
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
@@ -127,15 +184,23 @@ def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: 
     assert modelmeta["npts_model"] == 1
 
     # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
-    assert cachefilepath.is_file()
+    cachemetadata = pl.read_parquet_metadata(cachefilepath)
+    assert cachemetadata["cacheversion"] == str(CACHEVERSION)
+    assert cachemetadata["textsource_mtime"] == str((tmp_path / "model.txt").stat().st_mtime)
     pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
 
 
 def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
     """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
     shutil.copy(modelpath / "model.txt", tmp_path)
+    textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
-    pl.DataFrame({"inputcellid": [1]}).write_parquet(cachefilepath)
+    # the version and the mtime match, thus the reader rejects the cache for the absent modelmeta_json alone
+    at.misc.write_parquet_atomic(
+        pl.DataFrame({"inputcellid": [1]}),
+        cachefilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfilepath.stat().st_mtime)},
+    )
 
     _, modelmeta = at.get_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
@@ -148,24 +213,15 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    # the version matches, thus the reader rejects the cache for the stale mtime alone
     at.misc.write_parquet_atomic(
-        lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
+        lzdfmodel.collect(),
+        cachefilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)},
     )
 
     assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
-
-
-def test_get_cell_angle() -> None:
-    lzmodeldata, _ = get_derived_modeldata(modelpath_3d)
-    modeldata = at.inputmodel.core.get_cell_angle(lzmodeldata).collect()
-    assert "cos_bin" in modeldata.columns
-    assert "phi_bin" in modeldata.columns
-
-    # the azimuth is measured in the opposite sense to the packet "phi", so it must not be named "phi"
-    assert "phi_mirrored" in modeldata.columns
-    assert "phi" not in modeldata.columns
-    assert modeldata["phi_mirrored"].is_between(0.0, 2 * math.pi).all()
 
 
 def test_downscale_3dmodel() -> None:
@@ -230,7 +286,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
             "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
-            "model.txt": "c5cbe9fa3b7e95e3a4efe9fbd140a9a26f14ba8dd0ac418e0823e5b371cab788",
+            "model.txt": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
         },
     }
 
@@ -442,10 +498,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
 
 
 def test_get_trajectory_abund_q() -> None:
-    # Ensure that the testdatapath is correctly defined as in other tests
     # this test reads the test data folder itself, and not the testmodel folder below it
-    # In this file, testdatapath is defined globally: testdatapath = at.get_config()["path_testdata"]
-
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
@@ -1605,7 +1658,7 @@ def test_get_trajectory_abund_q() -> None:
         (102, 159): 2.0727160885628824e-18,
         (102, 161): 4.2496685570656285e-20,
         # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
-        "q": 5737336759237193.0,
+        "q": 5351333204182925.0,
     }
 
     for key, value in expected.items():
@@ -1617,6 +1670,31 @@ def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdensity_nbins_covers_the_model_below_xmax(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The fixed bins of -nbins must hold every cell, also the cells above -xmax.
+
+    The bins ended at -xmax, thus get_binned_profile dropped each cell above it. The profile then gave
+    no mass above -xmax, which a reader takes for an empty outer model.
+    """
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    vmax_on_c = modelmeta["vmax_cmps"] / at.constants.C_cm_per_s
+    xmax = vmax_on_c / 2.0
+
+    at.inputmodel.plotdensity.main(
+        argsraw=[], modelpath=[modelpath_3d], outputpath=tmp_path, nbins=20, xmax=xmax, quiet=True
+    )
+
+    # main names the axes after it draws on them, thus the label of the axes gives the dM/dv profile
+    massprofiles = [call for call in mockplot.call_args_list if call.args[0].get_ylabel().startswith(r"$\Delta$M")]
+    assert len(massprofiles) == 1
+    xvalues = np.asarray(massprofiles[0].args[1], dtype=float)
+    massvalues = np.asarray(massprofiles[0].args[2], dtype=float)
+
+    assert xvalues.max() > xmax, "the bins must reach past -xmax"
+    assert massvalues[xvalues > xmax].max() > 0.0, "the outer cells must keep their mass"
+
+
 @pytest.mark.benchmark
 def test_plotinitialcomposition() -> None:
     at.inputmodel.plotinitialcomposition.main(
@@ -1626,9 +1704,7 @@ def test_plotinitialcomposition() -> None:
 
 @pytest.mark.benchmark
 def test_save_load_3d_model() -> None:
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
-    )
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
     dfmodel = lzdfmodel.collect()
 
     # CodSpeed runs a benchmark test more than one time in one process, and each run writes to the
@@ -1711,7 +1787,7 @@ def test_save_load_3d_model() -> None:
 
 @pytest.mark.parametrize("outputdimensions", [2, 1, 0])
 def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) -> None:
-    dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
+    dfmodel3d_pl_lazy, modelmeta_3d = get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
 
     # it's important that we don't fill cells in the cube corners, as they will be lost when reducing dimensions
@@ -1720,23 +1796,35 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
     mgi2 = 25 * 25 * 25 + 25 * 25 + 25
     dfmodel3d_pl[mgi2, "rho"] = 1
-    dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
+    dfmodel3d_pl[mgi2, "X_Ni56"] = 0.75
 
     dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d)
     mass_g_3d, ejecta_ke_erg = dfmodel3d_derived.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
-    dfmodel3d_pl = dfmodel3d_derived.select(*dfmodel3d_pl.columns, "mass_g").collect()
+    dfmodel3d_pl = (
+        dfmodel3d_derived
+        .select(*dfmodel3d_pl.columns, "mass_g")
+        .collect()
+        .with_columns(tracercount=pl.lit(1, dtype=pl.Int32))
+    )
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
 
     outpath.mkdir(exist_ok=True, parents=True)
 
+    tracercountdtypes: list[pl.DataType] = []
+
     def run_dimension_reduce() -> None:
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
+        tracercountdtypes.append(dfmodel_lowerd.schema["tracercount"])
         at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
     benchmark(run_dimension_reduce)
+
+    # tracercount counts the trajectories of a cell. A float fill of the empty output cells made the
+    # column a float, and the writer then gave 0.0 in place of 0
+    assert tracercountdtypes[0].is_integer()
 
     dfmodel_lowerd_lz, _ = get_derived_modeldata(outpath)
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()
@@ -1763,7 +1851,7 @@ def test_pos_r_min_straddling_cells() -> None:
     """A cell that straddles a coordinate plane reaches zero along that axis, so pos_r_min must account for it."""
     # an odd ncoordgrid puts a cell centred on the origin, and rings of cells straddling each coordinate plane
     ncoordgrid = 5
-    dfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
+    dfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
 
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).collect()
 
@@ -1895,9 +1983,7 @@ def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
     from artistools.inputmodel.make1dslicefrom3d import slice_3dmodel
 
     vmax_cmps, t_model_days = 1.0e9, 1.0
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=ncoordgrid, vmax=vmax_cmps, t_model_init_days=t_model_days
-    )
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=vmax_cmps, t_model_init_days=t_model_days)
     inputfolder = tmp_path / "in"
     outputfolder = tmp_path / "out"
     at.inputmodel.save_modeldata(lzdfmodel.with_columns(rho=pl.lit(1.0e-10)), outpath=inputfolder, modelmeta=modelmeta)
@@ -1954,7 +2040,13 @@ def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.Captu
     etot, energydistribution = at.inputmodel.energyinputfiles.get_etot_fromfile(tmp_path)
     assert len(energydistribution) == len(rho)
     # the energy is distributed over the cells in proportion to density
-    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-6)
+    # the files hold six significant figures, thus the shares agree only to that precision
+    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-5)
+
+    # the analytic integral of 5e9 t^-1.3 erg/g/s over the seconds between 1e-4 days and 50 days.
+    # An integration over the times in days gave a total that was 2.8 per cent too small
+    analytic_etot_per_gram = 5e9 * at.constants.day_to_s / 0.3 * (0.0001**-0.3 - 50.0**-0.3)
+    assert etot / mtot_grams == pytest.approx(analytic_etot_per_gram, rel=1e-3)
 
     dfrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(tmp_path)
     assert dfrate["rate"].min() == pytest.approx(0.0)
@@ -2087,7 +2179,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
     wid_init_z = 2 * vmax_cmps * t_model_days * at.constants.day_to_s / ncoordgridz
-    # shift every cell a whole cell width along z, which no cell centre can be
+    # shift every cell by one and a half cell widths along z, which no cell centre can be
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
@@ -2215,6 +2307,22 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
     assert np.isclose(dfpos["vel_r_max_kmps"].item(-1), vmax_kmps, rtol=1e-4)
 
     assert np.allclose(dfpos["vel_r_max_kmps"], dfneg["vel_r_max_kmps"], rtol=1e-6)
+
+
+def test_from_e2e_model_interpolation_weights_of_an_empty_cell() -> None:
+    """A cell that both models leave empty gets a weight of zero for each model, and not a NaN.
+
+    The weight was a plain quotient of the density of one model and the combined density. That gave
+    0/0 for such a cell, and the NaN went into each isotope column and into model.txt.
+    """
+    from artistools.inputmodel.from_e2e_model import get_model_interpolation_weights
+
+    dfweights = get_model_interpolation_weights(dens_3D=pl.Series([2.0, 0.0]), dens_2D=pl.Series([6.0, 0.0]))
+
+    assert not any(dfweights.select(cs.float().is_nan().any()).row(0))
+    assert dfweights["rho"].to_list() == [8.0, 0.0]
+    assert dfweights["beta_3D"].to_list() == [0.25, 0.0]
+    assert dfweights["beta_2D"].to_list() == [0.75, 0.0]
 
 
 def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with_mass(tmp_path: Path) -> None:
@@ -2459,7 +2567,7 @@ def test_get_coarse_velocity_bins_of_a_3d_model_names_each_projection() -> None:
 
     dfmodel = pl.DataFrame({"vel_r_mid": [1.0e9, 2.0e9, 4.0e9, 5.0e9]})
 
-    binedges = get_coarse_velocity_bins(dfmodel, nbins=None)
+    binedges = get_coarse_velocity_bins(dfmodel, nbins=None, vmax_cmps=5.0e9)
 
     assert binedges == pytest.approx([3.0e9, 5.0e9])
 
@@ -2831,7 +2939,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     assert np.isclose(selected_massfrac_ni56(dfslow_2d), massfrac_ni56(cellsslow_2d))
 
     # a grid with an odd cell count on each axis has a cell at the origin. No polar angle range keeps that cell
-    dfmodel_origin, modelmeta_origin = at.inputmodel.get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
+    dfmodel_origin, modelmeta_origin = get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
     dfcells_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin).collect()
     assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0.0)) == 1
     assert len(dfcells_origin.filter(get_cell_selection())) == 27
@@ -2843,7 +2951,8 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     """A cell whose midpoint lies on a bound stays inside the range, but the columns are Float32.
 
     A 2D grid of square cells has a diagonal of cells at 45 degrees. Their Float32 angles differ from 45
-    degrees by approximately 1e-5 degrees. A velocity bound of 0.7 c is 0.69999999 in Float32.
+    degrees by approximately 1e-5 degrees. Polars casts a velocity bound down to Float32 for the
+    comparison, thus each velocity probe below is one Float32 step off the bound.
     """
     from artistools.inputmodel.plotinitialabundances import get_cell_selection
 
@@ -2856,9 +2965,15 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     assert len(oncone.filter(get_cell_selection(thetamin=135.0))) == 4
     assert len(oncone.filter(get_cell_selection(thetamin=45.0, thetamax=135.0))) == 8
 
-    dfbound = pl.DataFrame({"vel_r_mid_on_c": pl.Series([0.7], dtype=pl.Float32), "vel_z_mid_on_c": [0.0]})
-    assert len(dfbound.filter(get_cell_selection(vmin=0.7))) == 1
-    assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 1
+    dfbound = pl.DataFrame({
+        "vel_r_mid_on_c": pl.Series(
+            [np.nextafter(np.float32(0.7), np.float32(0.0)), np.nextafter(np.float32(0.7), np.float32(1.0))],
+            dtype=pl.Float32,
+        ),
+        "vel_z_mid_on_c": [0.0, 0.0],
+    })
+    assert len(dfbound.filter(get_cell_selection(vmin=0.7))) == 2
+    assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 2
 
 
 def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:

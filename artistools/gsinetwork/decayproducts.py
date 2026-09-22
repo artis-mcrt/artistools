@@ -1,9 +1,7 @@
 """Script to load beta-decay (beta- and beta+) energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
 
-# PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
-import multiprocessing as mp
 import typing as t
 from collections.abc import Sequence
 from functools import partial
@@ -90,7 +88,8 @@ def append_electroncapture_betaplus_nuclei(df: pl.DataFrame, nuc_dataset: str) -
         "A": [48, 48, 52, 56, 56, 57, 57],
         "Z": [23, 24, 25, 27, 28, 27, 28],
         "Q[MeV]": [4.015, 1.657, 4.711, 4.566, 2.136, 0.836, 3.264],
-        "Egamma[MeV]": [2.919, 0.416, 5.857, 3.566, 1.728, 0.120, 1.928],
+        # the Mn52 gamma energy is Q - Eelec - Eneutrino, like every other row. A value of 5.857 was above Q
+        "Egamma[MeV]": [2.919, 0.416, 3.600, 3.566, 1.728, 0.120, 1.928],
         "Eelec[MeV]": [0.147, 0.001365, 0.071, 0.122, 0.0, 0.0, 0.154],
         "Eneutrino[MeV]": [0.949, 1.240, 1.040, 0.878, 0.408, 0.716, 1.182],
         "tau[s]": [
@@ -526,7 +525,6 @@ def plot_decay_powers(
         linestyle="-",
         label=rf"Traj {labelfull} $\nu$",
     )
-    ax0.set_ylim(0.15, 0.55)
     ax0.set_ylabel("energy release rate / Qdot")
     ax1 = axes[1]
     ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
@@ -546,10 +544,3 @@ def plot_decay_powers(
     axes[-1].set_xlabel("Time [days]")
 
     save_figure(fig, outfilepath)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    mp.freeze_support()
-    run_module_as_subcommand(__spec__)

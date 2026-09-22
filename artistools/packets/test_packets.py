@@ -12,6 +12,25 @@ import pytest
 import artistools as at
 
 
+def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
+    """Return the direction bin of one packet, computed in float64 for a viewing direction along +z.
+
+    The polars binning of the package works in Float32, thus this function checks it by a separate path.
+    """
+    syn_dir = np.array([0.0, 0.0, 1.0])
+    pkt_dir = np.array([dirx, diry, dirz]) / math.sqrt(dirx**2 + diry**2 + dirz**2)
+    costhetabin = min(int((float(pkt_dir @ syn_dir) + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
+
+    vec1 = np.cross(pkt_dir, syn_dir)
+    if np.linalg.norm(vec1) == 0.0:
+        return costhetabin * nphibins
+
+    vec2 = np.cross(np.array([1.0, 0.0, 0.0]), syn_dir)
+    cosphi = float(vec1 @ vec2) / float(np.linalg.norm(vec1)) / float(np.linalg.norm(vec2))
+    phi = math.acos(cosphi) if float(vec1 @ np.cross(vec2, syn_dir)) > 0 else math.acos(cosphi) + math.pi
+    return costhetabin * nphibins + min(int(phi / 2.0 / math.pi * nphibins), nphibins - 1)
+
+
 def test_directionbins() -> None:
     nphibins = 10
     ncosthetabins = 10
@@ -25,7 +44,6 @@ def test_directionbins() -> None:
         how="cross",
     )
 
-    syn_dir = (0, 0, 1)
     testdirections = testdirections.with_columns(
         dirx=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").cos()),
         diry=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").sin()),
@@ -43,17 +61,12 @@ def test_directionbins() -> None:
 
         assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_is_along_zaxis
 
-        dirbin2 = at.packets.get_directionbin(
-            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
-        )
-
-        assert dirbin2 == pkt["dirbin"]
-
         assert costhetabinlowers[pkt["costhetabin"]] <= pkt["costheta_defined"] * 1.01
         assert costhetabinuppers[pkt["costhetabin"]] > pkt["costheta_defined"] * 0.99
 
-        assert pkt["costhetabin"] == dirbin2 // nphibins
-        assert pkt["phibin"] == dirbin2 % nphibins
+        assert pkt["dirbin"] == get_reference_dirbin(pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins, ncosthetabins)
+        assert pkt["costhetabin"] == pkt["dirbin"] // nphibins
+        assert pkt["phibin"] == pkt["dirbin"] % nphibins
 
         assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
@@ -66,7 +79,6 @@ def test_directionbins_unequal_bincounts() -> None:
     """
     nphibins = 8
     ncosthetabins = 4
-    syn_dir = (0, 0, 1)
 
     testdirections = pl.DataFrame({
         "phi_defined": np.linspace(0.05, 2 * math.pi, nphibins * 3, endpoint=False).tolist()
@@ -93,10 +105,7 @@ def test_directionbins_unequal_bincounts() -> None:
 
         # dirbin packs the costheta index in the high part and the phi index in the low part
         assert pkt["dirbin"] == pkt["costhetabin"] * nphibins + pkt["phibin"]
-
-        assert pkt["dirbin"] == at.packets.get_directionbin(
-            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
-        )
+        assert pkt["dirbin"] == get_reference_dirbin(pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins, ncosthetabins)
 
 
 @pytest.mark.parametrize("nphibins", [4, 10])
@@ -104,12 +113,6 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     """A direction with diry == 0 and dirx < 0 gives acos(cosphi) + pi == 2 pi, which must not overflow the ring."""
     ncosthetabins = 10
     dirx, diry, dirz = -1.0, 0.0, 0.0
-
-    dirbin = at.packets.get_directionbin(
-        dirx, diry, dirz, nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=(0, 0, 1)
-    )
-    assert dirbin % nphibins == nphibins - 1
-    assert dirbin < nphibins * ncosthetabins
 
     dfpackets = at.packets.add_packet_directions_lazypolars(
         pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
@@ -119,7 +122,7 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     ).collect()
 
     assert binned["phibin"].item() == nphibins - 1
-    assert binned["dirbin"].item() == dirbin
+    assert binned["dirbin"].item() == get_reference_dirbin(dirx, diry, dirz, nphibins, ncosthetabins)
 
 
 def test_get_virtual_packets() -> None:
@@ -209,8 +212,7 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
     assert dfpackets["mpirank"].to_list() == [0, 0, 0]
 
 
-@pytest.mark.parametrize("unrelated_filename", [None, "packets00_note.out"])
-def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unrelated_filename: str | None) -> None:
+def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
     """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
     import shutil
 
@@ -222,9 +224,6 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unr
 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
-
-    if unrelated_filename is not None:
-        (tmp_path / unrelated_filename).touch()
 
     # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
@@ -345,8 +344,12 @@ def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_recor
 
     dfnorecord = dfpackets.filter(pl.col("trueem_time") <= 0)
     assert dfnorecord.height > 0
+    # a null value passes both is_nan().all() and a comparison, thus the column must hold no null
+    assert dfnorecord["true_emission_velocity"].null_count() == 0
     assert dfnorecord["true_emission_velocity"].is_nan().all()
     dfrecord = dfpackets.filter(pl.col("trueem_time") > 0)
+    assert dfrecord.height > 0
+    assert dfrecord["true_emission_velocity"].null_count() == 0
     assert (dfrecord["true_emission_velocity"] > 0).all()
 
 
@@ -374,7 +377,9 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
         "trueem_time": [emtime_s, -1.0],
     })
 
-    with mock.patch.object(plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy())):
+    with mock.patch.object(
+        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
+    ):
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
             modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
         )

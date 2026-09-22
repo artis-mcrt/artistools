@@ -10,6 +10,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import RHO_FROM_LOGRHO
 from artistools.misc import addarg_action
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -23,9 +24,11 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     print("Getting opacity kappa from Ye")
 
     Ye = pl.col("Ye")
+    # a 1D model gives logrho in place of rho, e.g. the model that a dimension reduction makes
+    density = pl.col("rho") if "rho" in griddata.columns else RHO_FROM_LOGRHO
     griddata = griddata.with_columns(
         opacity=pl
-        .when((Ye == 0.0) & (pl.col("rho") == 0))
+        .when((Ye == 0.0) & (density == 0))
         .then(0.0)
         .when(Ye <= 0.1)
         .then(19.5)
@@ -110,9 +113,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")
         print(f"  kappa min {opacities.min():.4g}, max {opacities.max():.4g}, mean {opacities.mean():.4g} cm2/g")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

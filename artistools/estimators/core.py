@@ -89,7 +89,7 @@ class VariableInfo:
 # one record serves every column of a family.
 VARIABLES: Mapping[str, VariableInfo] = MappingProxyType({
     "Alpha_R": VariableInfo(units="cm$^3$/s"),
-    "Alpha_R*nne": VariableInfo(units="s^-1"),
+    "Alpha_R*nne": VariableInfo(units="s$^{-1}$"),
     "RRC_LTE_Nahar": VariableInfo(units="cm$^3$/s"),
     "TJ": VariableInfo(units="K", name=r"T$_{\rm J}$", longlabel="Temperature [K]"),
     "TR": VariableInfo(units="K", name=r"T$_{\rm R}$", longlabel="Temperature [K]"),
@@ -102,9 +102,9 @@ VARIABLES: Mapping[str, VariableInfo] = MappingProxyType({
     "deltavol_deltat": VariableInfo(units="cm$^3$ days"),
     "deposition": VariableInfo(units="erg/s/cm$^3$", group="energy deposition rate of each particle"),
     "emission_ana": VariableInfo(units="erg/s/cm$^3$", group="analytic energy emission rate of each particle"),
-    "gamma_NT": VariableInfo(units="s^-1", name=r"$\Gamma_{\rm non-thermal}$"),
-    "gamma_R": VariableInfo(units="s^-1"),
-    "gamma_R_bfest": VariableInfo(units="s^-1", name=r"$\Gamma_{\rm phot}$"),
+    "gamma_NT": VariableInfo(units="s$^{-1}$", name=r"$\Gamma_{\rm non-thermal}$"),
+    "gamma_R": VariableInfo(units="s$^{-1}$"),
+    "gamma_R_bfest": VariableInfo(units="s$^{-1}$", name=r"$\Gamma_{\rm phot}$"),
     "grey_depth": VariableInfo(note="grey optical depth"),
     "heating": VariableInfo(units="erg/s/cm$^3$", group="heating rate of each process"),
     "heating_dep/total_dep": VariableInfo(units="Ratio", name="Heating fraction", note="ratio"),

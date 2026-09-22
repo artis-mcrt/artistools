@@ -138,7 +138,7 @@ def test_average_vspecpol_files(tmp_path: Path) -> None:
         # the two models hold the same data, thus the average equals the source
         averaged = np.loadtxt(averagedpath)
         source = np.loadtxt(modeldirs[0] / f"vspecpol_total-{specindex}.out")
-        assert np.allclose(averaged, source, rtol=1e-6)
+        assert np.allclose(averaged, source, rtol=1e-6, atol=0.0)
 
 
 def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:

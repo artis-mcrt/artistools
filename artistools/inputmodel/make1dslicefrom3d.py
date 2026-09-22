@@ -141,9 +141,3 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     axis.set_yscale("log", nonpositive="clip")
     set_legend(axis)
     save_figure(fig, pdfoutputfile, format="pdf")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

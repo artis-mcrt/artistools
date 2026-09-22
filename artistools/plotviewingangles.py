@@ -1,9 +1,9 @@
-"""Animate the ARTIS viewing angle bins as vectors around a 3D model."""
+"""Draw a 3D visualisation of an ARTIS model, with the direction bins as vectors around it."""
 
 import argparse
+import typing as t
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import polars as pl
@@ -21,7 +21,7 @@ from artistools.misc import resolve_outputfile
 
 
 def get_theta_phi(anglebin: int) -> tuple[float, float]:
-    """Return the central theta and phi angles of the given viewing angle bin.
+    """Return the central theta and phi angles of the given direction bin.
 
     The bin boundaries come from the shared definitions in artistools.misc.dirbins, so the arrows
     point where every other artistools plot puts the same bin.
@@ -35,7 +35,7 @@ def get_theta_phi(anglebin: int) -> tuple[float, float]:
 
 
 def gen_viewing_angle_df(length: int) -> pl.DataFrame:
-    """Return the Cartesian endpoint of a vector of the given length pointing into each viewing angle bin."""
+    """Return the Cartesian endpoint of a vector of the given length that points into each direction bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
     for i in range(get_viewingdirectionbincount()):
@@ -70,41 +70,41 @@ def viewing_angles_visualisation(
     linelength: float = 1.0,
     show_plot: bool = False,
 ) -> tuple[float, float]:
-    """Tool to generate a 3D visualization of an ARTIS model. Viewing angle bins will get overplotted with an animation.
+    """Draw a 3D visualisation of an ARTIS model, with an animation of the direction bins.
+
+    The function returns the density limits of the colour scale, which it calculates when the caller
+    gives none.
 
     Parameters
     ----------
     modelfile : str
-        File where ARTIS  model is stored.
+        The path of the ARTIS model.
     outfile : str
-        Name of the output file. If name contains 'html',
-        figure will be stored as html file including
-        the animation
+        The name of the output file. A name that holds "html" gives an html file with the animation.
     isomin : float
-        Minimum density value for the color coding
+        The smallest density of the colour scale.
     isomax : float
-        Maximum density value for the color coding
+        The largest density of the colour scale.
     opacity : float
-        Opacity value
+        The opacity of the isosurfaces.
     surface_count : int
-        Number of isosurfaces plotted
+        The number of isosurfaces.
     linewidth : float
-        Width of the viewing angle lines
+        The width of the direction bin lines.
     linelength : float
-        Length of the viewing angle lines in units
-        of the boxsize
+        The length of the direction bin lines, in units of the size of the box.
     show_plot : bool
-        If True, plot will be shown after saving
+        True shows the plot after the function saves it.
 
     Returns
     -------
-    isomin, isomax : float | int, float
+    isomin, isomax : float, float
 
     """
     px = import_optional("plotly.express")
     go = import_optional("plotly.graph_objects")
 
-    # Load model contents
+    # the volume holds the density of each cell, thus the model gives the positions and the densities
     lzmodel, modelmeta = get_modeldata(modelfile)
     dfmodel = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
@@ -122,11 +122,10 @@ def viewing_angles_visualisation(
     assert isomax is not None
     assert isomin < isomax, "isomin must be smaller than isomax"
 
-    # Generate viewing angle vectory
+    # the vectors reach the edge of the box at a line length of one
     length = max(x.flatten()) * linelength
     va = gen_viewing_angle_df(length)
 
-    # Create plot
     fig = px.line_3d(
         va,
         x="x_coord",
@@ -147,8 +146,8 @@ def viewing_angles_visualisation(
             value=rho.flatten(),
             isomin=isomin,
             isomax=isomax,
-            opacity=opacity,  # needs to be small to see through all surfaces
-            surface_count=surface_count,  # needs to be a large number for good volume rendering
+            opacity=opacity,  # a small value makes every surface visible through the ones in front of it
+            surface_count=surface_count,  # a large number gives a smooth volume
             colorbar={"title": "Density (g/cm³)"},
         )
     )
@@ -171,21 +170,24 @@ def viewing_angles_visualisation(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("modelfile", help="Path to the ARTIS model")
+    parser.add_argument("modelfile", help="The path of the ARTIS model")
     addarg_output(
         parser,
         kind="file",
-        helptext="Name of the output file. If it contains 'html', figure will be stored as html including the animation",
+        helptext="The name of the output file. A name that holds 'html' gives an html file with the animation",
     )
-    parser.add_argument("-isomin", type=float, help="Minimum density for color coding")
-    parser.add_argument("-isomax", type=float, help="Maximum density for color coding")
-    parser.add_argument("-opacity", type=float, default=0.25, help="Opacity value")
-    parser.add_argument("-surface_count", "-s", type=int, default=20, help="Number of isosurfaces plotted")
-    parser.add_argument("-linewidth", type=float, default=2.5, help="Width of the viewing angle lines")
+    parser.add_argument("-isomin", type=float, help="The smallest density of the colour scale")
+    parser.add_argument("-isomax", type=float, help="The largest density of the colour scale")
+    parser.add_argument("-opacity", type=float, default=0.25, help="The opacity of the isosurfaces")
+    parser.add_argument("-surface_count", "-s", type=int, default=20, help="The number of isosurfaces")
+    parser.add_argument("-linewidth", type=float, default=2.5, help="The width of the direction bin lines")
     parser.add_argument(
-        "-linelength", type=float, default=1.0, help="Length of the viewing angle lines in units of the boxsize"
+        "-linelength",
+        type=float,
+        default=1.0,
+        help="The length of the direction bin lines, in units of the size of the box",
     )
-    parser.add_argument("--show_plot", action="store_true", help="If flag is given, plot will be shown after saving")
+    parser.add_argument("--show_plot", action="store_true", help="Show the plot after the command saves it")
 
     # deprecated double-dash spellings kept as hidden aliases
     parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
@@ -197,9 +199,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--linelength", dest="linelength", type=float, help=argparse.SUPPRESS)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: Any) -> None:
-    """Tool to generate a 3D visualization of an ARTIS model."""
-    args = parse_cli_args(addargs, "Generate a 3D visualization of an ARTIS model.", args, argsraw, kwargs)
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Draw a 3D visualisation of an ARTIS model."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     viewing_angles_visualisation(
         modelfile=args.modelfile,
@@ -213,9 +215,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         linelength=args.linelength,
         show_plot=args.show_plot,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

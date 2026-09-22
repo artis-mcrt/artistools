@@ -93,3 +93,23 @@ def test_decayproducts_process_trajectory_takes_no_plot_times() -> None:
     )
 
     assert all(len(values) == 0 for values in decay_powers.values())
+
+
+def test_electroncapture_betaplus_energies_sum_to_the_q_value() -> None:
+    """Each electron capture and beta-plus row must split Q between the gamma, the electron, and the neutrino.
+
+    The Mn52 gamma energy was 5.857 MeV, which was above the Q value of 4.711 MeV.
+    """
+    import polars as pl
+
+    from artistools.gsinetwork.decayproducts import append_electroncapture_betaplus_nuclei
+
+    colnames = ["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"]
+    dfnuc = append_electroncapture_betaplus_nuclei(pl.DataFrame({name: [] for name in colnames}), "Hotokezaka")
+
+    assert dfnuc.height == 7
+
+    residual = dfnuc.select(
+        (pl.col("Q[MeV]") - pl.col("Egamma[MeV]") - pl.col("Eelec[MeV]") - pl.col("Eneutrino[MeV]")).abs().max()
+    ).item()
+    assert residual < 1e-3

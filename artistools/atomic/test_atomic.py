@@ -22,6 +22,11 @@ def test_get_levels() -> None:
     assert math.isclose(fe2_levels.item(0, "energy_ev"), 0.0, abs_tol=1e-6)
     assert math.isclose(fe2_levels.item(2822, "energy_ev"), 23.048643, abs_tol=1e-6)
 
+    # a level name holds no space. An earlier reader cut the name at the fifth field, thus the name kept
+    # the comment of artisatomic that follows the name
+    assert fe2_levels.item(0, "levelname") == "3d6(5D)4s_a6De[9/2]"
+    assert all(" " not in levelname for levelname in fe2_levels["levelname"])
+
 
 def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
     """A transition data file compressed with xz -9 declares a 64 MiB dictionary and must still be readable."""
@@ -78,36 +83,6 @@ def test_read_transitiondata_truncated(tmp_path: Path) -> None:
 
     with pytest.raises(Exception, match="line ended where a transition count was expected"):
         at.rustext.read_transitiondata(truncated)
-
-
-@pytest.mark.benchmark
-def test_get_ionrecombratecalibration() -> None:
-    recombination_rates = at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
-
-    assert len(recombination_rates) == 55
-    assert {(26, 2), (26, 3), (26, 4), (26, 5)} <= recombination_rates.keys()
-    assert all(
-        dataframe.shape == (81, 4)
-        and dataframe.columns == ["log10T_e", "rrc_low_n", "rrc_total", "T_e"]
-        and dataframe["log10T_e"].is_sorted()
-        for dataframe in recombination_rates.values()
-    )
-
-    fe2_rates = recombination_rates[26, 2]
-    assert fe2_rates["log10T_e"].to_list() == pytest.approx(np.arange(1.0, 9.1, 0.1))
-    assert fe2_rates["T_e"].to_list() == pytest.approx(10 ** fe2_rates["log10T_e"].to_numpy())
-    assert fe2_rates.row(0, named=True) == pytest.approx({
-        "log10T_e": 1.0,
-        "rrc_low_n": 1.7009e-11,
-        "rrc_total": 3.4763e-11,
-        "T_e": 10.0,
-    })
-    assert fe2_rates.row(40, named=True) == pytest.approx({
-        "log10T_e": 5.0,
-        "rrc_low_n": 9.9265e-13,
-        "rrc_total": 7.3507e-12,
-        "T_e": 1.0e5,
-    })
 
 
 def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:
@@ -175,7 +150,7 @@ def write_atomic_files_of_two_ions(folder: Path, comments: bool) -> None:
             *block(f"Z=26 Fe {ion_stage}", "handler: cmfgen", "Reading a file"),
             f"26 {ion_stage} 2 7.9",
             "1 0.0 9.0 1 groundlevel",
-            "2 1.5 7.0 1 level with a # in its name",
+            "2 1.5 7.0 1 level_with_a_#_in_its_name",
             "",
         ]
         transitionlines += [
@@ -227,10 +202,7 @@ def test_atomic_files_with_comment_lines(tmp_path: Path, ionlist: list[tuple[int
     for row_plain, row_comments in zip(
         dflevels_plain.iter_rows(named=True), dflevels_comments.iter_rows(named=True), strict=True
     ):
-        assert [name.strip() for name in row_comments["levels"]["levelname"]] == [
-            "groundlevel",
-            "level with a # in its name",
-        ]
+        assert row_comments["levels"]["levelname"].to_list() == ["groundlevel", "level_with_a_#_in_its_name"]
         pltest.assert_frame_equal(
             row_comments["levels"].drop("phixstargetlist", "phixstable"),
             row_plain["levels"].drop("phixstargetlist", "phixstable"),

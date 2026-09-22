@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Build an ARTIS input model by downscaling, dimension-reducing, or rescaling an existing model."""
 
 import argparse
@@ -23,6 +22,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
 
@@ -68,18 +68,39 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    addarg_output(parser, kind="folder", helptext="Folder for output", default=Path())
+    addarg_output(parser, kind="folder", helptext="Folder for output")
+
+
+def get_griddata_outputfolder(outputfile: Path | None, modelpaths: Sequence[Path], modelpath_given: bool) -> Path:
+    """Return the output folder of --makemodelfromgriddata.
+
+    Before the -o argument existed, -modelpath gave the output folder. The command keeps that behaviour when the
+    command line holds no -o.
+    """
+    if outputfile is not None:
+        return outputfile
+
+    if modelpath_given:
+        print_warning(f"-modelpath sets the output folder to {modelpaths[0]}. Use -o for the output folder.")
+        return Path(modelpaths[0])
+
+    return Path()
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    modelpath_given = bool(args.modelpath)
     args.modelpath = normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
+        # with no -o, the output folder is a subfolder of the model
         make_downscaled_3d_grid(
-            modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize, plot=args.downscaleplot
+            modelpath=Path(args.modelpath[0]),
+            outputgridsize=args.outputgridsize,
+            plot=args.downscaleplot,
+            outputfolder=args.outputfile,
         )
         return
 
@@ -103,7 +124,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
+            # the name of the model is part of the folder, thus each model path writes a different folder
+            outdir = (
+                resolve_outputfile(args.outputfile, "model.txt").parent
+                / f"{Path(modelpath).resolve().name}_dimreduce_{ndim_out}d"
+            )
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
@@ -117,7 +142,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(args)
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=args.modelpath[0],
+            outputpath=get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given),
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )
@@ -130,10 +155,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
-        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)
+        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile or Path())

@@ -44,6 +44,11 @@ jobs:
                   cache-on-failure: true
                   key: ${{ steps.setup-uv.outputs.python-version }}
 
+            # UV_FROZEN makes every `uv sync` keep uv.lock unchanged, thus the uv-lock prek hook
+            # reports nothing. This step fails when uv.lock is different from pyproject.toml
+            - name: Check that uv.lock matches pyproject.toml
+              run: uv lock --check
+
             - name: Install artistools[extras]
               run: uv sync --all-extras
 
@@ -98,6 +103,11 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ['3.13', '3.14', 3.14t, '3.15', 3.15t]
+                # one entry installs the optional packages, thus the pyvista and the plotly paths run.
+                # Every entry would take minutes more for the same coverage
+                include:
+                    - python-version: '3.14'
+                      syncextras: --all-extras
         runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
         name: pytest python ${{ matrix.python-version }}
         steps:
@@ -130,14 +140,15 @@ jobs:
             - name: Check artistools command line tool
               run: |
                   artistools --help
-                  artistools completions
+                  artistools completions bash
+                  artistools completions zsh
 
             - name: Download/extract test data
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
             - name: Install dev deps
-              run: uv sync --compile-bytecode
+              run: uv sync --compile-bytecode ${{ matrix.syncextras }}
 
             - name: Test with pytest
               run: uv run --no-sync -- python -m pytest --cov --cov-report=xml

@@ -13,7 +13,6 @@ from artistools.atomic.core import get_elsymbols_df as get_elsymbols_df
 from artistools.atomic.core import get_elsymbolset as get_elsymbolset
 from artistools.atomic.core import get_elsymbolslist as get_elsymbolslist
 from artistools.atomic.core import get_ion_tuple as get_ion_tuple
-from artistools.atomic.core import get_ionrecombratecalibration as get_ionrecombratecalibration
 from artistools.atomic.core import get_ionstring as get_ionstring
 from artistools.atomic.core import get_levels as get_levels
 from artistools.atomic.core import get_linelist_pldf as get_linelist_pldf

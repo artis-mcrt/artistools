@@ -71,9 +71,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             assert np.isclose(massfracsum, 1.0)
 
     print_saved(outfilename)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)
