@@ -188,13 +188,9 @@ subcommandtree: CommandTree = {
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
         ),
-        "makeartismodel": CommandSpec(
-            "inputmodel.makeartismodel", script="makeartismodel", helptext="Tools to create an ARTIS input model."
-        ),
+        "makeartismodel": CommandSpec("inputmodel.makeartismodel", helptext="Tools to create an ARTIS input model."),
         "makeartismodel1dslicefromcone": CommandSpec(
-            "inputmodel.slice1dfromconein3dmodel",
-            script="makeartismodel1dslicefromcone",
-            helptext="Make a 1D model from a cone in a 3D model.",
+            "inputmodel.slice1dfromconein3dmodel", helptext="Make a 1D model from a cone in a 3D model."
         ),
         "makeartismodelfromparticlegridmap": CommandSpec(
             "inputmodel.modelfromhydro", helptext="Create an ARTIS format model from grid.dat."
@@ -227,9 +223,7 @@ subcommandtree: CommandTree = {
         helptext="Write a vpkt.txt for a run.",
         note="The file holds the configuration of the virtual packets.",
     ),
-    "plotdensity": CommandSpec(
-        "inputmodel.plotdensity", script="plotartisdensity", helptext="Plot the density against the radius."
-    ),
+    "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the density against the radius."),
     "plotestimators": CommandSpec(
         "estimators.plotestimators",
         script="plotartisestimators",
@@ -242,9 +236,7 @@ subcommandtree: CommandTree = {
         aliases=("estimators",),
     ),
     "plotinitialcomposition": CommandSpec(
-        "inputmodel.plotinitialcomposition",
-        script="plotartisinitialcomposition",
-        helptext="Plot ARTIS input model composition.",
+        "inputmodel.plotinitialcomposition", helptext="Plot ARTIS input model composition."
     ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.plotlastpacketinteraction",
@@ -260,7 +252,6 @@ subcommandtree: CommandTree = {
     ),
     "plotlinefluxes": CommandSpec(
         "plotlinefluxes",
-        script="plotartislinefluxes",
         helptext="Plot the ratios of the line fluxes.",
         note="The ratios serve a comparison to Floers.",
     ),
@@ -269,12 +260,9 @@ subcommandtree: CommandTree = {
         helptext="Plot the time that each rank took.",
         note="The times come from the log files of a run.",
     ),
-    "plotmacroatom": CommandSpec(
-        "plotmacroatom", script="plotartismacroatom", helptext="Plot the macroatom transitions."
-    ),
+    "plotmacroatom": CommandSpec("plotmacroatom", helptext="Plot the macroatom transitions."),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
-        script="plotartisnltepops",
         helptext="Plot ARTIS non-LTE populations.",
         examples=(("-modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),),
         note=(
@@ -282,9 +270,7 @@ subcommandtree: CommandTree = {
             " which -modelgridindex or -velocity gives."
         ),
     ),
-    "plotradfield": CommandSpec(
-        "plotradfield", script="plotartisradfield", helptext="Plot the radiation field estimators."
-    ),
+    "plotradfield": CommandSpec("plotradfield", helptext="Plot the radiation field estimators."),
     "plotspectra": CommandSpec(
         "spectra.plotspectra",
         script="plotartisspectrum",
@@ -295,19 +281,16 @@ subcommandtree: CommandTree = {
     "plotspherical": CommandSpec("plotspherical", helptext="Plot direction maps based on escaped packets."),
     "plottransitions": CommandSpec(
         "plottransitions",
-        script="plotartistransitions",
         helptext="Plot the spectrum of the transitions.",
         note="The spectrum comes from the bound-bound transitions.",
     ),
     "plotviewingangles": CommandSpec(
         "plotviewingangles",
-        script="plotartisviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
     ),
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",
-        script="plotartisnonthermal",
         helptext="Solve the Spencer-Fano equation for a cell.",
         note="The data comes from one cell of an ARTIS run at one timestep.",
     ),
