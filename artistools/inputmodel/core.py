@@ -1462,6 +1462,9 @@ def scale_model_to_time(
         modelmeta = {}
 
     modelmeta["t_model_init_days"] = targetmodeltime_days
+    # the cell widths hold positions at t_model, thus they expand with the positions
+    for key in [key for key in modelmeta if key == "wid_init" or key.startswith("wid_init_")]:
+        modelmeta[key] *= timefactor
     modelmeta.setdefault("headercommentlines", []).append(
         f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
     )

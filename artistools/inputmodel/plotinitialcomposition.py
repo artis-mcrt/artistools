@@ -21,10 +21,12 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_positional_modelpath
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -229,8 +231,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     elif "Ye" in args.plotvars:
         coloursurfaceby = "Ye"
     else:
-        print(f"Colours set by X_{args.plotvars}")
-        coloursurfaceby = f"X_{args.plotvars}"
+        coloursurfaceby = f"X_{args.plotvars[0]}"
+        print(f"Colours set by {coloursurfaceby}")
         get_elemabundances = True
 
     plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
@@ -251,7 +253,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     surfacecolorscale = surfacearr.reshape((grid, grid, grid), order="F")
     xgrid = -vmax + 2 * np.arange(grid) * vmax / grid
 
-    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
+    # the first axis of the data is x, thus the grid needs matrix indexing and not the default xy indexing
+    x, y, z = np.meshgrid(xgrid, xgrid, xgrid, indexing="ij")
 
     mesh: t.Any = pv.StructuredGrid(x, y, z)
     print(mesh)  # tells you the properties of the mesh
@@ -302,20 +305,20 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
-
-    addarg_output(parser, kind="file", helptext="Filename for PDF file")
-
-    parser.add_argument(
-        "plotvars",
-        type=str,
-        default=["rho"],
-        nargs="+",
-        help=(
-            "Element symbols (Fe, Ni, Sr) for mass fraction or other model columns (rho, tracercount) to plot. Default"
-            " is rho"
+    addarg_positional_items(
+        parser,
+        dest="plotvars",
+        metavar="plotvar",
+        helptext=(
+            "Element symbols (Fe, Ni, Sr) for mass fraction or other model columns (rho, tracercount) to plot"
+            " (default: rho), then the model folder, e.g. rho Fe mymodel"
         ),
     )
+
+    # the default is None, thus resolve_positional_modelpath sees a -modelpath that the user gave
+    addarg_modelpath(parser)
+
+    addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
     parser.add_argument("--logcolorscale", action="store_true", help="Use log scale for colour map")
 
@@ -339,6 +342,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS input model composition."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    # the model folder is the last positional argument, thus "plotinitialcomposition Fe mymodel" reads mymodel
+    args.plotvars = resolve_positional_modelpath(args, "plotvars") or ["rho"]
 
     if args.axis[0] in {"+", "-"}:
         args.positive_axis = args.axis[0] == "+"

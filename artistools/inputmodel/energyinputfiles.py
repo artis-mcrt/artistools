@@ -89,28 +89,28 @@ def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     return pl.DataFrame({"times": times, "rate": rate}), E_tot
 
 
-def make_energydistribution_weightedbyrho(
-    rho: npt.NDArray[np.floating], E_tot_per_gram: float, Mtot_grams: float
-) -> pl.DataFrame:
-    """Return the per-cell energy release, distributing the total energy in proportion to cell density."""
-    print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
-    Etot = E_tot_per_gram * Mtot_grams
-    print("Etot", Etot)
+def make_energydistribution_of_mass(cellmass_grams: npt.NDArray[np.floating], E_tot_per_gram: float) -> pl.DataFrame:
+    """Return the energy release of each cell, which is the energy per gram times the mass of the cell.
 
-    cellenergy = Etot * rho / rho.sum()
+    A share in proportion to the density gives the right energy per gram only when all cells have one
+    volume. A 1D shell model then got 0.063 to 16.4 times the intended energy per gram.
+    """
+    print(f"energy distribution in proportion to the cell mass (E_tot per gram {E_tot_per_gram})")
+    cellenergy = E_tot_per_gram * cellmass_grams
+    print("Etot", cellenergy.sum())
 
-    energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
+    energydistdata = {"cellid": np.arange(1, len(cellmass_grams) + 1), "cell_energy": cellenergy}
 
     print(f"sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
     return pl.DataFrame(data=energydistdata)
 
 
-def make_energy_files(rho: npt.NDArray[np.floating], Mtot_grams: float, outputpath: Path | str) -> None:
+def make_energy_files(cellmass_grams: npt.NDArray[np.floating], outputpath: Path | str) -> None:
     """Write energydistribution.txt and energyrate.txt for the power-law heating rate."""
     print("Using power law for energy rate")
     times_and_rate, E_tot_per_gram = get_cumulative_heating_fraction()
 
-    energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
+    energydistributiondata = make_energydistribution_of_mass(cellmass_grams, E_tot_per_gram)
 
     print("Writing energydistribution.txt")
     with Path(outputpath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
