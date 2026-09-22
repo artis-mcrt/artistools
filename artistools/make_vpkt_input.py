@@ -68,10 +68,13 @@ def parse_pair(strpair: str, label: str, example: str) -> tuple[float, float]:
 
 
 def parse_direction(strdirection: str) -> tuple[float, float]:
-    """Parse a 'costheta,phi' viewing direction, e.g. '-1,0'."""
+    """Parse a 'costheta,phi' viewing direction, e.g. '-1,0'. The angle phi is in degrees."""
     costheta, phi = parse_pair(strdirection, "Viewing direction", "-1,0")
     if not -1.0 <= costheta <= 1.0:
         msg = f"costheta {costheta} in viewing direction {strdirection!r} must be between -1 and 1"
+        raise argparse.ArgumentTypeError(msg)
+    if not 0.0 <= phi <= 360.0:
+        msg = f"phi {phi} in viewing direction {strdirection!r} must be between 0 and 360 degrees"
         raise argparse.ArgumentTypeError(msg)
 
     return costheta, phi
@@ -336,7 +339,12 @@ class VpktField:
 def get_editable_fields() -> list[VpktField]:
     """Return the settings offered by the interactive editor, in file order."""
     return [
-        VpktField("directions_costheta_phi", "Viewing directions as costheta,phi pairs", parse_directions, show_pairs),
+        VpktField(
+            "directions_costheta_phi",
+            "Viewing directions as costheta,phi pairs, with phi in degrees",
+            parse_directions,
+            show_pairs,
+        ),
         VpktField(
             "opacityexclusions",
             f"Opacity choices ({OPACITY_CHOICE_HELP})",
@@ -398,6 +406,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Viewing directions as whitespace-separated costheta,phi pairs in one quoted string."
+            " The angle phi is in degrees, from 0 to 360."
             " Use an equals sign when the first value is negative, e.g. -directions='-1,0 0,0 1,0'"
         ),
     )

@@ -57,19 +57,25 @@ def parse_adata(
                 tuple[float, float, int, str | None, npt.NDArray[np.void] | None, npt.NDArray[np.void] | None]
             ] = []
             for levelindex in range(level_count):
-                row = fadata.readline().split(maxsplit=4)
+                strlevelnumber, strenergy_ev, strg, tail = fadata.readline().split(maxsplit=3)
+                strtransition_count, _, namefield = tail.partition(" ")
 
-                inputlevelnumber = int(row[0])
+                inputlevelnumber = int(strlevelnumber)
                 assert levelindex == inputlevelnumber - firstlevelnumber
                 # parse_phixsdata() keys on the zero-based level index, so look up levelindex and not the
                 # one-based inputlevelnumber, which would attach each level the next level's cross-sections
                 phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, levelindex), (None, None))
 
+                # artisatomic writes the name of the level in a field of a fixed width, then a comment.
+                # A level name holds no space, thus the first word of the field is the name. A level
+                # with no name leaves the field blank. Such a field starts with a space
+                levelname = "" if (not namefield or namefield[0].isspace()) else namefield.split(maxsplit=1)[0]
+
                 level_list.append((
-                    float(row[1]),
-                    float(row[2]),
-                    int(row[3]),
-                    (row[4]).strip("'") if len(row) >= 5 else None,
+                    float(strenergy_ev),
+                    float(strg),
+                    int(strtransition_count),
+                    levelname,
                     phixstargetlist,
                     phixstable,
                 ))
@@ -473,6 +479,8 @@ def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
         Z: int | None = None
         elementindex = -1
         for row in foutput:
+            if not row.split():
+                continue
             if row.split()[0] == "[input.c]":
                 split_row = row.split()
                 if split_row[1] == "element":
@@ -701,7 +709,6 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     return (atomic_number, ion_stage)
 
 
-@lru_cache(maxsize=16)
 def get_ionstring(
     atomic_number: int | np.int64,
     ion_stage: int | np.int64 | str | None,

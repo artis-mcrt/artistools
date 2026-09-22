@@ -22,6 +22,11 @@ def test_get_levels() -> None:
     assert math.isclose(fe2_levels.item(0, "energy_ev"), 0.0, abs_tol=1e-6)
     assert math.isclose(fe2_levels.item(2822, "energy_ev"), 23.048643, abs_tol=1e-6)
 
+    # a level name holds no space. An earlier reader cut the name at the fifth field, thus the name kept
+    # the comment of artisatomic that follows the name
+    assert fe2_levels.item(0, "levelname") == "3d6(5D)4s_a6De[9/2]"
+    assert all(" " not in levelname for levelname in fe2_levels["levelname"])
+
 
 def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
     """A transition data file compressed with xz -9 declares a 64 MiB dictionary and must still be readable."""
@@ -175,7 +180,7 @@ def write_atomic_files_of_two_ions(folder: Path, comments: bool) -> None:
             *block(f"Z=26 Fe {ion_stage}", "handler: cmfgen", "Reading a file"),
             f"26 {ion_stage} 2 7.9",
             "1 0.0 9.0 1 groundlevel",
-            "2 1.5 7.0 1 level with a # in its name",
+            "2 1.5 7.0 1 level_with_a_#_in_its_name",
             "",
         ]
         transitionlines += [
@@ -227,10 +232,7 @@ def test_atomic_files_with_comment_lines(tmp_path: Path, ionlist: list[tuple[int
     for row_plain, row_comments in zip(
         dflevels_plain.iter_rows(named=True), dflevels_comments.iter_rows(named=True), strict=True
     ):
-        assert [name.strip() for name in row_comments["levels"]["levelname"]] == [
-            "groundlevel",
-            "level with a # in its name",
-        ]
+        assert row_comments["levels"]["levelname"].to_list() == ["groundlevel", "level_with_a_#_in_its_name"]
         pltest.assert_frame_equal(
             row_comments["levels"].drop("phixstargetlist", "phixstable"),
             row_plain["levels"].drop("phixstargetlist", "phixstable"),

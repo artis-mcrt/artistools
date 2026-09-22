@@ -162,7 +162,9 @@ def add_lte_pops(
                 .alias(columnname)
                 for columnname in lte_columns
             ],
-            level=pl.when(issuperlevel).then(pl.col("levelnumber_sl") + 2).otherwise(pl.col("level")),
+            # the superlevel takes the position one place above the highest resolved level, thus the plot
+            # keeps one blank position between the resolved levels and the superlevel
+            level=pl.when(issuperlevel).then(pl.col("levelnumber_sl") + 1).otherwise(pl.col("level")),
         )
         .drop("levelnumber_sl", *(f"{columnname}_superlevel" for columnname in lte_columns))
     )

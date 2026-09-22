@@ -220,20 +220,19 @@ def plot_line_estimators(
 
 def plot_specout(
     axis: mplax.Axes,
+    modelpath: Path,
     specfilename: str | Path,
     timestep: int,
     peak_value: float | None = None,
     scale_factor: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
-    """Plot the ARTIS spectrum."""
-    print(f"Plotting {specfilename}")
+    """Plot the ARTIS spectrum.
 
-    specfilename = Path(specfilename)
-    if specfilename.is_dir():
-        modelpath = specfilename
-    elif specfilename.is_file():
-        modelpath = Path(specfilename).parent
+    The caller gives the model path, because a run on a cluster writes spec.out to a subfolder of the
+    model. The parent folder of that file is then the run folder and not the model.
+    """
+    print(f"Plotting {specfilename}")
 
     dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep)[-1].collect()
     label = "Emergent spectrum"
@@ -341,7 +340,17 @@ def plot_celltimestep(
         else:
             plotkwargs["peak_value"] = ymax
 
-        plot_specout(axis, specfilename, timestep, zorder=-1, color="black", alpha=0.6, linewidth=1.0, **plotkwargs)
+        plot_specout(
+            axis,
+            Path(modelpath),
+            specfilename,
+            timestep,
+            zorder=-1,
+            color="black",
+            alpha=0.6,
+            linewidth=1.0,
+            **plotkwargs,
+        )
 
     if args.showbinedges:
         binedges = get_binedges(radfielddata)

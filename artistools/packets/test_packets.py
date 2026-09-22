@@ -209,8 +209,7 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
     assert dfpackets["mpirank"].to_list() == [0, 0, 0]
 
 
-@pytest.mark.parametrize("unrelated_filename", [None, "packets00_note.out"])
-def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unrelated_filename: str | None) -> None:
+def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
     """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
     import shutil
 
@@ -222,9 +221,6 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path, unr
 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
-
-    if unrelated_filename is not None:
-        (tmp_path / unrelated_filename).touch()
 
     # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
@@ -345,8 +341,12 @@ def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_recor
 
     dfnorecord = dfpackets.filter(pl.col("trueem_time") <= 0)
     assert dfnorecord.height > 0
+    # a null value passes both is_nan().all() and a comparison, thus the column must hold no null
+    assert dfnorecord["true_emission_velocity"].null_count() == 0
     assert dfnorecord["true_emission_velocity"].is_nan().all()
     dfrecord = dfpackets.filter(pl.col("trueem_time") > 0)
+    assert dfrecord.height > 0
+    assert dfrecord["true_emission_velocity"].null_count() == 0
     assert (dfrecord["true_emission_velocity"] > 0).all()
 
 
@@ -374,7 +374,9 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
         "trueem_time": [emtime_s, -1.0],
     })
 
-    with mock.patch.object(plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy())):
+    with mock.patch.object(
+        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
+    ):
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
             modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
         )

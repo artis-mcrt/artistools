@@ -16,7 +16,9 @@ from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.constants import EV_to_erg
+from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelgridindex
@@ -124,6 +126,23 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
     return ionpopdict
 
 
+def x_e_of_sweep_step(x_e_start: float, atomic_number: int, step: int, stepcount: int) -> float:
+    """Return the electron fraction of one step of a -vary x_e sweep.
+
+    The sweep runs in equal steps of log10(x_e) from x_e_start to four decades above it. A nucleus
+    supplies a maximum of one free electron for each proton, thus the atomic number is the upper limit
+    of the sweep.
+    """
+    x_e_max = min(x_e_start * 1e4, float(atomic_number))
+    if x_e_start <= 0.0 or x_e_start >= x_e_max:
+        exit_with_error(
+            f"-x_e {x_e_start} gives no sweep below the atomic number {atomic_number}",
+            f"Give -x_e above 0 and below {atomic_number}",
+        )
+
+    return float(x_e_start * (x_e_max / x_e_start) ** (step / (stepcount - 1)))
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
@@ -171,11 +190,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--makeplot", action="store_true", help="Save a plot of the non-thermal spectrum")
 
-    parser.add_argument(
-        "--differentialform",
-        action="store_true",
-        help="Solve differential form (KF92 Equation 6) instead ofintegral form (KF92 Equation 7)",
-    )
+    # pynonthermal solves only the integral form, thus this flag does nothing. A script can still hold it
+    parser.add_argument("--differentialform", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument("--noexcitation", action="store_true", help="Do not include collisional excitation transitions")
 
@@ -211,6 +227,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_ntstats_plot(args.plotstats)
         return
 
+    if args.differentialform:
+        print_warning("--differentialform has no effect. The solver gives only the integral form")
+
     # the import stands in front of the work, thus a missing module stops the command at once
     pynt = import_optional("pynonthermal")
 
@@ -225,7 +244,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if args.timestep is None:
                 exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
 
-        modeldata = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
+        dfmodel, modelmeta = get_modeldata(modelpath)
+        # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
+        modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
         if args.velocity >= 0.0:
             args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
@@ -246,9 +267,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         deposition_density_ev = estim["heating_dep"] / EV_to_erg
         ionpopdict = {get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
 
-        velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
+        velocity_kmps = modeldata["vel_r_mid"][args.modelgridindex] / km_to_cm
         args.timedays = get_timestep_time(modelpath, args.timestep)
-        print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
+        print(
+            f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)"
+        )
 
     stepcount = 9 if args.vary else 1
     ostatrows: list[dict[str, float]] = []
@@ -266,14 +289,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             emin *= 2**step
         elif args.vary == "npts":
             npts *= 2**step
-        elif args.vary == "x_e":
-            assert args.composition != "artis"
+        elif args.vary == "x_e" and args.composition == "artis":
+            exit_with_error("-vary x_e needs an element", "Give an element with -composition, e.g. -composition Fe")
         if args.composition != "artis":
             compelement = args.composition
             compelement_atomicnumber = get_atomic_number(compelement)
             deposition_density_ev = 5.0e3
             nntot = 1.0
-            x_e = (args.x_e * 10 ** (0.5 * step)) if args.vary == "x_e" else args.x_e
+            x_e = (
+                x_e_of_sweep_step(args.x_e, compelement_atomicnumber, step, stepcount)
+                if args.vary == "x_e"
+                else args.x_e
+            )
             ionpopdict = {}
             T_e = 3000
             ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
@@ -293,7 +320,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
             )
 
-        with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
+        with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
             for Z, ion_stage in ions:
                 nnion = ionpopdict[Z, ion_stage]
                 if nnion == 0.0:
@@ -319,6 +346,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     outputfilename = str(args.outputfile).replace(
                         defaultoutputfile, f"spencerfano_{args.composition}.pdf"
                     )
+                if args.vary:
+                    # each step of a sweep writes its own file, because one name would keep the last step only
+                    outputpath = Path(outputfilename)
+                    outputfilename = str(outputpath.with_name(f"{outputpath.stem}_step{step:02d}{outputpath.suffix}"))
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:

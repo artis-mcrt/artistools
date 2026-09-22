@@ -140,6 +140,19 @@ def bin_packets_by_direction(
         weight = pl.col("e_rf").filter(pl.col(var).is_not_null())
         return (pl.col(var) * pl.col("e_rf")).sum() / weight.sum()
 
+    def energyweightedstd(var: str) -> pl.Expr:
+        """Return the standard deviation of a column over a direction bin, with the energy as the weight.
+
+        The mean of each bin uses the energy as the weight, thus the standard deviation must use the
+        same weight. A plain std() gave each packet the same weight, which does not agree with the mean.
+        """
+        weight = pl.col("e_rf").filter(pl.col(var).is_not_null())
+        meansquare = (pl.col(var).pow(2) * pl.col("e_rf")).sum() / weight.sum()
+        squaremean = energyweightedmean(var).pow(2)
+
+        # a rounding error can make the difference of two almost equal numbers negative
+        return pl.max_horizontal(meansquare - squaremean, pl.lit(0.0)).sqrt()
+
     aggs = []
     if nnelement_vars := [var for var in plotvars if var.startswith("nnelement_")]:
         aggs += [energyweightedmean(var).alias(var) for var in nnelement_vars]
@@ -148,7 +161,7 @@ def bin_packets_by_direction(
         aggs.append((energyweightedmean("emission_velocity") / C_cm_per_s).alias("emvelocityoverc"))
 
     if "emvelocityoverc_sigma" in plotvars:
-        aggs.append(((pl.col("emission_velocity") / C_cm_per_s).std()).alias("emvelocityoverc_sigma"))
+        aggs.append((energyweightedstd("emission_velocity") / C_cm_per_s).alias("emvelocityoverc_sigma"))
 
     if "emlosvelocityoverc" in plotvars:
         aggs.append((energyweightedmean("emission_velocity_lineofsight") / C_cm_per_s).alias("emlosvelocityoverc"))
@@ -178,7 +191,7 @@ def bin_packets_by_direction(
         aggs.append(energyweightedmean("TR").alias("temperature"))
 
     if "temperature_sigma" in plotvars:
-        aggs.append((pl.col("TR").std()).alias("temperature_sigma"))
+        aggs.append(energyweightedstd("TR").alias("temperature_sigma"))
 
     if atomic_number is not None or ion_stage is not None:
         dflinelist = get_linelist_pldf(modelpath)

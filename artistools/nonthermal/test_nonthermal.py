@@ -36,6 +36,28 @@ def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
     assert dfstats["frac_ionization_FeI"][-1] == 0.0
     assert dfstats["frac_ionization_FeXI"][-1] > 0.0
 
+    # the heating, the ionisation, and the excitation take all of the deposited energy. The grid of this
+    # test holds 50 points only, thus the sum of the fractions differs from 1.0 by up to ten percent
+    assert dfstats["frac_sum"].to_numpy() == pytest.approx(1.0, abs=0.15)
+
+
+def test_spencerfano_vary_x_e_stays_below_the_atomic_number() -> None:
+    """The sweep must not ask for more free electrons than a nucleus can supply.
+
+    The solver rejects an electron fraction above the atomic number. The sweep multiplied the start
+    value by ten at each half step. Thus the default start of 2 went above the atomic number of iron.
+    """
+    from artistools.nonthermal.spencerfano import x_e_of_sweep_step
+
+    stepcount = 9
+    x_e_sweep = [x_e_of_sweep_step(2.0, 26, step, stepcount) for step in range(stepcount)]
+    assert x_e_sweep[0] == pytest.approx(2.0)
+    assert max(x_e_sweep) <= 26.0
+    assert x_e_sweep == sorted(x_e_sweep)
+
+    with pytest.raises(SystemExit):
+        x_e_of_sweep_step(30.0, 26, 0, stepcount)
+
 
 @pytest.mark.parametrize("x_e", [0.0, 0.01, 0.5, 1.0, 1.5, 2.0, 3.7, 26.0])
 def test_ionpops_for_electronfraction(x_e: float) -> None:

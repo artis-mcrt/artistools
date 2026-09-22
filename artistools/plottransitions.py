@@ -22,6 +22,7 @@ from artistools.constants import hc_in_ev_cm
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
@@ -33,6 +34,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import find_reference_data_file
 from artistools.misc import format_frame_path
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
@@ -42,6 +44,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
+from artistools.misc import resolve_outputfile
 from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -54,8 +57,26 @@ if t.TYPE_CHECKING:
 defaultoutputfile = "plottransitions_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
-def get_kurucz_transitions() -> tuple[pl.DataFrame, list[tuple[int, int]]]:
-    """Return the transitions from the bundled Kurucz gfall line list, and the ions they cover."""
+def get_reference_data_file(filename: Path | str, description: str) -> Path:
+    """Return the path of a line list, or stop with a message when no such file exists."""
+    found = find_reference_data_file(filename, "data")
+    if found is None:
+        exit_with_error(
+            f"could not find the {description} file {filename}",
+            f"Put {filename} in the working folder, or in the data folder of the artistools package",
+        )
+
+    return found
+
+
+def get_kurucz_transitions(
+    ionlist: Sequence[tuple[int, int]] | None = None,
+) -> tuple[pl.DataFrame, list[tuple[int, int]]]:
+    """Return the transitions of the named ions from the Kurucz gfall line list, and the ions that the file holds.
+
+    An ionlist of None keeps every ion of the file. The file gfall.dat is either in the working folder
+    or in the data folder of the package.
+    """
 
     class KuruczTransitionTuple(t.NamedTuple):
         Z: int
@@ -68,14 +89,17 @@ def get_kurucz_transitions() -> tuple[pl.DataFrame, list[tuple[int, int]]]:
         upper_statweight: float
 
     translist = []
-    ionlist: list[tuple[int, int]] = []
-    with Path("gfall.dat").open(encoding="utf-8") as fnist:
+    ionsfound: list[tuple[int, int]] = []
+    wantedions = None if ionlist is None else set(ionlist)
+    with get_reference_data_file("gfall.dat", "Kurucz line list").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
                 Z, ion_stage = int(row[2].split(".")[0]), int(row[2].split(".")[1]) + 1
-                if Z < 44 or ion_stage >= 2:  # and Z not in [26, 27]
+                if wantedions is not None and (Z, ion_stage) not in wantedions:
                     continue
+                if (Z, ion_stage) not in ionsfound:
+                    ionsfound.append((Z, ion_stage))
                 # gfall.dat is fixed-width: wavelength in nm is F11.4 (columns 0-10) and loggf is F7.3 (columns 11-17)
                 lambda_angstroms = float(line[:11]) * 10
                 loggf = float(line[11:18])
@@ -96,15 +120,17 @@ def get_kurucz_transitions() -> tuple[pl.DataFrame, list[tuple[int, int]]]:
                     )
                 )
 
-                if (Z, ion_stage) not in ionlist:
-                    ionlist.append((Z, ion_stage))
-
     dftransitions = pl.DataFrame(translist, orient="row", schema=list(KuruczTransitionTuple._fields))
-    return dftransitions, ionlist
+    ionsfound.sort()
+
+    return dftransitions, ionsfound
 
 
 def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
-    """Return the transitions read from a NIST Atomic Spectra Database line list export."""
+    """Return the transitions read from a NIST Atomic Spectra Database line list export.
+
+    The file is either in the working folder or in the data folder of the package.
+    """
 
     class NISTTransitionTuple(t.NamedTuple):
         lambda_angstroms: float
@@ -115,7 +141,7 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
         upper_statweight: float
 
     translist = []
-    with Path(filename).open(encoding="utf-8") as fnist:
+    with get_reference_data_file(filename, "NIST line list").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
@@ -354,7 +380,9 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     )
     assert timestep is not None, "-timestep holds a default, thus it names a timestep"
 
-    modeldata = get_modeldata(modelpath)[0].select("vel_r_max_kmps").collect()
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
+    modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
     estimators_all = read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:
@@ -366,7 +394,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
         modelgridindex=modelgridindex,
         timestep=timestep,
         time_days=get_timestep_time(modelpath, timestep),
-        velocity=modeldata["vel_r_max_kmps"][modelgridindex],
+        velocity=modeldata["vel_r_mid"][modelgridindex] / km_to_cm,
         estimators=estimators_all[timestep, modelgridindex],
     )
 
@@ -651,14 +679,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath) if from_model else Path()
     args.modelpath = modelpath
 
+    if from_model and args.atomicdatabase != "artis":
+        exit_with_error(
+            f"-atomicdatabase {args.atomicdatabase} does not work with a model path,"
+            " because the NLTE populations name a level of the ARTIS atomic data",
+            "Leave out -modelpath, or give -atomicdatabase artis",
+        )
+
     cell = get_cell_conditions(modelpath, args) if from_model else None
 
     ionlist = get_ionlist()
+    ionlist.sort()
+
     dftransgfall = None
     if args.atomicdatabase == "kurucz":
-        dftransgfall, ionlist = get_kurucz_transitions()
-
-    ionlist.sort()
+        dftransgfall, ionsfound = get_kurucz_transitions(ionlist)
+        for ion in ionlist:
+            if ion not in ionsfound:
+                print_warning(f"gfall.dat holds no {get_ionstring(ion[0], ion[1], style='spectral')} transition")
 
     # resolution of the plot in Angstroms
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
@@ -680,7 +718,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.outputfile, cell=cell.modelgridindex, timestep=cell.timestep, timedays=cell.time_days
         )
     else:
-        outputfilename = "plottransitions.pdf"
+        # the default name holds a cell field and a timestep field. A run without a model path has no
+        # value for those fields. A name that the user gave holds no such field, thus the command keeps it
+        outputpath = Path(args.outputfile)
+        if "{" in outputpath.name:
+            outputpath = outputpath.with_name("plottransitions.pdf")
+        outputfilename = str(resolve_outputfile(outputpath, "plottransitions.pdf"))
 
     make_plot(
         xvalues,
