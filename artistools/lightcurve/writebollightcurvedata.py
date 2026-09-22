@@ -33,7 +33,9 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     for angle, angleluminosities in luminosities.items():
         lightcurvedata[f"angle={angle}"] = np.log10(angleluminosities)
 
-    lightcurvedataframe = pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
+    # a direction bin with no luminosity has no log10, and a zero there means one erg/s. Thus the
+    # value of such a bin is a null, which the writer gives as nan
+    lightcurvedataframe = pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], None))
     print(lightcurvedataframe)
 
     return lightcurvedataframe
@@ -46,7 +48,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
 
     lightcurvedata = {"time": lcdata["time_days"], "lum (erg/s)": lcdata["luminosity_erg/s"]}
 
-    return pl.DataFrame(lightcurvedata).with_columns(cs.float().replace([np.inf, -np.inf], 0.0))
+    return pl.DataFrame(lightcurvedata)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -65,7 +67,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     header = (
-        "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle"
+        "# 1st col is time in days. Next columns are log10(luminosity) for each model viewing angle."
+        " A viewing angle with no luminosity has no value, thus its column holds nan"
         if args.fromspectra
         else "# 1st col is time in days, 2nd col is the spherically averaged bolometric luminosity in erg/s"
     )
@@ -79,10 +82,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        outfilepath = outputpath / f"bol_lightcurvedata_{modelname}.txt"
+        # the two sources hold different columns, thus each one writes a file of its own
+        suffix = "_fromspectra" if args.fromspectra else ""
+        outfilepath = outputpath / f"bol_lightcurvedata_{modelname}{suffix}.txt"
         with outfilepath.open("w", encoding="utf-8") as f:
             f.write(f"{header}\n")
-            lightcurvedataframe.write_csv(f, separator=" ", include_header=False)
+            lightcurvedataframe.write_csv(f, separator=" ", include_header=False, null_value="nan")
 
         print_saved(outfilepath)
 

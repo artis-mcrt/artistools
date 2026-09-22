@@ -107,10 +107,6 @@ def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.
         assert (arr_errplus > 0.0).all()
 
 
-def test_band_lightcurve_plot() -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
-
-
 def test_filter_data_is_sorted_by_wavelength() -> None:
     """Filter curves must come back in ascending wavelength order with transmissions still paired.
 
@@ -279,49 +275,47 @@ def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
     assert len(dirbincolors) == 2
     assert not np.allclose(dirbincolors[0], dirbincolors[1]), "the two cos(theta) bins share a colour"
 
-    with pytest.raises(ValueError, match="Give the same -plotviewingangle selection"):
-        at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10, 20], **scatterplotargs, **commonargs)
+    # the data file names the direction bin of each row, thus a different selection gives the same colours
+    mockscatter.reset_mock()
+    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10, 20], **scatterplotargs, **commonargs)
+    assert np.allclose(mockscatter.call_args_list[0].kwargs["color"], dirbincolors)
 
 
 def test_band_lightcurve_subplots(tmp_path: Path) -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=tmp_path)
 
 
-def test_colour_evolution_plot() -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
-
-
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_colour_evolution_plot_ylabel(mockylabel: mock.MagicMock) -> None:
+def test_colour_evolution_plot_ylabel(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A colour evolution plot must be labelled in delta magnitudes, not as a band magnitude.
 
     colour_evolution_plot assigns args.filter before asking for the labels, so reading the plot kind back off
     args labelled these axes "None Magnitude".
     """
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=tmp_path)
 
     ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
     assert r"$\Delta$m" in ylabels, ylabels
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_falls_back_to_the_model_name(mockplot: mock.MagicMock) -> None:
+def test_linelabel_falls_back_to_the_model_name(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A series with no -label is named after its model, not after the None that pads the -label list."""
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=tmp_path)
 
     assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["TEST MODEL"]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_uses_the_label_arg(mockplot: mock.MagicMock) -> None:
+def test_linelabel_uses_the_label_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A -label value names its series, in place of the model name."""
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], label=["My model"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], label=["My model"], outputfile=tmp_path)
 
     assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["My model"]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock) -> None:
+def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A direction bin is named after the -label value of its model, with the bin appended."""
     at.lightcurve.plot(
         argsraw=[],
@@ -331,7 +325,7 @@ def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock) -
         label=["My model"],
         timemin=5,
         timemax=8,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
@@ -340,17 +334,17 @@ def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock) -
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_color_arg(mockplot: mock.MagicMock) -> None:
+def test_colour_evolution_plot_color_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A -color value must reach the plotted line."""
     at.lightcurve.plot(
-        argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], color=["magenta"], outputfile=outputpath
+        argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], color=["magenta"], outputfile=tmp_path
     )
 
     assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock) -> None:
+def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """Direction bins get one colour each from the tab20 colour map, whatever -color says.
 
     The -color list has one entry per model, so it cannot colour the direction bins. This used to warn about
@@ -371,7 +365,7 @@ def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock) ->
             timemin=5,
             timemax=8,
             color=["magenta"],
-            outputfile=outputpath,
+            outputfile=tmp_path,
         )
 
     colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
@@ -390,7 +384,9 @@ def test_dirbin_palette_avoids_the_assigned_colours() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot: mock.MagicMock) -> None:
+def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(
+    mockplot: mock.MagicMock, tmp_path: Path
+) -> None:
     """A direction bin keeps one colour across the subplots of the filter pairs.
 
     The legend is drawn on one subplot only, so a bin drawn in a different colour in each subplot
@@ -403,7 +399,7 @@ def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot:
         plotviewingangle=[0, 1],
         timemin=5,
         timemax=8,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     # one call per (direction bin, filter pair), the filter pairs of a bin together
@@ -417,7 +413,7 @@ def test_colour_evolution_plot_dirbin_colour_is_stable_across_subplots(mockplot:
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_dirbin_labels_take_the_line_colours(
-    mockplot: mock.MagicMock, mocklegend: mock.MagicMock
+    mockplot: mock.MagicMock, mocklegend: mock.MagicMock, tmp_path: Path
 ) -> None:
     """The legend label of a direction bin has the colour of its line."""
     at.lightcurve.plot(
@@ -427,7 +423,7 @@ def test_colour_evolution_plot_dirbin_labels_take_the_line_colours(
         plotviewingangle=[0, 1],
         timemin=5,
         timemax=8,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     linecolours = [mplcolors.to_hex(callargs.kwargs["color"]) for callargs in mockplot.call_args_list]
@@ -439,7 +435,7 @@ def test_colour_evolution_plot_dirbin_labels_take_the_line_colours(
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock) -> None:
+def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """Use the -color value when a model contributes a single line, even if that line is one direction bin."""
     at.lightcurve.plot(
         argsraw=[],
@@ -449,14 +445,14 @@ def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock) ->
         color=["magenta"],
         timemin=5,
         timemax=8,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
 
 
-def test_colour_evolution_subplots() -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
+def test_colour_evolution_subplots(tmp_path: Path) -> None:
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=tmp_path)
 
 
 def test_get_colour_delta_mag_unequal_sampling() -> None:
@@ -681,12 +677,14 @@ def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_reference_colors(mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock) -> None:
+def test_lightcurve_plot_reference_colors(
+    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, tmp_path: Path
+) -> None:
     """The reference light curves get black and then grey, and the model keeps the first colour of the cycle."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0", "0.4"]
@@ -699,7 +697,7 @@ def test_lightcurve_plot_reference_colors(mockplot: mock.MagicMock, mockerrorbar
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot_linewidth_arg(
-    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, plotkwargs: dict[str, t.Any]
+    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, plotkwargs: dict[str, t.Any], tmp_path: Path
 ) -> None:
     """The -linewidth list sets the line width of each series on the bolometric, band, and colour plots."""
     bolometric = not plotkwargs
@@ -707,7 +705,7 @@ def test_lightcurve_plot_linewidth_arg(
         argsraw=[],
         modelpath=[modelpath, modelpath, *(["AT2017gfo_waxmanetal2018.txt"] if bolometric else [])],
         linewidth=[0.5, 7.0, 2.5],
-        outputfile=outputpath,
+        outputfile=tmp_path,
         **plotkwargs,
     )
 
@@ -722,13 +720,13 @@ def test_lightcurve_plot_linewidth_arg(
 
 
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
-def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> None:
+def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock, tmp_path: Path) -> None:
     """The legend and the draw order follow the model path list, whatever the position of a reference light curve."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
         label=["first", "second", "third"],
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     assert mocklegend.call_args.kwargs["labels"] == ["first", "second", "third"]
@@ -743,14 +741,14 @@ def test_lightcurve_plot_keeps_the_series_order(mocklegend: mock.MagicMock) -> N
 
 
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
-def test_lightcurve_plot_legend_labels_take_the_series_colours(mocklegend: mock.MagicMock) -> None:
+def test_lightcurve_plot_legend_labels_take_the_series_colours(mocklegend: mock.MagicMock, tmp_path: Path) -> None:
     """Each legend label has the colour of its series, for a model line and for a series with error bars."""
     seriescolours = ["tab:green", "tab:red", "0.4"]
     at.lightcurve.plot(
         argsraw=[],
         modelpath=["AT2017gfo_smarttetal2017.txt", modelpath, "AT2017gfo_waxmanetal2018.txt"],
         color=seriescolours,
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     mocklegend.assert_called_once()
@@ -762,14 +760,14 @@ def test_lightcurve_plot_legend_labels_take_the_series_colours(mocklegend: mock.
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_lightcurve_plot_reflightcurves_continue_the_greys(
-    mockerrorbar: mock.MagicMock, mockscatter: mock.MagicMock
+    mockerrorbar: mock.MagicMock, mockscatter: mock.MagicMock, tmp_path: Path
 ) -> None:
     """A -reflightcurves file follows the reference files of the model path list, thus no two series are black."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=[modelpath, "AT2017gfo_smarttetal2017.txt"],
         reflightcurves=["AT2017gfo_waxmanetal2018.txt"],
-        outputfile=outputpath,
+        outputfile=tmp_path,
     )
 
     assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0", "0.4"]
@@ -780,12 +778,12 @@ def test_lightcurve_plot_reflightcurves_continue_the_greys(
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_colors_survive_a_skipped_model(mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock) -> None:
+def test_lightcurve_plot_colors_survive_a_skipped_model(
+    mockplot: mock.MagicMock, mockerrorbar: mock.MagicMock, tmp_path: Path
+) -> None:
     """A model path that plots nothing must not shift the colour of every later series."""
     at.lightcurve.plot(
-        argsraw=[],
-        modelpath=["nonexistentmodelfolder", "AT2017gfo_smarttetal2017.txt", modelpath],
-        outputfile=outputpath,
+        argsraw=[], modelpath=["nonexistentmodelfolder", "AT2017gfo_smarttetal2017.txt", modelpath], outputfile=tmp_path
     )
 
     assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0"]
@@ -1396,7 +1394,7 @@ def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -
     assert np.isfinite(arr_mag).sum() > np.isfinite(meanofmags).sum(), "a dark bin still poisons the average"
 
 
-def test_colour_evolution_plot_leaves_the_filter_arg_alone() -> None:
+def test_colour_evolution_plot_leaves_the_filter_arg_alone(tmp_path: Path) -> None:
     """The band selection must not be written back onto args.filter, which main() dispatches on.
 
     A caller that reuses one Namespace would otherwise take the band light curve branch on the second call
@@ -1407,7 +1405,7 @@ def test_colour_evolution_plot_leaves_the_filter_arg_alone() -> None:
     args = parser.parse_args([])
     args.modelpath = [modelpath]
     args.colour_evolution = ["U-B", "B-V"]
-    args.outputfile = outputpath
+    args.outputfile = tmp_path
 
     at.lightcurve.plot(args=args)
 
@@ -1495,14 +1493,14 @@ def test_transparent_series_colour_leaves_the_cycle_alone() -> None:
 
 @pytest.mark.parametrize("plottype", ["bolometric", "band", "colour_evolution"])
 @mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
-def test_time_limits_reach_every_figure(mockxlim: mock.MagicMock, plottype: str) -> None:
+def test_time_limits_reach_every_figure(mockxlim: mock.MagicMock, plottype: str, tmp_path: Path) -> None:
     """-timemin/-timemax are this command's x limits, so every figure it draws must honour them."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=[modelpath],
         timemin=260,
         timemax=300,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         filter=["B"] if plottype == "band" else [],
         colour_evolution=["B-V"] if plottype == "colour_evolution" else [],
     )
@@ -1591,6 +1589,80 @@ def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: mock.
 
         # one colour skipped plus gamma and beta, and the alpha colour only when its curves are drawn
         assert mockcolor.call_count == 3 + expected_extra
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_plot_colorbar_keeps_the_labels_it_does_not_name(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The colour bar names a direction bin, thus it takes the legend entry of a direction bin alone.
+
+    The band plot gave no label to any series of a model with a colour bar. Thus the angle-averaged curve
+    and a -label that the user gave both left the legend.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        filter=["B"],
+        plotviewingangle=[-1, 0],
+        colorbarcostheta=True,
+        label=["My model"],
+        timemin=5,
+        timemax=8,
+        outputfile=tmp_path,
+    )
+
+    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
+    assert len(labels) == 2
+    assert labels[0] == "My model", "the angle-averaged curve is not a direction bin of the colour bar"
+    assert labels[1].startswith("My model "), labels
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotcmf_leaves_the_next_direction_bin_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The comoving frame curve is thin and dashed, and the next direction bin keeps the rest-frame style.
+
+    The two styles went into the plot kwargs that every direction bin shares, thus every curve after the
+    first comoving frame curve was dashed and lost the width that -linewidth gave.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotcmf=True,
+        plotviewingangle=[0, 1],
+        linewidth=[3.0],
+        timemin=5,
+        timemax=8,
+        outputfile=tmp_path,
+    )
+
+    styles = [
+        (callargs.kwargs.get("linewidth"), callargs.kwargs.get("linestyle")) for callargs in mockplot.call_args_list
+    ]
+    assert len(styles) == 4
+    # one rest-frame curve and one comoving frame curve for each of the two direction bins
+    assert styles[0] == styles[2] == (3.0, None)
+    assert styles[1] == styles[3] == (1, "dashed")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotcmf_draws_the_unlabelled_series_of_a_colorbar(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """A colour bar leaves a series with no label, thus the comoving frame curve has no label to mark.
+
+    The command asserted that the label was there, thus --plotcmf with a colour bar stopped with an
+    AssertionError before it drew anything.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotcmf=True,
+        plotviewingangle=[0, 1],
+        colorbarphi=True,
+        timemin=5,
+        timemax=8,
+        outputfile=tmp_path,
+    )
+
+    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
+    assert labels == [None] * 4
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1791,27 +1863,37 @@ def test_viewing_angle_peakmag_export_without_filter_fits_each_direction_bin(
     """--save_viewing_angle_peakmag_risetime_delta_m15_to_file without -filter fits each selected bin.
 
     Only the angle-averaged modes force dirbin -1. This export must keep the parsed direction bins
-    and read the direction-resolved light curve file.
+    and read the direction-resolved light curve file. The first column names the bin of each row, thus
+    a reader needs no direction bin selection of its own.
     """
     monkeypatch.chdir(tmp_path)
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=[modelpath_classic_3d],
-        plotviewingangle=[0, 1],
-        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
-        timemin=3.2,
-        timemax=7.5,
-        outputfile=tmp_path,
-    )
 
-    datafiles = list(tmp_path.glob("*_viewing_angle_data.txt"))
-    assert len(datafiles) == 1
-    peakmag_risetime_deltam15 = np.loadtxt(datafiles[0], skiprows=1)
-    assert peakmag_risetime_deltam15.shape == (2, 3), "the export holds one row per selected direction bin"
+    def export_dirbins(dirbins: list[int], folder: Path) -> npt.NDArray[np.float64]:
+        folder.mkdir()
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotviewingangle=dirbins,
+            save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+            timemin=3.2,
+            timemax=7.5,
+            outputfile=folder,
+        )
+        (datafile,) = folder.glob("*_viewing_angle_data.txt")
+        return np.loadtxt(datafile, skiprows=1, ndmin=2)
+
+    twobins = export_dirbins([0, 1], tmp_path / "twobins")
+    assert twobins.shape == (2, 4), "the export holds one row per selected direction bin"
+    assert twobins[:, 0].tolist() == [0.0, 1.0], "the first column names the direction bin of each row"
+
+    # the values of a direction bin must not depend on the other bins of the selection
+    onebin = export_dirbins([1], tmp_path / "onebin")
+    assert onebin.shape == (1, 4)
+    assert np.allclose(onebin[0], twobins[1])
 
 
 def test_viewing_angle_peakmag_without_filter_refuses_virtual_observers(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Without -filter the fit reads light_curve_res.out, which holds no virtual packet observer.
 
@@ -1836,6 +1918,8 @@ def test_viewing_angle_peakmag_without_filter_refuses_virtual_observers(
             outputfile=tmp_path,
         )
 
+    # SystemExit holds the status alone, thus the message of the command is the text that it printed
+    assert "light_curve_res.out does not hold" in capsys.readouterr().err
     assert not list(tmp_path.glob("*_viewing_angle_data.txt"))
 
 
@@ -1855,8 +1939,9 @@ def test_band_peakmag_export_writes_one_file_for_each_band(tmp_path: Path) -> No
     for band in ("bol", "B"):
         (datafile,) = tmp_path.glob(f"{band}band_*_viewing_angle_data.txt")
         data = np.loadtxt(datafile, skiprows=1, ndmin=2)
-        assert data.shape == (1, 3)
-        assert data[0, 2] > 0.0
+        assert data.shape == (1, 4)
+        assert data[0, 0] == -1, "the first column names the angle-averaged direction bin"
+        assert data[0, 3] > 0.0
 
 
 def test_angle_averaged_export_with_two_bands_gives_one_row_for_each_model(
@@ -1922,13 +2007,15 @@ def test_escape_type_selects_the_packet_type(mockylabel: mock.MagicMock) -> None
 
 def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> None:
     """ARTIS writes no direction-resolved gamma-ray light curve, thus the request must not read the UVOIR file."""
-    modelpath = at.get_path("testdata")
-
     with pytest.raises(FileNotFoundError, match="direction-resolved gamma"):
-        at.lightcurve.find_lightcurve_file(modelpath, directionresolved=True, gamma=True)
+        at.lightcurve.find_lightcurve_file(modelpath_classic_3d, directionresolved=True, gamma=True)
 
     # each request on its own still names the file that holds it
-    assert at.lightcurve.find_lightcurve_file(modelpath).name.startswith("light_curve.out")
+    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d).name.startswith("light_curve.out")
+    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, directionresolved=True).name.startswith(
+        "light_curve_res.out"
+    )
+    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, gamma=True).name.startswith("gamma_light_curve.out")
 
 
 @pytest.mark.parametrize("refispositional", [False, True])
@@ -1966,7 +2053,9 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
     )
 
 
-def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_band_residual_panel_takes_one_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A band plot with one filter gives the RMS residual in magnitudes, and more than one filter stops the command."""
     # --write_data also writes the band data to the working folder
     monkeypatch.chdir(tmp_path)
@@ -2006,3 +2095,5 @@ def test_band_residual_panel_takes_one_filter(tmp_path: Path, monkeypatch: pytes
                 residuals=True,
                 outputfile=tmp_path,
             )
+        # SystemExit holds the status alone, thus the message of the command is the text that it printed
+        assert "--residuals applies to a plot of one frame" in capsys.readouterr().err

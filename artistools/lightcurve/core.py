@@ -617,14 +617,25 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
 
 
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
-    """Return an observed band light curve from the bundled reference data, along with its metadata."""
-    filepath = Path(get_path("artistools_dir"), "data", "lightcurves", lightcurvefilename)
-    # a copy, because get_file_metadata is cached and this function adds a derived distance below
-    metadata = dict(get_file_metadata(filepath))
+    """Return an observed band light curve from a reference data file, along with its metadata.
 
-    data_path = Path(get_path("artistools_dir"), f"data/lightcurves/{lightcurvefilename}")
+    The package holds the metadata of each known reference light curve, but not the data of it. Thus the
+    working folder gives the data file, and the package folder gives the metadata that has no file beside
+    the data.
+    """
+    data_path = find_reference_data_file(lightcurvefilename, "data/lightcurves")
+    if data_path is None:
+        msg = f"Could not find the reference light curve {lightcurvefilename}"
+        raise FileNotFoundError(msg)
+
+    # a copy, because get_file_metadata is cached and this function adds a derived distance below
+    metadata = dict(get_file_metadata(data_path))
+    if not metadata:
+        metadata = dict(get_file_metadata(Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)))
+
     # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
-    csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in data_path.read_text(encoding="utf-8").splitlines())
+    with zopen(data_path, encoding="utf-8") as datafile:
+        csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in datafile.read().splitlines())
     lightcurve_data = pl.read_csv(csvtext.encode())
     if lightcurve_data.width == 1:
         lightcurve_data = read_wsv(data_path, comment_prefix="#")

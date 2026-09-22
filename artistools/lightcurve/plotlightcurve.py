@@ -73,7 +73,6 @@ from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
-from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -529,7 +528,6 @@ def plot_artis_lightcurve(
         print_theta_phi_definitions()
 
     filterfunc = get_filterfunc(args)
-    colorindex: t.Any = None
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
         print_dirbin_summary(dirbin, angle_definition[dirbin], lcdata)
@@ -548,9 +546,10 @@ def plot_artis_lightcurve(
                 if not linelabel_is_custom:
                     label_with_tags = None
                 # Update plotkwargs with viewing angle colour
-                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
+                plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
                 if args.average_over_phi_angle:
-                    plotkwargs["color"] = "lightgrey"
+                    # a curve that averages over phi holds one whole cos(theta) bin, thus draw it above the rest
+                    plotkwargs["zorder"] = 10
             else:
                 label_with_tags = label_dirbin_series(
                     dirbin, dirbins, angle_definition, linelabel, linelabel_is_custom, plotkwargs
@@ -558,14 +557,6 @@ def plot_artis_lightcurve(
 
         if pellet_nucname is not None:
             plotkwargs["color"] = None
-
-        if (
-            args.average_over_phi_angle
-            and dirbin % get_viewingdirection_costhetabincount() == 0
-            and (args.colorbarcostheta or args.colorbarphi)
-        ):
-            plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
-            plotkwargs["zorder"] = 10
 
         lcdata_tmin, lcdata_tmax = lcdata.select(
             pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max")
@@ -639,16 +630,19 @@ def plot_artis_lightcurve(
 
         if args.plotcmf:
             assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
-            plotkwargs["linewidth"] = 1
-            if not linelabel_is_custom:
-                assert label_with_tags is not None
-                label_with_tags += " (cmf)"
-            plotkwargs["linestyle"] = "dashed"
+            # a copy, because the next direction bin keeps the rest-frame style and the -linewidth value
+            plotkwargs_cmf: dict[str, t.Any] = plotkwargs | {"linewidth": 1, "linestyle": "dashed"}
+            # a colour bar leaves the series with no label, thus there is no label to mark as comoving frame
+            label_cmf = (
+                f"{label_with_tags} (cmf)"
+                if label_with_tags is not None and not linelabel_is_custom
+                else label_with_tags
+            )
             axis.plot(
                 lcdata["time_days"],
                 lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
-                label=label_with_tags,
-                **plotkwargs,
+                label=label_cmf,
+                **plotkwargs_cmf,
             )
 
     return lcdataframes
@@ -870,16 +864,14 @@ def make_lightcurve_plot(
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
     """Return the figure and axes, using a subplot grid when several filters or colours are plotted."""
-    if args.filter and len(args.filter) > 1:
-        args.subplots = True
-        rows = 2
-        cols = 3
-    elif args.colour_evolution and len(args.colour_evolution) > 1:
-        args.subplots = True
-        rows = 1
-        cols = 3
+    panelcount = len(args.filter) if args.filter else len(args.colour_evolution or [])
+    args.subplots = panelcount > 1
+    if args.subplots:
+        # the grid holds one panel for each band or for each pair of bands. A fixed grid of six panels
+        # gave an IndexError for a seventh band, and left an empty panel for fewer than six
+        cols = min(3, panelcount)
+        rows = math.ceil(panelcount / cols)
     else:
-        args.subplots = False
         rows = 1
         cols = 1
 
@@ -983,6 +975,7 @@ def make_band_lightcurves_plot(
 
         for dirbin in dirbins:
             modelname = get_model_name(modelpath)
+            linelabel_is_custom = get_series_label(args.label, modelnumber, modelname) != modelname
             if args.verbose:
                 print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
             band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
@@ -1000,11 +993,11 @@ def make_band_lightcurves_plot(
                     txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
                     txtout = "\n".join(txtlinesout)
                 if args.write_data:
-                    bandoutfile = (
-                        Path(f"band_{band_name}_angle_{dirbin}.txt") if dirbin != -1 else Path(f"band_{band_name}.txt")
+                    bandoutfile = Path(
+                        outputfolder,
+                        f"band_{band_name}_angle_{dirbin}.txt" if dirbin != -1 else f"band_{band_name}.txt",
                     )
-                    with bandoutfile.open("w", encoding="utf-8") as f:
-                        f.write(txtout)
+                    bandoutfile.write_text(txtout, encoding="utf-8")
                     print_saved(bandoutfile)
                 if args.print_data:
                     print_product(args, txtout)
@@ -1041,9 +1034,12 @@ def make_band_lightcurves_plot(
                 # kept clear of the assigned colours. plotkwargs is reused, so always assign it
                 plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
 
-                if args.colorbarcostheta or args.colorbarphi:
+                if dirbin != -1 and (args.colorbarcostheta or args.colorbarphi):
+                    # the colour bar names the direction bin, thus the legend needs no entry for it. A
+                    # -label that the user gave names the model, thus it stays
+                    if not linelabel_is_custom:
+                        plotkwargs["label"] = None
                     # Update plotkwargs with viewing angle colour
-                    plotkwargs["label"] = None
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
@@ -1072,7 +1068,6 @@ def make_band_lightcurves_plot(
             args.refspecmarkers[refindex],
             ax,
             residualseries=residualseries,
-            linewidth=args.linewidth[len(modelpaths) + refindex] or (4 if len(bandnames) == 1 else None),
         )
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
@@ -1082,8 +1077,6 @@ def make_band_lightcurves_plot(
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(scaledmap, args, fig=fig, ax=ax)
 
-    if args.filter and len(bandnames) == 1:
-        args.outputfile = Path(outputfolder, f"plot{bandnames[0]}lightcurves.pdf")
     invert_magnitude_yaxis(ax)
 
     if residualaxis is not None and residualseries is not None:
@@ -1110,7 +1103,7 @@ def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorTy
     return get_unused_colors(tab20colors, seriescolors) or tab20colors
 
 
-def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | Path, args: argparse.Namespace) -> None:
+def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Namespace) -> None:
     """Plot the evolution of the colour between each pair of bands for every model, and save the figure."""
     angle_counter = 0
     color_list = get_dirbin_palette([*args.color, *args.refspeccolors])
@@ -1168,7 +1161,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
                 args.refspecmarkers[refindex],
                 ax,
                 plotnumber,
-                linewidth=args.linewidth[len(modelpaths) + refindex] or (4 if args.subplots else None),
             )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1188,8 +1180,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], outputfolder: str | 
     set_lightcurveplot_legend(ax, args)
 
     invert_magnitude_yaxis(ax)
-
-    args.outputfile = Path(outputfolder, f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf")
 
     save_figure(fig, args.outputfile, format="pdf", args=args)
 
@@ -1241,7 +1231,6 @@ def plot_lightcurve_from_refdata(
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
     residualseries: list[ResidualSeries] | None = None,
-    linewidth: float | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1256,7 +1245,7 @@ def plot_lightcurve_from_refdata(
             continue
         dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
 
-        axis.plot(dfband["time"], dfband["magnitude"], marker, label=linename, color=color, linewidth=linewidth)
+        axis.plot(dfband["time"], dfband["magnitude"], marker=marker, linestyle="None", label=linename, color=color)
         if residualseries is not None:
             # the band data give no error, thus the panel shows the residual in magnitudes
             residualseries.append(
@@ -1278,7 +1267,6 @@ def plot_color_evolution_from_data(
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
-    linewidth: float | None = None,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89."""
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1296,10 +1284,10 @@ def plot_color_evolution_from_data(
     axis.plot(
         merge_dataframes["time"],
         merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
-        marker,
+        marker=marker,
+        linestyle="None",
         label=metadata["label"],
         color=color,
-        linewidth=linewidth,
     )
 
 
@@ -1454,13 +1442,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_filter(parser)
-
-    parser.add_argument(
-        "-redshifttoz",
-        type=float,
-        nargs="+",
-        help="Redshift to z = x. Expects array length of number modelpaths. If not to be redshifted then = 0",
-    )
 
     addarg_show(parser)
     addarg_verbose(parser)
@@ -1647,7 +1628,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.residuals:
         check_residual_args(args)
 
-    defaultoutputfile = "plotlightcurves_colour.pdf" if args.colour_evolution else "plotlightcurves.pdf"
+    # the default name says what the figure holds. -o keeps the name that the user gave, thus the
+    # plot functions below take the resolved name and do not make one of their own
+    if args.colour_evolution:
+        defaultoutputfile = f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf"
+    elif args.filter and len(args.filter) == 1:
+        defaultoutputfile = f"plot{args.filter[0]}lightcurves.pdf"
+    else:
+        defaultoutputfile = "plotlightcurves.pdf"
 
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
     outputfolder = args.outputfile.parent
@@ -1682,7 +1670,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_band_lightcurves_plot(modelpaths, outputfolder, args)
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, outputfolder, args)
+        colour_evolution_plot(modelpaths, args)
     else:
         make_lightcurve_plot(
             modelpaths=args.modelpath,
