@@ -13,6 +13,7 @@ from functools import partial
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.axes as mplax
 import numpy as np
 import polars as pl
 import polars.selectors as cs
@@ -1614,6 +1615,31 @@ def test_plotdensity() -> None:
     at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdensity_nbins_covers_the_model_below_xmax(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The fixed bins of -nbins must hold every cell, also the cells above -xmax.
+
+    The bins ended at -xmax, thus get_binned_profile dropped each cell above it. The profile then gave
+    no mass above -xmax, which a reader takes for an empty outer model.
+    """
+    _, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    vmax_on_c = modelmeta["vmax_cmps"] / at.constants.C_cm_per_s
+    xmax = vmax_on_c / 2.0
+
+    at.inputmodel.plotdensity.main(
+        argsraw=[], modelpath=[modelpath_3d], outputpath=tmp_path, nbins=20, xmax=xmax, quiet=True
+    )
+
+    # main names the axes after it draws on them, thus the label of the axes gives the dM/dv profile
+    massprofiles = [call for call in mockplot.call_args_list if call.args[0].get_ylabel().startswith(r"$\Delta$M")]
+    assert len(massprofiles) == 1
+    xvalues = np.asarray(massprofiles[0].args[1], dtype=float)
+    massvalues = np.asarray(massprofiles[0].args[2], dtype=float)
+
+    assert xvalues.max() > xmax, "the bins must reach past -xmax"
+    assert massvalues[xvalues > xmax].max() > 0.0, "the outer cells must keep their mass"
+
+
 @pytest.mark.benchmark
 def test_plotinitialcomposition() -> None:
     at.inputmodel.plotinitialcomposition.main(
@@ -1721,19 +1747,31 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
 
     dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d)
     mass_g_3d, ejecta_ke_erg = dfmodel3d_derived.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
-    dfmodel3d_pl = dfmodel3d_derived.select(*dfmodel3d_pl.columns, "mass_g").collect()
+    dfmodel3d_pl = (
+        dfmodel3d_derived
+        .select(*dfmodel3d_pl.columns, "mass_g")
+        .collect()
+        .with_columns(tracercount=pl.lit(1, dtype=pl.Int32))
+    )
 
     outpath = outputpath / f"test_dimension_reduce_3d_{outputdimensions:d}d"
 
     outpath.mkdir(exist_ok=True, parents=True)
 
+    tracercountdtypes: list[pl.DataType] = []
+
     def run_dimension_reduce() -> None:
         (dfmodel_lowerd, _, _, modelmeta_lowerd) = (at.inputmodel.dimension_reduce_model)(
             dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
+        tracercountdtypes.append(dfmodel_lowerd.schema["tracercount"])
         at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd)
 
     benchmark(run_dimension_reduce)
+
+    # tracercount counts the trajectories of a cell. A float fill of the empty output cells made the
+    # column a float, and the writer then gave 0.0 in place of 0
+    assert tracercountdtypes[0].is_integer()
 
     dfmodel_lowerd_lz, _ = get_derived_modeldata(outpath)
     dfmodel_lowerd = dfmodel_lowerd_lz.collect()

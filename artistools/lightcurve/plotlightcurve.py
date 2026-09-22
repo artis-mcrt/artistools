@@ -58,6 +58,7 @@ from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_unsupported
 from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
@@ -543,8 +544,9 @@ def plot_artis_lightcurve(
         if dirbin != -1:
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
-                if not linelabel_is_custom:
-                    label_with_tags = None
+                # the colour bar names the direction bin, thus the legend needs no entry for it. The
+                # user gives -label to name the model, thus only the first bin keeps that label
+                label_with_tags = linelabel if linelabel_is_custom and dirbin == dirbins[0] else None
                 # Update plotkwargs with viewing angle colour
                 plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
                 if args.average_over_phi_angle:
@@ -1035,10 +1037,13 @@ def make_band_lightcurves_plot(
                 plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
 
                 if dirbin != -1 and (args.colorbarcostheta or args.colorbarphi):
-                    # the colour bar names the direction bin, thus the legend needs no entry for it. A
-                    # -label that the user gave names the model, thus it stays
-                    if not linelabel_is_custom:
-                        plotkwargs["label"] = None
+                    # the colour bar names the direction bin, thus the legend needs no entry for it. The
+                    # user gives -label to name the model, thus only the first bin keeps that label
+                    plotkwargs["label"] = (
+                        get_series_label(args.label, modelnumber, modelname)
+                        if linelabel_is_custom and dirbin == dirbins[0]
+                        else None
+                    )
                     # Update plotkwargs with viewing angle colour
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
 
@@ -1067,6 +1072,7 @@ def make_band_lightcurves_plot(
             args.refspeccolors[refindex],
             args.refspecmarkers[refindex],
             ax,
+            linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             residualseries=residualseries,
         )
 
@@ -1161,6 +1167,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                 args.refspecmarkers[refindex],
                 ax,
                 plotnumber,
+                linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1230,9 +1237,13 @@ def plot_lightcurve_from_refdata(
     color: t.Any,
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
+    linewidth: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
 ) -> str | None:
-    """Plot an observed band light curve, dereddened with CCM89, and return its legend label."""
+    """Plot an observed band light curve, dereddened with CCM89, and return its legend label.
+
+    The points have no line, thus -linewidth sets the size of each marker.
+    """
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
@@ -1245,7 +1256,15 @@ def plot_lightcurve_from_refdata(
             continue
         dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
 
-        axis.plot(dfband["time"], dfband["magnitude"], marker=marker, linestyle="None", label=linename, color=color)
+        axis.plot(
+            dfband["time"],
+            dfband["magnitude"],
+            marker=marker,
+            linestyle="None",
+            markersize=linewidth,
+            label=linename,
+            color=color,
+        )
         if residualseries is not None:
             # the band data give no error, thus the panel shows the residual in magnitudes
             residualseries.append(
@@ -1267,8 +1286,12 @@ def plot_color_evolution_from_data(
     marker: t.Any,
     ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
+    linewidth: float | None = None,
 ) -> None:
-    """Plot the observed colour evolution between two bands, dereddened with CCM89."""
+    """Plot the observed colour evolution between two bands, dereddened with CCM89.
+
+    The points have no line, thus -linewidth sets the size of each marker.
+    """
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
 
@@ -1286,6 +1309,7 @@ def plot_color_evolution_from_data(
         merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
         marker=marker,
         linestyle="None",
+        markersize=linewidth,
         label=metadata["label"],
         color=color,
     )
@@ -1440,6 +1464,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-refspecmarkers", default=[], nargs="*", help="Set a list of markers for the reference light curves"
     )
+
+    # every plot of this command draws the time in the frame of the model, thus a redshift has no use
+    addarg_unsupported(parser, "-redshifttoz", instead="no argument")
 
     addarg_filter(parser)
 
@@ -1630,10 +1657,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the default name says what the figure holds. -o keeps the name that the user gave, thus the
     # plot functions below take the resolved name and do not make one of their own
-    if args.colour_evolution:
+    if args.filter:
+        defaultoutputfile = f"plot{args.filter[0]}lightcurves.pdf" if len(args.filter) == 1 else "plotlightcurves.pdf"
+    elif args.colour_evolution:
         defaultoutputfile = f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf"
-    elif args.filter and len(args.filter) == 1:
-        defaultoutputfile = f"plot{args.filter[0]}lightcurves.pdf"
     else:
         defaultoutputfile = "plotlightcurves.pdf"
 

@@ -855,9 +855,9 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
 
 
 # The escape time of a packet is the value in the file times the Lorentz factor of the escape surface.
-# The first packet stays inside the window of 1 to 2 days for every beta. The second one enters the
-# window only at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
-@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.3, 10.0), (0.6, 30.0)])
+# The second packet enters the window of 1 to 2 days at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
+# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d.
+@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.6, 30.0), (0.8, 20.0)])
 def test_spectra_contributions_use_escape_time(
     monkeypatch: pytest.MonkeyPatch, beta: float, expected_e_cmf_sum: float
 ) -> None:
@@ -1619,12 +1619,16 @@ def test_plotspectra_ymin_alone_keeps_the_top_of_the_data(tmp_path: Path) -> Non
     assert bottom == 0.0
     assert 0.0 < top < 1e-9
 
+    # the axes carry no y margin, thus a top on the tallest peak clips it
+    datatop = max(float(np.asarray(line.get_ydata(), dtype=np.float64).max()) for line in axis.get_lines())
+    assert 1.02 * datatop < top < 1.1 * datatop
+
 
 def test_plotspectra_multispecplot_prunes_the_ticks_of_a_log_axis(tmp_path: Path) -> None:
     """-yscale auto must choose the scale of the panels before the command sets their locators.
 
-    The lowest tick of one panel meets the highest tick of the panel below it, thus a stack of panels
-    needs a locator that prunes both ends. The scale changed after the locators were already in place.
+    The lowest tick of one panel meets the highest tick of the panel below it. Thus a stack of panels
+    needs a locator that prunes both ends. The earlier code set the locators before it chose the scale.
     """
     import artistools.plottools as pt
 

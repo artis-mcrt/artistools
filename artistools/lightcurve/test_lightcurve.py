@@ -1613,15 +1613,16 @@ def test_band_plot_colorbar_keeps_the_labels_it_does_not_name(mockplot: mock.Mag
     labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
     assert len(labels) == 2
     assert labels[0] == "My model", "the angle-averaged curve is not a direction bin of the colour bar"
-    assert labels[1].startswith("My model "), labels
+    assert labels[1] is None, labels
+    assert labels.count("My model") == 1, "the legend gives a custom -label one time only"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotcmf_leaves_the_next_direction_bin_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """The comoving frame curve is thin and dashed, and the next direction bin keeps the rest-frame style.
 
-    The two styles went into the plot kwargs that every direction bin shares, thus every curve after the
-    first comoving frame curve was dashed and lost the width that -linewidth gave.
+    The two styles went into the plot kwargs that every direction bin shares. Thus every curve after
+    the first comoving frame curve was dashed. Such a curve also lost the width that -linewidth gave.
     """
     at.lightcurve.plot(
         argsraw=[],

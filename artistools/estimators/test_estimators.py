@@ -50,7 +50,7 @@ PLOTLIST_IONS: t.Final = (
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.MagicMock) -> None:
+def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A _ymin of the plot list must not freeze the top of the axis far above the data.
 
     set_ylim turns the autoscaling of the whole axis off, thus applying _ymin before the series were
@@ -59,7 +59,7 @@ def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.Magic
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-18]]],
     )
@@ -77,7 +77,7 @@ def test_estimator_ymin_lets_the_other_side_follow_the_data(mockplot: mock.Magic
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_ymin_does_not_hide_the_whole_series(
-    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str]
+    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     """A fixed y limit of the plot list must give way when no data point would stay in view.
 
@@ -87,7 +87,7 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["rho", ["_yscale", "log"], ["_ymin", 1e-16]]],
     )
@@ -357,6 +357,30 @@ def test_xbins_below_minus_one_selects_automatic_bins() -> None:
     xvalues_minus2, _ = get_binned_xvalues_and_limits(-2)
 
     assert np.array_equal(xvalues_minus1, xvalues_minus2)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_xbins_zero_draws_the_points_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-xbins 0 draws every point and no average line, as it did before commit b4365703.
+
+    A later check refused the value, thus a script that gave -xbins 0 stopped.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te", "TR"]],
+        timedays=4,
+        xbins=0,
+        outputfile=tmp_path / "test_xbins_zero.pdf",
+    )
+
+    seriescalls = [call for call in mockplot.call_args_list if len(call.args) >= 3 and np.ndim(call.args[1]) > 0]
+    assert len(seriescalls) == 2, "one call of markers for each series, and no call of a line"
+    assert all(call.kwargs.get("linestyle") == "None" for call in seriescalls)
+    assert all(call.kwargs.get("marker") for call in seriescalls)
+
+    # the legend reads the label of the markers, because no line carries it
+    assert all(call.kwargs.get("label") for call in seriescalls)
 
 
 def test_automatic_xbins_with_one_x_value() -> None:
@@ -1226,12 +1250,14 @@ def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.C
 
 
 @pytest.mark.parametrize("prefix", ["", "_"])
-def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.CaptureFixture[str]) -> None:
+def test_estimator_directive_underscore_is_optional(
+    prefix: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
     """A plot directive works with or without its underscore, and each subplot keeps its own scale."""
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["TR", [f"{prefix}yscale", "lin"]], ["rho", [f"{prefix}yscale", "log"]]],
     )
@@ -1242,14 +1268,14 @@ def test_estimator_directive_underscore_is_optional(prefix: str, capsys: pytest.
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock) -> None:
+def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """Each subplot carries its own ion population type, thus one figure holds more than one of them."""
     from artistools.estimators.plotestimators import POPTYPE_YLABELS
 
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[
             [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "absolute"]],
@@ -1263,14 +1289,14 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock) 
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock) -> None:
+def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A population series with no directive gives an absolute number density."""
     from artistools.estimators.plotestimators import POPTYPE_YLABELS
 
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[[["populations", ["Fe II", "Fe III"]]]],
     )
@@ -1311,12 +1337,12 @@ def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.
 
 
 @mock.patch.object(mplax.Axes, "set_xlim", side_effect=mplax.Axes.set_xlim, autospec=True)
-def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.MagicMock) -> None:
+def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.MagicMock, tmp_path: Path) -> None:
     """-xmin and -xmax reach the whole figure, because one horizontal axis serves every subplot."""
     at.estimators.plot(
         argsraw=[],
         modelpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path,
         timedays=260,
         plotlist=[["TR"], ["rho"]],
         xmin=1000,

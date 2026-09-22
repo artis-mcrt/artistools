@@ -1,4 +1,4 @@
-"""Draw a 3D visualisation of an ARTIS model, with the viewing angle bins as vectors around it."""
+"""Draw a 3D visualisation of an ARTIS model, with the direction bins as vectors around it."""
 
 import argparse
 import typing as t
@@ -21,7 +21,7 @@ from artistools.misc import resolve_outputfile
 
 
 def get_theta_phi(anglebin: int) -> tuple[float, float]:
-    """Return the central theta and phi angles of the given viewing angle bin.
+    """Return the central theta and phi angles of the given direction bin.
 
     The bin boundaries come from the shared definitions in artistools.misc.dirbins, so the arrows
     point where every other artistools plot puts the same bin.
@@ -35,7 +35,7 @@ def get_theta_phi(anglebin: int) -> tuple[float, float]:
 
 
 def gen_viewing_angle_df(length: int) -> pl.DataFrame:
-    """Return the Cartesian endpoint of a vector of the given length that points into each viewing angle bin."""
+    """Return the Cartesian endpoint of a vector of the given length that points into each direction bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
     for i in range(get_viewingdirectionbincount()):
@@ -70,7 +70,7 @@ def viewing_angles_visualisation(
     linelength: float = 1.0,
     show_plot: bool = False,
 ) -> tuple[float, float]:
-    """Draw a 3D visualisation of an ARTIS model, with an animation of the viewing angle bins.
+    """Draw a 3D visualisation of an ARTIS model, with an animation of the direction bins.
 
     The function returns the density limits of the colour scale, which it calculates when the caller
     gives none.
@@ -90,9 +90,9 @@ def viewing_angles_visualisation(
     surface_count : int
         The number of isosurfaces.
     linewidth : float
-        The width of the viewing angle lines.
+        The width of the direction bin lines.
     linelength : float
-        The length of the viewing angle lines, in units of the size of the box.
+        The length of the direction bin lines, in units of the size of the box.
     show_plot : bool
         True shows the plot after the function saves it.
 
@@ -180,12 +180,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-isomax", type=float, help="The largest density of the colour scale")
     parser.add_argument("-opacity", type=float, default=0.25, help="The opacity of the isosurfaces")
     parser.add_argument("-surface_count", "-s", type=int, default=20, help="The number of isosurfaces")
-    parser.add_argument("-linewidth", type=float, default=2.5, help="The width of the viewing angle lines")
+    parser.add_argument("-linewidth", type=float, default=2.5, help="The width of the direction bin lines")
     parser.add_argument(
         "-linelength",
         type=float,
         default=1.0,
-        help="The length of the viewing angle lines, in units of the size of the box",
+        help="The length of the direction bin lines, in units of the size of the box",
     )
     parser.add_argument("--show_plot", action="store_true", help="Show the plot after the command saves it")
 

@@ -158,7 +158,6 @@ module-name = "artistools.rustext"
 use-base-python = true
 include = [
     "artistools/data/**",
-    "artistools/**/artistoolscompletions.sh",
     "artistools/**/matplotlibrc",
 ]
 exclude = [

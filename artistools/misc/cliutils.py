@@ -135,17 +135,54 @@ class KeepGivenPaths(argparse.Action):
             take_back_swallowed_folder(parser, namespace, self)
 
 
+def trailing_folder_count(values: list[t.Any]) -> int:
+    """Return how many values at the end of a list name an ARTIS run folder."""
+    from artistools.misc.fileio import folder_is_artis_run
+
+    count = 0
+    for value in reversed(values):
+        if not isinstance(value, str) or not folder_is_artis_run(value):
+            break
+        count += 1
+
+    return count
+
+
+def separate_trailing_folders(argsraw: "Sequence[str] | None") -> list[str]:
+    """Return the command line with a "--" in front of the ARTIS folders that end it.
+
+    argparse gives every word that follows to an option that reads a list. The separator marks the
+    end of that list, thus each folder reaches the positional path argument.
+    """
+    tokens = list(sys.argv[1:] if argsraw is None else argsraw)
+    if "--" in tokens:
+        return tokens
+
+    count = trailing_folder_count(tokens)
+    # a command line of folders alone gives the folders to the positional argument already
+    if count in {0, len(tokens)}:
+        return tokens
+
+    start = len(tokens) - count
+    # a flag in front of the folders takes them as its own values, e.g. "-modelpath mymodel". The
+    # separator would leave that option with no value at all
+    if tokens[start - 1].startswith("-"):
+        return tokens
+
+    return [*tokens[:start], "--", *tokens[start:]]
+
+
 def take_back_swallowed_folder(
     parser: argparse.ArgumentParser, namespace: argparse.Namespace, pathaction: argparse.Action
 ) -> None:
-    """Give the ARTIS folder back to the positional path argument when an option took it.
+    """Give the ARTIS folders back to the positional path argument when an option took them.
 
     argparse gives every word that follows to an option that reads a list. Thus
     "plotspectra -label mylabel mymodel" left the model path empty and made "mymodel" a second
-    label. The command then plotted the working folder, and it gave no message. The folder comes
+    label. The command then plotted the working folder, and it gave no message. The folders come
     back to the positional argument here, and the option keeps its other values.
 
-    Only the last value of an option can be the folder, because the user writes the path last. Two
+    Only the last values of an option can be folders, because the user writes the paths last. Two
     options that each end with the name of a folder are ambiguous. The command then reads them as
     the user wrote them.
     """
@@ -153,29 +190,49 @@ def take_back_swallowed_folder(
     if given and given != pathaction.default:
         return
 
-    def ends_with_a_folder(action: argparse.Action) -> bool:
+    def taken_folder_count(action: argparse.Action) -> int:
         values = getattr(namespace, action.dest, None)
-
-        return (
+        takesalist = (
             bool(action.option_strings)
             and action.nargs in {"*", "+"}
             and isinstance(values, list)
             # the default list belongs to the parser, thus the user gave no value in that list
             and values is not action.default
             and bool(values)
-            and isinstance(values[-1], str)
-            and item_names_a_folder(values[-1])
         )
+        if not takesalist:
+            return 0
 
-    candidates = [action for action in parser._actions if ends_with_a_folder(action)]  # ruff:ignore[private-member-access]
+        assert isinstance(values, list)
+        count = trailing_folder_count(values)
+
+        # every value of the option names a folder, thus which one is the model path is unknown
+        return 0 if count == len(values) else count
+
+    candidates = [
+        (action, count)
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if (count := taken_folder_count(action))
+    ]
     if len(candidates) != 1:
         return
 
-    taken = getattr(namespace, candidates[0].dest)
-    setattr(namespace, candidates[0].dest, taken[:-1])
+    action, count = candidates[0]
+    taken = getattr(namespace, action.dest)
+    takesalist = pathaction.nargs in {"*", "+"}
+    # a positional argument that holds one path takes the last folder alone
+    folders = taken[-count:] if takesalist else taken[-1:]
+    setattr(namespace, action.dest, taken[: len(taken) - len(folders)])
     converter = pathaction.type
-    folder = converter(taken[-1]) if callable(converter) else taken[-1]
-    setattr(namespace, pathaction.dest, [folder] if pathaction.nargs in {"*", "+"} else folder)
+    paths = [converter(folder) for folder in folders] if callable(converter) else list(folders)
+    setattr(namespace, pathaction.dest, paths if takesalist else paths[0])
+
+    flag = action.option_strings[0]
+    folderword = "folder" if len(folders) == 1 else "folders"
+    print_warning(
+        f"{flag} read the ARTIS {folderword} {', '.join(folders)} as a value. The model path gets "
+        f"the {folderword} back. Write the model path in front of {flag}"
+    )
 
 
 def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
@@ -497,9 +554,9 @@ def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: st
 def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None) -> None:
     """Add the -timestep/-ts argument that selects the timestep or the timesteps.
 
-    Every command reads the same text: a number, a range such as 45-65, a list such as 4,9, or
-    "last". parse_range_list expands it, and get_single_timestep gives the one timestep that a
-    command which plots one timestep needs.
+    Every command reads the same text: a number, a range such as 45-65, or "last". get_time_range
+    refuses a list such as 4,9, because a plot reads one range of timesteps. get_single_timestep
+    gives the one timestep that a command which plots one timestep needs.
     """
     arggroup(parser, "time selection").add_argument(
         "-timestep",
@@ -595,12 +652,21 @@ def dashes_arg(value: str) -> tuple[float, ...]:
     The user writes the lengths of the dash and of the gap with a comma between them, e.g. 5,2.
     matplotlib refuses the text, thus this function converts the numbers. The error message then
     names -dashes.
+
+    A pattern holds a pair of lengths for each dash. matplotlib refuses an odd number of lengths at
+    the time of the plot, and it gives no line for an empty pattern, thus this function refuses both.
     """
     try:
-        return tuple(float(part) for part in value.replace(" ", ",").split(",") if part)
+        lengths = tuple(float(part) for part in value.replace(" ", ",").split(",") if part)
     except ValueError as exc:
         msg = f"The value {value} is not a dash pattern such as 5,2"
         raise argparse.ArgumentTypeError(msg) from exc
+
+    if not lengths or len(lengths) % 2 != 0:
+        msg = f"The dash pattern {value} must hold the length of a dash and the length of a gap, e.g. 5,2"
+        raise argparse.ArgumentTypeError(msg)
+
+    return lengths
 
 
 def addarg_seriesstyle(
@@ -625,7 +691,13 @@ def addarg_seriesstyle(
     )
     if include_linestyles:
         group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
-        group.add_argument("-linewidth", type=float, default=[], nargs="*", help="List of line widths")
+        group.add_argument(
+            "-linewidth",
+            type=float,
+            default=[],
+            nargs="*",
+            help="List of line widths. For a reference series the value gives the size of the marker",
+        )
     if include_linealpha:
         group.add_argument("-linealpha", type=float, default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:
@@ -985,7 +1057,7 @@ def parse_cli_args(
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
-    args = parser.parse_args([] if kwargs else argsraw)
+    args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)
     resolve_yscale(args)
@@ -1135,8 +1207,10 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
     # must mean the same as -plotviewingangle 0
     for arg in realactions:
         value = kwargs.get(arg.dest)
+        # -dashes reads one tuple for each series, thus a single tuple is one item and not a list
+        istupleitem = arg.type is dashes_arg and isinstance(value, tuple)
         # pyrefly: ignore[implicit-any-type-argument]
-        if value is not None and takes_a_list(arg) and not isinstance(value, list | tuple):
+        if value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
             kwargs[arg.dest] = [value]
 
     parser.set_defaults(**kwargs)

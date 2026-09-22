@@ -500,19 +500,25 @@ def get_model_interpolation_weights(dens_3D: pl.Series, dens_2D: pl.Series) -> p
 def align_composition_columns(dfmain: pl.DataFrame, dfother: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the two dataframes with the same columns in the same order, ready for a concatenation.
 
-    A column that both dataframes hold stays. A column of the composition that only one dataframe holds
-    also stays, and the other dataframe gets zeros for it. An intersection of the two column sets took
-    away an isotope, an element, the electron fraction, or the energy release that only one model holds.
+    A column that both dataframes hold stays. A mass fraction column that only one dataframe holds also
+    stays, and the other dataframe gets zeros for it. An intersection of the two column sets took away
+    an isotope or an element that only one model holds. A zero electron fraction and a zero energy
+    release are real values and not an absence, thus such a column goes if only one model holds it.
     """
-    compositioncols = {"q", "Ye"}
+    maincols = set(dfmain.columns)
+    othercols = set(dfother.columns)
+    for col in ("q", "Ye"):
+        if (col in maincols) != (col in othercols):
+            print_warning(f"{col} is missing from one model, thus the output holds no {col}")
+
     cols = [
         col
         for col in dict.fromkeys([*dfmain.columns, *dfother.columns])
-        if (col in dfmain.columns and col in dfother.columns) or col.startswith("X_") or col in compositioncols
+        if (col in maincols and col in othercols) or col.startswith("X_")
     ]
     aligned = [
-        df.with_columns(**{col: pl.lit(0.0) for col in cols if col not in df.columns}).select(cols)
-        for df in (dfmain, dfother)
+        df.with_columns(**{col: pl.lit(0.0) for col in cols if col not in dfcols}).select(cols)
+        for df, dfcols in ((dfmain, maincols), (dfother, othercols))
     ]
     return aligned[0], aligned[1]
 
@@ -735,13 +741,13 @@ def map_to_artis(
                 extracols=dyn_extracols,
             )
 
-            # mass fractions, avoid looping
-            X_list = [c for c in dfmodel.columns if c.startswith("X_")]
-            X_list_dyn_model = [c for c in dyn_model.columns if c.startswith("X_")]
-            els_missing_in_dyn = [value for value in X_list if value not in X_list_dyn_model]
-            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in els_missing_in_dyn})
-            X_list.remove("X_Fegroup")
-            X_list_dyn_model.remove("X_Fegroup")
+            # each model can hold a mass fraction column that the other does not. Both frames take the
+            # union of those columns, thus the interpolation below finds each one in both frames
+            X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
+            dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
+            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
+            # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
+            X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
             # properly set mass fractions to zero in empty cells
             dfmodel = dfmodel.with_columns([
                 pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list

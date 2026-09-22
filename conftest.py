@@ -25,7 +25,8 @@ def pytest_configure(config: t.Any) -> None:
         for entry in outputpath.iterdir():
             if repopath.resolve() not in entry.resolve().parents:
                 print(
-                    f"Refusing to delete {entry.resolve()} as it is not a descendant of the repository {repopath.resolve()}"
+                    f"Refusing to delete {entry.resolve()} because it is not a descendant "
+                    f"of the repository {repopath.resolve()}"
                 )
             # dotfiles are left alone, except the temp files write_parquet_atomic names with a leading dot,
             # which only survive if a run was killed before its cleanup ran

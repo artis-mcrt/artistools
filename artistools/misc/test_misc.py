@@ -1412,6 +1412,14 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
         assert tlow == pytest.approx(at.get_timestep_times(tmp_path, loc="start")[1])
         assert thigh == pytest.approx(at.get_timestep_times(tmp_path, loc="end")[3])
 
+    # a plot reads one range of timesteps. A list gave the range between its ends, thus the plot
+    # held the timesteps that the user left out as well
+    with pytest.raises(ValueError, match="names no single range"):
+        at.misc.get_time_range(tmp_path, timestep_range_str="1,3")
+
+    # the ends of a range in either order name the same timesteps
+    assert at.misc.get_time_range(tmp_path, timestep_range_str="3-1")[:2] == (1, 3)
+
 
 def test_check_averaging_angles() -> None:
     """Averaging over phi and theta at once must be rejected wherever the values arrive."""
@@ -1694,15 +1702,19 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
         tmp_path,
         {
             "job0": [(0, 0, 1.0), (1, 0, 2.0)],
-            # the restart computes timestep 1 again, and it writes another value for it
-            "job1": [(1, 0, 9.0), (2, 0, 3.0)],
+            # the restart computes timestep 1 again, and it writes another value for it. It also
+            # writes cell 4, which the folder before it never held
+            "job1": [(1, 0, 9.0), (1, 4, 8.0), (2, 0, 3.0)],
         },
     )
 
     dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
 
-    assert dfout["timestep"].to_list() == [0, 1, 2], "each timestep must appear one time"
-    assert dfout.filter(timestep=1)["nnlevel"].item() == 2.0, "the rows of the earlier folder stay"
+    assert dfout.filter(modelgridindex=0)["timestep"].to_list() == [0, 1, 2], "each timestep must appear one time"
+    assert dfout.filter(timestep=1, modelgridindex=0)["nnlevel"].item() == 2.0, "the rows of the earlier folder stay"
+
+    # the earlier folder holds no row for cell 4, thus the row of the later folder stays
+    assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
 
 
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:

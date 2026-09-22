@@ -3,6 +3,7 @@
 
 import argparse
 import contextlib
+import math
 import string
 import typing as t
 from collections.abc import Sequence
@@ -75,8 +76,9 @@ def get_abundance_correction_factors(
     if direct_model_propgrid_map:
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
     else:
-        propcellcount = max(mgi_of_propcells.keys()) + 1
-        print(f" inferring {propcellcount} propagation grid cells from grid mapping file")
+        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
+        propcellcount = ncoordgridx**3
+        print(f" inferring a {ncoordgridx}^3 propagation grid from the grid mapping file")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
         wid_init = get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
@@ -278,11 +280,6 @@ def plot_qdot(
     axis.set_yscale("log")
     axis.set_ylabel(r"$\dot{Q}$ [erg/s/g]")
 
-    # each entry of qdotseries holds:
-    #   - the column of GSINET;
-    #   - the column of ARTIS;
-    #   - the line style;
-    #   - the label.
     # ARTIS writes the fission column only when the run held spontaneous fission
     qdotseries = (
         ("hbeta", "Qdot_betaminus_ana_erg/s/g", "solid", r"$\dot{Q}_\beta$"),

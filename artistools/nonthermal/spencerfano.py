@@ -129,16 +129,13 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
 def x_e_of_sweep_step(x_e_start: float, atomic_number: int, step: int, stepcount: int) -> float:
     """Return the electron fraction of one step of a -vary x_e sweep.
 
-    The sweep runs in equal steps of log10(x_e) from x_e_start to four decades above it. A nucleus
-    supplies a maximum of one free electron for each proton, thus the atomic number is the upper limit
-    of the sweep.
+    The sweep runs in equal steps of log10(x_e) from x_e_start to four decades above it. An x_e above
+    atomic_number - 1 gives only the bare nucleus, thus atomic_number - 1 is the upper limit of the sweep.
     """
-    x_e_max = min(x_e_start * 1e4, float(atomic_number))
+    x_e_max = min(x_e_start * 1e4, float(atomic_number - 1))
     if x_e_start <= 0.0 or x_e_start >= x_e_max:
-        exit_with_error(
-            f"-x_e {x_e_start} gives no sweep below the atomic number {atomic_number}",
-            f"Give -x_e above 0 and below {atomic_number}",
-        )
+        msg = f"x_e {x_e_start} gives no sweep. Give an x_e above 0 and below {atomic_number - 1}."
+        raise ValueError(msg)
 
     return float(x_e_start * (x_e_max / x_e_start) ** (step / (stepcount - 1)))
 
@@ -230,6 +227,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.differentialform:
         print_warning("--differentialform has no effect. The solver gives only the integral form")
 
+    if args.vary == "x_e":
+        if args.composition == "artis":
+            exit_with_error("-vary x_e needs an element", "Give an element with -composition, e.g. -composition Fe")
+        x_e_limit = get_atomic_number(args.composition) - 1
+        if args.x_e <= 0.0 or args.x_e >= x_e_limit:
+            exit_with_error(f"-x_e {args.x_e} gives no sweep", f"Give -x_e above 0 and below {x_e_limit}")
+
     # the import stands in front of the work, thus a missing module stops the command at once
     pynt = import_optional("pynonthermal")
 
@@ -289,8 +293,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             emin *= 2**step
         elif args.vary == "npts":
             npts *= 2**step
-        elif args.vary == "x_e" and args.composition == "artis":
-            exit_with_error("-vary x_e needs an element", "Give an element with -composition, e.g. -composition Fe")
         if args.composition != "artis":
             compelement = args.composition
             compelement_atomicnumber = get_atomic_number(compelement)

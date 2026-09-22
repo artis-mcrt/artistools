@@ -1404,7 +1404,10 @@ def dimension_reduce_model(
             out_n_z=((pl.col("inputcellid") - 1) // ncoordgridr).cast(pl.Int32),
         )
         .with_columns(
-            cs.starts_with("X_").fill_null(0.0), cs.by_name("Ye", "q", "tracercount", require_all=False).fill_null(0.0)
+            cs.starts_with("X_").fill_null(0.0),
+            cs.by_name("Ye", "q", require_all=False).fill_null(0.0),
+            # tracercount counts the trajectories of a cell, thus a float fill would make the writer give 0.0
+            cs.by_name("tracercount", require_all=False).fill_null(0),
         )
         .sort("inputcellid")
     )

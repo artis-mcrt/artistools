@@ -92,7 +92,7 @@ def wants_angle_averaged_data(args: argparse.Namespace) -> bool:
 
 
 def get_viewing_angle_data_folder(args: argparse.Namespace) -> Path:
-    """Return the folder that holds the viewing angle data files, which -o names."""
+    """Return the folder that holds the files of the viewing angle data, which -o names."""
     return resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
 
 
@@ -356,23 +356,22 @@ def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argpars
     same selection gives the direction bins.
     """
     if "dirbin" in dfdata.columns:
-        return dfdata["dirbin"].cast(pl.Int64).to_list()
-
-    selection = args.plotvspecpol or args.plotviewingangle
-    selection = [selection] if isinstance(selection, int) else selection
-    if selection and selection[0] != -2:
-        dirbins = list(selection)
+        dirbins = dfdata["dirbin"].cast(pl.Int64).to_list()
     else:
-        dirbins = get_dirbins(
-            average_over_phi=args.average_over_phi_angle, average_over_theta=args.average_over_theta_angle
-        )
+        selection = args.plotvspecpol or args.plotviewingangle
+        selection = [selection] if isinstance(selection, int) else selection
+        if selection and selection[0] != -2:
+            dirbins = list(selection)
+        else:
+            dirbins = get_dirbins(
+                average_over_phi=args.average_over_phi_angle, average_over_theta=args.average_over_theta_angle
+            )
 
     if len(dirbins) != dfdata.height or -1 in dirbins:
         msg = (
             f"The colour bar needs the direction bin of each row of {datafilename},"
-            f" which has {dfdata.height} rows and no dirbin column."
-            f" The arguments select {len(dirbins)} direction bins."
-            " Give the same -plotviewingangle selection as in the run that wrote the file."
+            f" which has {dfdata.height} rows and gives {len(dirbins)} direction bins."
+            " Write the file again with a -plotviewingangle selection, and give the same selection here."
         )
         raise ValueError(msg)
 
@@ -612,9 +611,9 @@ def peakmag_risetime_declinerate_init(
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, _ = parse_directionbin_args(modelpath, args)
         if args.plotviewingangle and wants_angle_averaged_data(args):
-            # the angle-averaged modes fit the light curve of dirbin -1 alone, thus a per-bin list would
-            # give the scatter plot one angle-averaged point for each bin. The per-direction-bin export
-            # keeps the parsed direction bins
+            # the angle-averaged modes fit the light curve of dirbin -1 alone. Thus a list of the bins
+            # would give the scatter plot one angle-averaged point for each bin. The per-direction-bin
+            # export keeps the parsed direction bins
             dirbins = [-1]
 
         dfbolo_of_dirbin: dict[int, pl.DataFrame] = {}

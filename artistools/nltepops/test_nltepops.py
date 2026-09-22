@@ -91,7 +91,7 @@ def test_nltepops_config_labels_skip_a_last_cell_without_data(mockticklabels: mo
     assert figure is not None
     figureaxes = figure.axes
     # each cell has a block of subplots of the same size. Cell 1 holds no data, thus the last subplot
-    # of the block of cell 0 shows the names, and the last subplot of the figure shows no name
+    # of the block of cell 0 shows the names. The last subplot of the figure shows no name
     assert figureaxes.index(labelledaxes[0]) == len(figureaxes) // 2 - 1
 
 
@@ -218,7 +218,7 @@ def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
 
     assert math.isclose(result.filter(pl.col("level") == 0)["lte_10000"].item(), 1.0, rel_tol=1e-12)
     assert math.isclose(result.filter(pl.col("level") == 1)["lte_10000"].item(), expected_level1, rel_tol=1e-12)
-    # the superlevel takes the position one place above the highest resolved level, which is level 1 here
+    # the superlevel takes the position two places above the highest resolved level, which is level 1 here
     assert math.isclose(result.filter(pl.col("level") == 3)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
 
 
@@ -297,7 +297,7 @@ def test_add_lte_pops_matches_a_row_by_row_reference(maxlevel: int) -> None:
             else:
                 expected[columnname] = ltepop(ion, row["level"], T_exc)
         if row["level"] == -1:
-            # the superlevel takes the position one place above the highest resolved level
+            # the superlevel takes the position two places above the highest resolved level
             expected["level"] = levelnumber_sl + 1
         expectedrows.append(expected)
 

@@ -712,7 +712,10 @@ def plot_artis_spectrum(
                 dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
 
             if args.binflux:
-                assert args.xunit.lower() == "angstroms"
+                if args.xunit.lower() != "angstroms":
+                    exit_with_error(
+                        f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstroms"
+                    )
                 # bin f_lambda as well, because --write_data returns that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
@@ -743,9 +746,18 @@ def plot_artis_spectrum(
     if not drawnseries:
         return None
 
+    if not args.write_data:
+        # the caller counts a frame that is not None as a drawn series, and --write_data alone
+        # reads the columns. One table needs one wavelength grid, which a plot does not need
+        return pl.DataFrame()
+
     dfseriesdata = pl.DataFrame({"lambda_angstroms": drawnseries[0][1]["lambda_angstroms"]})
     for seriessuffix, dfspectrum in drawnseries:
-        assert np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy())
+        if not np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy()):
+            exit_with_error(
+                "--write_data gives one table, and the drawn series have different wavelength grids",
+                "Remove --write_data, or give one direction bin and one epoch",
+            )
         dfseriesdata = dfseriesdata.with_columns(dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"))
 
     return dfseriesdata
@@ -867,11 +879,11 @@ def make_spectrum_plot(
             plot_filter_functions(axis)
 
         # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
-        # inflate a value that the user gave by five percent, thus the rescue takes neither
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is args.ymin is None:
+        # inflate a value that -ymax gives by five percent, thus the rescue leaves that side alone
+        if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
             # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
-            axis.set_ylim(bottom=0.0, top=datatop * 1.05)
+            axis.set_ylim(bottom=0.0 if args.ymin is None else None, top=datatop * 1.05)
 
         set_plot_title(axis, args.title, args)
 
@@ -1440,6 +1452,16 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
 
+    # -yscale auto reads the drawn values, thus the scale of the y axis follows the data
+    set_auto_yscale(list(axes), args)
+
+    # the y limits, the locators and the labels all follow the scale that set_auto_yscale chose.
+    # A y limit also goes on after the data, so that -ymin alone keeps the top that the data set
+    xlabel, ylabel = get_axis_labels(args)
+    set_axis_properties(axes, args)
+
+    # the text of the epoch takes a position from the y limits, thus the code adds it after
+    # set_axis_properties
     if args.showtime:
         for index, axis in enumerate(axes):
             if args.multispecplot:
@@ -1456,13 +1478,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
                     fontsize="x-large",
                 )
 
-    # -yscale auto reads the drawn values, thus the scale of the y axis follows the data
-    set_auto_yscale(list(axes), args)
-
-    # the y limits, the locators and the labels all follow the scale that set_auto_yscale chose.
-    # A y limit also goes on after the data, so that -ymin alone keeps the top that the data set
-    xlabel, ylabel = get_axis_labels(args)
-    set_axis_properties(axes, args)
     for axis in axes:
         if not args.logscalex:
             axis.xaxis.set_major_locator(ticker.MaxNLocator(nbins="auto", steps=[1, 2, 2.5, 5, 10], prune="both"))

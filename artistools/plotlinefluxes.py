@@ -36,8 +36,6 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
-from artistools.misc import exit_with_error
-from artistools.misc import find_reference_data_file
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -48,6 +46,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.nltepops import read_nltepops
@@ -631,12 +630,7 @@ def read_te_nne_refdata(
 
     The file is either in the working folder or in the data folder of the package.
     """
-    refdatapath = find_reference_data_file(refdatafilename, "data")
-    if refdatapath is None:
-        exit_with_error(
-            f"could not find the reference data file {refdatafilename}",
-            f"Put {refdatafilename} in the working folder, or in the data folder of the artistools package",
-        )
+    refdatapath = require_reference_data_file(refdatafilename, "data", "reference data")
 
     te_nne: dict[str, dict[str, list[float]]] = json.loads(refdatapath.read_text(encoding="utf-8"))
     # the keys are strings and not floats, thus the sort takes a key function
@@ -743,7 +737,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             # a circle has more area than a triangle, thus this factor decreases the marker size
             normtotalpackets = len(em_log10nne) * 8.0
-            label = args.label[modelindex].format(timeavg=tmid, modeltag="all")
+            label = args.label[modelindex].format(timeavg=tmid, modeltag=args.modeltag[modelindex] or "all")
             plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
         if tmid == times_days[-1]:
@@ -757,7 +751,9 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         axis.set_xlabel(r"log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])")
         axis.set_ylabel(r"Electron Temperature [K]")
 
-        outputfile = str(args.outputfile).format(timeavg=tmid, modeltag="all")
+        # one figure holds every model, thus the name of the file joins the tags of all of them
+        filetag = "_".join(tag for tag in args.modeltag if tag) or "all"
+        outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=filetag)
         save_figure(fig, outputfile, format="pdf", args=args)
 
 
@@ -812,10 +808,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the x axis of this command is a time in days, thus it takes no wavelength aliases
     addarg_axislimits(
         parser,
-        xmindefault=50,
-        xmaxdefault=450,
-        xminhelp="Plot range: minimum time in days",
-        xmaxhelp="Plot range: maximum time in days",
+        xmindefault=None,
+        xmaxdefault=None,
+        xminhelp="Plot range: minimum time in days (default: the data range)",
+        xmaxhelp="Plot range: maximum time in days (default: the data range)",
     )
 
     parser.add_argument(

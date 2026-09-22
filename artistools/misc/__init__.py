@@ -57,6 +57,7 @@ from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
+from artistools.misc.cliutils import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import suggest_flags as suggest_flags
 from artistools.misc.cliutils import suggest_names as suggest_names
@@ -97,6 +98,7 @@ from artistools.misc.fileio import print_saved as print_saved
 from artistools.misc.fileio import read_parquet_cache_metadata as read_parquet_cache_metadata
 from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
+from artistools.misc.fileio import require_reference_data_file as require_reference_data_file
 from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_gif as write_gif
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
@@ -118,6 +120,7 @@ from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
+from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel

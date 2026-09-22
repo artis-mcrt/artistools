@@ -353,6 +353,15 @@ def get_time_range(
         timestepmin = selectedtimesteps[0]
         timestepmax = selectedtimesteps[-1]
 
+        # a plot reads one range of timesteps. A list such as 4,9 gave the range 4 to 9, thus the
+        # plot held the timesteps between them as well
+        if selectedtimesteps != list(range(timestepmin, timestepmax + 1)):
+            msg = (
+                f"The timestep selection {timestep_range_str} names no single range of timesteps. "
+                f"Give one range, e.g. -ts {timestepmin}-{timestepmax}"
+            )
+            raise ValueError(msg)
+
         # a range that overshoots the end still starts inside the run, thus only the start must be in it
         if timestepmin > lasttimestep or timestepmin < 0:
             msg = get_bad_timestep_message(modelpath, timestepmin)

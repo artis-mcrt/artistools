@@ -46,7 +46,7 @@ def main() -> None:
 
     # a wheel that holds no matplotlibrc gives every plot another style, and a wheel that holds no
     # elements.csv stops each command that names an element. The import above passes with both faults
-    datafiles = ("matplotlibrc", "data/elements.csv", "artistoolscompletions.sh", "rustext.pyi", "py.typed")
+    datafiles = ("matplotlibrc", "data/elements.csv", "rustext.pyi", "py.typed")
     if missing := [name for name in datafiles if not (pkgpath / name).is_file()]:
         msg = f"The wheel in {pkgpath} must hold these files: {', '.join(missing)}"
         raise RuntimeError(msg)

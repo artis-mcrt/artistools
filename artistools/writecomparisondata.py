@@ -24,6 +24,7 @@ from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import get_deposition
 from artistools.misc import get_timestep_times
@@ -66,7 +67,7 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
 def write_ntimes_nvel(
     outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path, ncells: int
 ) -> None:
-    """Write the header lines giving the number of times, the number of cells, and the times themselves.
+    """Write the header lines that give the number of times, the number of cells, and the times.
 
     ncells is the number of rows that the file holds. An empty cell has no estimators, thus the count
     of the model cells promised more rows than the file gives.
@@ -81,12 +82,12 @@ def get_nonempty_cells(
     modelpath: str | Path, allnonemptymgilist: Sequence[int]
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
-    # write_phys reads logrho, which a 3D model.txt does not contain. The derivation calculates it from rho
+    # write_phys reads rho, which a 1D model.txt does not contain. The derivation calculates it from logrho
     lzmodeldata, modelmeta = get_modeldata(modelpath)
     return (
         add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
         .filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
-        .select("modelgridindex", "vel_r_mid", "logrho")
+        .select("modelgridindex", "vel_r_mid", "rho")
         .collect()
     ), modelmeta
 
@@ -116,27 +117,27 @@ def scan_cell_estimators(
             maintain_order="left",
         )
         .join(dftimes, on="timestep", how="inner", maintain_order="left")
-        .with_columns(rho=10 ** pl.col("logrho") * (modelmeta["t_model_init_days"] / pl.col("time_days")) ** 3)
+        .with_columns(rho=pl.col("rho") * (modelmeta["t_model_init_days"] / pl.col("time_days")) ** 3)
         .collect()
     )
 
 
 def write_edep(
-    modelpath: str | Path,
-    selected_timesteps: Sequence[int],
-    dfestimators: pl.DataFrame,
-    modeldata: pl.DataFrame,
-    outfile: Path,
+    modelpath: str | Path, selected_timesteps: Sequence[int], dfestimators: pl.DataFrame, outfile: Path
 ) -> None:
     """Write the deposition of every cell at the selected timesteps, in the format of the workshop."""
     # the file gives one row for each cell and one column for each timestep, thus the values of one
-    # cell come from several rows. The select puts the columns in the order that the header gives
-    dfdeposition = dfestimators.pivot(on="timestep", index=("modelgridindex", "vel_r_mid"), values="total_dep").select(
-        "vel_r_mid", *(str(timestep) for timestep in selected_timesteps)
+    # cell come from several rows. The select puts the columns in the order that the header gives.
+    # A cell that a timestep does not hold gives a null, and the format needs a number in every field
+    dfdeposition = (
+        dfestimators
+        .with_columns(total_dep=get_column_or_zero(dfestimators, "total_dep"))
+        .pivot(on="timestep", index=("modelgridindex", "vel_r_mid"), values="total_dep")
+        .select("vel_r_mid", *(pl.col(str(timestep)).fill_null(0.0) for timestep in selected_timesteps))
     )
 
     with Path(outfile).open("w", encoding="utf-8") as f:
-        write_ntimes_nvel(f, selected_timesteps, modelpath, len(modeldata))
+        write_ntimes_nvel(f, selected_timesteps, modelpath, dfdeposition.height)
         f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
         for vel_r_mid, *celldepositions in dfdeposition.iter_rows():
             f.write(f"{vel_r_mid / km_to_cm:.2f}")
@@ -157,7 +158,6 @@ def write_ionfracts(
     model_id: str,
     selected_timesteps: Sequence[int],
     dfestimators: pl.DataFrame,
-    modeldata: pl.DataFrame,
     outputpath: Path,
 ) -> None:
     """Write the ion fractions of every element in code comparison workshop format, one file per element."""
@@ -197,10 +197,11 @@ def write_ionfracts(
             f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
             f.write("#\n")
             for timestep in selected_timesteps:
-                f.write(f"#TIME: {times[timestep]:.2f}\n")
-                f.write(f"#NVEL: {len(modeldata)}\n")
-                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}\n")
                 dftimestep = dfionfracs.filter(pl.col("timestep") == timestep).drop("timestep")
+                f.write(f"#TIME: {times[timestep]:.2f}\n")
+                # a cell that this timestep does not hold gives no row, thus each block counts its own rows
+                f.write(f"#NVEL: {dftimestep.height}\n")
+                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}\n")
                 for vel_r_mid, *ionfracs in dftimestep.iter_rows():
                     f.write(f"{vel_r_mid / km_to_cm:.2f}")
                     f.write(f" {0.0:.4e}" * nstagesbelowlowermost)
@@ -219,7 +220,6 @@ def write_phys(
     model_id: str,
     selected_timesteps: Sequence[int],
     dfestimators: pl.DataFrame,
-    modeldata: pl.DataFrame,
     outputpath: Path,
 ) -> None:
     """Write the physical conditions of every cell in code comparison workshop format."""
@@ -230,10 +230,11 @@ def write_phys(
         f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
         f.write("#\n")
         for timestep in selected_timesteps:
-            f.write(f"#TIME: {times[timestep]:.2f}\n")
-            f.write(f"#NVEL: {len(modeldata)}\n")
-            f.write("#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n")
             dftimestep = dfphys.filter(pl.col("timestep") == timestep).drop("timestep")
+            f.write(f"#TIME: {times[timestep]:.2f}\n")
+            # a cell that this timestep does not hold gives no row, thus each block counts its own rows
+            f.write(f"#NVEL: {dftimestep.height}\n")
+            f.write("#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n")
             for vel_r_mid, *cellvalues in dftimestep.iter_rows():
                 f.write(f"{vel_r_mid / km_to_cm:.2f}")
                 f.write("".join(f" {cellvalue:.4e}" for cellvalue in cellvalues))
@@ -308,6 +309,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
         dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
 
+        # a timestep that the run did not write gives an empty block, thus the file promises rows that it has not
+        if missingtimesteps := sorted(set(selected_timesteps) - set(dfestimators["timestep"].to_list())):
+            exit_with_error(
+                f"{modelpath} holds no estimators for the timesteps"
+                f" {', '.join(str(timestep) for timestep in missingtimesteps)}",
+                "Give -selected_timesteps that the run wrote",
+            )
+
         try:
             write_lbol_edep(
                 modelpath, selected_timesteps, Path(args.outputfile, f"lbol_edep_{model_id}_artisnebular.txt")
@@ -318,15 +327,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
 
         write_edep(
-            modelpath,
-            selected_timesteps,
-            dfestimators,
-            modeldata,
-            Path(args.outputfile, f"edep_{model_id}_artisnebular.txt"),
+            modelpath, selected_timesteps, dfestimators, Path(args.outputfile, f"edep_{model_id}_artisnebular.txt")
         )
 
-        write_phys(modelpath, model_id, selected_timesteps, dfestimators, modeldata, args.outputfile)
-        write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, modeldata, args.outputfile)
+        write_phys(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
+        write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,6 @@ from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
@@ -113,7 +112,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # the name of the model is part of the folder, thus each model path writes a different folder
             outdir = (
                 resolve_outputfile(args.outputfile, "model.txt").parent
-                / f"{get_model_name(modelpath)}_dimreduce_{ndim_out}d"
+                / f"{Path(modelpath).resolve().name}_dimreduce_{ndim_out}d"
             )
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [

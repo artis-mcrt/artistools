@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.axes as mplax
-import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -141,40 +140,33 @@ def make_hesma_peakmag_dm15_dm40(
 
     plotlightcurves writes one row for each selected direction bin, in the columns dirbin,
     peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include_delta_m40 adds the column
-    deltam40_polyfit to that same file. A file that an older version wrote carries different names,
-    thus the order of its columns serves as the fallback.
+    deltam40_polyfit to that same file.
     """
     viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
     dfviewingangle = read_wsv(pathtofiles / viewinganglefilename)
     columns = dfviewingangle.columns
 
-    if "peak_mag_polyfit" in columns:
-        peakmagvalues = dfviewingangle["peak_mag_polyfit"]
-        dm15values = dfviewingangle["deltam15_polyfit"]
-        dm40values = dfviewingangle["deltam40_polyfit"] if "deltam40_polyfit" in columns else None
-    else:
-        peakmagvalues = dfviewingangle[columns[0]]
-        dm15values = dfviewingangle[columns[2]]
-        dm40values = dfviewingangle[columns[3]] if len(columns) > 3 else None
+    if "peak_mag_polyfit" not in columns:
+        exit_with_error(
+            f"{viewinganglefilename} holds no peak_mag_polyfit column",
+            "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
+        )
 
     outdata = {
-        "peakmag": peakmagvalues,
-        "dm15": dm15values,
+        "peakmag": dfviewingangle["peak_mag_polyfit"],
+        "dm15": dfviewingangle["deltam15_polyfit"],
         # the file holds one row for each selected direction bin, and not one row for every bin
-        "angle_bin": (
-            dfviewingangle["dirbin"] if "dirbin" in columns else pl.Series("angle_bin", np.arange(len(dfviewingangle)))
-        ),
+        "angle_bin": dfviewingangle["dirbin"],
     }
     if dm40:
-        if dm40values is None:
+        if "deltam40_polyfit" not in columns:
             exit_with_error(
                 f"{viewinganglefilename} holds no deltam40 column",
                 "Run plotlightcurves with --include_delta_m40, then run this action again",
             )
-        outdata["dm40"] = dm40values
+        outdata["dm40"] = dfviewingangle["deltam40_polyfit"]
 
     outdataframe = pl.DataFrame(outdata).with_columns(cs.float().round(4))
-    outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
     outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
 
 

@@ -106,7 +106,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         print(f"  {minmaxlabel} density: {rho:.2e} g/cm³. Cells with this density: {cellcount}")
 
     mgi = get_single_modelgridindex(args.modelgridindex)
-    if mgi is not None:
+    # a negative cell number selects no cell, as -cell -1 did before
+    if mgi is not None and mgi >= 0:
         print(f"Selected single cell mgi {mgi}:")
         dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
 

@@ -51,6 +51,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc.cliutils import CommaJoinAction
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
@@ -605,11 +606,15 @@ def plot_populations_with_time_or_velocity(
             if args.x == "time"
             else read_nltepops(modelpath, timestep=timesteps[0])
         )
+        # a 3D model holds thousands of cells, thus one partition costs much less than a filter for each cell
+        dfpop_of_cell = dfpop_all.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).partition_by(
+            "modelgridindex", as_dict=True
+        )
         for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-            dfpop = dfpop_all.filter((pl.col("timestep") == timestep) & (pl.col("modelgridindex") == mgi))
-            if dfpop.is_empty():
+            dfpop = dfpop_of_cell.get((mgi,))
+            if dfpop is None:
                 continue
-            timesteppops = dfpop.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
+            timesteppops = dfpop.filter(pl.col("timestep") == timestep)
             if timesteppops.is_empty():
                 continue
             # setdefault keeps the first row for a duplicated level, matching the .item(0) this replaces
@@ -617,13 +622,15 @@ def plot_populations_with_time_or_velocity(
             for level, n_nlte in zip(timesteppops["level"], timesteppops["n_NLTE"], strict=True):
                 pop_of_level.setdefault(level, n_nlte)
             for ionlevel in ionlevels:
+                # a 3D model holds cells of low density, and such a cell can hold fewer levels. The plot
+                # leaves out that cell in place of stopping the command
                 if ionlevel not in pop_of_level:
-                    msg = (
+                    print_warning(
                         f"cell {mgi} at timestep {timestep} holds no level {ionlevel} of"
                         f" {get_ionstring(Z, ion_stage, style='spectral')}."
                         f" The cell holds the levels {min(pop_of_level)} to {max(pop_of_level)}"
                     )
-                    raise ValueError(msg)
+                    continue
                 populations[timestep, ionlevel, mgi] = pop_of_level[ionlevel]
 
         for ionlevel in ionlevels:
@@ -836,7 +843,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     cellgroup = parser.add_mutually_exclusive_group()
     # a mutually exclusive group, thus the flags are spelled out rather than taken from addarg_modelgridindex
     cellgroup.add_argument(
-        "-modelgridindex", "-cell", "-mgi", default=[], help="Plotted model grid cell, or a range e.g. 3-7"
+        "-modelgridindex",
+        "-cell",
+        "-mgi",
+        action=CommaJoinAction,
+        default=[],
+        help="Plotted model grid cell, a range e.g. 3-7, or a list e.g. 3,5",
     )
 
     cellgroup.add_argument("-velocity", "-v", default=[], type=float, nargs="*", help="Specify cell by velocity")
@@ -921,9 +933,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     ion_stages_permitted = parse_range_list(args.ion_stages) if args.ion_stages else None
 
-    # -modelgridindex takes one text such as 3-7, thus the command line gives a str and the API an int
-    cellargs = [args.modelgridindex] if isinstance(args.modelgridindex, str | int) else args.modelgridindex
-    mgilist = [mgi for cellarg in cellargs for mgi in parse_range_list(str(cellarg))]
+    # CommaJoinAction joins every -modelgridindex into one text such as 3-7,9, thus one expansion reads them all.
+    # A cell of 0 is a real selection and it is falsy, thus this tests for the empty default
+    mgilist = [] if args.modelgridindex == [] else parse_range_list(str(args.modelgridindex))
     mgilist.extend(mgi for mgi in [get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity] if mgi is not None)
     # the branches below read args.modelgridindex, thus give them the expanded cells and not "3-7"
     args.modelgridindex = mgilist

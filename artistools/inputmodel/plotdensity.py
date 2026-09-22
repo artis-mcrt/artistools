@@ -21,6 +21,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import normalize_path_list
@@ -110,8 +111,8 @@ def get_binned_profile(
 def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None, vmax_cmps: float) -> list[float]:
     """Return the upper velocities [cm/s] of the bins for the dM/dv profile.
 
-    vmax_cmps is the largest velocity of the plot. The fixed bins of -nbins fill that range, because
-    bins that reach the speed of light would put the model into the first few of them.
+    vmax_cmps is the largest velocity of the plot. The fixed bins of -nbins fill that range. Bins that
+    reach the speed of light would put the model into the first few bins.
     """
     if nbins:
         return [(i + 1) * (vmax_cmps / nbins) for i in range(nbins)]
@@ -147,8 +148,9 @@ def plot_density_profiles(args: argparse.Namespace, axes: npt.NDArray[np.object_
         enclosed_xvals, enclosed_yvals = get_enclosed_mass(dfmodel)
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
-        # -xmax gives the largest velocity of the plot in units of c, and vmax_cmps of the model is the default
-        vmax_cmps = modelmeta["vmax_cmps"] if args.xmax is None else args.xmax * C_cm_per_s
+        # the bins cover the whole model, thus -xmax changes the axis only. A -xmax above the model
+        # vmax gives bins to the edge of the axis, and a lower one leaves the outer cells in their bins
+        vmax_cmps = max(modelmeta["vmax_cmps"], (args.xmax or 0.0) * C_cm_per_s)
         vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins, vmax_cmps)
         plotye = args.plotye and "Ye" in dfmodel.columns
         binned_xvals, binned_massvals, binned_yevals = get_binned_profile(dfmodel, vupperscoarse, plotye)
@@ -174,6 +176,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]
+
+    if args.xmax is not None and args.xmax <= 0.0:
+        exit_with_error(f"-xmax {args.xmax} gives no range", "Give an -xmax above 0, in units of c")
 
     max_vmax_on_c = plot_density_profiles(args, axes)
 

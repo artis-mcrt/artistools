@@ -39,6 +39,7 @@ shell startup file:
 ```sh
 artistools completions > ~/.artistoolscompletions.sh
 echo 'source "$HOME/.artistoolscompletions.sh"' >> ~/.zshrc
+echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 ```
 
 ## Citing artistools

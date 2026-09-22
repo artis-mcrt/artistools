@@ -34,7 +34,6 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
-from artistools.misc import find_reference_data_file
 from artistools.misc import format_frame_path
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
@@ -44,6 +43,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
+from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
@@ -57,25 +57,13 @@ if t.TYPE_CHECKING:
 defaultoutputfile = "plottransitions_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
-def get_reference_data_file(filename: Path | str, description: str) -> Path:
-    """Return the path of a line list, or stop with a message when no such file exists."""
-    found = find_reference_data_file(filename, "data")
-    if found is None:
-        exit_with_error(
-            f"could not find the {description} file {filename}",
-            f"Put {filename} in the working folder, or in the data folder of the artistools package",
-        )
-
-    return found
-
-
 def get_kurucz_transitions(
     ionlist: Sequence[tuple[int, int]] | None = None,
 ) -> tuple[pl.DataFrame, list[tuple[int, int]]]:
-    """Return the transitions of the named ions from the Kurucz gfall line list, and the ions that the file holds.
+    """Return the transitions of the named ions, and the ions of the request that the file holds.
 
-    An ionlist of None keeps every ion of the file. The file gfall.dat is either in the working folder
-    or in the data folder of the package.
+    The Kurucz line list gfall.dat gives the transitions. An ionlist of None keeps every ion of the
+    file. The file is either in the working folder or in the data folder of the package.
     """
 
     class KuruczTransitionTuple(t.NamedTuple):
@@ -91,7 +79,7 @@ def get_kurucz_transitions(
     translist = []
     ionsfound: list[tuple[int, int]] = []
     wantedions = None if ionlist is None else set(ionlist)
-    with get_reference_data_file("gfall.dat", "Kurucz line list").open(encoding="utf-8") as fnist:
+    with require_reference_data_file("gfall.dat", "data", "Kurucz line list").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
@@ -141,7 +129,7 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
         upper_statweight: float
 
     translist = []
-    with get_reference_data_file(filename, "NIST line list").open(encoding="utf-8") as fnist:
+    with require_reference_data_file(filename, "data", "NIST line list").open(encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:

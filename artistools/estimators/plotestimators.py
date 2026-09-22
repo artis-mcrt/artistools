@@ -271,8 +271,23 @@ def draw_series(
     """Draw the average line of a series, with markers at the points or a min-max area.
 
     dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
-    and --markers draws them.
+    and --markers draws them. -xbins 0 draws those points alone, with no average line.
     """
+    if args.xbins == 0:
+        assert dfpoints is not None
+        # no line object exists, thus the colour comes from the caller or from the cycle of the axes
+        plotkwargs_points: dict[str, t.Any] = plotkwargs | {
+            "linestyle": "None",
+            "marker": ".",
+            "markersize": 5,
+            "markeredgewidth": 0,
+        }
+        plotkwargs_points.pop("dashes", None)
+        if dfpoints.height > 10000:
+            plotkwargs_points["rasterized"] = True
+        ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), label=label, **plotkwargs_points)
+        return
+
     # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
     # the bin, thus reach the outer edges and leave no gap
     xbinned = dflinepoints.get_column("xvalue_binned")
@@ -1141,13 +1156,9 @@ def get_xlist(
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
 
-    # every negative -xbins selects the bin width automatically, and only b4365703 refused a value below -1.
-    # Thus a script can still hold e.g. -2
+    # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
-        exit_with_error(
-            "-xbins 0 names no number of bins",
-            "Give a positive number of bins, or -1 to select the bin width automatically.",
-        )
+        args.markers = True
 
     if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
@@ -1170,7 +1181,7 @@ def get_xlist(
                 print(f"  would have only {args.xbins} bins. Replacing with 25")
                 args.xbins = 25
 
-    if args.xbins is not None:
+    if args.xbins:
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
         # a range of zero width gives equal edges, and cut() gives an error for equal breaks.
@@ -1764,10 +1775,10 @@ def make_image_figure(
         nrows, ncols, figsize=(panelwidth * ncols, 4.2 * nrows * args.figscale), squeeze=False, layout="constrained"
     )
     vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
-    # -xmin and -xmax give a velocity in km/s, as a plot against the velocity takes, and the axis of
-    # an image holds v/c
-    xmin_on_c = None if args.xmin is None else args.xmin * km_to_cm / C_cm_per_s
-    xmax_on_c = None if args.xmax is None else args.xmax * km_to_cm / C_cm_per_s
+    # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
+    xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
+    xmin_on_c = None if args.xmin is None else args.xmin * xscale_to_c
+    xmax_on_c = None if args.xmax is None else args.xmax * xscale_to_c
     for ax, panel, grid in zip(axesgrid.flat, panels, grids, strict=False):
         norm = get_colour_norm(panel, grid)
         values = np.ma.masked_invalid(grid)
@@ -1930,10 +1941,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
 
-    addarg_axislimits(parser, include_y=False)
+    addarg_axislimits(
+        parser,
+        include_y=False,
+        xminhelp="Plot range: minimum x value, in km/s for -x velocity, in units of c otherwise",
+        xmaxhelp="Plot range: maximum x value, in km/s for -x velocity, in units of c otherwise",
+    )
 
     parser.add_argument(
-        "-xbins", type=int, default=None, help="Number of x bins between xmax and xmin (or -1 for automatic bin size)"
+        "-xbins",
+        type=int,
+        default=None,
+        help=(
+            "Number of x bins between xmax and xmin"
+            " (-1 for an automatic bin size, 0 for the points alone with no average line)"
+        ),
     )
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
@@ -2084,7 +2106,7 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     """Apply the default x variable and the default time range, and return the first and last timestep.
 
     A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
-    gif, a listing, and a plot of one cell also take every timestep, whichever variable the horizontal
+    gif, a list of the variables, and a plot of one cell also take every timestep, whichever variable the horizontal
     axis holds. A plot of a snapshot against a spatial variable needs a time, thus it keeps the
     default time range.
     """

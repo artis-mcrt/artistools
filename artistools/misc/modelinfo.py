@@ -335,6 +335,18 @@ def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     return ()
 
 
+def get_run_subfolders(modelpath: Path | str) -> tuple[Path, ...]:
+    """Return the subfolders of a model folder in the order of the runs, and then the model folder.
+
+    A run folder carries the number of the job, thus a lexical order puts a run of 10000001 in front
+    of a run of 9876543. The natural order gives the folders in the order of the runs.
+    """
+    return (
+        *sorted((child for child in Path(modelpath).iterdir() if child.is_dir()), key=natural_sort_key),
+        Path(modelpath),
+    )
+
+
 def get_runfolders(
     modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
 ) -> Sequence[Path]:
@@ -342,12 +354,7 @@ def get_runfolders(
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
     """
-    # a run folder carries the number of the job, thus a lexical order puts a run of 10000001 in
-    # front of a run of 9876543. The natural order gives the folders in the order of the runs
-    folderlist_all = (
-        *sorted((child for child in Path(modelpath).iterdir() if child.is_dir()), key=natural_sort_key),
-        Path(modelpath),
-    )
+    folderlist_all = get_run_subfolders(modelpath)
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
         folder_list_matching = []
         for folderpath in folderlist_all:
@@ -456,7 +463,8 @@ def read_rank_outputfiles(
         raise FileNotFoundError(msg)
 
     dfofeachfolder: list[pl.DataFrame] = []
-    seentimesteps: set[int] = set()
+    keycolumns = ["timestep", "modelgridindex"]
+    seenkeys = pl.DataFrame(schema={"timestep": pl.Int64, "modelgridindex": pl.Int64})
     for folderfilepaths in filepathsofeachfolder:
         dffolder = (
             pl
@@ -465,10 +473,12 @@ def read_rank_outputfiles(
             .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
         )
         # the first timestep of a restarted run repeats the last timestep of the folder before it.
-        # The rows of the earlier folder stay, as get_runfolder_timesteps and scan_estimators do
-        if seentimesteps:
-            dffolder = dffolder.filter(pl.col("timestep").is_in(seentimesteps).not_())
-        seentimesteps.update(dffolder["timestep"].unique().to_list())
+        # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
+        # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
+        # timestep and the cell decides, and not the timestep alone
+        if not seenkeys.is_empty():
+            dffolder = dffolder.join(seenkeys, on=keycolumns, how="anti")
+        seenkeys = pl.concat([seenkeys, dffolder.select(keycolumns).unique()])
         dfofeachfolder.append(dffolder)
 
     dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
@@ -527,13 +537,13 @@ def get_rankassignments(modelpath: Path | str) -> pl.DataFrame | None:
     The clone is cheap, because polars shares the data of a frame, and it keeps a caller that changes
     the columns in place from changing what the next caller reads.
     """
-    dfrankassignments = get_rankassignments_cached(modelpath)
+    dfrankassignments = get_rankassignments_cached(resolve_modelpath(modelpath))
 
     return dfrankassignments.clone() if dfrankassignments is not None else None
 
 
 @lru_cache(maxsize=16)
-def get_rankassignments_cached(modelpath: Path | str) -> pl.DataFrame | None:
+def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     """Return the assignments of the run, and keep the frame for the next caller.
 
     get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file

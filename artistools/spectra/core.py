@@ -900,7 +900,7 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
 def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
     """Return the names with a _duplicated_<n> suffix on each repeat, as polars names a repeated header.
 
-    split_dataframe_stokesparams reads those suffixes, thus a file with no header row must get the
+    split_dataframe_stokesparams reads those suffixes. Thus a file with no header row must get the
     same names as a file that polars reads with a header row.
     """
     countofname: dict[str, int] = {}
@@ -911,6 +911,37 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
         newcolnames.append(name if count == 0 else f"{name}_duplicated_{count - 1}")
 
     return newcolnames
+
+
+# maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
+# bin at a time, thus a cache miss on each call would parse the file again for every bin.
+@lru_cache(maxsize=2)
+def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
+    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    This function collects the scan one time, because each collect call of a lazy frame reads the
+    file again. A caller collects the I, the Q, and the U frame of each direction bin. Do not change
+    a frame of the returned dict. Every caller shares the same object.
+    """
+    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
+    print(f"Reading {specfilename}")
+    alldata = drop_trailing_null_column(
+        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False)
+    ).collect()
+
+    dirbintables: dict[int, pl.LazyFrame] = {}
+    for dirbin, table in split_multitable_dataframe(alldata).items():
+        # the first row of each table holds the times, which the file repeats for the Q and the U block
+        oldcolnames = table.collect_schema().names()
+        timerow = [str(value) for value in table.select(pl.all().slice(0, 1)).collect().row(0)]
+        dirbintables[dirbin] = (
+            table
+            .select(pl.all().slice(offset=1))
+            .with_columns(pl.all().cast(pl.Float64))
+            .rename(dict(zip(oldcolnames, name_repeated_columns(timerow), strict=True)))
+        )
+
+    return dirbintables
 
 
 def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
@@ -929,28 +960,12 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
 
         return split_dataframe_stokesparams(specdata)
 
-    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
-    print(f"Reading {specfilename} (direction bin {dirbin})")
-    tables = split_multitable_dataframe(
-        drop_trailing_null_column(
-            pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
-        )
-    )
+    tables = read_specpol_res(modelpath)
     if dirbin not in tables:
-        msg = f"{specfilename} holds {len(tables)} direction bins, thus it has no direction bin {dirbin}"
+        msg = f"specpol_res.out of {modelpath} holds {len(tables)} direction bins, and not bin {dirbin}"
         raise ValueError(msg)
 
-    # the first row of each table holds the times, which the file repeats for the Q and the U block
-    oldcolnames = tables[dirbin].collect_schema().names()
-    timerow = [str(value) for value in tables[dirbin].select(pl.all().slice(0, 1)).collect().row(0)]
-    specdata = (
-        tables[dirbin]
-        .select(pl.all().slice(offset=1))
-        .with_columns(pl.all().cast(pl.Float64))
-        .rename(dict(zip(oldcolnames, name_repeated_columns(timerow), strict=True)))
-    )
-
-    return split_dataframe_stokesparams(specdata)
+    return split_dataframe_stokesparams(tables[dirbin])
 
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
@@ -2070,7 +2085,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
 
     if "z" in metadata:
-        # the de-redshift divides the wavelength by (1 + z), thus the flux density in the rest frame
+        # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
         # is (1 + z) times the observed one, because the same energy falls in a narrower band
         specdata = specdata.with_columns(
             lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]),

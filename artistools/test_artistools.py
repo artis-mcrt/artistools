@@ -1116,8 +1116,8 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
 def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
     """The widthluminosity action must build a file that plotwidthluminosity can read back."""
     (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
-        "peakmag risetime dm15\n"
-        + "".join(f"{-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
+        "dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit\n"
+        + "".join(f"{i} {-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
         encoding="utf-8",
     )
 
@@ -2425,6 +2425,7 @@ def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
     with no message.
     """
     import artistools.__main__
+    from artistools.misc import separate_trailing_folders
 
     parser = artistools.__main__.build_parser()
 
@@ -2445,6 +2446,32 @@ def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
     args = parser.parse_args(["plotspectra", "-label", "mylabel"])
     assert args.specpath == []
     assert args.label == ["mylabel"]
+
+    # an option that converts its values reads no folder, thus the separator must come first
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-color", "red", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.color == ["red"]
+
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-plotviewingangle", "0", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.plotviewingangle == [0]
+
+    # every folder at the end of the command line reaches the positional argument
+    args = parser.parse_args(
+        separate_trailing_folders(["plotspectra", "-label", "a", str(modelpath), str(modelpath_classic_3d)])
+    )
+    assert args.specpath == [modelpath, modelpath_classic_3d]
+    assert args.label == ["a"]
+
+    args = parser.parse_args(separate_trailing_folders(["plotestimators", "-plotlist", "Te", str(modelpath)]))
+    assert args.plotlist == [["Te"]]
+    assert args.plotitems == [str(modelpath)]
+
+    # a file is no ARTIS folder, thus it stays with the option that reads it
+    reffile = modelpath / "light_curve.out"
+    args = parser.parse_args(separate_trailing_folders(["plotlightcurves", "-reflightcurves", str(reffile)]))
+    assert args.reflightcurves == [str(reffile)]
+    assert args.modelpath == []
 
 
 def test_a_joined_value_takes_the_longest_flag() -> None:

@@ -29,6 +29,7 @@ from artistools.constants import megaparsec_to_cm
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -632,6 +633,15 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     metadata = dict(get_file_metadata(data_path))
     if not metadata:
         metadata = dict(get_file_metadata(Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)))
+
+    # the time column below needs the timecorrection value. The command stops when the metadata
+    # gives no such value
+    if "timecorrection" not in metadata:
+        exit_with_error(
+            f"the reference light curve {data_path} has no timecorrection value",
+            f"Write {data_path.name}.meta.yml in the folder of the data, with a timecorrection value and a label",
+        )
+    metadata.setdefault("label", data_path.stem)
 
     # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
     with zopen(data_path, encoding="utf-8") as datafile:
