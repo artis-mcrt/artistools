@@ -92,6 +92,7 @@ from artistools.misc import suggest_names
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_yvalues
+from artistools.plottools import get_next_color
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
 from artistools.plottools import prune_log_ticks
@@ -275,12 +276,15 @@ def draw_series(
     """
     if args.xbins == 0:
         assert dfpoints is not None
-        # no line object exists, thus the colour comes from the caller or from the cycle of the axes
+        # no line object exists, thus the colour comes from the caller or from the cycle of the axes. The
+        # points take the lighter shade of the --markers points, thus a plot with and without bins agrees
+        seriescolor = plotkwargs.get("color") or get_next_color(ax)
         # the ticks of the axes draw above the points, as they do above the markers of --markers
         plotkwargs_points: dict[str, t.Any] = plotkwargs | {
             "linestyle": "None",
             "marker": ".",
             "markersize": 5,
+            "color": adjust_lightness(seriescolor, 1.5),
             "markeredgewidth": 0,
             "zorder": -1,
         }
