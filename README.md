@@ -34,12 +34,19 @@ pip install --group dev --editable .[extras]
 prek install
 ```
 
-To enable command-line autocompletions, write the script to a file. Then source that file from your
-shell startup file:
+To enable tab completion, add one line to the startup file of your shell. For zsh, put this line in
+`~/.zshrc` after the line that runs `compinit`:
 ```sh
-artistools completions > ~/.artistoolscompletions.sh
-echo 'source "$HOME/.artistoolscompletions.sh"' >> ~/.zshrc
-echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+eval "$(artistools completions zsh)"
+```
+For bash, put `eval "$(artistools completions bash)"` in `~/.bashrc`. The code asks artistools for
+the completions at each press of the Tab key, thus a new argument needs no other step.
+
+The `eval` line runs artistools at each start of the shell. For a faster start, write the code to a
+file one time, and source that file in place of the `eval` line. Write the file again after an update
+that adds a console script:
+```sh
+artistools completions zsh > ~/.artistools-completion.zsh
 ```
 
 ## Citing artistools

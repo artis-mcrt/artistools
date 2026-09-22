@@ -140,7 +140,8 @@ jobs:
             - name: Check artistools command line tool
               run: |
                   artistools --help
-                  artistools completions
+                  artistools completions bash
+                  artistools completions zsh
 
             - name: Download/extract test data
               working-directory: tests/data/
