@@ -25,7 +25,6 @@ def test_directionbins() -> None:
         how="cross",
     )
 
-    syn_dir = (0, 0, 1)
     testdirections = testdirections.with_columns(
         dirx=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").cos()),
         diry=((1.0 - pl.col("costheta_defined").pow(2)).sqrt() * pl.col("phi_defined").sin()),
@@ -43,17 +42,11 @@ def test_directionbins() -> None:
 
         assert np.isclose(pkt["phi_defined"], pkt["phi"], rtol=1e-4, atol=1e-4) or pktdir_is_along_zaxis
 
-        dirbin2 = at.packets.get_directionbin(
-            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
-        )
-
-        assert dirbin2 == pkt["dirbin"]
-
         assert costhetabinlowers[pkt["costhetabin"]] <= pkt["costheta_defined"] * 1.01
         assert costhetabinuppers[pkt["costhetabin"]] > pkt["costheta_defined"] * 0.99
 
-        assert pkt["costhetabin"] == dirbin2 // nphibins
-        assert pkt["phibin"] == dirbin2 % nphibins
+        assert pkt["costhetabin"] == pkt["dirbin"] // nphibins
+        assert pkt["phibin"] == pkt["dirbin"] % nphibins
 
         assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
@@ -66,7 +59,6 @@ def test_directionbins_unequal_bincounts() -> None:
     """
     nphibins = 8
     ncosthetabins = 4
-    syn_dir = (0, 0, 1)
 
     testdirections = pl.DataFrame({
         "phi_defined": np.linspace(0.05, 2 * math.pi, nphibins * 3, endpoint=False).tolist()
@@ -94,22 +86,12 @@ def test_directionbins_unequal_bincounts() -> None:
         # dirbin packs the costheta index in the high part and the phi index in the low part
         assert pkt["dirbin"] == pkt["costhetabin"] * nphibins + pkt["phibin"]
 
-        assert pkt["dirbin"] == at.packets.get_directionbin(
-            pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=syn_dir
-        )
-
 
 @pytest.mark.parametrize("nphibins", [4, 10])
 def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     """A direction with diry == 0 and dirx < 0 gives acos(cosphi) + pi == 2 pi, which must not overflow the ring."""
     ncosthetabins = 10
     dirx, diry, dirz = -1.0, 0.0, 0.0
-
-    dirbin = at.packets.get_directionbin(
-        dirx, diry, dirz, nphibins=nphibins, ncosthetabins=ncosthetabins, syn_dir=(0, 0, 1)
-    )
-    assert dirbin % nphibins == nphibins - 1
-    assert dirbin < nphibins * ncosthetabins
 
     dfpackets = at.packets.add_packet_directions_lazypolars(
         pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
@@ -119,7 +101,7 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     ).collect()
 
     assert binned["phibin"].item() == nphibins - 1
-    assert binned["dirbin"].item() == dirbin
+    assert binned["dirbin"].item() < nphibins * ncosthetabins
 
 
 def test_get_virtual_packets() -> None:

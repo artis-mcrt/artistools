@@ -28,7 +28,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import polars_source
 from artistools.misc import print_warning
-from artistools.misc import vec_len
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -670,44 +669,6 @@ def get_packets(
     return nprocs_read, pldfpackets
 
 
-def get_directionbin(
-    dirx: float,
-    diry: float,
-    dirz: float,
-    nphibins: int,
-    ncosthetabins: int,
-    syn_dir: tuple[float | int, float | int, float | int],
-) -> int:
-    """Return the viewing direction bin index for a single packet direction vector."""
-    dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
-    pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
-    costheta = np.dot(pkt_dir, syn_dir)
-    costhetabin = min(int((costheta + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
-
-    vec1 = np.cross(pkt_dir, syn_dir)
-    if vec_len(vec1) == 0.0:
-        # if the direction is parallel to the syn_dir, we cannot determine phi
-        phibin = 0
-    else:
-        xhat = np.array([1.0, 0.0, 0.0])
-        vec2 = np.cross(xhat, syn_dir)
-        cosphi = np.dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
-
-        vec3 = np.cross(vec2, syn_dir)
-        testphi = np.dot(vec1, vec3)
-
-        # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of
-        # the next costheta ring, so clamp to the last bin
-        phibin = min(
-            int(math.acos(cosphi) / 2.0 / math.pi * nphibins)
-            if testphi > 0
-            else int((math.acos(cosphi) + math.pi) / 2.0 / math.pi * nphibins),
-            nphibins - 1,
-        )
-
-    return (costhetabin * nphibins) + phibin
-
-
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
     """Add the normalised direction vector and the costheta and phi angles of each packet."""
     dfpackets = dfpackets.lazy()
@@ -753,7 +714,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
         vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
 
         # arr_testphi = np.dot(arr_vec1, vec3). vec1 was already normalised by dirmag above, and only the sign of
-        # testphi is used, so there is no further division here (matching get_directionbin)
+        # testphi is used, so there is no further division here
         dfpackets = dfpackets.with_columns(
             (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
             .cast(pl.Float32)

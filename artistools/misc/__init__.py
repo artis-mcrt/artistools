@@ -99,7 +99,6 @@ from artistools.misc.fileio import read_parquet_cache_metadata as read_parquet_c
 from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import require_reference_data_file as require_reference_data_file
-from artistools.misc.fileio import stripallsuffixes as stripallsuffixes
 from artistools.misc.fileio import write_gif as write_gif
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
 from artistools.misc.fileio import zopen as zopen
@@ -109,7 +108,6 @@ from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import import_optional as import_optional
 from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
-from artistools.misc.general import vec_len as vec_len
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams

@@ -6,7 +6,6 @@ import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
-from collections.abc import Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -38,11 +37,6 @@ def df_filter_minmax_bracketed(
         )
 
     return df
-
-
-def vec_len(vec: Sequence[float] | npt.NDArray[np.floating]) -> float:
-    """Return the Euclidean length of a vector."""
-    return float(np.sqrt(np.dot(vec, vec)))
 
 
 @functools.lru_cache

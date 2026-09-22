@@ -1194,20 +1194,6 @@ def test_trim_or_pad() -> None:
     assert list(result2[0]) == ["single_string", None]
 
 
-def test_vec_len() -> None:
-    assert math.isclose(at.misc.vec_len([3.0, 4.0, 0.0]), 5.0)
-    assert math.isclose(at.misc.vec_len([1.0, 0.0, 0.0]), 1.0)
-    assert math.isclose(at.misc.vec_len([0.0, 0.0, 0.0]), 0.0)
-    assert math.isclose(at.misc.vec_len([1.0, 1.0, 1.0]), math.sqrt(3.0))
-
-
-def test_stripallsuffixes() -> None:
-    assert at.misc.stripallsuffixes(Path("packets00_0000.out.gz")) == Path("packets00_0000")
-    assert at.misc.stripallsuffixes(Path("model.txt.xz")) == Path("model")
-    assert at.misc.stripallsuffixes(Path("noextension")) == Path("noextension")
-    assert at.misc.stripallsuffixes(Path("single.txt")) == Path("single")
-
-
 def test_match_closest_time() -> None:
     times = [100.0, 200.0, 300.0, 400.0]
     assert at.misc.match_closest_time(250.0, times) == 200.0

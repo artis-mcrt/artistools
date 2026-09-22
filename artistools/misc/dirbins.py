@@ -196,7 +196,7 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArra
         # acos descends as phi ascends. Thus such a bin is open at the lower boundary and closed
         # at the upper one. The second half takes int((acos(cosphi) + pi) / 2 pi * n), thus it is
         # closed at the lower boundary and open at the upper one. The last bin also holds
-        # phi = pi, because ARTIS clamps that index. See get_directionbin in artistools/packets/core.py
+        # phi = pi, because ARTIS clamps that index. See bin_packet_directions_polars in packets/core.py
         firsthalf = phibin < nphibins // 2
         lower_compare = "<" if firsthalf else "≤"
         upper_compare = "≤" if firsthalf or phibin == nphibins - 1 else "<"

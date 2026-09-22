@@ -2112,11 +2112,10 @@ def test_phibin_rank_ascends_with_phi() -> None:
     assert [phi_lower[phibin] for phibin in binsbyrank] == sorted(phi_lower)
 
     # the bins of ARTIS are half-open, and the label of each one must say which end it holds. A
-    # packet that travels along +X has phi = 0, and get_directionbin puts it in a bin that holds 0
-    from artistools.packets.core import get_directionbin
-
-    dirbin = get_directionbin(1.0, 0.0, 0.0, nphibins, at.misc.get_viewingdirection_costhetabincount(), (0.0, 0.0, 1.0))
-    assert binlabels[dirbin % nphibins].startswith("0 \u2264"), binlabels[dirbin % nphibins]
+    # packet that travels along +X has phi = 0, and the binning puts it in a bin that holds 0
+    dfpackets = at.packets.add_packet_directions_lazypolars(pl.DataFrame({"dirx": [1.0], "diry": [0.0], "dirz": [0.0]}))
+    phibin = at.packets.bin_packet_directions_polars(dfpackets).collect()["phibin"].item()
+    assert binlabels[phibin].startswith("0 \u2264"), binlabels[phibin]
 
 
 def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: Path) -> None:

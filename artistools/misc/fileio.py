@@ -560,15 +560,6 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
     return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
 
 
-def stripallsuffixes(f: Path) -> Path:
-    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets00_0000)."""
-    f_nosuffixes = Path(f)
-    for _ in f.suffixes:
-        f_nosuffixes = f_nosuffixes.with_suffix("")  # each call removes only one suffix
-
-    return f_nosuffixes
-
-
 def get_model_folder(modelpath: str | Path) -> Path:
     """Return the model folder, whether modelpath names the folder itself or a file inside it."""
     path = Path(modelpath)

@@ -605,58 +605,6 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
-def get_empty_3d_model(
-    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
-) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
-    """Return a zero-density 3D model of ncoordgrid^3 cells, and its metadata, ready to be filled in."""
-    xmax = vmax * t_model_init_days * day_to_s
-
-    modelmeta: dict[str, t.Any] = {
-        "dimensions": 3,
-        "t_model_init_days": t_model_init_days,
-        "vmax_cmps": vmax,
-        "npts_model": ncoordgrid**3,
-        "wid_init": 2 * xmax / ncoordgrid,
-        "wid_init_x": 2 * xmax / ncoordgrid,
-        "wid_init_y": 2 * xmax / ncoordgrid,
-        "wid_init_z": 2 * xmax / ncoordgrid,
-        "ncoordgrid": ncoordgrid,
-        "ncoordgridx": ncoordgrid,
-        "ncoordgridy": ncoordgrid,
-        "ncoordgridz": ncoordgrid,
-        "headercommentlines": [],
-    }
-
-    dfmodel = (
-        pl
-        .DataFrame(
-            {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
-            schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
-        )
-        .lazy()
-        .with_columns([
-            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
-            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
-            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
-        ])
-        .with_columns([
-            (-xmax + 2.0 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
-            (-xmax + 2.0 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
-            (-xmax + 2.0 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
-        ])
-    )
-
-    standardcols = get_standard_columns(3, includenico57=includenico57)
-
-    dfmodel = dfmodel.with_columns([
-        pl.lit(0.0, dtype=pl.Float32).alias(colname)
-        for colname in standardcols
-        if colname not in dfmodel.collect_schema().names()
-    ]).select([*standardcols, "modelgridindex"])
-
-    return dfmodel, modelmeta
-
-
 def min_abs_coordinate(ax: str) -> pl.Expr:
     """Get the smallest |coordinate| reached anywhere inside a cell along axis ax.
 

@@ -22,8 +22,63 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.constants import day_to_s
 from artistools.inputmodel.core import CACHEVERSION
 from artistools.inputmodel.core import CREATED_COMMENT_PREFIX
+from artistools.inputmodel.core import get_standard_columns
+
+
+def get_empty_3d_model(
+    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    """Return a zero-density 3D model of ncoordgrid^3 cells, and its metadata, ready to be filled in."""
+    xmax = vmax * t_model_init_days * day_to_s
+
+    modelmeta: dict[str, t.Any] = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_init_days,
+        "vmax_cmps": vmax,
+        "npts_model": ncoordgrid**3,
+        "wid_init": 2 * xmax / ncoordgrid,
+        "wid_init_x": 2 * xmax / ncoordgrid,
+        "wid_init_y": 2 * xmax / ncoordgrid,
+        "wid_init_z": 2 * xmax / ncoordgrid,
+        "ncoordgrid": ncoordgrid,
+        "ncoordgridx": ncoordgrid,
+        "ncoordgridy": ncoordgrid,
+        "ncoordgridz": ncoordgrid,
+        "headercommentlines": [],
+    }
+
+    dfmodel = (
+        pl
+        .DataFrame(
+            {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
+            schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
+        )
+        .lazy()
+        .with_columns([
+            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
+            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
+            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
+        ])
+        .with_columns([
+            (-xmax + 2.0 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2.0 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2.0 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+        ])
+    )
+
+    standardcols = get_standard_columns(3, includenico57=includenico57)
+
+    dfmodel = dfmodel.with_columns([
+        pl.lit(0.0, dtype=pl.Float32).alias(colname)
+        for colname in standardcols
+        if colname not in dfmodel.collect_schema().names()
+    ]).select([*standardcols, "modelgridindex"])
+
+    return dfmodel, modelmeta
+
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
@@ -1649,9 +1704,7 @@ def test_plotinitialcomposition() -> None:
 
 @pytest.mark.benchmark
 def test_save_load_3d_model() -> None:
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True
-    )
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
     dfmodel = lzdfmodel.collect()
 
     # CodSpeed runs a benchmark test more than one time in one process, and each run writes to the
@@ -1734,7 +1787,7 @@ def test_save_load_3d_model() -> None:
 
 @pytest.mark.parametrize("outputdimensions", [2, 1, 0])
 def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) -> None:
-    dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
+    dfmodel3d_pl_lazy, modelmeta_3d = get_empty_3d_model(ncoordgrid=50, vmax=100000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
 
     # it's important that we don't fill cells in the cube corners, as they will be lost when reducing dimensions
@@ -1798,7 +1851,7 @@ def test_pos_r_min_straddling_cells() -> None:
     """A cell that straddles a coordinate plane reaches zero along that axis, so pos_r_min must account for it."""
     # an odd ncoordgrid puts a cell centred on the origin, and rings of cells straddling each coordinate plane
     ncoordgrid = 5
-    dfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
+    dfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
 
     dfmodel = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).collect()
 
@@ -1930,9 +1983,7 @@ def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
     from artistools.inputmodel.make1dslicefrom3d import slice_3dmodel
 
     vmax_cmps, t_model_days = 1.0e9, 1.0
-    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(
-        ncoordgrid=ncoordgrid, vmax=vmax_cmps, t_model_init_days=t_model_days
-    )
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=vmax_cmps, t_model_init_days=t_model_days)
     inputfolder = tmp_path / "in"
     outputfolder = tmp_path / "out"
     at.inputmodel.save_modeldata(lzdfmodel.with_columns(rho=pl.lit(1.0e-10)), outpath=inputfolder, modelmeta=modelmeta)
@@ -2888,7 +2939,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     assert np.isclose(selected_massfrac_ni56(dfslow_2d), massfrac_ni56(cellsslow_2d))
 
     # a grid with an odd cell count on each axis has a cell at the origin. No polar angle range keeps that cell
-    dfmodel_origin, modelmeta_origin = at.inputmodel.get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
+    dfmodel_origin, modelmeta_origin = get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
     dfcells_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin).collect()
     assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0.0)) == 1
     assert len(dfcells_origin.filter(get_cell_selection())) == 27
