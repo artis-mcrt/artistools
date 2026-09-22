@@ -9,8 +9,11 @@ import sys
 
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
-        lambda _importing, imported, _fromlist: (
-            not imported.startswith(("matplotlib.", "polars", "polars.exceptions", "polars.selectors"))
+        # matplotlib registers docstring parts as a side effect of some imports, and later modules read them at
+        # import time. Thus the imports inside matplotlib stay eager, but an import of matplotlib can be lazy
+        lambda importing, imported, _fromlist: (
+            importing.partition(".")[0] not in {"matplotlib", "mpl_toolkits"}
+            and not imported.startswith(("polars", "polars.exceptions", "polars.selectors"))
         )
     )
     sys.set_lazy_imports("all")

@@ -12,7 +12,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib.typing as mplt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -59,6 +58,9 @@ from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 
+if t.TYPE_CHECKING:
+    import matplotlib.typing as mplt
+
 
 class FluxContributionTuple(t.NamedTuple):
     """One emission/absorption series (an ion, line, or nuclide) and its total contribution to the flux."""
@@ -67,7 +69,8 @@ class FluxContributionTuple(t.NamedTuple):
     linelabel: str
     array_flambda_emission: npt.NDArray[np.floating]
     array_flambda_absorption: npt.NDArray[np.floating]
-    color: mplt.ColorType | None = None
+    # mplt exists only for the type checkers, and Python 3.13 and 3.15 evaluate a NamedTuple annotation at once
+    color: "mplt.ColorType | None" = None
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
