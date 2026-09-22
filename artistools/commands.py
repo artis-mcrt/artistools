@@ -137,8 +137,8 @@ subcommandtree: CommandTree = {
     ),
     "completions": CommandSpec(
         "completions",
-        helptext="Print the tab-completion code for a shell.",
-        note='Put eval "$(artistools completions zsh)" in ~/.zshrc after compinit, or the bash form in ~/.bashrc.',
+        helptext="Give the instructions for tab completion.",
+        note="With a shell name, e.g. zsh, the command prints the code that the startup file of that shell reads.",
     ),
     "deposition": CommandSpec(
         "estimators.deposition",
