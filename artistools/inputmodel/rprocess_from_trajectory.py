@@ -307,15 +307,14 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     assert rows_from_1s.size > 0, f"{enthermofilepath} holds no time of one second or more"
     startindex = int(rows_from_1s[0])
 
-    assert all(dfthermo["Qdot"][startindex : nts_max + 1] >= 0.0)
+    # nts_max is the one-based #count of the network step, thus its row index is nts_max - 1.
+    # The slice must end at nts_max, because the end of a slice is exclusive
+    assert all(dfthermo["Qdot"][startindex:nts_max] >= 0.0)
 
     dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
 
     qdotintegral = float(
-        np.trapezoid(
-            y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
-            x=dfthermo["time_s"][startindex : nts_max + 1],
-        )
+        np.trapezoid(y=dfthermo["Qdot_expansionadjusted"][startindex:nts_max], x=dfthermo["time_s"][startindex:nts_max])
     )
     assert qdotintegral >= 0.0
 

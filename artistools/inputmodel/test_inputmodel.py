@@ -21,6 +21,7 @@ import pytest
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.inputmodel.core import CACHEVERSION
 from artistools.inputmodel.core import CREATED_COMMENT_PREFIX
 
 modelpath = at.get_path("testdata") / "testmodel"
@@ -127,15 +128,23 @@ def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: 
     assert modelmeta["npts_model"] == 1
 
     # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
-    assert cachefilepath.is_file()
+    cachemetadata = pl.read_parquet_metadata(cachefilepath)
+    assert cachemetadata["cacheversion"] == str(CACHEVERSION)
+    assert cachemetadata["textsource_mtime"] == str((tmp_path / "model.txt").stat().st_mtime)
     pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
 
 
 def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
     """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
     shutil.copy(modelpath / "model.txt", tmp_path)
+    textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
-    pl.DataFrame({"inputcellid": [1]}).write_parquet(cachefilepath)
+    # the version and the mtime match, thus the reader rejects the cache for the absent modelmeta_json alone
+    at.misc.write_parquet_atomic(
+        pl.DataFrame({"inputcellid": [1]}),
+        cachefilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfilepath.stat().st_mtime)},
+    )
 
     _, modelmeta = at.get_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
@@ -148,24 +157,15 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    # the version matches, thus the reader rejects the cache for the stale mtime alone
     at.misc.write_parquet_atomic(
-        lzdfmodel.collect(), cachefilepath, metadata={"textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)}
+        lzdfmodel.collect(),
+        cachefilepath,
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)},
     )
 
     assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
-
-
-def test_get_cell_angle() -> None:
-    lzmodeldata, _ = get_derived_modeldata(modelpath_3d)
-    modeldata = at.inputmodel.core.get_cell_angle(lzmodeldata).collect()
-    assert "cos_bin" in modeldata.columns
-    assert "phi_bin" in modeldata.columns
-
-    # the azimuth is measured in the opposite sense to the packet "phi", so it must not be named "phi"
-    assert "phi_mirrored" in modeldata.columns
-    assert "phi" not in modeldata.columns
-    assert modeldata["phi_mirrored"].is_between(0.0, 2 * math.pi).all()
 
 
 def test_downscale_3dmodel() -> None:
@@ -230,7 +230,7 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "makeartismodel_sums": {
             "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
             "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
-            "model.txt": "c5cbe9fa3b7e95e3a4efe9fbd140a9a26f14ba8dd0ac418e0823e5b371cab788",
+            "model.txt": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
         },
     }
 
@@ -442,10 +442,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
 
 
 def test_get_trajectory_abund_q() -> None:
-    # Ensure that the testdatapath is correctly defined as in other tests
     # this test reads the test data folder itself, and not the testmodel folder below it
-    # In this file, testdatapath is defined globally: testdatapath = at.get_config()["path_testdata"]
-
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
@@ -1605,7 +1602,7 @@ def test_get_trajectory_abund_q() -> None:
         (102, 159): 2.0727160885628824e-18,
         (102, 161): 4.2496685570656285e-20,
         # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
-        "q": 5737336759237193.0,
+        "q": 5351333204182925.0,
     }
 
     for key, value in expected.items():
@@ -1720,7 +1717,7 @@ def test_dimension_reduce(outputdimensions: int, benchmark: BenchmarkFixture) ->
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
     mgi2 = 25 * 25 * 25 + 25 * 25 + 25
     dfmodel3d_pl[mgi2, "rho"] = 1
-    dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
+    dfmodel3d_pl[mgi2, "X_Ni56"] = 0.75
 
     dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d)
     mass_g_3d, ejecta_ke_erg = dfmodel3d_derived.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
@@ -1954,7 +1951,13 @@ def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.Captu
     etot, energydistribution = at.inputmodel.energyinputfiles.get_etot_fromfile(tmp_path)
     assert len(energydistribution) == len(rho)
     # the energy is distributed over the cells in proportion to density
-    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-6)
+    # the files hold six significant figures, thus the shares agree only to that precision
+    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-5)
+
+    # the analytic integral of 5e9 t^-1.3 erg/g/s over the seconds between 1e-4 days and 50 days.
+    # An integration over the times in days gave a total that was 2.8 per cent too small
+    analytic_etot_per_gram = 5e9 * at.constants.day_to_s / 0.3 * (0.0001**-0.3 - 50.0**-0.3)
+    assert etot / mtot_grams == pytest.approx(analytic_etot_per_gram, rel=1e-3)
 
     dfrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(tmp_path)
     assert dfrate["rate"].min() == pytest.approx(0.0)
@@ -2087,7 +2090,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
     wid_init_z = 2 * vmax_cmps * t_model_days * at.constants.day_to_s / ncoordgridz
-    # shift every cell a whole cell width along z, which no cell centre can be
+    # shift every cell by one and a half cell widths along z, which no cell centre can be
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
@@ -2215,6 +2218,22 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
     assert np.isclose(dfpos["vel_r_max_kmps"].item(-1), vmax_kmps, rtol=1e-4)
 
     assert np.allclose(dfpos["vel_r_max_kmps"], dfneg["vel_r_max_kmps"], rtol=1e-6)
+
+
+def test_from_e2e_model_interpolation_weights_of_an_empty_cell() -> None:
+    """A cell that both models leave empty gets a weight of zero for each model, and not a NaN.
+
+    The weight was a plain quotient of the density of one model and the combined density. That gave
+    0/0 for such a cell, and the NaN went into each isotope column and into model.txt.
+    """
+    from artistools.inputmodel.from_e2e_model import get_model_interpolation_weights
+
+    dfweights = get_model_interpolation_weights(dens_3D=pl.Series([2.0, 0.0]), dens_2D=pl.Series([6.0, 0.0]))
+
+    assert not any(dfweights.select(cs.float().is_nan().any()).row(0))
+    assert dfweights["rho"].to_list() == [8.0, 0.0]
+    assert dfweights["beta_3D"].to_list() == [0.25, 0.0]
+    assert dfweights["beta_2D"].to_list() == [0.75, 0.0]
 
 
 def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with_mass(tmp_path: Path) -> None:
@@ -2459,7 +2478,7 @@ def test_get_coarse_velocity_bins_of_a_3d_model_names_each_projection() -> None:
 
     dfmodel = pl.DataFrame({"vel_r_mid": [1.0e9, 2.0e9, 4.0e9, 5.0e9]})
 
-    binedges = get_coarse_velocity_bins(dfmodel, nbins=None)
+    binedges = get_coarse_velocity_bins(dfmodel, nbins=None, vmax_cmps=5.0e9)
 
     assert binedges == pytest.approx([3.0e9, 5.0e9])
 
@@ -2843,7 +2862,8 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     """A cell whose midpoint lies on a bound stays inside the range, but the columns are Float32.
 
     A 2D grid of square cells has a diagonal of cells at 45 degrees. Their Float32 angles differ from 45
-    degrees by approximately 1e-5 degrees. A velocity bound of 0.7 c is 0.69999999 in Float32.
+    degrees by approximately 1e-5 degrees. Polars casts a velocity bound down to Float32 for the
+    comparison, thus each velocity probe below is one Float32 step off the bound.
     """
     from artistools.inputmodel.plotinitialabundances import get_cell_selection
 
@@ -2856,9 +2876,15 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     assert len(oncone.filter(get_cell_selection(thetamin=135.0))) == 4
     assert len(oncone.filter(get_cell_selection(thetamin=45.0, thetamax=135.0))) == 8
 
-    dfbound = pl.DataFrame({"vel_r_mid_on_c": pl.Series([0.7], dtype=pl.Float32), "vel_z_mid_on_c": [0.0]})
-    assert len(dfbound.filter(get_cell_selection(vmin=0.7))) == 1
-    assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 1
+    dfbound = pl.DataFrame({
+        "vel_r_mid_on_c": pl.Series(
+            [np.nextafter(np.float32(0.7), np.float32(0.0)), np.nextafter(np.float32(0.7), np.float32(1.0))],
+            dtype=pl.Float32,
+        ),
+        "vel_z_mid_on_c": [0.0, 0.0],
+    })
+    assert len(dfbound.filter(get_cell_selection(vmin=0.7))) == 2
+    assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 2
 
 
 def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:

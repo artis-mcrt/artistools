@@ -286,9 +286,6 @@ def makemodelfromgriddata(
     if fillcentralhole:
         dfmodel = add_mass_to_center(dfmodel, t_model_days)
 
-    if getcellopacityfromYe:
-        opacity_by_Ye(outputpath, dfmodel)
-
     dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 
     dfmodel = dfmodel.sort("inputcellid")
@@ -303,9 +300,10 @@ def makemodelfromgriddata(
         modelmeta["headercommentlines"].append(operationmsg)
 
     if scalevelocity != 1.0:
+        # the width of a cell grows by the same factor, thus the mass of a cell does not change.
+        # Only the density takes the factor
         dfmodel = dfmodel.with_columns(
-            cs.starts_with("pos_", "vel_") * scalevelocity,
-            cs.by_name("rho", "mass_g", require_all=False) * (scalevelocity**-3),
+            cs.starts_with("pos_", "vel_") * scalevelocity, cs.by_name("rho", require_all=False) * (scalevelocity**-3)
         )
         vmax_cmps_old = modelmeta["vmax_cmps"]
         for key in modelmeta:
@@ -346,6 +344,10 @@ def makemodelfromgriddata(
         )
         dfelabundances = dfelabundances_reduced if gave_elabundances else None
         dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
+
+    if getcellopacityfromYe:
+        # the reduction changes the cells, thus opacity.txt must name the cells of the output model
+        opacity_by_Ye(outputpath, dfmodel)
 
     if "Ye" in dfmodel:
         write_Ye_file(outputpath, dfmodel)

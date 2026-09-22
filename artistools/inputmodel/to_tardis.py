@@ -14,6 +14,7 @@ from artistools.atomic import get_atomic_number
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
@@ -49,6 +50,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.inputpath)
 
     pldfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
+    if modelmeta["dimensions"] != 1:
+        # a TARDIS model holds one radial velocity for each shell, which only a 1D model gives
+        exit_with_error(
+            f"the model is {modelmeta['dimensions']}D, and TARDIS takes a 1D model",
+            "Reduce the model to 1D first, e.g. artistools makemodel -dimensionreduce 1",
+        )
+
     t_model_init_days = modelmeta["t_model_init_days"]
 
     dfmodel = (

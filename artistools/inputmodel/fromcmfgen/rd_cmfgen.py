@@ -1,10 +1,30 @@
 """Read the CMFGEN SN_HYDRO_DATA output files."""
 
 import pathlib
+import re
 import sys
 import typing as t
 
 import numpy as np
+
+
+def readline_or_stop(fileobj: t.IO[str], filename: str, expected: str) -> str:
+    """Return the next line of the file, or stop with a message at the end of the file."""
+    line = fileobj.readline()
+    if not line:
+        msg = f"{filename} ended before {expected}"
+        raise ValueError(msg)
+
+    return line
+
+
+def parse_mass_fractions(entries: list[str]) -> list[float]:
+    """Return the mass fractions of one line. Give zero to a number that underflowed.
+
+    CMFGEN leaves out the E of the exponent for a number below 1e-99, e.g. 1.0000000-100. Such a
+    number is zero to the precision of this file. Every other token keeps its value.
+    """
+    return [0.0 if re.fullmatch(r"[0-9.]+-\d+", entry) else float(entry) for entry in entries]
 
 
 def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
@@ -23,7 +43,7 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
         nd, nspec, niso = 0, 0, 0
         time = 0.0
         while okhdr == 0:
-            line = f.readline()
+            line = readline_or_stop(f, file, "the radius grid")
             if "Number of data points:" in line:
                 nd = int(line.split()[4])
                 nrow = int(np.ceil(nd / float(ncol)))
@@ -57,8 +77,8 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
         kappa = np.zeros(nd)  # mass absorption coefficient (cm^2/g)
         okhydro = 0
         while okhydro == 0:
-            while not line:
-                line = f.readline()
+            if not line:
+                line = readline_or_stop(f, file, "the mass fractions")
             if "Radius grid" in line:
                 rad = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "Velocity" in line:
@@ -107,21 +127,19 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
         specfrac = np.zeros((nd, nspec))
         for ispec in range(nspec):
             while "mass fraction" not in line:
-                line = f.readline()
+                line = readline_or_stop(f, file, f"the mass fractions of species {ispec + 1} of {nspec}")
             spec.append(line.split()[0])
             for ii in range(nrow):
-                line = f.readline()
+                line = readline_or_stop(f, file, f"row {ii + 1} of the mass fractions of {spec[ispec]}")
                 if "*0." in line:
                     specfrac[:, ispec] = 0.0
                     if not quiet:
                         print(" INFO - set mass fraction = 0.0 everywhere for " + spec[ispec])
                     break
                 entries = line.split()
-                # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
-                entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
                 idx0 = ii * ncol
                 idx1 = idx0 + len(entries)
-                specfrac[idx0:idx1, ispec] = np.array([float(xx) for xx in entries])
+                specfrac[idx0:idx1, ispec] = np.array(parse_mass_fractions(entries))
             line = ""
         if not quiet:
             print(" INFO - Read in species mass fractions")
@@ -132,22 +150,20 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
         isofrac = np.zeros((nd, niso))
         for iiso in range(niso):
             while "mass fraction" not in line:
-                line = f.readline()
+                line = readline_or_stop(f, file, f"the mass fractions of isotope {iiso + 1} of {niso}")
             iso.append(line.split()[0])
             aiso[iiso] = int(line.split()[1])
             for ii in range(nrow):
-                line = f.readline()
+                line = readline_or_stop(f, file, f"row {ii + 1} of the mass fractions of {iso[iiso]}")
                 if "*0." in line:
                     isofrac[:, iiso] = 0.0
                     if not quiet:
                         print(" INFO - set mass fraction = 0.0 everywhere for " + iso[iiso] + " " + str(aiso[iiso]))
                     break
                 entries = line.split()
-                # set mass fractions to 0.0 if < 1D-99 (written e.g. 1.0000000-100)
-                entries = [entries[k] if "E" in entries[k] else "0.0" for k in range(len(entries))]
                 idx0 = ii * ncol
                 idx1 = idx0 + len(entries)
-                isofrac[idx0:idx1, iiso] = np.array([float(xx) for xx in entries])
+                isofrac[idx0:idx1, iiso] = np.array(parse_mass_fractions(entries))
             line = ""
         if not quiet:
             print(" INFO - Read in isotope mass fractions")

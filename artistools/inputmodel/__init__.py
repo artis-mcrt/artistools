@@ -4,7 +4,6 @@
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.inputmodel.core import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model as dimension_reduce_model
-from artistools.inputmodel.core import get_cell_angle as get_cell_angle
 from artistools.inputmodel.core import get_empty_3d_model as get_empty_3d_model
 from artistools.inputmodel.core import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms

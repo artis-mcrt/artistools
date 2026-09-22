@@ -42,7 +42,11 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = get_modeldata(modelpath)
-    dfmodel = pldfmodel.select("rho", cs.starts_with("X_")).collect()
+    # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
+    modelcolnames = pldfmodel.collect_schema().names()
+    massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
+    summedcols = [col for col in ("tracercount",) if col in modelcolnames]
+    dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
     dfelemabund = get_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
@@ -75,6 +79,25 @@ def make_downscaled_3d_grid(
     radioabunds_small = downscale_mass_fractions(radioabunds, rho, merge)
     abund_small = downscale_mass_fractions(abund, rho, merge)
 
+    # Ye and q are per unit mass, thus each block takes the mean over its mass. tracercount counts the
+    # trajectories of a cell, thus each block takes the sum
+    massweighted_small = (
+        downscale_mass_fractions(
+            dfmodel.select(massweightedcols).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F"),
+            rho,
+            merge,
+        )
+        if massweightedcols
+        else None
+    )
+    summed_small = (
+        downscale_cell_sums(
+            dfmodel.select(summedcols).to_numpy().astype(np.float64).reshape((grid, grid, grid, -1), order="F"), merge
+        )
+        if summedcols
+        else None
+    )
+
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
     axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
@@ -89,6 +112,17 @@ def make_downscaled_3d_grid(
     }).with_columns([
         pl.Series(abundcol, radioabunds_small[:, :, :, i].ravel(order="F")) for i, abundcol in enumerate(abundcols)
     ])
+
+    if massweighted_small is not None:
+        dfmodel_small = dfmodel_small.with_columns([
+            pl.Series(col, massweighted_small[:, :, :, i].ravel(order="F")) for i, col in enumerate(massweightedcols)
+        ])
+
+    if summed_small is not None:
+        dfmodel_small = dfmodel_small.with_columns([
+            pl.Series(col, summed_small[:, :, :, i].ravel(order="F")).cast(dfmodel.schema[col])
+            for i, col in enumerate(summedcols)
+        ])
 
     dfelemabund_small = pl.DataFrame({"inputcellid": inputcellid}).with_columns([
         pl.Series(elemcol, abund_small[:, :, :, i].ravel(order="F")) for i, elemcol in enumerate(elemcolnames)

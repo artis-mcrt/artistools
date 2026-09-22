@@ -24,11 +24,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
-from artistools.misc import get_costheta_bins
 from artistools.misc import get_file_identity
-from artistools.misc import get_phi_bin_steps
-from artistools.misc import get_viewingdirection_costhetabincount
-from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import read_parquet_cache_metadata
@@ -256,12 +252,14 @@ def read_modelfile_text(
         # half a cell width, plus the relative term np.isclose() used to contribute, so that a model which
         # loaded before this check was vectorised is not now rejected over float32 rounding of a ~1e15 cm position
         rtol = 1.0e-5
-        assert maxoffby["rcyl_offby"] <= wid_init_rcyl / 2.0 + rtol * maxoffby["rcyl_expected"], (
-            f"pos_rcyl_mid is up to {maxoffby['rcyl_offby']:.3e} cm from the expected cell centre"
-        )
-        assert maxoffby["z_offby"] <= wid_init_z / 2.0 + rtol * maxoffby["z_expected"], (
-            f"pos_z_mid is up to {maxoffby['z_offby']:.3e} cm from the expected cell centre"
-        )
+        # raise an error and do not assert, because the interpreter option -O removes an assert.
+        # The model file comes from the user
+        if maxoffby["rcyl_offby"] > wid_init_rcyl / 2.0 + rtol * maxoffby["rcyl_expected"]:
+            msg = f"pos_rcyl_mid is up to {maxoffby['rcyl_offby']:.3e} cm from the expected cell centre"
+            raise AssertionError(msg)
+        if maxoffby["z_offby"] > wid_init_z / 2.0 + rtol * maxoffby["z_expected"]:
+            msg = f"pos_z_mid is up to {maxoffby['z_offby']:.3e} cm from the expected cell centre"
+            raise AssertionError(msg)
 
     elif modelmeta["dimensions"] == 3:
         wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
@@ -848,55 +846,6 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     )
 
 
-def get_cell_angle(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
-    """Get angle between origin to cell midpoint and the syn_dir axis.
-
-    The azimuthal angle is named phi_mirrored rather than phi because it is measured in the opposite sense to the
-    "phi" column that add_packet_directions_lazypolars() adds to packets: the two branches of the testphi test are
-    swapped, giving phi_mirrored == 2 pi - phi. Each is self-consistent with its own binning, but the two are not
-    interchangeable.
-    """
-    # syn_dir is the z axis and xhat the x axis, so the vector algebra reduces to closed form:
-    #   cos_theta = z / |midpoint|
-    #   cross(midpoint, syn_dir) == [y, -x, 0] and cross(xhat, syn_dir) == [0, -1, 0], so cos(phi) = x / hypot(x, y)
-    #   the branch test dot(cross(midpoint, syn_dir), [-1, 0, 0]) reduces to -y, i.e. it selects y < 0
-    pos_x = pl.col("pos_x_mid").cast(pl.Float64)
-    pos_y = pl.col("pos_y_mid").cast(pl.Float64)
-    pos_z = pl.col("pos_z_mid").cast(pl.Float64)
-
-    cosphi = pos_x / (pos_y**2 + pos_x**2).sqrt()
-
-    nphibins = get_viewingdirection_phibincount()
-    ncosthetabins = get_viewingdirection_costhetabincount()
-
-    # cut() takes only the interior bin boundaries: cos_theta spans [-1, 1] and phi_mirrored spans [0, 2 pi]
-    costheta_lower, _costheta_upper, _costheta_labels = get_costheta_bins(usedegrees=False)
-    cos_bins = list(costheta_lower[1:])
-    # a direction bin is costhetabin * nphibins + phibin, thus each cos(theta) bin starts at this index
-    cos_labels = [costhetabin * nphibins for costhetabin in range(ncosthetabins)]
-
-    phibins = [2 * math.pi * step / nphibins for step in range(1, nphibins)]
-    # phi_mirrored ascends where phi descends, thus the k-th interval here is the bin of phi step k
-    phisteps = get_phi_bin_steps()
-    phi_labels = [phisteps.index(step) for step in range(nphibins)]
-
-    return dfmodel.with_columns(
-        cos_theta=pos_z / (pos_x**2 + pos_y**2 + pos_z**2).sqrt(),
-        phi_mirrored=pl.when(pos_y < 0).then(cosphi.arccos()).otherwise((-cosphi).arccos() + math.pi),
-    ).with_columns(
-        cos_bin=pl
-        .col("cos_theta")
-        .cut(cos_bins, labels=[str(binlabel) for binlabel in cos_labels])
-        .cast(pl.String)
-        .cast(pl.Int32),
-        phi_bin=pl
-        .col("phi_mirrored")
-        .cut(phibins, labels=[str(binlabel) for binlabel in phi_labels])
-        .cast(pl.String)
-        .cast(pl.Int32),
-    )
-
-
 def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     cols: list[str] = []
@@ -1099,7 +1048,8 @@ def save_modeldata(
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        strzeroabund = " ".join(["0.0" if dfmodel.schema[col].is_float() else "0" for col in abundandcustomcols])
+        isintcol = [not dfmodel.schema[col].is_float() for col in abundandcustomcols]
+        strzeroabund = " ".join(["0" if isint else "0.0" for isint in isintcol])
         if modelmeta["dimensions"] == 1:
             for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
@@ -1108,8 +1058,17 @@ def save_modeldata(
                 *abundandcustomcols,
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
+                # write eight significant figures, because write_artis_csv gives the same precision to
+                # the other dimensions
                 fmodel.write(
-                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in abundandcustomcolvals])
+                    " ".join([
+                        (
+                            (f"{colvalue:d}" if isint else f"{colvalue:.7e}")
+                            if colvalue > 0
+                            else ("0" if isint else "0.0")
+                        )
+                        for colvalue, isint in zip(abundandcustomcolvals, isintcol, strict=True)
+                    ])
                     if logrho > -99.0
                     else strzeroabund
                 )

@@ -107,10 +107,14 @@ def get_binned_profile(
     return binned_xvals.tolist(), binned_massvals.tolist(), binned_yevals.tolist()
 
 
-def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None) -> list[float]:
-    """Return the upper velocities [cm/s] of the bins for the dM/dv profile."""
+def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None, vmax_cmps: float) -> list[float]:
+    """Return the upper velocities [cm/s] of the bins for the dM/dv profile.
+
+    vmax_cmps is the largest velocity of the plot. The fixed bins of -nbins fill that range, because
+    bins that reach the speed of light would put the model into the first few of them.
+    """
     if nbins:
-        return [(i + 1) * (C_cm_per_s / nbins) for i in range(nbins)]
+        return [(i + 1) * (vmax_cmps / nbins) for i in range(nbins)]
 
     if "vel_r_max_kmps" in dfmodel.columns:
         # 1D spherical has a radial velocity specified
@@ -143,7 +147,9 @@ def plot_density_profiles(args: argparse.Namespace, axes: npt.NDArray[np.object_
         enclosed_xvals, enclosed_yvals = get_enclosed_mass(dfmodel)
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label, color=color)
 
-        vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins)
+        # -xmax gives the largest velocity of the plot in units of c, and vmax_cmps of the model is the default
+        vmax_cmps = modelmeta["vmax_cmps"] if args.xmax is None else args.xmax * C_cm_per_s
+        vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins, vmax_cmps)
         plotye = args.plotye and "Ye" in dfmodel.columns
         binned_xvals, binned_massvals, binned_yevals = get_binned_profile(dfmodel, vupperscoarse, plotye)
 

@@ -21,6 +21,7 @@ from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
@@ -78,8 +79,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.modelpath = normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
+        # -o holds the working folder when the user gave none, and the default output folder is a
+        # subfolder of the model
+        outputfolder = args.outputfile if Path(args.outputfile) != Path() else None
         make_downscaled_3d_grid(
-            modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize, plot=args.downscaleplot
+            modelpath=Path(args.modelpath[0]),
+            outputgridsize=args.outputgridsize,
+            plot=args.downscaleplot,
+            outputfolder=outputfolder,
         )
         return
 
@@ -103,7 +110,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = resolve_outputfile(args.outputfile, "model.txt").parent / f"dimreduce_{ndim_out}d"
+            # the name of the model is part of the folder, thus each model path writes a different folder
+            outdir = (
+                resolve_outputfile(args.outputfile, "model.txt").parent
+                / f"{get_model_name(modelpath)}_dimreduce_{ndim_out}d"
+            )
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
@@ -117,7 +128,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(args)
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=args.modelpath[0],
+            outputpath=args.outputfile,
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )
