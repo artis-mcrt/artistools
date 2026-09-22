@@ -132,15 +132,23 @@ def import_optional(modulename: str) -> "ModuleType":
     """
     import importlib
 
+    packagename = modulename.partition(".")[0]
     try:
         return importlib.import_module(modulename)
-    except ImportError as exc:
-        packagename = modulename.partition(".")[0]
+    except ModuleNotFoundError as exc:
+        # an installed package can fail to import one of its own dependencies. Then the install command
+        # does not help, thus only a missing package gets it
+        if exc.name is not None and exc.name.partition(".")[0] != packagename:
+            raise
+
         msg = (
             f"This command needs {packagename}, which is not installed. Install the optional "
             "dependencies with: uv pip install 'artistools[extras]'"
         )
         raise ModuleNotFoundError(msg) from exc
+    except ImportError as exc:
+        msg = f"This command needs {packagename}, which is installed but did not import: {exc}"
+        raise ImportError(msg) from exc
 
 
 def get_progress_class() -> "type[t.Any]":
@@ -196,9 +204,10 @@ def parallel_map[IterableType, ResultType](
 
         # the lock of the progress bar comes from a spawn context, thus the pool must live in one as
         # well. Spawn is also needed because forking a process that already has polars threads is
-        # unsafe. A run that takes the thread pool changes no such default
-        mp.set_start_method("spawn", force=True)
-        executor = ProcessPoolExecutor(initializer=progressclass.set_lock, initargs=(progressclass.get_lock(),))
+        # unsafe. The context applies to this pool alone, and the default of the process stays
+        executor = ProcessPoolExecutor(
+            mp_context=mp.get_context("spawn"), initializer=progressclass.set_lock, initargs=(progressclass.get_lock(),)
+        )
     else:
         executor = ThreadPoolExecutor()
 

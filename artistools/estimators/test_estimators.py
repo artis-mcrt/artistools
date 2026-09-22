@@ -3016,3 +3016,64 @@ def test_the_progress_message_names_the_model_folder(capsys: pytest.CaptureFixtu
     out = capsys.readouterr().out
     assert f"modelpath: {modelpath.resolve()}" in out
     assert at.get_model_name(modelpath) in out
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_ionpoptype_changes_populations_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """A radial density or a cumulative count applies to a population, not to a rate such as gamma_NT.
+
+    The line plots multiplied every ion series, thus gamma_NT with cumulative gave 1.39e44 in place of 3.71e-6
+    and kept the label of a rate.
+    """
+    gammavalues = {}
+    for poptype in ("absolute", "radialdensity", "cumulative"):
+        mockplot.reset_mock()
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            plotlist=[[["gamma_NT", ["Fe II"]], ["ionpoptype", poptype]]],
+            outputfile=tmp_path / f"gamma_{poptype}.pdf",
+            timedays=300,
+        )
+        gammavalues[poptype] = np.array(mockplot.call_args_list[0][0][2], dtype=float)
+
+    assert np.allclose(gammavalues["radialdensity"], gammavalues["absolute"], rtol=1e-12, atol=0.0)
+    assert np.allclose(gammavalues["cumulative"], gammavalues["absolute"], rtol=1e-12, atol=0.0)
+
+
+def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> None:
+    """A restarted run repeats the last timestep of the run before it, and the first folder's row stays.
+
+    The search for repeats read every row, thus a plot of 25 million rows took 6.4 s in place of 0.4 s. It
+    now reads the repeated timesteps alone, and it must keep the same rows in the same order.
+    """
+    from artistools.estimators.core import drop_restart_duplicates
+
+    folders = [tmp_path / "job1.slurm", tmp_path / "job2.slurm"]
+    frames = [
+        pl.DataFrame({"timestep": [0, 0, 1, 1], "modelgridindex": [0, 1, 0, 1], "Te": [10.0, 11.0, 20.0, 21.0]}),
+        pl.DataFrame({"timestep": [1, 1, 2, 2], "modelgridindex": [0, 1, 0, 1], "Te": [99.0, 99.0, 30.0, 31.0]}),
+    ]
+    parquetfiles = []
+    for folder, frame in zip(folders, frames, strict=True):
+        folder.mkdir()
+        frame.write_parquet(folder / "estimbatch00_0000_0000.out.parquet.tmp")
+        parquetfiles.append(folder / "estimbatch00_0000_0000.out.parquet.tmp")
+
+    dfout = drop_restart_duplicates(parquetfiles, folders, match_timestep=None).collect()
+    assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0]
+
+    # one folder holds each timestep and cell once, thus it keeps every row
+    dfone = drop_restart_duplicates(parquetfiles[:1], folders[:1], match_timestep=None).collect()
+    assert dfone.height == 4
+
+    # a batch of empty cells gives a cache with no columns, and a cell that the first folder does not hold at
+    # the repeated timestep keeps the row of the second folder
+    pl.DataFrame().write_parquet(folders[1] / "estimbatch01_0001_0001.out.parquet.tmp")
+    pl.DataFrame({"timestep": [1], "modelgridindex": [2], "Te": [22.0]}).write_parquet(
+        folders[1] / "estimbatch02_0002_0002.out.parquet.tmp"
+    )
+    parquetfiles += [folders[1] / "estimbatch01_0001_0001.out.parquet.tmp"]
+    parquetfiles += [folders[1] / "estimbatch02_0002_0002.out.parquet.tmp"]
+    dfout = drop_restart_duplicates(parquetfiles, [*folders, folders[1], folders[1]], match_timestep=None).collect()
+    assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 22.0]

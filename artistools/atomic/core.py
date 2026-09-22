@@ -669,6 +669,9 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
 
     atomic_number = int(elem) if elem.isdigit() else get_atomic_number(elem)
     ion_stage = int(strion_stage) if strion_stage.isdigit() else decode_roman_numeral(strion_stage)
+    if ion_stage < 0:
+        msg = f"Could not parse ionstr {ionstr}"
+        raise ValueError(msg)
 
     return (atomic_number, ion_stage)
 

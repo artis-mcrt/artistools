@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import math
-import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -257,7 +256,11 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     # locals, not a write-back onto args: this function runs once for each model, and a range that
     # one model resolved would then reach the next one. get_time_range refuses a timemin that sits
     # after the last timestep, thus it dropped a shorter model and printed one line
-    (_, _, timemin, timemax) = get_time_range(modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+    (timestepmin, timestepmax, timemin, timemax) = get_time_range(
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
+    )
+    if timestepmin == timestepmax == -1:
+        exit_with_error(f"The time range selects no timestep of {modelpath}")
     assert timemin is not None
     assert timemax is not None
 
@@ -625,11 +628,10 @@ def plot_artis_spectrum(
             if vpkt_config["time_limits_enabled"] and (
                 timemin < vpkt_config["initial_time"] or timemax > vpkt_config["final_time"]
             ):
-                print(
-                    f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
-                    f"end time {vpkt_config['final_time']} days"
+                exit_with_error(
+                    f"The time range {timemin:.2f} to {timemax:.2f} days is outside the virtual packets, which "
+                    f"cover {vpkt_config['initial_time']} to {vpkt_config['final_time']} days"
                 )
-                sys.exit(1)
 
             viewinganglespectra = {
                 dirbin: get_vspecpol_spectrum(
@@ -749,14 +751,22 @@ def plot_artis_spectrum(
         # reads the columns. One table needs one wavelength grid, which a plot does not need
         return pl.DataFrame()
 
-    dfseriesdata = pl.DataFrame({"lambda_angstroms": drawnseries[0][1]["lambda_angstroms"]})
+    # f_lambda is per Angstrom at 1 Mpc. The plotted columns give the values of the plot, thus they follow
+    # -distmpc, --normalised, -xunit, and -yvariable
+    dfseriesdata = pl.DataFrame({
+        "lambda_angstroms": drawnseries[0][1]["lambda_angstroms"],
+        f"x_plotted_{args.xunit}": drawnseries[0][1]["x"],
+    })
     for seriessuffix, dfspectrum in drawnseries:
         if not np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy()):
             exit_with_error(
                 "--write_data gives one table, and the drawn series have different wavelength grids",
                 "Remove --write_data, or give one direction bin and one epoch",
             )
-        dfseriesdata = dfseriesdata.with_columns(dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"))
+        dfseriesdata = dfseriesdata.with_columns(
+            dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"),
+            dfspectrum["y"].alias(f"{args.yvariable}_plotted{seriessuffix}"),
+        )
 
     return dfseriesdata
 
@@ -858,11 +868,21 @@ def make_spectrum_plot(
             else:
                 # make sure we can share the same set of wavelengths for this series
                 assert np.allclose(dfalldata["lambda_angstroms"], seriesdata["lambda_angstroms"].to_numpy())
+            # the plotted x column is the same for every model, thus the table holds it once
+            xcolumn = f"x_plotted_{args.xunit}"
+            if xcolumn not in dfalldata.columns:
+                dfalldata = dfalldata.with_columns(seriesdata[xcolumn])
+
             # one column for each direction bin and each panel, e.g. f_lambda.mymodel_dirbin05_300d
+            yplotted = f"{args.yvariable}_plotted"
             dfalldata = dfalldata.with_columns(
-                seriesdata[colname].alias(f"f_lambda.{seriesname}{colname.removeprefix('f_lambda')}")
+                seriesdata[colname].alias(
+                    f"f_lambda.{seriesname}{colname.removeprefix('f_lambda')}"
+                    if colname.startswith("f_lambda")
+                    else f"{yplotted}.{seriesname}{colname.removeprefix(yplotted)}"
+                )
                 for colname in seriesdata.columns
-                if colname != "lambda_angstroms"
+                if colname not in {"lambda_angstroms", xcolumn}
             )
 
     if nseriesplotted == 0:
@@ -873,7 +893,7 @@ def make_spectrum_plot(
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
-                print_warning("the filter functions plot normalised values, thus give -normalised as well")
+                print_warning("the filter functions plot normalised values, thus give --normalised as well")
             plot_filter_functions(axis)
 
         # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
@@ -1943,7 +1963,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
 
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
-        "--plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
+        "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         f"-groupby {args.groupby}": args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),
@@ -2003,6 +2023,40 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
         exit_with_error(
             f"an emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
             "Give one bin, e.g. -plotviewingangle 0",
+        )
+
+    if args.timedayslist and len(args.timedayslist) > 1:
+        exit_with_error(
+            "an emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
+            "Give one time with -timedays. Run the command again for each other time",
+        )
+
+    if args.yvariable == "packetcount":
+        exit_with_error(
+            "an emission plot draws a flux for each contribution, and it has no count of packets",
+            "Remove -yvariable packetcount, or remove --showemission and --showabsorption",
+        )
+
+
+def check_yvariable_args(args: argparse.Namespace) -> None:
+    """Stop the command when a series cannot give the quantity that -stokesparam or -yvariable names.
+
+    Only the virtual packet spectra hold the Stokes parameters Q and U, and a reference spectrum holds
+    no count of packets. Such a plot drew Stokes I, or it stopped with a missing column.
+    """
+    # a ratio such as Q/I selects the polarisation plot, which reads specpol_res.out. The packets give Stokes I
+    # alone, and resolve_frompackets can select them, e.g. for --showemission
+    if args.stokesparam != "I" and "/" not in args.stokesparam and (args.plotvspecpol is None or args.frompackets):
+        exit_with_error(
+            f"-stokesparam {args.stokesparam} reads the virtual packet spectra files, and the command gives no"
+            " -plotvspecpol or it reads the packets",
+            "Give -plotvspecpol, e.g. -plotvspecpol 0, and remove the options that need the packets",
+        )
+
+    if args.yvariable == "packetcount" and len(args.modelspecpaths) < len(args.specpath):
+        exit_with_error(
+            "a reference spectrum holds no count of packets, thus -yvariable packetcount needs ARTIS models alone",
+            "Remove the reference spectra, or give another -yvariable",
         )
 
 
@@ -2154,6 +2208,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     exit_if_no_emission_position(args)
     resolve_frompackets(args)
     check_emission_plot_args(args)
+    check_yvariable_args(args)
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.specpath[0])

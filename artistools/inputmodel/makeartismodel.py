@@ -149,10 +149,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makeenergyinputfiles:
         plmodel, modelmeta = get_modeldata(args.modelpath[0])
-        model = add_derived_cols_to_modeldata(plmodel, modelmeta=modelmeta).select("rho", "mass_g").collect()
-        rho = model["rho"].cast(pl.Float64).to_numpy()
-        Mtot_grams = float(model["mass_g"].sum())
+        cellmass_grams = (
+            add_derived_cols_to_modeldata(plmodel, modelmeta=modelmeta)
+            .select(pl.col("mass_g").cast(pl.Float64))
+            .collect()
+            .to_series()
+            .to_numpy()
+        )
+        print(f"total mass {cellmass_grams.sum() / Msun_to_g} Msun")
 
-        print(f"total mass {Mtot_grams / Msun_to_g} Msun")
-
-        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile or Path())
+        make_energy_files(cellmass_grams, outputpath=args.outputfile or Path())

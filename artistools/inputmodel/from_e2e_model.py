@@ -374,9 +374,12 @@ def get_grid(
     yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
     bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
+    # the 2D grid holds one half of an equatorially symmetric model, and the 3D grid holds both halves
+    gridsymfac = eqsymfac if model_dim == 2 else 1
+
     # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
-    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * eqsymfac)
+    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
@@ -385,12 +388,14 @@ def get_grid(
         # isotopic masses of the tracers
         rescfacx = np.zeros(ncomp)
         for n in np.arange(ncomp):
-            rescfacx[n] = np.sum(xiso0[:, n] * dat.f.mass * msol) / (np.sum(xint[n, :, :] * volgrid) + 1e-100)
+            # mass_arr holds the masses after --nodyn, --nohmns and --notorus, thus an excluded tracer gives no mass.
+            # The 3D grid holds both halves of an equatorially symmetric model, thus it holds eqsymfac times the mass
+            rescfacx[n] = eqsymfac * np.sum(xiso0[:, n] * mass_arr * msol) / (np.sum(xint[n, :, :] * volgrid) + 1e-100)
             xint[n, :, :] *= rescfacx[n]
         # ... recompute total density from partial densities?
         rhoint = np.sum(xint, axis=0)
         # ... renormalise the total density
-        rescfac = np.sum(mtraj) / np.sum(rhoint * volgrid)
+        rescfac = eqsymfac * np.sum(mtraj) / np.sum(rhoint * volgrid)
         rhoint *= rescfac
         print("rescfac 1:", rescfac)
         # ... and finally renormalise every partial density by the same factor
@@ -407,19 +412,20 @@ def get_grid(
     # test outputs
     testelements = [("He", 2), ("Zr", 40), ("Sn", 50), ("Te", 52), ("Xe", 54), ("W", 74), ("Pt", 78)]
     print("===> mapped data")
-    print("total mass                :", mtot / msol * eqsymfac)
+    print("total mass                :", mtot / msol * gridsymfac)
     for elsymbol, atomic_number in testelements:
         print(
             f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
-            np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * eqsymfac / msol,
+            np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * gridsymfac / msol,
         )
 
+    # mass_arr leaves out the tracers that --nodyn, --nohmns and --notorus exclude, as the mapped data does
     print("===> tracer data")
-    print("total mass                :", np.sum(dat.f.mass) * eqsymfac)
+    print("total mass                :", np.sum(mass_arr) * eqsymfac)
     for elsymbol, atomic_number in testelements:
         print(
             f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
-            np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * dat.f.mass) * eqsymfac,
+            np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * mass_arr) * eqsymfac,
         )
 
     test = np.sum(xint, axis=0) - 1.0
@@ -614,7 +620,8 @@ def map_to_artis(
     dictabunds = {}
     dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
     for tuple_idx, isot_tuple in enumerate(isot_table):
-        if eqsymfac == 1:
+        # only the 2D grid holds one half of an equatorially symmetric model. The 3D grid holds both halves
+        if eqsymfac == 1 or model_dim == 3:
             flat_isoabund = np.nan_to_num((X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
         else:
             flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
@@ -905,11 +912,17 @@ def map_to_artis(
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
     elif model_dim == 3:
+        # add_derived_cols_to_modeldata reads the cell widths, thus -dimensions 1 after --mapto3D needs them
+        wid_init_x, wid_init_y, wid_init_z = (2 * vmax_on_c * CLIGHT * t_model_init_s / ncells for ncells in grid_dims)
         modelmeta = {
             "dimensions": 3,
             "ncoordgridx": grid_dims[0],
             "ncoordgridy": grid_dims[1],
             "ncoordgridz": grid_dims[2],
+            "wid_init": wid_init_x,
+            "wid_init_x": wid_init_x,
+            "wid_init_y": wid_init_y,
+            "wid_init_z": wid_init_z,
             "t_model_init_days": t_model_init_s / day_to_s,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
@@ -955,12 +968,11 @@ def remap_mass_weighted_quantity(
         V_new = np.pi * (r_o**2 - r_i**2) * Delta_z
         return np.asarray((coarse_mass / V_new[np.newaxis, :]).ravel(), dtype=np.float64)
 
-    if not (coarse_mass > 0.0).all():
-        msg = f"a coarse cell holds no mass, thus the mass weighted average of {fieldname} has no value"
-        raise ValueError(msg)
-
+    # a coarse cell of the empty outer corners holds no mass, thus its average is zero, as in downscale3dgrid
     values = coarse_grid_blocks(dfmodel_in[fieldname].to_numpy(), red_fact, N_cell_r_new, N_cell_z_new, N_cell_r_old)
-    return np.asarray(((values * masses).sum(axis=(1, 3)) / coarse_mass).ravel(), dtype=np.float64)
+    weightedsum = (values * masses).sum(axis=(1, 3))
+    average = np.divide(weightedsum, coarse_mass, out=np.zeros_like(weightedsum), where=coarse_mass > 0.0)
+    return np.asarray(average.ravel(), dtype=np.float64)
 
 
 def merge_neighbour_cells(

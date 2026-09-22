@@ -1,7 +1,6 @@
 """Extract a 1D ARTIS model from the cells of a 3D model that lie along one coordinate axis."""
 
 import argparse
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -15,6 +14,7 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -43,11 +43,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)
     elif Path(args.outputfolder, "model.txt").exists():
-        print("ABORT: model.txt already exists")
-        sys.exit()
+        exit_with_error(f"{args.outputfolder} already holds a model.txt")
     elif Path(args.outputfolder, "abundances.txt").exists():
-        print("ABORT: abundances.txt already exists")
-        sys.exit()
+        exit_with_error(f"{args.outputfolder} already holds an abundances.txt")
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
 

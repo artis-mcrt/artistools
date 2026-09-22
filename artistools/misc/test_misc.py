@@ -786,6 +786,24 @@ def test_firstexisting_anyexist(tmp_path: Path) -> None:
     assert at.misc.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
 
 
+def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Path) -> None:
+    """The reader and the freshness check of the packets cache must take the file from one folder.
+
+    firstexisting sorted the paths of the files, thus run2/x came before run/x, but the check sorted the
+    folders. The cache then took the time stamp of a file that the conversion did not read.
+    """
+    from artistools.packets.core import get_packets_textsource_mtimes
+
+    for foldername, mtime in (("run", 1000.0), ("run2", 2000.0)):
+        (tmp_path / foldername).mkdir()
+        packetsfile = tmp_path / foldername / "packets00_0000.out"
+        packetsfile.write_text("")
+        os.utime(packetsfile, (mtime, mtime))
+
+    assert at.firstexisting("packets00_0000.out", folder=tmp_path) == tmp_path / "run" / "packets00_0000.out"
+    assert get_packets_textsource_mtimes(tmp_path, ["packets00_0000.out"]) == [1000.0]
+
+
 def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
     """An absolute path is not below the default folder, but the message must not raise a ValueError."""
     (tmp_path / "here.txt").write_text("here")
@@ -851,6 +869,19 @@ def test_write_parquet_atomic(tmp_path: Path) -> None:
     pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
     # the temporary partial file must not be left behind
     assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_names_a_read_only_mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read-only mount gives errno EROFS, which is no PermissionError, thus the message came as a traceback."""
+    import errno
+    import tempfile
+
+    def readonly_mkstemp(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, str]:
+        raise OSError(errno.EROFS, "Read-only file system")
+
+    monkeypatch.setattr(tempfile, "mkstemp", readonly_mkstemp)
+    with pytest.raises(PermissionError, match="is read-only"):
+        at.misc.write_parquet_atomic(pl.DataFrame({"a": [1]}), tmp_path / "out.parquet")
 
 
 def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) -> None:
@@ -1126,6 +1157,10 @@ def test_parse_range() -> None:
 
     with pytest.raises(ValueError, match="Bad range"):
         at.misc.parse_range("1-2-3", {})
+
+    # "last-1" means the timestep before the last to a user. A swap gave timesteps 1 to last
+    with pytest.raises(ValueError, match="ends before it starts"):
+        at.misc.parse_range("last-1", {"last": 99})
 
 
 def test_normalize_path_list() -> None:
@@ -1481,9 +1516,8 @@ if __name__ == "__main__":
 
     assert at.misc.parallel_map(square, range(4)) == [0, 1, 4, 9]
 
-    # a free-threading build takes the thread pool for this call as well, thus it starts no process
-    if sys._is_gil_enabled():
-        assert mp.get_start_method() == "spawn", mp.get_start_method()
+    # the pool takes a spawn context of its own, thus the default of the process stays for the code of the user
+    assert mp.get_start_method() == "fork", mp.get_start_method()
     print("OK")
 """,
         encoding="utf-8",
@@ -1768,6 +1802,37 @@ def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
     assert get_mpirankofcell(0, modelpath=modelpath) >= 0
 
 
+def test_the_rank_search_of_many_cells_agrees_with_the_blocks_of_each_rank(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One search gives the rank of every cell, in place of a lookup for each cell.
+
+    The lookup for each cell took 2 to 10 s for the 125 000 cells of a 3D snapshot.
+    """
+    from artistools.misc.modelinfo import get_cellsofmpirank
+    from artistools.misc.modelinfo import get_mpiranks_of_cells
+    from artistools.misc.modelinfo import get_rankassignments
+
+    # this model has modelgridrankassignments.out, thus each rank holds the cells of its own row
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    dfrankassignments = get_rankassignments(modelpath)
+    assert dfrankassignments is not None
+    expected = np.full(at.misc.get_npts_model(modelpath), -1)
+    for rank, nstart, ndo in dfrankassignments.select("rank", "nstart", "ndo").iter_rows():
+        expected[nstart : nstart + ndo] = rank
+    cells = np.arange(len(expected), dtype=np.int64)
+    assert np.array_equal(get_mpiranks_of_cells(modelpath, cells), expected)
+
+    # with no such file, the blocks of get_cellsofmpirank give the rank of each cell. No test model has fewer
+    # ranks than cells, thus 7 ranks for 100 cells give blocks of 15 and 14 cells
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "get_rankassignments", mock.Mock(return_value=None))
+    monkeypatch.setattr(modelinfo, "get_nprocs", mock.Mock(return_value=7))
+    monkeypatch.setattr(modelinfo, "get_npts_model", mock.Mock(return_value=100))
+    ranks = get_mpiranks_of_cells(modelpath, np.arange(100, dtype=np.int64)).tolist()
+    assert sorted(set(ranks)) == list(range(7))
+    assert all(cell in get_cellsofmpirank(rank, modelpath) for cell, rank in enumerate(ranks))
+
+
 def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
     """The test of the command line must give each string the reading that the parser gives it.
 
@@ -1798,19 +1863,28 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
 
 
 def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A missing optional dependency must say how to install it, and not give a bare traceback."""
-    import builtins
+    """A missing optional dependency must say how to install it, and a broken one must give its real cause.
 
-    realimport = builtins.__import__
+    The test patched builtins.__import__, which import_module does not call, thus it passed only when
+    pyvista was not yet imported.
+    """
+    import importlib
+    import sys
 
-    def failing_import(name: str, *importargs: t.Any, **importkwargs: t.Any) -> object:
-        if name.startswith("pyvista"):
-            raise ImportError(name)
-        return realimport(name, *importargs, **importkwargs)
-
-    monkeypatch.setattr(builtins, "__import__", failing_import)
+    # a None entry in sys.modules makes the next import raise ModuleNotFoundError, whatever ran before
+    monkeypatch.setitem(sys.modules, "pyvista", None)
     with pytest.raises(ModuleNotFoundError, match=r"needs pyvista.*artistools\[extras\]"):
         at.misc.import_optional("pyvista")
+
+    # an installed package that fails, e.g. on a missing system library, must not be called missing
+    def broken_import(name: str) -> object:
+        msg = f"{name}: libGL.so.1: cannot open shared object file"
+        raise ImportError(msg)
+
+    monkeypatch.setattr(importlib, "import_module", broken_import)
+    with pytest.raises(ImportError, match=r"installed but did not import: pyvista: libGL"):
+        at.misc.import_optional("pyvista")
+    monkeypatch.undo()
 
     # an installed module comes back as the import statement gives it
     assert at.misc.import_optional("math").sqrt(4.0) == 2.0

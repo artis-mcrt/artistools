@@ -19,6 +19,7 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import parse_cli_args
@@ -152,11 +153,17 @@ def make_hesma_peakmag_dm15_dm40(
             "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
         )
 
+    # a file of the current version names the bin of each row. An older file holds no dirbin column, and
+    # the row number is the bin only in a file of every bin
+    if "dirbin" not in columns and dfviewingangle.height != get_viewingdirectionbincount():
+        exit_with_error(
+            f"{viewinganglefilename} holds no dirbin column, and its {dfviewingangle.height} rows are not every bin",
+            "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
+        )
     outdata = {
         "peakmag": dfviewingangle["peak_mag_polyfit"],
         "dm15": dfviewingangle["deltam15_polyfit"],
-        # the file holds one row for each selected direction bin, and not one row for every bin
-        "angle_bin": dfviewingangle["dirbin"],
+        "angle_bin": dfviewingangle["dirbin"] if "dirbin" in columns else pl.Series(range(dfviewingangle.height)),
     }
     if dm40:
         if "deltam40_polyfit" not in columns:

@@ -682,7 +682,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
     # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6
-    addarg_modelgridindex(parser, default=[], helptext="Model grid cell to plot, or a list such as 4,5,6")
+    addarg_modelgridindex(parser, helptext="Model grid cell to plot, or a list such as 4,5,6")
 
     parser.add_argument(
         "--nogsinet", action="store_true", help="Do not attempt to read GSI Network data even if available"
@@ -721,7 +721,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex else [],
+        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex is not None else [],
         arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,

@@ -382,8 +382,7 @@ def read_modelfile_text(
 
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
-# incorrect, e.g. a new column or a different data type in either one. Version 2: the reader rejects a 3D
-# model with a vmax that does not agree with the cell positions, which a cache of version 1 can hold.
+# incorrect, e.g. a new column or a different data type in either one.
 CACHEVERSION = 1
 
 
@@ -1463,6 +1462,9 @@ def scale_model_to_time(
         modelmeta = {}
 
     modelmeta["t_model_init_days"] = targetmodeltime_days
+    # the cell widths hold positions at t_model, thus they expand with the positions
+    for key in [key for key in modelmeta if key == "wid_init" or key.startswith("wid_init_")]:
+        modelmeta[key] *= timefactor
     modelmeta.setdefault("headercommentlines", []).append(
         f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
     )

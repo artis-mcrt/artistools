@@ -16,6 +16,7 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
+from artistools.misc import exit_with_error
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
@@ -118,6 +119,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     # Step 1) collect packets IDs and select according to arrival time. None selects every element or ion stage
     Z_list = [Z] if Z else None
     ion_stage_list = [decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
+    if ion_stage_list == [-1]:
+        exit_with_error(f"-ionstage {ion_stage_str} is no Roman numeral", "Give the ion stage as e.g. II")
 
     nprocs_read, dfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
         modelpath, dirbin, Z_list, ion_stage_list, wavelen=wavelen, binwidth=binwidth, srII_triplet=srIItriplet

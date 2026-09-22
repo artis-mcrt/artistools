@@ -388,3 +388,37 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
     heatmap = mockimshow.call_args.args[1].T
     assert heatmap.count() == 1
     assert heatmap[0, 25] > 0.0
+
+
+def test_a_position_outside_the_grid_gets_no_cell() -> None:
+    """A packet outside the 3D grid must get no cell, and a packet inside must get its own cell.
+
+    The index truncated toward zero, and the sum of the axis indices had no range check. Thus x = vmax plus
+    a tenth of a cell gave the cell at x = 0 of the next row, and the packet took that cell's Ye, Te and nne.
+    """
+    from artistools.packets.core import get_modelgridindex_expr
+
+    ncoordgrid = 4
+    vmax = 1e9
+    t_model_days = 1.0
+    vwidth = 2 * vmax / ncoordgrid
+    modelmeta = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": vmax,
+        "wid_init": vwidth * t_model_days * 86400.0,
+        "ncoordgridx": ncoordgrid,
+        "ncoordgridy": ncoordgrid,
+        "ncoordgridz": ncoordgrid,
+    }
+    t_s = 86400.0
+    # the first packet is inside cell (x=1, y=0, z=0), the other two are outside the grid on -x and +x
+    velocities_x = [-vmax + 1.5 * vwidth, -vmax - 0.1 * vwidth, vmax + 0.1 * vwidth]
+    dfpackets = pl.DataFrame({
+        "em_posx": [vx * t_s for vx in velocities_x],
+        "em_posy": [(-vmax + 0.5 * vwidth) * t_s] * 3,
+        "em_posz": [(-vmax + 0.5 * vwidth) * t_s] * 3,
+        "em_time": [t_s] * 3,
+    })
+    cells = dfpackets.select(get_modelgridindex_expr("em", modelmeta, pl.LazyFrame()).alias("mgi"))["mgi"].to_list()
+    assert cells == [1, None, None]

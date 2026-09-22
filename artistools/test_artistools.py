@@ -1196,8 +1196,8 @@ def test_get_npts_model(tmp_path: Path) -> None:
 
 
 def test_get_nprocs(tmp_path: Path) -> None:
-    # input.txt: line index 21 (0-indexed, 22nd line) holds nprocs
-    lines = ["placeholder\n"] * 21 + ["4 #nprocs\n"]
+    """The 22nd line that holds a value gives nprocs. ARTIS skips comment and blank lines, and keeps them."""
+    lines = ["# a comment of the user\n", "\n", *(["placeholder\n"] * 21), "4 #nprocs\n"]
     (tmp_path / "input.txt").write_text("".join(lines))
     assert at.get_nprocs(tmp_path) == 4
 
@@ -2413,6 +2413,11 @@ def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
     assert args.specpath == [modelpath]
     assert args.plotviewingangle == [0]
 
+    # -1 is a value, not a flag, thus the folder after it still reaches the positional argument
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-plotviewingangle", "-1", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.plotviewingangle == [-1]
+
     # every folder at the end of the command line reaches the positional argument
     args = parser.parse_args(
         separate_trailing_folders(["plotspectra", "-label", "a", str(modelpath), str(modelpath_classic_3d)])
@@ -2613,6 +2618,11 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     assert parser.parse_args(["plotspectra", "-o/plots/x.pdf"]).outputfile == Path("/plots/x.pdf")
     assert parser.parse_args(["plotspectra", "-t.5"]).timedays == ".5"
     assert parser.parse_args(["plotestimators", "-fpng", "Te"]).format == "png"
+
+    # a joined choice that starts with "-" must not reach argparse as a separate flag
+    assert parser.parse_args(["inputmodel", "makeartismodel1dslicefromcone", "-axis-z"]).axis == "-z"
+    # "=" gives a list option one value alone, thus a joined negative number stays separate from the flag
+    assert parser.parse_args(["plotspectra", "-plotviewingangle-1", "0"]).plotviewingangle == [-1, 0]
 
     # argparse lets the last flag of a group of switches take a value
     args = parser.parse_args(["plotspectra", "-qo", "/plots/x.pdf"])
@@ -2916,3 +2926,60 @@ def test_completions_writes_the_code_to_a_redirect(
     captured = capsys.readouterr()
     assert not captured.out
     assert "To enable tab completion in zsh" in captured.err
+
+
+def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
+    """ARTIS writes the deposition of timestep n into the estimators of timestep n + 1.
+
+    The edep file took the row of timestep n, thus it gave the deposition of the timestep before, and it
+    disagreed with the lbol_edep file of the same export by about 5 % at 200 days.
+    """
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[50])
+
+    datalines = [
+        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
+    ]
+    nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
+    assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)
+
+    # the run wrote no timestep after the last one, thus the file gives zero there and the export goes on
+    lasttimestep = len(at.get_timestep_times(modelpath)) - 1
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep])
+    datalines = [
+        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
+    ]
+    assert float(datalines[0].split()[1]) == 0.0
+
+
+def test_linefluxes_refuse_overlapping_time_bins() -> None:
+    """Overlapping bins gave each shared interval to the last bin, and each bin still divided by its full width.
+
+    Thus the bins [100, 200) and [150, 250) gave the first bin the packets of 100 to 150 days alone.
+    """
+    with pytest.raises(ValueError, match="time bins overlap"):
+        at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 150.0], [200.0, 250.0])
+
+    # bins that meet at an edge are no overlap, in either order
+    at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 200.0], [200.0, 300.0])
+    at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [200.0, 100.0], [300.0, 200.0])
+
+
+def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: Path) -> None:
+    """Each time bin of the emitting regions has its own figure, thus two bins can overlap.
+
+    The command wrote each figure to the one name that -o gives, thus only the last one stayed.
+    """
+    # the test data holds no floers_te_nne.json, thus one reference point stands in for it
+    refdata = (["5"], np.array([5.0]), [{"ne": [5.0], "temp": [5000.0]}])
+    with mock.patch.object(at.plotlinefluxes, "read_te_nne_refdata", return_value=refdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            use_lastemissiontype=True,
+            timebins_tstart=[4.0, 5.0],
+            timebins_tend=[6.0, 7.0],
+            outputfile=tmp_path / "emreg.pdf",
+        )
+
+    assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]

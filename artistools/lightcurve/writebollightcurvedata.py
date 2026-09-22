@@ -22,11 +22,12 @@ from artistools.spectra import read_spec_res
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
-    """Return log10(bolometric luminosity) per direction bin between 5 and 80 days, integrated from the spectra."""
+    """Return log10(bolometric luminosity) per direction bin at each timestep, integrated from the spectra."""
     res_specdata = read_spec_res(modelpath)
     timearray = res_specdata[0].collect_schema().names()[1:]
-    # one pass gives both the time labels and the timesteps they came from, so the two cannot drift apart
-    selected = [(ts, timestr) for ts, timestr in enumerate(timearray) if 5 < float(timestr) < 80]
+    # the light_curve.out mode writes every time, thus this mode does too. A fixed range of 5 to 80 days
+    # dropped every time of a kilonova below 5 days and gave an empty file for a nebular model
+    selected = list(enumerate(timearray))
     lightcurvedata: dict[str, t.Any] = {"time": [timestr for _, timestr in selected]}
     timesteps = [ts for ts, _ in selected]
     luminosities = get_bolometric_luminosities(modelpath, timesteps, dirbins=range(len(res_specdata)))

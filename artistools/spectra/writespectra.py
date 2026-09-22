@@ -9,6 +9,7 @@ import polars as pl
 
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -44,8 +45,8 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
 
     tslast, tmin_d_valid, tmax_d_valid = get_escaped_arrivalrange(modelpath)
 
-    assert tmin_d_valid is not None
-    assert tmax_d_valid is not None
+    if tmin_d_valid is None or tmax_d_valid is None:
+        exit_with_error(f"{modelpath} has no time range in which the spectra are valid, e.g. the run stopped early")
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     lzspectra_of_timestep = [

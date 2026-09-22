@@ -70,12 +70,16 @@ def resolve_time_range(
     """Return the time range of one direction map, with the valid observable range as the default."""
     _, tmin_d_valid, tmax_d_valid = get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
-        print_warning("The observer never gets light from the entire ejecta. Plotting all packets anyway")
-        timemindays, timemaxdays = (
-            dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().row(0)
-        )
-        assert timemindays is not None
-        assert timemaxdays is not None
+        print_warning("The observer never gets light from the entire ejecta. Plotting the packets anyway")
+        # a requested time applies here as well, or each frame of --makegif and -timestep would show every packet
+        if timemindays is None or timemaxdays is None:
+            packettmin, packettmax = (
+                dfpackets.select(tmin=pl.col("t_arrive_d").min(), tmax=pl.col("t_arrive_d").max()).collect().row(0)
+            )
+            assert packettmin is not None
+            assert packettmax is not None
+            timemindays = float(packettmin) if timemindays is None else timemindays
+            timemaxdays = float(packettmax) if timemaxdays is None else timemaxdays
         return float(timemindays), float(timemaxdays)
 
     if timemindays is None:

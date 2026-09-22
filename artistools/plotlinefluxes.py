@@ -139,6 +139,11 @@ def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: S
     arr_binedge_end = np.asarray(arr_tend, dtype=np.float64).copy()
     endsmeetnextstart = np.isclose(arr_binedge_end[:-1], arr_binedge_start[1:], rtol=1e-5, atol=0.0)
     arr_binedge_end[:-1][endsmeetnextstart] = arr_binedge_start[1:][endsmeetnextstart]
+    # the user can give the bins in any order, thus the test compares each bin with the next one in time
+    timeorder = np.argsort(arr_binedge_start)
+    if np.any(arr_binedge_start[timeorder][1:] < arr_binedge_end[timeorder][:-1]):
+        msg = "The time bins overlap, thus a packet in both bins would count in one bin only. Give separate bins"
+        raise ValueError(msg)
 
     # use one cut() on all the edges, because a when() test for each bin made one column for each bin
     edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
@@ -669,9 +674,11 @@ def get_emitting_regions_data(
     # one collect gives all the time bins and features, then the loop filters the eager frame
     dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()
 
+    # each time bin has its own figure, thus two bins can overlap. A bin is half open as in the flux plot, thus
+    # a packet on the edge of two adjacent bins counts in one of them
     emdata: dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]] = {}
-    for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=False):
-        dfpackets_timebin = dfpackets_collected.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="both"))
+    for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend, strict=True):
+        dfpackets_timebin = dfpackets_collected.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left"))
         for feature in emfeatures:
             dfpackets_selected = dfpackets_timebin.filter(pl.col(args.emtypecolumn).is_in(feature.linelistindices))
             emdata[tmid, feature.colname] = {
@@ -689,7 +696,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdata = [read_te_nne_refdata(refdatafilename) for refdatafilename in refdatafilenames]
 
-    times_days: list[float] = ((np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.0).tolist()
+    # the flux plot takes the same mid times, e.g. the logarithmic mid time of a timestep of the model
+    times_days: list[float] = get_timebins(args.modelpath[0], args.timebins_tstart, args.timebins_tend)[2].tolist()
 
     print(f"Chosen times: {times_days}")
 
@@ -701,6 +709,16 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     # the code has the data of every model, thus each figure shows all the models
     args.outputfile = resolve_outputfile(args.outputfile, "emittingregions.pdf")
 
+    # the mid times of short timesteps can agree to 0.1 d, thus the names of the files take the decimals that
+    # keep each name separate
+    ndecimals = next(
+        (
+            ndecimals
+            for ndecimals in range(1, 7)
+            if len({f"{tmid:.{ndecimals}f}" for tmid in times_days}) == len(times_days)
+        ),
+        6,
+    )
     for tmid in times_days:
         print(f"  Plot at {tmid} days")
 
@@ -752,7 +770,11 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
         # one figure holds every model, thus the name of the file joins the tags of all of them
         filetag = "_".join(tag for tag in args.modeltag if tag) or "all"
-        outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=filetag)
+        outputfile = Path(str(args.outputfile).format(timeavg=tmid, modeltag=filetag))
+        # each time bin gives one figure, thus a name with no {timeavg} field gets the time, or each figure
+        # would replace the one before it
+        if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
+            outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
         save_figure(fig, outputfile, format="pdf", args=args)
 
 
@@ -871,7 +893,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # runs out past 10 models, and trim_or_pad fills the rest with None
         ncolors = sum(color is not None for color in args.color)
         msg = (
-            f"-plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
+            f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
             f" but only {ncolors} are set. Pass -color with one value per model"
         )
         raise ValueError(msg)

@@ -1675,8 +1675,8 @@ def test_plotspectra_write_data_names_each_direction_bin(tmp_path: Path) -> None
     )
 
     columns = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ").columns
-    assert sum(column.endswith("_dirbin00") for column in columns) == 1
-    assert sum(column.endswith("_dirbin05") for column in columns) == 1
+    assert sum(column.startswith("f_lambda") and column.endswith("_dirbin00") for column in columns) == 1
+    assert sum(column.startswith("f_lambda") and column.endswith("_dirbin05") for column in columns) == 1
 
 
 def test_get_specpol_data_reads_one_direction_bin() -> None:
@@ -1800,3 +1800,55 @@ def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytes
 
     monkeypatch.chdir(tmp_path / "modelB")
     assert atspectra.read_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize(
+    ("extraargs", "message"),
+    [
+        (["-stokesparam", "Q"], "reads the virtual packet spectra"),
+        (["-stokesparam", "Q", "-plotvspecpol", "0", "--frompackets"], "reads the virtual packet spectra"),
+        (["--showemission", "-timedayslist", "290", "320"], "draws one time"),
+        (["--showemission", "-yvariable", "packetcount"], "has no count of packets"),
+    ],
+)
+def test_plotspectra_refuses_a_quantity_that_the_series_lacks(
+    extraargs: list[str], message: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each of these plots drew the wrong quantity or the wrong time, or it stopped with a missing column.
+
+    -stokesparam Q drew Stokes I for spec.out, an emission plot of -timedayslist drew the first time alone,
+    and -yvariable packetcount stopped an emission plot with ColumnNotFoundError.
+    """
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-t", "300", *extraargs])
+    assert message in capsys.readouterr().err
+
+
+def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:
+    """A -timedayslist of one time names one time, thus an emission plot takes it as -timedays."""
+    outputfile = tmp_path / "emission.pdf"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath_classic_3d], timedayslist=["5"], showemission=True, outputfile=outputfile
+    )
+    assert outputfile.is_file()
+
+
+def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
+    """--write_data must give the values of the plot, and not f_lambda at 1 Mpc alone.
+
+    With --normalised the plot peaked at 1, and the file gave a peak of 2.6e-13.
+    """
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        timedays=300,
+        normalised=True,
+        write_data=True,
+        outputfile=tmp_path / "normalised.pdf",
+    )
+    dfout = pl.read_csv(tmp_path / "normalised.txt", separator=" ")
+    plotted = [column for column in dfout.columns if column.startswith("flux_plotted")]
+    assert len(plotted) == 1
+    assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)

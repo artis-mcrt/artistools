@@ -47,7 +47,6 @@ from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.spectra import get_escape_surface_gamma
-from artistools.spectra import get_specpol_data
 from artistools.spectra import get_spectra
 from artistools.spectra import get_spectrum_at_time
 from artistools.spectra import get_vspecpol_data
@@ -94,6 +93,9 @@ def scan_lightcurve(
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
+        # ARTIS writes 0.0 as 0, thus 100 rows of zero at the start inferred an integer column, and a later
+        # value such as 1.5e+07 then stopped the read
+        schema_overrides={"time_days": pl.Float64, "luminosity_Lsun": pl.Float64, "luminosity_cmf_Lsun": pl.Float64},
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
@@ -284,14 +286,11 @@ def generate_band_lightcurve_data(
         average_over_phi_angle=False,
         average_over_theta_angle=False,
     )
-    if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
+    # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
+    # A vpkt run can have no specpol.out
+    if args.plotvspecpol and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = (
-            get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
-            if dirbin >= 0
-            else get_specpol_data(dirbin=dirbin, modelpath=modelpath)
-        )
-        vspecdata = stokes_params["I"]
+        vspecdata = get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
         timearray = vspecdata.collect_schema().names()[1:]
     else:
         specfilename = (
@@ -650,8 +649,9 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     if lightcurve_data.width == 1:
         lightcurve_data = read_wsv(data_path, comment_prefix="#")
 
-    # m - M = 5log(d) - 5  Get absolute magnitude
-    if "dist_mpc" not in metadata and "z" in metadata:
+    # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
+    # thus the distance from the redshift applies only when the metadata gives neither
+    if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
         metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 

@@ -1906,11 +1906,13 @@ def test_scale_model_to_time_uses_modelmeta() -> None:
     dfmodel_collected = dfmodel.collect()
     rho_before = dfmodel_collected["logrho"].to_numpy().copy()
 
+    # the cell widths are positions at t_model, thus a model that keeps the old widths has cells that overlap
     dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=dfmodel_collected, targetmodeltime_days=targettime, modelmeta=modelmeta.copy()
+        dfmodel=dfmodel_collected, targetmodeltime_days=targettime, modelmeta=modelmeta | {"wid_init_x": 3.0e14}
     )
 
     assert modelmeta_out["t_model_init_days"] == targettime
+    assert modelmeta_out["wid_init_x"] == pytest.approx(6.0e14)
     # homologous expansion by a factor of two drops the density by a factor of eight
     assert dfscaled["logrho"].to_numpy() == pytest.approx(rho_before + math.log10(2.0**-3))
 
@@ -2032,16 +2034,21 @@ def test_opacityfile_uniform_multicell(tmp_path: Path) -> None:
 
 
 def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The energy files must read back with the totals and rate bounds they were written with."""
-    rho = np.array([1.0, 2.0, 3.0])
-    mtot_grams = 1e33
-    at.inputmodel.energyinputfiles.make_energy_files(rho, mtot_grams, tmp_path)
+    """The energy files must read back with the totals and rate bounds they were written with.
+
+    Each cell gets the energy per gram times its mass. A share in proportion to the density gave a shell
+    of a 1D model 0.063 to 16.4 times the intended energy per gram.
+    """
+    cellmass_grams = np.array([1.0e32, 2.0e32, 7.0e32])
+    mtot_grams = float(cellmass_grams.sum())
+    at.inputmodel.energyinputfiles.make_energy_files(cellmass_grams, tmp_path)
 
     etot, energydistribution = at.inputmodel.energyinputfiles.get_etot_fromfile(tmp_path)
-    assert len(energydistribution) == len(rho)
-    # the energy is distributed over the cells in proportion to density
+    assert len(energydistribution) == len(cellmass_grams)
     # the files hold six significant figures, thus the shares agree only to that precision
-    assert np.allclose(energydistribution["cell_energy"].to_numpy() / etot, rho / rho.sum(), rtol=1e-5)
+    assert np.allclose(
+        energydistribution["cell_energy"].to_numpy() / etot, cellmass_grams / mtot_grams, rtol=1e-5, atol=0.0
+    )
 
     # the analytic integral of 5e9 t^-1.3 erg/g/s over the seconds between 1e-4 days and 50 days.
     # An integration over the times in days gave a total that was 2.8 per cent too small
@@ -2535,6 +2542,21 @@ def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
     assert np.allclose(remap_mass_weighted_quantity(dfmodel, "Ye", *remap_args), expected_ye, rtol=1e-12, atol=0.0)
 
 
+def test_remap_mass_weighted_quantity_gives_zero_for_an_empty_coarse_cell() -> None:
+    """A coarse cell in the empty corner of a model holds no mass, thus its average is zero and not an error."""
+    from artistools.inputmodel.from_e2e_model import remap_mass_weighted_quantity
+
+    red_fact, n_r_new, n_z_new = 2, 2, 1
+    n_r_old = red_fact * n_r_new
+    masses = np.array([0.0, 0.0, 1.0, 3.0, 0.0, 0.0, 1.0, 1.0])
+    dfmodel = pl.DataFrame({"mass_g": masses, "Ye": np.array([0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4])})
+
+    ye = remap_mass_weighted_quantity(dfmodel, "Ye", red_fact, n_r_new, n_z_new, n_r_old, 1.0, 1.0)
+
+    assert ye[0] == 0.0
+    assert ye[1] == pytest.approx((0.3 * 1.0 + 0.4 * 3.0 + 0.3 * 1.0 + 0.4 * 1.0) / 6.0)
+
+
 def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
     """A cache with a current stamp but an unreadable modelmeta_json must be regenerated from model.txt."""
     modelfile = tmp_path / "model.txt"
@@ -2581,6 +2603,13 @@ def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixtu
     assert "naive plan" not in output
     # a collected frame prints its shape, and the one cell gives one row
     assert "shape: (1," in output
+
+
+def test_plotinitialcomposition_reads_the_model_folder_last(tmp_path: Path) -> None:
+    """The model folder is the last positional argument, and rho is the default variable."""
+    at.inputmodel.plotinitialcomposition.main(argsraw=["-o", str(tmp_path), str(modelpath_3d)])
+
+    assert (tmp_path / "plotcomposition_rho.pdf").is_file()
 
 
 def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None:
@@ -2998,3 +3027,67 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     assert np.allclose(plotted_x, expected["A"])
     assert np.allclose(plotted_y, expected["massfraction"])
     assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
+
+
+def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A 3D grid of an equatorially symmetric model holds both halves, and --nodyn removes the dynamical ejecta.
+
+    The 3D mapping scaled each isotope with the mass of every tracer, thus the excluded Zn56 came back. It
+    scaled the grid to the mass of one half, and map_to_artis mirrored the 3D arrays, which stopped it.
+    """
+    from artistools.constants import C_cm_per_s
+    from artistools.constants import Msun_to_g
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import map_to_artis
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=2)
+    ntraj = 40
+    ntimes = 8
+    state = np.where(np.arange(ntraj) < 20, -1.0, 0.0)
+    # the dynamical tracers hold Zn56 alone, and the torus tracers hold He4 alone
+    numberfractions = np.zeros((ntraj, 2))
+    numberfractions[state == -1, 1] = 1.0 / 56
+    numberfractions[state == 0, 0] = 1.0 / 4
+    datpath = tmp_path / "e2emodel.npz"
+    isopath = tmp_path / "iso_table.npy"
+    np.savez(
+        datpath,
+        # every polar angle is below pi/2, thus the model has equatorial symmetry
+        pos=np.column_stack([rng.uniform(0.05, 0.3, ntraj), rng.uniform(0.2, 1.4, ntraj)]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=state,
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=numberfractions,
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(isopath, np.array([[2, 2], [26, 30]]))
+
+    vmax_on_c = 0.4
+    dims = np.array([6, 6, 6])
+    x3d, y3d, z3d, rhoint, xint, iso, q, ye, bs, eqsymfac, _ = get_grid(
+        datpath, isopath, vmax_on_c, 3, dims, nodynej=True, nohmns=False, notorus=False, no_nu_trapping=False
+    )
+    assert eqsymfac == 2
+
+    # the mapped data and the tracer data must print one total mass, or a correct mapping looks wrong
+    printedmasses = [
+        float(line.split(":")[1]) for line in capsys.readouterr().out.splitlines() if line.startswith("total mass  ")
+    ]
+    assert printedmasses == pytest.approx([2 * 20 * 1e-3] * 2, rel=1e-6)
+
+    cellvolume = (2 * vmax_on_c * C_cm_per_s * t_model_init_s / dims[0]) ** 3
+    gridmass_msun = (rhoint * cellvolume).sum() / Msun_to_g
+    # 20 torus tracers of 1e-3 Msun each, for both halves of the grid
+    assert gridmass_msun == pytest.approx(2 * 20 * 1e-3, rel=1e-6)
+    zn56mass_msun = (xint[1] * rhoint * cellvolume).sum() / Msun_to_g
+    assert zn56mass_msun < 1e-20
+
+    dfmodel, _, modelmeta = map_to_artis(
+        3, dims, vmax_on_c, rhoint, xint, iso, q, ye, eqsymfac, x3d=x3d, y3d=y3d, z3d=z3d, bin_state=bs
+    )
+    assert dfmodel.height == dims.prod()
+    assert "wid_init" in modelmeta
