@@ -386,7 +386,7 @@ def read_modelfile_text(
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
 # incorrect, e.g. a new column or a different data type in either one. Version 2: the reader rejects a 3D
 # model with a vmax that does not agree with the cell positions, which a cache of version 1 can hold.
-CACHEVERSION = 2
+CACHEVERSION = 1
 
 
 def read_parquet_cache(
