@@ -23,6 +23,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 
 
@@ -75,6 +76,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Tools to create an ARTIS input model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    modelpath_given = bool(args.modelpath)
     args.modelpath = normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
@@ -125,9 +127,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makemodelfromgriddata:
         print(args)
+        # before the -o argument existed, -modelpath gave the output folder. The command keeps that
+        # behaviour when the command line holds no -o.
+        outputpath = args.outputfile
+        if Path(args.outputfile) == Path() and modelpath_given:
+            outputpath = args.modelpath[0]
+            print_warning(f"-modelpath sets the output folder to {outputpath}. Use -o for the output folder.")
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=args.outputfile,
+            outputpath=outputpath,
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )
