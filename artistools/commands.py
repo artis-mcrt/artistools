@@ -138,7 +138,7 @@ subcommandtree: CommandTree = {
     "completions": CommandSpec(
         "completions",
         helptext="Give the instructions for tab completion.",
-        note="With a shell name, e.g. zsh, the command prints the code that the startup file of that shell reads.",
+        note="With a shell name, e.g. zsh, the command prints the code that the instructions write to a file.",
     ),
     "deposition": CommandSpec(
         "estimators.deposition",

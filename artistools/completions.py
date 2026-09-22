@@ -1,10 +1,10 @@
 """Give the instructions for tab completion, or print the tab-completion code for a shell.
 
-With no shell, the command prints the line to put in the startup file of each shell. With a shell, it
-prints the code that the line reads, e.g. eval "$(artistools completions zsh)" in ~/.zshrc.
+With no shell, the command prints the instructions for the shell in the SHELL environment variable.
+With a shell, it prints the code, e.g. artistools completions zsh > ~/.zfunc/_artistools.
 
 The code asks artistools for the completions at each press of the Tab key, thus a new argument needs
-no other step. Only a new console script needs the code again.
+no other step. Only a new console script needs the file again.
 """
 
 import argparse
@@ -17,13 +17,42 @@ from types import MappingProxyType
 
 from artistools.misc import parse_cli_args
 
-# the startup file of each shell, and the line in it that reads the code
-STARTUPLINES: Mapping[str, tuple[str, str]] = MappingProxyType({
-    "zsh": ("~/.zshrc, after the line that runs compinit", 'eval "$(artistools completions zsh)"'),
-    "bash": ("~/.bashrc", 'eval "$(artistools completions bash)"'),
-    "fish": ("~/.config/fish/config.fish", "artistools completions fish | source"),
-    "tcsh": ("~/.tcshrc", "eval `artistools completions tcsh`"),
-    "powershell": ("$PROFILE", "artistools completions powershell | Out-String | Invoke-Expression"),
+# zsh and fish load a file from a known folder at each start. The other shells need one line in the
+# startup file that reads the file
+INSTRUCTIONS: Mapping[str, str] = MappingProxyType({
+    "zsh": """\
+Run these commands:
+    mkdir -p ~/.zfunc
+    artistools completions zsh > ~/.zfunc/_artistools
+
+Then add this line to ~/.zshrc before the line that runs compinit:
+    fpath=(~/.zfunc $fpath)
+zsh then loads the file at each start. The line must put ~/.zfunc first, because zsh has a
+completion for a different at command, and compinit keeps the first one that it finds.
+If the Tab key gives no completions in a new shell, delete ~/.zcompdump and start a new shell again.""",
+    "bash": """\
+Run this command:
+    artistools completions bash > ~/.artistools-completion.bash
+
+Then add this line to ~/.bashrc:
+    source ~/.artistools-completion.bash""",
+    "fish": """\
+Run this command:
+    artistools completions fish > ~/.config/fish/conf.d/artistools.fish
+
+fish loads the file at the next start.""",
+    "tcsh": """\
+Run this command:
+    artistools completions tcsh > ~/.artistools-completion.tcsh
+
+Then add this line to ~/.tcshrc:
+    source ~/.artistools-completion.tcsh""",
+    "powershell": """\
+Run this command:
+    artistools completions powershell > ~/artistools-completion.ps1
+
+Then add this line to $PROFILE:
+    . ~/artistools-completion.ps1""",
 })
 
 
@@ -37,25 +66,21 @@ def get_completion_code(shell: str) -> str:
     return argcomplete.shellcode([*DISPATCHERSCRIPTS, *sorted(get_script_subcommands())], shell=shell)
 
 
-def get_instructions() -> str:
-    """Return the instructions to enable tab completion, with the shell of the user first."""
-    usershell = Path(os.environ.get("SHELL", "")).name
-    shells = sorted(STARTUPLINES, key=lambda shell: shell != usershell)
-    lines = ["To enable tab completion, add one line to the startup file of your shell.", ""]
-    for shell in shells:
-        startupfile, startupline = STARTUPLINES[shell]
-        lines += [
-            f"{shell}{' (your shell)' if shell == usershell else ''}: in {startupfile}, add",
-            f"    {startupline}",
-            "",
-        ]
-    lines += [
-        "The eval line runs artistools at each start of the shell. For a faster start, write the code to a",
-        "file one time, and source that file in place of the line. Write the file again after an update that",
-        "adds a console script, e.g.:",
-        f"    artistools completions {shells[0]} > ~/.artistools-completion.{shells[0]}",
-    ]
-    return "\n".join(lines)
+def get_instructions(shell: str) -> str:
+    """Return the instructions to enable tab completion in a shell, or in every shell for an unknown name."""
+    if shell not in INSTRUCTIONS:
+        return "\n\n".join(get_instructions(knownshell) for knownshell in INSTRUCTIONS)
+
+    othershells = [othershell for othershell in INSTRUCTIONS if othershell != shell]
+    return "\n".join([
+        f"To enable tab completion in {shell}:",
+        "",
+        INSTRUCTIONS[shell],
+        "",
+        "Write the file again after an update of artistools that adds a console script.",
+        f"For a different shell ({', '.join(othershells)}), give its name in SHELL, e.g.:",
+        f"    SHELL={othershells[0]} artistools completions",
+    ])
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -63,7 +88,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "shell",
         nargs="?",
-        choices=tuple(STARTUPLINES),
+        choices=tuple(INSTRUCTIONS),
         help="Shell to print the code for. With no shell, the command prints the instructions",
     )
 
@@ -71,4 +96,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Give the instructions for tab completion, or print the code for the given shell."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    print(get_completion_code(args.shell) if args.shell else get_instructions())
+    if args.shell:
+        print(get_completion_code(args.shell))
+    else:
+        print(get_instructions(Path(os.environ.get("SHELL", "")).name))
