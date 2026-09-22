@@ -94,20 +94,9 @@ Issues = "https://github.com/artis-mcrt/artistools/issues"
 [project.scripts]
 at = 'artistools.__main__:main'
 artistools = 'artistools.__main__:main'
-makeartismodel1dslicefromcone = 'artistools.__main__:main'
-makeartismodel = 'artistools.__main__:main'
-plotartisdensity = 'artistools.__main__:main'
 plotartisestimators = 'artistools.__main__:main'
 plotartislightcurve = 'artistools.__main__:main'
-plotartislinefluxes = 'artistools.__main__:main'
-plotartismacroatom = 'artistools.__main__:main'
-plotartisnltepops = 'artistools.__main__:main'
-plotartisnonthermal = 'artistools.__main__:main'
-plotartisradfield = 'artistools.__main__:main'
 plotartisspectrum = 'artistools.__main__:main'
-plotartistransitions = 'artistools.__main__:main'
-plotartisinitialcomposition = 'artistools.__main__:main'
-plotartisviewingangles = 'artistools.__main__:main'
 
 [tool.cibuildwheel]
 build-frontend = "uv"
