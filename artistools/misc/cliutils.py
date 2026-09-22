@@ -165,8 +165,9 @@ def separate_trailing_folders(argsraw: "Sequence[str] | None") -> list[str]:
 
     start = len(tokens) - count
     # a flag in front of the folders takes them as its own values, e.g. "-modelpath mymodel". The
-    # separator would leave that option with no value at all
-    if tokens[start - 1].startswith("-"):
+    # separator would leave that option with no value at all. A negative number such as the -2 of
+    # "-plotviewingangle -2 mymodel" is a value and not a flag
+    if tokens[start - 1].startswith("-") and not re.match(r"-\.?\d", tokens[start - 1]):
         return tokens
 
     return [*tokens[:start], "--", *tokens[start:]]
@@ -1223,6 +1224,10 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
     end: int = start if len(parts) == 1 else parts[1]
 
     if start > end:
+        # "last-1" reads as "the timestep before the last", thus a swap would select almost the whole run
+        if any(part in dictvars for part in strparts):
+            msg = f"The range '{rng}' ends before it starts. Give the two ends as numbers, e.g. 40-45"
+            raise ValueError(msg)
         end, start = start, end
 
     return range(start, end + 1)

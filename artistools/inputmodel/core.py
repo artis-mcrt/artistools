@@ -382,8 +382,7 @@ def read_modelfile_text(
 
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
-# incorrect, e.g. a new column or a different data type in either one. Version 2: the reader rejects a 3D
-# model with a vmax that does not agree with the cell positions, which a cache of version 1 can hold.
+# incorrect, e.g. a new column or a different data type in either one.
 CACHEVERSION = 1
 
 

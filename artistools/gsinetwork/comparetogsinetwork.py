@@ -721,7 +721,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex else [],
+        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex is not None else [],
         arr_species=args.species,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,

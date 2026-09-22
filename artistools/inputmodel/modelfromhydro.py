@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +25,7 @@ from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontribu
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
@@ -103,12 +103,10 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     pathtogriddata = Path(pathtogriddata)
     snapshotinfofiles = list(pathtogriddata.glob("*_info.dat*"))
     if not snapshotinfofiles:
-        print("No info file found for dumpstep")
-        sys.exit(1)
+        exit_with_error(f"{pathtogriddata} holds no *_info.dat file of the snapshot")
 
     if len(snapshotinfofiles) > 1:
-        print("Too many sfho_info.dat files found")
-        sys.exit(1)
+        exit_with_error(f"{pathtogriddata} holds more than one *_info.dat file of the snapshot")
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
@@ -125,8 +123,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
         print(f"  time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s")
 
     else:
-        print("Could not find snapshot info file to get simulation time")
-        sys.exit(1)
+        exit_with_error("Could not find the snapshot info file that gives the simulation time")
 
     return simulation_end_time_geomunits, mergertime_geomunits
 
@@ -176,8 +173,7 @@ def read_griddat_file(
     )
 
     if ngrid != len(griddata["inputcellid"]):
-        print("length of file and ngrid don't match")
-        sys.exit(1)
+        exit_with_error(f"grid.dat holds {len(griddata['inputcellid'])} cells, but its header gives {ngrid}")
 
     t_model_sec = (
         (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
@@ -317,7 +313,7 @@ def makemodelfromgriddata(
         modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / day_to_s)
         assert dfgridcontributions is not None, (
-            "gridcontributions.txt is required to set abundances from trajectories. Run artistools maptogrid"
+            "gridcontributions.txt is required to set abundances from trajectories. Run artistools inputmodel maptogrid"
         )
         (dfmodel, dfelabundances, dfgridcontributions) = add_abundancecontributions(
             dfgridcontributions=dfgridcontributions,
@@ -411,7 +407,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file():
-        msg = "grid.dat is required. Run artistools maptogrid"
+        msg = "grid.dat is required. Run artistools inputmodel maptogrid"
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)

@@ -240,8 +240,13 @@ def get_nprocs(modelpath: Path | str) -> int:
 
 @lru_cache(maxsize=8)
 def get_nprocs_cached(modelpath: Path) -> int:
-    """Return the number of MPI processes of the model at an absolute path."""
-    return int(get_inputfilepath(modelpath).read_text(encoding="utf-8").split("\n")[21].split("#")[0])
+    """Return the number of MPI processes of the model at an absolute path.
+
+    ARTIS counts only the lines that hold a value, and it keeps comment lines when it rewrites input.txt.
+    """
+    lines = get_inputfilepath(modelpath).read_text(encoding="utf-8").splitlines()
+    valuelines = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    return int(valuelines[21].split("#")[0])
 
 
 def get_inputparams(modelpath: Path | str) -> dict[str, t.Any]:

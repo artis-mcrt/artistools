@@ -4,7 +4,6 @@ import argparse
 import contextlib
 import itertools
 import math
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -578,9 +577,8 @@ def plot_populations_with_time_or_velocity(
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
-        if not args.modelgridindex:
-            print("Please specify modelgridindex")
-            sys.exit(1)
+        if args.modelgridindex is None:
+            exit_with_error("-x time needs one cell. Give it with -modelgridindex")
 
         modelgridindex = get_single_modelgridindex(args.modelgridindex)
         assert modelgridindex is not None, "the branch above stops when no cell is given"

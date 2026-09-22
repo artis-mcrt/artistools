@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import math
-import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -257,7 +256,11 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     # locals, not a write-back onto args: this function runs once for each model, and a range that
     # one model resolved would then reach the next one. get_time_range refuses a timemin that sits
     # after the last timestep, thus it dropped a shorter model and printed one line
-    (_, _, timemin, timemax) = get_time_range(modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+    (timestepmin, timestepmax, timemin, timemax) = get_time_range(
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
+    )
+    if timestepmin == timestepmax == -1:
+        exit_with_error(f"The time range selects no timestep of {modelpath}")
     assert timemin is not None
     assert timemax is not None
 
@@ -625,11 +628,10 @@ def plot_artis_spectrum(
             if vpkt_config["time_limits_enabled"] and (
                 timemin < vpkt_config["initial_time"] or timemax > vpkt_config["final_time"]
             ):
-                print(
-                    f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
-                    f"end time {vpkt_config['final_time']} days"
+                exit_with_error(
+                    f"The time range {timemin:.2f} to {timemax:.2f} days is outside the virtual packets, which "
+                    f"cover {vpkt_config['initial_time']} to {vpkt_config['final_time']} days"
                 )
-                sys.exit(1)
 
             viewinganglespectra = {
                 dirbin: get_vspecpol_spectrum(
@@ -873,7 +875,7 @@ def make_spectrum_plot(
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
-                print_warning("the filter functions plot normalised values, thus give -normalised as well")
+                print_warning("the filter functions plot normalised values, thus give --normalised as well")
             plot_filter_functions(axis)
 
         # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
@@ -1943,7 +1945,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
 
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
-        "--plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
+        "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         f"-groupby {args.groupby}": args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),

@@ -1127,6 +1127,10 @@ def test_parse_range() -> None:
     with pytest.raises(ValueError, match="Bad range"):
         at.misc.parse_range("1-2-3", {})
 
+    # "last-1" means the timestep before the last to a user. A swap gave timesteps 1 to last
+    with pytest.raises(ValueError, match="ends before it starts"):
+        at.misc.parse_range("last-1", {"last": 99})
+
 
 def test_normalize_path_list() -> None:
     assert at.misc.normalize_path_list("a/b") == [Path("a/b")]
@@ -1481,9 +1485,8 @@ if __name__ == "__main__":
 
     assert at.misc.parallel_map(square, range(4)) == [0, 1, 4, 9]
 
-    # a free-threading build takes the thread pool for this call as well, thus it starts no process
-    if sys._is_gil_enabled():
-        assert mp.get_start_method() == "spawn", mp.get_start_method()
+    # the pool takes a spawn context of its own, thus the default of the process stays for the code of the user
+    assert mp.get_start_method() == "fork", mp.get_start_method()
     print("OK")
 """,
         encoding="utf-8",
@@ -1798,19 +1801,28 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
 
 
 def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A missing optional dependency must say how to install it, and not give a bare traceback."""
-    import builtins
+    """A missing optional dependency must say how to install it, and a broken one must give its real cause.
 
-    realimport = builtins.__import__
+    The test patched builtins.__import__, which import_module does not call, thus it passed only when
+    pyvista was not yet imported.
+    """
+    import importlib
+    import sys
 
-    def failing_import(name: str, *importargs: t.Any, **importkwargs: t.Any) -> object:
-        if name.startswith("pyvista"):
-            raise ImportError(name)
-        return realimport(name, *importargs, **importkwargs)
-
-    monkeypatch.setattr(builtins, "__import__", failing_import)
+    # a None entry in sys.modules makes the next import raise ModuleNotFoundError, whatever ran before
+    monkeypatch.setitem(sys.modules, "pyvista", None)
     with pytest.raises(ModuleNotFoundError, match=r"needs pyvista.*artistools\[extras\]"):
         at.misc.import_optional("pyvista")
+
+    # an installed package that fails, e.g. on a missing system library, must not be called missing
+    def broken_import(name: str) -> object:
+        msg = f"{name}: libGL.so.1: cannot open shared object file"
+        raise ImportError(msg)
+
+    monkeypatch.setattr(importlib, "import_module", broken_import)
+    with pytest.raises(ImportError, match=r"installed but did not import: pyvista: libGL"):
+        at.misc.import_optional("pyvista")
+    monkeypatch.undo()
 
     # an installed module comes back as the import statement gives it
     assert at.misc.import_optional("math").sqrt(4.0) == 2.0

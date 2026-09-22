@@ -1404,8 +1404,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=str,
         nargs="+",
         help=(
-            "Choose filter e.g. bol U B V R I. Default B. "
-            "filter names are not case sensitive e.g. sloan-r is not r, it is rs"
+            "Plot the light curves of these bands, e.g. U B V R I, or bol for bolometric. With no -filter the "
+            "command plots the bolometric light curve. The names are case sensitive, e.g. sloan-r is rs"
         ),
     )
 

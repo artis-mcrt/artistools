@@ -2059,14 +2059,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-readonlymgi",
         default=False,
         choices=["alongaxis", "cone"],
-        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
+        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with -axis",
     )
 
     parser.add_argument(
         "-axis",
         default="+z",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+        help="Choose an axis for use with -readonlymgi. Hint: for negative use e.g. -axis=-z",
     )
 
     parser.add_argument(

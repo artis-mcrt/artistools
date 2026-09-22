@@ -1,7 +1,6 @@
 """Measure and plot how peak magnitude, rise time, and decline rate vary with viewing angle."""
 
 import argparse
-import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -162,11 +161,9 @@ def calculate_peak_time_mag_deltam15(
 ) -> None:
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
-        print(
-            "Trying to calculate peak time / dm15 / rise time with no time range. "
-            "This will give a stupid result. Specify args.timemin and args.timemax"
+        exit_with_error(
+            "The peak time, the rise time and delta m15 need a time range for the fit", "Give -timemin and -timemax"
         )
-        sys.exit(1)
     print_warning(
         "Both methods that can be used to fit model light curves to get "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
@@ -503,8 +500,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
         # Get brightness in second band at time of peak in first band
         if len(data[f"time_{bands[0]}max"]) != 100:
-            print(f"All 100 angles are not in file {datafilename}. Quitting")
-            sys.exit(1)
+            exit_with_error(f"{datafilename} does not hold all 100 direction bins")
 
         second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(data, bands, modelpath, args)
 

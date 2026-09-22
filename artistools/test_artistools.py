@@ -1196,8 +1196,8 @@ def test_get_npts_model(tmp_path: Path) -> None:
 
 
 def test_get_nprocs(tmp_path: Path) -> None:
-    # input.txt: line index 21 (0-indexed, 22nd line) holds nprocs
-    lines = ["placeholder\n"] * 21 + ["4 #nprocs\n"]
+    """The 22nd line that holds a value gives nprocs. ARTIS skips comment and blank lines, and keeps them."""
+    lines = ["# a comment of the user\n", "\n", *(["placeholder\n"] * 21), "4 #nprocs\n"]
     (tmp_path / "input.txt").write_text("".join(lines))
     assert at.get_nprocs(tmp_path) == 4
 
@@ -2413,6 +2413,11 @@ def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
     assert args.specpath == [modelpath]
     assert args.plotviewingangle == [0]
 
+    # -1 is a value, not a flag, thus the folder after it still reaches the positional argument
+    args = parser.parse_args(separate_trailing_folders(["plotspectra", "-plotviewingangle", "-1", str(modelpath)]))
+    assert args.specpath == [modelpath]
+    assert args.plotviewingangle == [-1]
+
     # every folder at the end of the command line reaches the positional argument
     args = parser.parse_args(
         separate_trailing_folders(["plotspectra", "-label", "a", str(modelpath), str(modelpath_classic_3d)])
@@ -2613,6 +2618,9 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     assert parser.parse_args(["plotspectra", "-o/plots/x.pdf"]).outputfile == Path("/plots/x.pdf")
     assert parser.parse_args(["plotspectra", "-t.5"]).timedays == ".5"
     assert parser.parse_args(["plotestimators", "-fpng", "Te"]).format == "png"
+
+    # a joined choice that starts with "-" must not reach argparse as a separate flag
+    assert parser.parse_args(["inputmodel", "makeartismodel1dslicefromcone", "-axis-z"]).axis == "-z"
 
     # argparse lets the last flag of a group of switches take a value
     args = parser.parse_args(["plotspectra", "-qo", "/plots/x.pdf"])

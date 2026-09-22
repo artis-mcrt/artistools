@@ -19,6 +19,7 @@ from artistools.misc import addarg_action
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import require_action
@@ -265,8 +266,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     else:
         if args.trajthermofile is None:
-            print("ERROR: fromtrajectory requires -trajthermofile")
-            raise SystemExit(1)
+            exit_with_error("fromtrajectory needs -trajthermofile")
         result = energy_from_rprocess_calculation(read_trajectory_thermo(args.trajthermofile), get_rate=True)
         assert isinstance(result, tuple)
         dftimes_and_rate, e_tot = result

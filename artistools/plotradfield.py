@@ -428,7 +428,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     timesteplast = len(get_timestep_times(modelpath)) - 1
     if args.timedays:
         timesteplist = [get_timestep_of_timedays(modelpath, args.timedays)]
-    elif args.timestep:
+    elif args.timestep is not None:
         timesteplist = parse_range_list(args.timestep, dictvars={"last": timesteplast})
     else:
         print("Using last timestep.")

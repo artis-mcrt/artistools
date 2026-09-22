@@ -1044,9 +1044,13 @@ def write_parquet_atomic(
     except FileNotFoundError:
         deststat = None
 
-    fd, partialfilename = tempfile.mkstemp(
-        dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
-    )
+    try:
+        fd, partialfilename = tempfile.mkstemp(
+            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
+        )
+    except PermissionError as exc:
+        msg = f"artistools cannot write its cache {parquetfilepath.name}, because the folder {parquetfilepath.parent} is read-only"
+        raise PermissionError(msg) from exc
     os.close(fd)
     partialfilepath = Path(partialfilename)
     # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a

@@ -871,7 +871,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # runs out past 10 models, and trim_or_pad fills the rest with None
         ncolors = sum(color is not None for color in args.color)
         msg = (
-            f"-plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
+            f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
             f" but only {ncolors} are set. Pass -color with one value per model"
         )
         raise ValueError(msg)
