@@ -606,7 +606,7 @@ def peakmag_risetime_declinerate_init(
 
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, _ = parse_directionbin_args(modelpath, args)
-        if args.plotviewingangle and wants_angle_averaged_data(args):
+        if (args.plotviewingangle or args.plotvspecpol) and wants_angle_averaged_data(args):
             # the angle-averaged modes fit the light curve of dirbin -1 alone. Thus a list of the bins
             # would give the scatter plot one angle-averaged point for each bin. The per-direction-bin
             # export keeps the parsed direction bins
@@ -629,6 +629,9 @@ def peakmag_risetime_declinerate_init(
                 if directionresolved
                 else scan_lightcurve(lcpath)
             )
+            # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
+            if directionresolved and -1 in dirbins:
+                lcdataframes[-1] = scan_lightcurve(find_lightcurve_file(modelpath))[-1]
             # scan_lightcurve slices one scan of the file. Thus one collect_all parses it one time for
             # every direction bin, in place of one parse for each bin
             lazyplans = [

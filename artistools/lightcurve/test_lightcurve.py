@@ -2098,3 +2098,45 @@ def test_band_residual_panel_takes_one_filter(
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
         assert "--residuals applies to a plot of one frame" in capsys.readouterr().err
+
+
+def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A distance modulus in the metadata is a measured value, thus it beats a distance from the redshift.
+
+    iPTF13ebh gives dist_modulus 33.63 and z 0.0133. The reader took 57.54 Mpc from z (a modulus of 33.80),
+    thus the points were 0.17 mag too bright.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "iPTF13ebh.dat").write_text("time,magnitude,band\n56610.0,15.0,B\n", encoding="utf-8")
+
+    dfband, _ = at.lightcurve.core.read_reflightcurve_band_data("iPTF13ebh.dat")
+
+    assert dfband["magnitude"].item() == pytest.approx(15.0 - 33.63, rel=1e-9)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_of_the_angle_average_and_a_bin(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The angle average (-1) and a direction bin in one plot must both come from the ARTIS output files.
+
+    light_curve_res.out holds the bins 0 to 99 alone, thus -plotviewingangle -1 0 stopped with KeyError: -1.
+    """
+    outputfile = tmp_path / "lc.pdf"
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath_classic_3d], plotviewingangle=[-1, 0], outputfile=outputfile)
+
+    assert outputfile.is_file()
+    assert mockplot.call_count >= 2
+
+
+def test_scan_lightcurve_reads_many_leading_zeros(tmp_path: Path) -> None:
+    """ARTIS writes 0.0 as 0, thus a gamma-ray light curve can start with more than 100 rows of 0.
+
+    polars inferred an integer column from the first 100 rows, and the first real value stopped the read.
+    """
+    rows = [f"{0.1 * (index + 1):.2f} 0 0" for index in range(120)] + ["12.10 1.5e+07 1.4e+07"]
+    lcfile = tmp_path / "gamma_light_curve.out"
+    lcfile.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    dflc = at.lightcurve.core.scan_lightcurve(lcfile)[-1].collect()
+
+    assert dflc.height == 121
+    assert dflc["luminosity_Lsun"][-1] == pytest.approx(1.5e7, rel=1e-9)

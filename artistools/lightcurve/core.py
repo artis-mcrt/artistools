@@ -94,6 +94,9 @@ def scan_lightcurve(
         separator=" ",
         has_header=False,
         new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
+        # ARTIS writes 0.0 as 0, thus 100 rows of zero at the start inferred an integer column, and a later
+        # value such as 1.5e+07 then stopped the read
+        schema_overrides={"time_days": pl.Float64, "luminosity_Lsun": pl.Float64, "luminosity_cmf_Lsun": pl.Float64},
     )
     if "_res" in Path(filepath).stem:
         # get a dict of dfs with light curves at each viewing direction bin
@@ -650,8 +653,9 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     if lightcurve_data.width == 1:
         lightcurve_data = read_wsv(data_path, comment_prefix="#")
 
-    # m - M = 5log(d) - 5  Get absolute magnitude
-    if "dist_mpc" not in metadata and "z" in metadata:
+    # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
+    # thus the distance from the redshift applies only when the metadata gives neither
+    if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
         metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 

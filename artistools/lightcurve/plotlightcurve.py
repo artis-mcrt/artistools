@@ -423,7 +423,9 @@ def plot_artis_lightcurve(
 
     linelabel_is_custom = linelabel is not None
     assert "label" not in plotkwargs, "label is already set in plotkwargs"
-    linelabel = linelabel or get_model_name(modelpath)
+    # an empty label hides the series in the legend, thus only a label that the user did not give takes the name
+    if linelabel is None:
+        linelabel = get_model_name(modelpath)
     assert linelabel is not None
     if escape_type == "TYPE_GAMMA":
         linelabel += r" $\gamma$"
@@ -475,6 +477,11 @@ def plot_artis_lightcurve(
             return None
 
         lcdataframes = scan_lightcurve(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+        # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
+        if -1 in dirbins and -1 not in lcdataframes:
+            lcdataframes[-1] = scan_lightcurve(
+                find_lightcurve_file(modelpath, directionresolved=False, gamma=escape_type == "TYPE_GAMMA")
+            )[-1]
 
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
@@ -858,7 +865,8 @@ def make_lightcurve_plot(
     if args.plotthermalisation:
         assert figtherm is not None
 
-        filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
+        # a replace of ".pdf" left a name such as lc.png unchanged, thus the second figure replaced the first
+        filenameout2 = Path(filenameout).with_stem(f"{Path(filenameout).stem}_thermalisation")
         save_figure(figtherm, filenameout2, format="pdf", args=args)
 
 

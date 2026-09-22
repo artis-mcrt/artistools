@@ -155,8 +155,9 @@ def make_hesma_peakmag_dm15_dm40(
     outdata = {
         "peakmag": dfviewingangle["peak_mag_polyfit"],
         "dm15": dfviewingangle["deltam15_polyfit"],
-        # the file holds one row for each selected direction bin, and not one row for every bin
-        "angle_bin": dfviewingangle["dirbin"],
+        # a file of the current version names the bin of each row. An older file holds no dirbin column and
+        # one row for each bin in order, thus the old exporter numbered the rows
+        "angle_bin": dfviewingangle["dirbin"] if "dirbin" in columns else pl.Series(range(dfviewingangle.height)),
     }
     if dm40:
         if "deltam40_polyfit" not in columns:
