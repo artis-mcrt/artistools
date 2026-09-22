@@ -345,3 +345,15 @@ def test_nltepops_subplot_blocks_do_not_overlap() -> None:
 
             # make_singletimestep_plot builds this many subplots
             assert covered == list(range(ncells * nionstages)), (ncells, nionstages)
+
+
+def test_plotnltepops_reads_the_folder_after_the_elements(tmp_path: Path) -> None:
+    """The ARTIS folder is the last positional argument, as for the other commands.
+
+    "plotnltepops Fe mymodel" read mymodel as a second element and plotted the working folder.
+    """
+    import artistools.__main__
+
+    outputfile = tmp_path / "nltepops.pdf"
+    artistools.__main__.main(argsraw=["plotnltepops", "Fe", str(modelpath), "-t", "300", "-o", str(outputfile)])
+    assert outputfile.is_file()

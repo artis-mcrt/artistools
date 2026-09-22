@@ -103,11 +103,13 @@ VARIABLES: Mapping[str, VariableInfo] = MappingProxyType({
     "deposition": VariableInfo(units="erg/s/cm$^3$", group="energy deposition rate of each particle"),
     "emission_ana": VariableInfo(units="erg/s/cm$^3$", group="analytic energy emission rate of each particle"),
     "gamma_NT": VariableInfo(units="s$^{-1}$", name=r"$\Gamma_{\rm non-thermal}$"),
+    "gamma_dep": VariableInfo(units="erg/s/cm$^3$"),
     "gamma_R": VariableInfo(units="s$^{-1}$"),
     "gamma_R_bfest": VariableInfo(units="s$^{-1}$", name=r"$\Gamma_{\rm phot}$"),
     "grey_depth": VariableInfo(note="grey optical depth"),
     "heating": VariableInfo(units="erg/s/cm$^3$", group="heating rate of each process"),
     "heating_dep/total_dep": VariableInfo(units="Ratio", name="Heating fraction", note="ratio"),
+    "heating_gamma/gamma_dep": VariableInfo(units="Ratio", name="Gamma-ray heating fraction", note="ratio"),
     "init": VariableInfo(group="value of the model snapshot model.txt, before the first timestep"),
     "init_X": VariableInfo(units="mass fraction"),
     # the radial name init_kinetic_en_erg_r ends in _r, thus no suffix rule reaches it
@@ -655,6 +657,54 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     return pldflazy
 
 
+def drop_restart_duplicates(
+    parquetfiles: "Sequence[Path]", runfolder_of_file: "Sequence[Path]", match_timestep: "Sequence[int] | None"
+) -> pl.LazyFrame:
+    """Return the rows of the estimator caches, with the first row of each timestep and cell of a restart.
+
+    The first timestep of a restarted run repeats the last timestep of the run before it, thus the first row
+    of each key stays. Only a timestep that more than one run folder holds can repeat. A search of every row
+    took 6.4 s and 5.4 GB for a plot of 25 million rows, and 0.4 s without it, thus the search reads the
+    repeated timesteps alone. A unique() of every column used 14 GB for a 3D model before.
+    """
+    if len(set(runfolder_of_file)) < 2:
+        return pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
+
+    foldersoftimestep: dict[int, set[Path]] = {}
+    for pfile, runfolder in zip(parquetfiles, runfolder_of_file, strict=True):
+        for timestep in pl.scan_parquet(pfile).select(pl.col("timestep").unique()).collect().to_series():
+            foldersoftimestep.setdefault(timestep, set()).add(runfolder)
+
+    repeated = [timestep for timestep, folders in foldersoftimestep.items() if len(folders) > 1]
+    if match_timestep is not None:
+        repeated = [timestep for timestep in repeated if timestep in match_timestep]
+
+    indexedrows = pl.concat(
+        [
+            pl.scan_parquet(pfile, row_index_name="sourcerow").with_columns(
+                sourcerow=pl.lit(fileindex << 32, dtype=pl.UInt64) + pl.col("sourcerow").cast(pl.UInt64)
+            )
+            for fileindex, pfile in enumerate(parquetfiles)
+        ],
+        how="diagonal_relaxed",
+    )
+    if not repeated:
+        return indexedrows.drop("sourcerow")
+
+    firstsourcerows = (
+        indexedrows
+        .filter(pl.col("timestep").is_in(repeated))
+        .group_by("timestep", "modelgridindex")
+        .agg(pl.col("sourcerow").min())
+        .collect()
+        .get_column("sourcerow")
+    )
+    # a filter keeps the order of the rows, which a join does not promise
+    return indexedrows.filter(~pl.col("timestep").is_in(repeated) | pl.col("sourcerow").is_in(firstsourcerows)).drop(
+        "sourcerow"
+    )
+
+
 def scan_estimators(
     modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
@@ -802,28 +852,7 @@ def scan_artis_estimators(
             print(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
-        # the first timestep of a restarted run repeats the last timestep of the run before it, thus the first
-        # row of each key stays. A unique() keeps every column of every row in memory until the query ends.
-        # This used 14 GB for a 3D model on the streaming engine. The group_by reads only the key columns and
-        # the row position
-        indexedrows = pl.concat(
-            [
-                pl.scan_parquet(pfile, row_index_name="sourcerow").with_columns(
-                    sourcerow=pl.lit(fileindex << 32, dtype=pl.UInt64) + pl.col("sourcerow").cast(pl.UInt64)
-                )
-                for fileindex, pfile in enumerate(parquetfiles)
-            ],
-            how="diagonal_relaxed",
-        )
-        firstrows = (
-            indexedrows
-            .select("timestep", "modelgridindex", "sourcerow")
-            .group_by("timestep", "modelgridindex")
-            .agg(pl.col("sourcerow").min())
-        )
-        pldflazy = indexedrows.join(
-            firstrows, on=["timestep", "modelgridindex", "sourcerow"], how="semi", maintain_order="left"
-        ).drop("sourcerow")
+        pldflazy = drop_restart_duplicates(parquetfiles, [runfolder for runfolder, _, _ in pairs], match_timestep)
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached

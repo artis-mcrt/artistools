@@ -469,6 +469,19 @@ def plot_average_ionisation(
     return plans
 
 
+def read_nltepops_of_estimators(modelpath: str | Path, estimators: pl.LazyFrame) -> pl.DataFrame:
+    """Return the NLTE populations of the timesteps and the cells that the estimators hold.
+
+    A read of every rank, timestep, and cell needs about 5e9 rows for a 3D run of 1e5 cells and 100 timesteps,
+    although a snapshot plot uses one timestep. read_nltepops reads one timestep or every timestep.
+    """
+    dfkeys = estimators.select("timestep", "modelgridindex").unique().collect()
+    timesteps = sorted(dfkeys["timestep"].unique().to_list())
+    cells = sorted(dfkeys["modelgridindex"].unique().to_list())
+    dfnltepops = read_nltepops(modelpath, timestep=timesteps[0] if len(timesteps) == 1 else None, modelgridindex=cells)
+    return dfnltepops.filter(pl.col("timestep").is_in(timesteps))
+
+
 def plot_average_excitation(
     ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, modelpath: str | Path, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
@@ -479,8 +492,8 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every ion
-    dfnltepops_allions = read_nltepops(modelpath)
+    # read_nltepops has no cache, thus one read serves every series of the subplot
+    dfnltepops_allions = read_nltepops_of_estimators(modelpath, estimators)
 
     plans = []
     for paramvalue in params:
@@ -569,8 +582,8 @@ def plot_levelpop(
         )
     xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
-    # read_nltepops has no cache, thus one read of the NLTE output of every rank serves every param
-    dfnltepops_allions = read_nltepops(modelpath)
+    # read_nltepops has no cache, thus one read serves every series of the subplot
+    dfnltepops_allions = read_nltepops_of_estimators(modelpath, estimators)
 
     plans = []
     for paramvalue in params:
@@ -984,14 +997,16 @@ def plot_multi_ion_series(
         expr_normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
 
         # convert the volumetric number density [cm^-3] with the radius of each cell. A radial density
-        # is dN/dr [cm^-1], and a cylindrical radial density is dN/drcyl/dz [cm^-2]
+        # is dN/dr [cm^-1], and a cylindrical radial density is dN/drcyl/dz [cm^-2]. Only a population is a
+        # number density. A rate such as gamma_NT keeps its value, as the image plots already do
+        ispopulation = seriestype == "populations"
         expr_tmid_s = pl.col("tmid_days") * day_to_s
-        if poptype == "radialdensity":
+        if ispopulation and poptype == "radialdensity":
             expr_yvals *= 4 * math.pi * (pl.col("vel_r_mid") * expr_tmid_s).pow(2)
-        elif poptype == "cylradialdensity":
+        elif ispopulation and poptype == "cylradialdensity":
             expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid") * expr_tmid_s
 
-        if poptype == "cumulative":
+        if ispopulation and poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
             # the sum is over the cells of one timestep, thus it must restart at each timestep
             expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
@@ -2411,6 +2426,11 @@ def write_snapshot_figures(
     """
     if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
         args.x = "beta"
+        # the user gave -xmin and -xmax in km/s for -x velocity, and the axis is now v/c
+        if args.xmin is not None:
+            args.xmin *= km_to_cm / C_cm_per_s
+        if args.xmax is not None:
+            args.xmax *= km_to_cm / C_cm_per_s
 
     isimage = args.dimensionreduce == 2
     if args.readonlymgi or args.slice is not None:

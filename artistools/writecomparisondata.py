@@ -125,13 +125,29 @@ def scan_cell_estimators(
 def write_edep(
     modelpath: str | Path, selected_timesteps: Sequence[int], dfestimators: pl.DataFrame, outfile: Path
 ) -> None:
-    """Write the deposition of every cell at the selected timesteps, in the format of the workshop."""
+    """Write the deposition of every cell at the selected timesteps, in the format of the workshop.
+
+    ARTIS writes the deposition rate of timestep n into the estimators of timestep n + 1, per unit volume of
+    timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
+    """
+    lznext = scan_estimators(modelpath=modelpath, timestep=tuple(timestep + 1 for timestep in selected_timesteps))
+    expr_total_dep = (
+        pl.col("total_dep").cast(pl.Float64) if "total_dep" in lznext.collect_schema().names() else pl.lit(0.0)
+    )
+    dfnext = lznext.select("modelgridindex", pl.col("timestep") - 1, total_dep=expr_total_dep).collect()
+    if withoutnext := sorted(set(selected_timesteps) - set(dfnext["timestep"].to_list())):
+        print_warning(
+            f"The run wrote no timestep after {', '.join(str(ts) for ts in withoutnext)}, thus the deposition file"
+            " gives zero at those times"
+        )
+
     # the file gives one row for each cell and one column for each timestep, thus the values of one
     # cell come from several rows. The select puts the columns in the order that the header gives.
     # A cell that a timestep does not hold gives a null, and the format needs a number in every field
     dfdeposition = (
         dfestimators
-        .with_columns(total_dep=get_column_or_zero(dfestimators, "total_dep"))
+        .select("modelgridindex", "vel_r_mid", "timestep")
+        .join(dfnext, on=["modelgridindex", "timestep"], how="left", maintain_order="left")
         .pivot(on="timestep", index=("modelgridindex", "vel_r_mid"), values="total_dep")
         .select("vel_r_mid", *(pl.col(str(timestep)).fill_null(0.0) for timestep in selected_timesteps))
     )

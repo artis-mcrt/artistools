@@ -2924,3 +2924,18 @@ def test_completions_writes_the_code_to_a_redirect(
     captured = capsys.readouterr()
     assert not captured.out
     assert "To enable tab completion in zsh" in captured.err
+
+
+def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
+    """ARTIS writes the deposition of timestep n into the estimators of timestep n + 1.
+
+    The edep file took the row of timestep n, thus it gave the deposition of the timestep before, and it
+    disagreed with the lbol_edep file of the same export by about 5 % at 200 days.
+    """
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[50])
+
+    datalines = [
+        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
+    ]
+    nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
+    assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)

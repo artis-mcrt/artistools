@@ -33,6 +33,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
+from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
@@ -49,6 +50,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_positional_modelpath
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
@@ -496,7 +498,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
     ionlevels = args.levels
 
     Z = get_atomic_number(args.elements[0])
-    ion_stage = int(args.ion_stages[0])
+    # -ion_stages is text such as "10", thus its first character is not the ion stage
+    ion_stage = parse_range_list(args.ion_stages)[0]
 
     adata = get_levels(modelpaths[0], get_transitions=True)
 
@@ -821,13 +824,15 @@ def make_singletimestep_plot(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("elements", nargs="*", default=["Fe"], help="List of elements to plot")
+    addarg_positional_items(
+        parser,
+        dest="elements",
+        metavar="element",
+        helptext="Elements to plot (default: Fe), then the ARTIS folder, e.g. Fe Co mymodel",
+    )
 
-    addarg_modelpath(parser, default=Path())
-
-    # arg to give multiple model paths - can use for x axis = time but breaks other plots
-    # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', type=Path,
-    #                     help='Paths to ARTIS folders')
+    # the default is None, thus resolve_positional_modelpath sees a -modelpath that the user gave
+    addarg_modelpath(parser)
 
     timegroup = parser.add_mutually_exclusive_group()
     timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
@@ -893,8 +898,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    # the ARTIS folder is the last positional argument, thus "plotnltepops Fe mymodel" reads mymodel
+    args.elements = resolve_positional_modelpath(args, "elements") or ["Fe"]
 
     modelpath = args.modelpath
+    if args.x == "time" and args.timedayslist:
+        exit_with_error(
+            "-x time puts the time on the horizontal axis, thus -timedayslist gives no panel for each time",
+            "Give -x velocity with -timedayslist, or give -x time with -timemin and -timemax",
+        )
+
     if args.x in {"time", "velocity"}:
         args.modelpath = normalize_path_list(args.modelpath)
 
@@ -932,7 +945,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # CommaJoinAction joins every -modelgridindex into one text such as 3-7,9, thus one expansion reads them all.
     # A cell of 0 is a real selection and it is falsy, thus this tests for the empty default
-    mgilist = [] if args.modelgridindex == [] else parse_range_list(str(args.modelgridindex))
+    mgilist = [] if args.modelgridindex in ([], None) else parse_range_list(args.modelgridindex)
     mgilist.extend(mgi for mgi in [get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity] if mgi is not None)
     # the branches below read args.modelgridindex, thus give them the expanded cells and not "3-7"
     args.modelgridindex = mgilist
