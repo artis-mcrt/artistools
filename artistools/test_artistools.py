@@ -2939,3 +2939,15 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
     ]
     nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
     assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)
+
+
+def test_linefluxes_refuse_overlapping_time_bins() -> None:
+    """Overlapping bins gave each shared interval to the last bin, and each bin still divided by its full width.
+
+    Thus the bins [100, 200) and [150, 250) gave the first bin the packets of 100 to 150 days alone.
+    """
+    with pytest.raises(ValueError, match="time bins overlap"):
+        at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 150.0], [200.0, 250.0])
+
+    # bins that meet at an edge are no overlap
+    at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 200.0], [200.0, 300.0])

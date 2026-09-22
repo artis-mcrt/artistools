@@ -31,6 +31,7 @@ from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 
@@ -186,7 +187,8 @@ def get_modelgridindex_expr(
 ) -> pl.Expr:
     """Return the index of the model cell that holds the last interaction (em) or the last thermal emission (trueem).
 
-    A position outside the grid gives an index that no cell has, and a position of NaN gives null.
+    A position outside the grid and a position of NaN give null. A cast alone rounds toward zero, and a sum of
+    the axis indices with no range check gave a real cell, e.g. the cell at x = 0 of the next row.
     """
     if modelmeta["dimensions"] == 1:
         return get_modelgridindex_from_velocity_expr(get_emission_velocity_expr(position), dfmodel)
@@ -197,18 +199,22 @@ def get_modelgridindex_expr(
     def velocity(axis: str) -> pl.Expr:
         return pl.col(f"{position}_pos{axis}") / get_emission_time_expr(position)
 
+    def axisindex(coordinate: pl.Expr, count: int) -> pl.Expr:
+        index = coordinate.floor().cast(pl.Int32, strict=False)
+        return pl.when(index.is_between(0, count - 1)).then(index)
+
     if modelmeta["dimensions"] == 2:
         vwidthrcyl = float(modelmeta["wid_init_rcyl"]) / t_model_s
         vwidthz = float(modelmeta["wid_init_z"]) / t_model_s
-        coordrcyl = ((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl).cast(pl.Int32, strict=False)
-        coordz = ((velocity("z") + vmax) / vwidthz).cast(pl.Int32, strict=False)
-        return coordz * int(modelmeta["ncoordgridrcyl"]) + coordrcyl
+        ncoordgridrcyl = int(modelmeta["ncoordgridrcyl"])
+        coordrcyl = axisindex((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl, ncoordgridrcyl)
+        coordz = axisindex((velocity("z") + vmax) / vwidthz, int(modelmeta["ncoordgridz"]))
+        return coordz * ncoordgridrcyl + coordrcyl
 
     vwidth = float(modelmeta["wid_init"]) / t_model_s
-    coord = {axis: ((velocity(axis) + vmax) / vwidth).cast(pl.Int32, strict=False) for axis in ("x", "y", "z")}
-    ncoordgridx = int(modelmeta["ncoordgridx"])
-    ncoordgridy = int(modelmeta["ncoordgridy"])
-    return coord["z"] * ncoordgridy * ncoordgridx + coord["y"] * ncoordgridx + coord["x"]
+    ncoordgrid = {axis: int(modelmeta[f"ncoordgrid{axis}"]) for axis in ("x", "y", "z")}
+    coord = {axis: axisindex((velocity(axis) + vmax) / vwidth, ncoordgrid[axis]) for axis in ("x", "y", "z")}
+    return coord["z"] * ncoordgrid["y"] * ncoordgrid["x"] + coord["y"] * ncoordgrid["x"] + coord["x"]
 
 
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
@@ -408,7 +414,10 @@ def get_packets_textsource_mtimes(modelpath: Path, filenames: Sequence[str]) -> 
     """Return source modification times with at most one scan of each folder."""
     rootentries = list(modelpath.iterdir())
     mtimes: dict[str, float] = {}
-    for folder in (modelpath, *(entry for entry in rootentries if entry.is_dir())):
+    # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
+    # conversion reads the file that it finds. A different order stamps the cache from another file
+    subfolders = sorted((entry for entry in rootentries if entry.is_dir()), key=natural_sort_key)
+    for folder in (modelpath, *subfolders):
         entries = rootentries if folder == modelpath else folder.iterdir()
         paths = {entry.name: entry for entry in entries}
         for filename in filenames:
