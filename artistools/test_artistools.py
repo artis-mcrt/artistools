@@ -422,11 +422,6 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args([]).atomicdatabase == "artis"
 
     parser = argparse.ArgumentParser()
-    at.plotmacroatom.addargs(parser)
-    assert parser.parse_args(["--modelpath", "amodel"]).modelpath == Path("amodel")
-    assert parser.parse_args(["-modelpath", "amodel"]).modelpath == Path("amodel")
-
-    parser = argparse.ArgumentParser()
     at.estimators.plotestimators.addargs(parser)
     assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == 2.5
     assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
@@ -612,28 +607,6 @@ def test_get_inputparams() -> None:
     # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
     # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
     assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
-
-
-def test_macroatom() -> None:
-    at.plotmacroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
-
-
-def test_macroatom_reads_the_transitions_of_every_rank(tmp_path: Path) -> None:
-    """A rank writes the transitions of every cell that its packets reach, not only of its own cells."""
-    for filename in ("model.txt", "estimators_0000.out", "macroatom_0000.out.xz"):
-        (tmp_path / filename).symlink_to(modelpath / filename)
-    inputlines = (modelpath / "input.txt").read_text(encoding="utf-8").split("\n")
-    # line 22 of input.txt gives the number of MPI ranks
-    inputlines[21] = "2"
-    (tmp_path / "input.txt").write_text("\n".join(inputlines), encoding="utf-8")
-
-    dfrank0 = at.misc.read_wsv(modelpath / "macroatom_0000.out.xz").filter(
-        (pl.col("modelgridindex") == 0) & (pl.col("timestep") == 10)
-    )
-    dfrank0.head(7).write_csv(tmp_path / "macroatom_0001.out", separator=" ")
-
-    dfallranks = at.plotmacroatom.read_macroatom(tmp_path, modelgridindex=0, timestepmin=10, timestepmax=10)
-    assert dfallranks.height == dfrank0.height + 7
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -2078,7 +2051,6 @@ def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pyt
         ),
         (["plotradfield", "-modelpath", str(modelpath), "-ts", "40", "-mgi", "0"], "plotradfield_cell00000_ts040.pdf"),
         (["plottransitions", "-modelpath", str(modelpath), "-t", "300"], "plottransitions_cell00000_ts054_300.32d.pdf"),
-        (["plotmacroatom", "-modelpath", str(modelpath), "-ts", "40"], "plotmacroatom_cell00000_ts040-040.pdf"),
     ]
     for argsraw, expectedname in runs:
         artistools.__main__.main(argsraw=argsraw)
@@ -2271,7 +2243,7 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
     """-xmin and -lambdamin name one argument on every command that reads a range of wavelengths.
 
     ejectaopacity took -lambdamin alone, thus "-xmin 100" there gave "unrecognized arguments" and a
-    suggestion of -mgi, which names a cell. Four other commands take both spellings.
+    suggestion of -mgi, which names a cell. Three other commands take both spellings.
     """
     import artistools.__main__
 
@@ -2295,7 +2267,7 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
             if "-lambdamax" in flags:
                 assert "-xmax" in flags, f"{subcommand} takes -lambdamax without -xmax"
 
-    assert checked >= 5, f"only {checked} commands take -lambdamin"
+    assert checked >= 4, f"only {checked} commands take -lambdamin"
 
 
 def test_every_command_reads_the_same_cell_grammar() -> None:

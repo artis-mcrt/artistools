@@ -89,7 +89,6 @@ type CommandTree = dict[str, CommandSpec | CommandTree]
 COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "plot commands": (
         "comparetogsinetwork",
-        "leptontransport",
         "plotdensity",
         "plotestimators",
         "plotinitialcomposition",
@@ -97,7 +96,6 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotlightcurves",
         "plotlinefluxes",
         "plotlogfiles",
-        "plotmacroatom",
         "plotnltepops",
         "plotradfield",
         "plotspectra",
@@ -212,11 +210,6 @@ subcommandtree: CommandTree = {
         ),
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
-    "leptontransport": CommandSpec(
-        "nonthermal.leptontransport",
-        helptext="Plot the energy loss of a fast lepton.",
-        note="The plot gives the loss to plasma, to ionisation, and to excitation against distance.",
-    ),
     "makevpktinput": CommandSpec(
         "make_vpkt_input",
         helptext="Write a vpkt.txt for a run.",
@@ -259,7 +252,6 @@ subcommandtree: CommandTree = {
         helptext="Plot the time that each rank took.",
         note="The times come from the log files of a run.",
     ),
-    "plotmacroatom": CommandSpec("plotmacroatom", helptext="Plot the macroatom transitions."),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
         helptext="Plot ARTIS non-LTE populations.",
