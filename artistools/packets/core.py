@@ -31,6 +31,7 @@ from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import is_readonly_error
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
@@ -440,7 +441,13 @@ def get_packets_rankbatch_parquetfile(
     modelpath = Path(modelpath)
     strpacket = "vpackets" if virtual else "packets"
     packetdir = Path(modelpath, strpacket)
-    packetdir.mkdir(exist_ok=True, parents=True)
+    try:
+        packetdir.mkdir(exist_ok=True, parents=True)
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        msg = f"artistools cannot make its cache folder {packetdir}, because the folder {modelpath} is read-only"
+        raise PermissionError(msg) from exc
 
     parquetfilename = (
         f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"

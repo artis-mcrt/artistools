@@ -646,10 +646,12 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             value = argstring[length:]
             if action.nargs != 0 and is_joined_value(value, action):
                 # argparse splits a flag of one letter from its value itself. A value that starts with "-", e.g.
-                # the -z of -axis-z, stays joined by "=", because argparse reads a separate -z as a flag
+                # the -z of -axis-z, stays joined by "=", because argparse reads a separate -z as a flag. The "="
+                # gives the flag one value alone, thus a list such as -plotviewingangle-1 0 stays separate
                 if length == 2 or equals:
                     return [argstring]
-                return [f"{flag}={value}"] if value.startswith("-") else [flag, value]
+                joinsvalue = value.startswith("-") and action.nargs in {None, "?"}
+                return [f"{flag}={value}"] if joinsvalue else [flag, value]
 
             from artistools.misc import suggest_flags
 

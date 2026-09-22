@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import errno
 import inspect
 import io
 import os
@@ -450,9 +451,9 @@ def firstexisting(
         if search_subfolders:
             for filename in filelist:
                 # a glob gives the names in the order of the file system, thus the result would
-                # differ between two machines. The natural order gives the order of the runs
-                for p in sorted(Path(folder).glob(f"*/{filename}*"), key=natural_sort_key):
-                    yield p.parent
+                # differ between two machines. The natural order of the folders gives the order of the
+                # runs, and get_run_subfolders and the cache checks take the same order
+                yield from sorted({p.parent for p in Path(folder).glob(f"*/{filename}*")}, key=natural_sort_key)
 
     for searchfolder in search_folders(filelist):
         for filename in filelist:
@@ -1015,6 +1016,14 @@ def read_parquet_cache_metadata(
     return pqmetadata, None
 
 
+def is_readonly_error(exc: OSError) -> bool:
+    """Return True when the file system refuses a write, for a folder with no write permission or a read-only mount.
+
+    A read-only mount gives errno EROFS, which Python raises as a plain OSError and not as a PermissionError.
+    """
+    return isinstance(exc, PermissionError) or exc.errno == errno.EROFS
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
@@ -1048,8 +1057,13 @@ def write_parquet_atomic(
         fd, partialfilename = tempfile.mkstemp(
             dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
         )
-    except PermissionError as exc:
-        msg = f"artistools cannot write its cache {parquetfilepath.name}, because the folder {parquetfilepath.parent} is read-only"
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        msg = (
+            f"artistools cannot write its cache {parquetfilepath.name}, because the folder"
+            f" {parquetfilepath.parent} is read-only"
+        )
         raise PermissionError(msg) from exc
     os.close(fd)
     partialfilepath = Path(partialfilename)

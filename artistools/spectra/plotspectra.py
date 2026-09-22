@@ -2028,7 +2028,7 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     if args.timedayslist and len(args.timedayslist) > 1:
         exit_with_error(
             "an emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
-            "Give one time with -timedays, and run the command again for each other time",
+            "Give one time with -timedays. Run the command again for each other time",
         )
 
     if args.yvariable == "packetcount":
@@ -2044,11 +2044,13 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
     Only the virtual packet spectra hold the Stokes parameters Q and U, and a reference spectrum holds
     no count of packets. Such a plot drew Stokes I, or it stopped with a missing column.
     """
-    # a ratio such as Q/I selects the polarisation plot, which reads specpol_res.out
-    if args.stokesparam != "I" and "/" not in args.stokesparam and args.plotvspecpol is None:
+    # a ratio such as Q/I selects the polarisation plot, which reads specpol_res.out. The packets give Stokes I
+    # alone, and resolve_frompackets can select them, e.g. for --showemission
+    if args.stokesparam != "I" and "/" not in args.stokesparam and (args.plotvspecpol is None or args.frompackets):
         exit_with_error(
-            f"-stokesparam {args.stokesparam} reads the virtual packet spectra, and the command gives no -plotvspecpol",
-            "Give the virtual packet spectrum with -plotvspecpol, e.g. -plotvspecpol 0",
+            f"-stokesparam {args.stokesparam} reads the virtual packet spectra files, and the command gives no"
+            " -plotvspecpol or it reads the packets",
+            "Give -plotvspecpol, e.g. -plotvspecpol 0, and remove the options that need the packets",
         )
 
     if args.yvariable == "packetcount" and len(args.modelspecpaths) < len(args.specpath):

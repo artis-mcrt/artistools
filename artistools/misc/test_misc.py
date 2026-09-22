@@ -786,6 +786,24 @@ def test_firstexisting_anyexist(tmp_path: Path) -> None:
     assert at.misc.firstexisting_or_none(["nope.txt"], folder=firstdir) is None
 
 
+def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Path) -> None:
+    """The reader and the freshness check of the packets cache must take the file from one folder.
+
+    firstexisting sorted the paths of the files, thus run2/x came before run/x, but the check sorted the
+    folders. The cache then took the time stamp of a file that the conversion did not read.
+    """
+    from artistools.packets.core import get_packets_textsource_mtimes
+
+    for foldername, mtime in (("run", 1000.0), ("run2", 2000.0)):
+        (tmp_path / foldername).mkdir()
+        packetsfile = tmp_path / foldername / "packets00_0000.out"
+        packetsfile.write_text("")
+        os.utime(packetsfile, (mtime, mtime))
+
+    assert at.firstexisting("packets00_0000.out", folder=tmp_path) == tmp_path / "run" / "packets00_0000.out"
+    assert get_packets_textsource_mtimes(tmp_path, ["packets00_0000.out"]) == [1000.0]
+
+
 def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
     """An absolute path is not below the default folder, but the message must not raise a ValueError."""
     (tmp_path / "here.txt").write_text("here")
@@ -851,6 +869,19 @@ def test_write_parquet_atomic(tmp_path: Path) -> None:
     pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
     # the temporary partial file must not be left behind
     assert list(tmp_path.glob("*.partial*")) == []
+
+
+def test_write_parquet_atomic_names_a_read_only_mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read-only mount gives errno EROFS, which is no PermissionError, thus the message came as a traceback."""
+    import errno
+    import tempfile
+
+    def readonly_mkstemp(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, str]:
+        raise OSError(errno.EROFS, "Read-only file system")
+
+    monkeypatch.setattr(tempfile, "mkstemp", readonly_mkstemp)
+    with pytest.raises(PermissionError, match="is read-only"):
+        at.misc.write_parquet_atomic(pl.DataFrame({"a": [1]}), tmp_path / "out.parquet")
 
 
 def test_write_parquet_atomic_temp_file_is_invisible_to_globs(tmp_path: Path) -> None:
@@ -1769,6 +1800,37 @@ def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
 
     # the one cell of the test model still resolves
     assert get_mpirankofcell(0, modelpath=modelpath) >= 0
+
+
+def test_the_rank_search_of_many_cells_agrees_with_the_blocks_of_each_rank(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One search gives the rank of every cell, in place of a lookup for each cell.
+
+    The lookup for each cell took 2 to 10 s for the 125 000 cells of a 3D snapshot.
+    """
+    from artistools.misc.modelinfo import get_cellsofmpirank
+    from artistools.misc.modelinfo import get_mpiranks_of_cells
+    from artistools.misc.modelinfo import get_rankassignments
+
+    # this model has modelgridrankassignments.out, thus each rank holds the cells of its own row
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    dfrankassignments = get_rankassignments(modelpath)
+    assert dfrankassignments is not None
+    expected = np.full(at.misc.get_npts_model(modelpath), -1)
+    for rank, nstart, ndo in dfrankassignments.select("rank", "nstart", "ndo").iter_rows():
+        expected[nstart : nstart + ndo] = rank
+    cells = np.arange(len(expected), dtype=np.int64)
+    assert np.array_equal(get_mpiranks_of_cells(modelpath, cells), expected)
+
+    # with no such file, the blocks of get_cellsofmpirank give the rank of each cell. No test model has fewer
+    # ranks than cells, thus 7 ranks for 100 cells give blocks of 15 and 14 cells
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "get_rankassignments", mock.Mock(return_value=None))
+    monkeypatch.setattr(modelinfo, "get_nprocs", mock.Mock(return_value=7))
+    monkeypatch.setattr(modelinfo, "get_npts_model", mock.Mock(return_value=100))
+    ranks = get_mpiranks_of_cells(modelpath, np.arange(100, dtype=np.int64)).tolist()
+    assert sorted(set(ranks)) == list(range(7))
+    assert all(cell in get_cellsofmpirank(rank, modelpath) for cell, rank in enumerate(ranks))
 
 
 def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:

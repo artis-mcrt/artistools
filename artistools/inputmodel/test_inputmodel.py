@@ -3029,7 +3029,7 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
 
 
-def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path) -> None:
+def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A 3D grid of an equatorially symmetric model holds both halves, and --nodyn removes the dynamical ejecta.
 
     The 3D mapping scaled each isotope with the mass of every tracer, thus the excluded Zn56 came back. It
@@ -3072,6 +3072,12 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path) -> Non
         datpath, isopath, vmax_on_c, 3, dims, nodynej=True, nohmns=False, notorus=False, no_nu_trapping=False
     )
     assert eqsymfac == 2
+
+    # the mapped data and the tracer data must print one total mass, or a correct mapping looks wrong
+    printedmasses = [
+        float(line.split(":")[1]) for line in capsys.readouterr().out.splitlines() if line.startswith("total mass  ")
+    ]
+    assert printedmasses == pytest.approx([2 * 20 * 1e-3] * 2, rel=1e-6)
 
     cellvolume = (2 * vmax_on_c * C_cm_per_s * t_model_init_s / dims[0]) ** 3
     gridmass_msun = (rhoint * cellvolume).sum() / Msun_to_g

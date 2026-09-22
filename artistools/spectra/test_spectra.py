@@ -1806,6 +1806,7 @@ def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytes
     ("extraargs", "message"),
     [
         (["-stokesparam", "Q"], "reads the virtual packet spectra"),
+        (["-stokesparam", "Q", "-plotvspecpol", "0", "--frompackets"], "reads the virtual packet spectra"),
         (["--showemission", "-timedayslist", "290", "320"], "draws one time"),
         (["--showemission", "-yvariable", "packetcount"], "has no count of packets"),
     ],

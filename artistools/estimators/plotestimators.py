@@ -469,21 +469,24 @@ def plot_average_ionisation(
     return plans
 
 
-def read_nltepops_of_estimators(modelpath: str | Path, estimators: pl.LazyFrame) -> pl.DataFrame:
-    """Return the NLTE populations of the timesteps and the cells that the estimators hold.
+def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int], cells: Sequence[int]) -> pl.DataFrame:
+    """Return the NLTE populations of the timesteps and the cells of the plot.
 
     A read of every rank, timestep, and cell needs about 5e9 rows for a 3D run of 1e5 cells and 100 timesteps,
     although a snapshot plot uses one timestep. read_nltepops reads one timestep or every timestep.
     """
-    dfkeys = estimators.select("timestep", "modelgridindex").unique().collect()
-    timesteps = sorted(dfkeys["timestep"].unique().to_list())
-    cells = sorted(dfkeys["modelgridindex"].unique().to_list())
     dfnltepops = read_nltepops(modelpath, timestep=timesteps[0] if len(timesteps) == 1 else None, modelgridindex=cells)
     return dfnltepops.filter(pl.col("timestep").is_in(timesteps))
 
 
 def plot_average_excitation(
-    ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, modelpath: str | Path, **plotkwargs: t.Any
+    ax: mplax.Axes,
+    params: Sequence[str],
+    timestepslist: Sequence[int],
+    mgilist: Sequence[int],
+    estimators: pl.LazyFrame,
+    modelpath: str | Path,
+    **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of the population-weighted mean level excitation energy of each requested ion."""
     ax.set_ylabel("Average excitation energy [eV]")
@@ -493,7 +496,7 @@ def plot_average_excitation(
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
     # read_nltepops has no cache, thus one read serves every series of the subplot
-    dfnltepops_allions = read_nltepops_of_estimators(modelpath, estimators)
+    dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
 
     plans = []
     for paramvalue in params:
@@ -536,7 +539,7 @@ def plot_levelpop(
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[int],
-    mgilist: Sequence[int | Sequence[int]],
+    mgilist: Sequence[int],
     modelpath: str | Path,
     estimators: pl.LazyFrame,
     **plotkwargs: t.Any,
@@ -583,7 +586,7 @@ def plot_levelpop(
     xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
     # read_nltepops has no cache, thus one read serves every series of the subplot
-    dfnltepops_allions = read_nltepops_of_estimators(modelpath, estimators)
+    dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
 
     plans = []
     for paramvalue in params:
@@ -616,7 +619,6 @@ def plot_levelpop(
         ylist = []
         xlist = []
         for modelgridindex in mgilist:
-            assert isinstance(modelgridindex, int)
             valuesum = 0.0
             tdeltasum = 0.0
 
@@ -1374,7 +1376,10 @@ def plot_subplot(
                 items.append((plot_average_ionisation(ax, params, estimators, **plotkwargs), None))
 
             elif seriestype == "averageexcitation":
-                items.append((plot_average_excitation(ax, params, estimators, modelpath, **plotkwargs), None))
+                items.append((
+                    plot_average_excitation(ax, params, timestepslist, mgilist, estimators, modelpath, **plotkwargs),
+                    None,
+                ))
 
             else:
                 seriestype, ionlist = plotitem

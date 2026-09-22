@@ -102,7 +102,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             resolve_yscale(args)
 
         run_command(func, args)
-    except (AssertionError, FileNotFoundError, ImportError, PermissionError, ValueError) as exc:
+    except (AssertionError, FileNotFoundError, ModuleNotFoundError, PermissionError, ValueError) as exc:
         if os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
         # a bad argument, a missing input file, a read-only model folder, or a missing optional package is a

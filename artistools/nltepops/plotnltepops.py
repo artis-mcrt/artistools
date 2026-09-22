@@ -905,7 +905,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.x == "time" and args.timedayslist:
         exit_with_error(
             "-x time puts the time on the horizontal axis, thus -timedayslist gives no panel for each time",
-            "Give -x velocity with -timedayslist, or give -x time with -timemin and -timemax",
+            "Give -x velocity with -timedayslist, or give -x time with a range such as -timedays 270-275",
         )
 
     if args.x in {"time", "velocity"}:

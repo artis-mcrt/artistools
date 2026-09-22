@@ -113,3 +113,11 @@ def test_electroncapture_betaplus_energies_sum_to_the_q_value() -> None:
         (pl.col("Q[MeV]") - pl.col("Egamma[MeV]") - pl.col("Eelec[MeV]") - pl.col("Eneutrino[MeV]")).abs().max()
     ).item()
     assert residual < 1e-3
+
+
+def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(tmp_path: Path) -> None:
+    """With no -modelgridindex, the command plots the global Qdot.
+
+    The empty default reached parse_range_list, which stopped the command on int("").
+    """
+    at.gsinetwork.plot(argsraw=[], modelpath=modelpath, nogsinet=True, outputfile=tmp_path / "gsi.pdf")

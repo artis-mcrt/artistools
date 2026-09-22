@@ -224,18 +224,13 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # set white background
     pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
 
-    get_elemabundances = False
     # choose what surface will be coloured by
-    if "rho" in args.plotvars:
-        coloursurfaceby = "rho"
-    elif "Ye" in args.plotvars:
-        coloursurfaceby = "Ye"
-    else:
-        coloursurfaceby = f"X_{args.plotvars[0]}"
-        print(f"Colours set by {coloursurfaceby}")
-        get_elemabundances = True
-
-    plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
+    # an element such as Sr needs the element abundances, and an isotope such as Sr92 is a column of the model
+    plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
+    # a column such as tracercount keeps its name, and an element or an isotope names its mass fraction, as in 2D
+    coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
+    print(f"Colours set by {coloursurfaceby}")
     vmax = modelmeta["vmax_cmps"]
     # the model file can hold no Ye column, and then the Ye.txt file below gives it
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()

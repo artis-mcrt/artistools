@@ -374,9 +374,12 @@ def get_grid(
     yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
     bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
+    # the 2D grid holds one half of an equatorially symmetric model, and the 3D grid holds both halves
+    gridsymfac = eqsymfac if model_dim == 2 else 1
+
     # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
-    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * eqsymfac)
+    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
@@ -409,19 +412,20 @@ def get_grid(
     # test outputs
     testelements = [("He", 2), ("Zr", 40), ("Sn", 50), ("Te", 52), ("Xe", 54), ("W", 74), ("Pt", 78)]
     print("===> mapped data")
-    print("total mass                :", mtot / msol * eqsymfac)
+    print("total mass                :", mtot / msol * gridsymfac)
     for elsymbol, atomic_number in testelements:
         print(
             f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
-            np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * eqsymfac / msol,
+            np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * gridsymfac / msol,
         )
 
+    # mass_arr leaves out the tracers that --nodyn, --nohmns and --notorus exclude, as the mapped data does
     print("===> tracer data")
-    print("total mass                :", np.sum(dat.f.mass) * eqsymfac)
+    print("total mass                :", np.sum(mass_arr) * eqsymfac)
     for elsymbol, atomic_number in testelements:
         print(
             f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
-            np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * dat.f.mass) * eqsymfac,
+            np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * mass_arr) * eqsymfac,
         )
 
     test = np.sum(xint, axis=0) - 1.0

@@ -660,48 +660,62 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
 def drop_restart_duplicates(
     parquetfiles: "Sequence[Path]", runfolder_of_file: "Sequence[Path]", match_timestep: "Sequence[int] | None"
 ) -> pl.LazyFrame:
-    """Return the rows of the estimator caches, with the first row of each timestep and cell of a restart.
+    """Return the rows of the estimator caches, with one row for each timestep and cell of a restarted run.
 
-    The first timestep of a restarted run repeats the last timestep of the run before it, thus the first row
-    of each key stays. Only a timestep that more than one run folder holds can repeat. A search of every row
-    took 6.4 s and 5.4 GB for a plot of 25 million rows, and 0.4 s without it, thus the search reads the
-    repeated timesteps alone. A unique() of every column used 14 GB for a 3D model before.
+    The first timestep of a restarted run repeats the last timestep of the run before it, and the row of the
+    earlier file stays. Only a timestep that more than one run folder holds can repeat, thus the search reads
+    those timesteps alone. Each file then drops its own repeats with a filter that needs no row index. A
+    filter of the row index of every file took 0.4 to 2.9 s for each collect of 25 million rows.
     """
+    scans = [pl.scan_parquet(pfile) for pfile in parquetfiles]
     if len(set(runfolder_of_file)) < 2:
-        return pl.concat([pl.scan_parquet(pfile) for pfile in parquetfiles], how="diagonal_relaxed")
+        return pl.concat(scans, how="diagonal_relaxed")
 
-    foldersoftimestep: dict[int, set[Path]] = {}
-    for pfile, runfolder in zip(parquetfiles, runfolder_of_file, strict=True):
-        for timestep in pl.scan_parquet(pfile).select(pl.col("timestep").unique()).collect().to_series():
-            foldersoftimestep.setdefault(timestep, set()).add(runfolder)
-
-    repeated = [timestep for timestep, folders in foldersoftimestep.items() if len(folders) > 1]
-    if match_timestep is not None:
-        repeated = [timestep for timestep in repeated if timestep in match_timestep]
-
-    indexedrows = pl.concat(
+    folderindex_of_folder = {runfolder: index for index, runfolder in enumerate(dict.fromkeys(runfolder_of_file))}
+    # a cache of a batch of empty cells holds no columns, thus the diagonal concat gives it a null timestep
+    lzkeys = pl.concat(
         [
-            pl.scan_parquet(pfile, row_index_name="sourcerow").with_columns(
-                sourcerow=pl.lit(fileindex << 32, dtype=pl.UInt64) + pl.col("sourcerow").cast(pl.UInt64)
+            scan.with_columns(
+                fileindex=pl.lit(fileindex, dtype=pl.Int32),
+                folderindex=pl.lit(folderindex_of_folder[runfolder], dtype=pl.Int32),
             )
-            for fileindex, pfile in enumerate(parquetfiles)
+            for fileindex, (scan, runfolder) in enumerate(zip(scans, runfolder_of_file, strict=True))
         ],
         how="diagonal_relaxed",
     )
-    if not repeated:
-        return indexedrows.drop("sourcerow")
-
-    firstsourcerows = (
-        indexedrows
-        .filter(pl.col("timestep").is_in(repeated))
-        .group_by("timestep", "modelgridindex")
-        .agg(pl.col("sourcerow").min())
+    repeated = (
+        lzkeys
+        .group_by("timestep")
+        .agg(pl.col("folderindex").n_unique())
+        .filter(pl.col("timestep").is_not_null() & (pl.col("folderindex") > 1))
         .collect()
-        .get_column("sourcerow")
+        .get_column("timestep")
+        .to_list()
     )
-    # a filter keeps the order of the rows, which a join does not promise
-    return indexedrows.filter(~pl.col("timestep").is_in(repeated) | pl.col("sourcerow").is_in(firstsourcerows)).drop(
-        "sourcerow"
+    if match_timestep is not None:
+        repeated = [timestep for timestep in repeated if timestep in match_timestep]
+
+    if not repeated:
+        return pl.concat(scans, how="diagonal_relaxed")
+
+    # the row of the first file that holds a timestep and a cell stays
+    dfrepeats = (
+        lzkeys
+        .filter(pl.col("timestep").is_in(repeated))
+        .select("fileindex", "timestep", "modelgridindex")
+        .filter(pl.col("fileindex") != pl.col("fileindex").min().over("timestep", "modelgridindex"))
+        .collect()
+    )
+    repeatsoffile = dfrepeats.partition_by("fileindex", as_dict=True, include_key=False)
+    keyexpr = pl.col("timestep").cast(pl.Int64) * 2**32 + pl.col("modelgridindex").cast(pl.Int64)
+    return pl.concat(
+        [
+            scan
+            if (dfrepeatsthisfile := repeatsoffile.get((fileindex,))) is None
+            else scan.filter(~keyexpr.is_in(dfrepeatsthisfile.select(keyexpr).to_series().implode()))
+            for fileindex, scan in enumerate(scans)
+        ],
+        how="diagonal_relaxed",
     )
 
 

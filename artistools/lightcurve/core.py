@@ -47,7 +47,6 @@ from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.spectra import get_escape_surface_gamma
-from artistools.spectra import get_specpol_data
 from artistools.spectra import get_spectra
 from artistools.spectra import get_spectrum_at_time
 from artistools.spectra import get_vspecpol_data
@@ -287,14 +286,11 @@ def generate_band_lightcurve_data(
         average_over_phi_angle=False,
         average_over_theta_angle=False,
     )
-    if args.plotvspecpol and Path(modelpath, "vpkt.txt").is_file():
+    # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
+    # A vpkt run can have no specpol.out
+    if args.plotvspecpol and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = (
-            get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)
-            if dirbin >= 0
-            else get_specpol_data(dirbin=dirbin, modelpath=modelpath)
-        )
-        vspecdata = stokes_params["I"]
+        vspecdata = get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
         timearray = vspecdata.collect_schema().names()[1:]
     else:
         specfilename = (

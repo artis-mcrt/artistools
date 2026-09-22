@@ -2621,6 +2621,8 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
 
     # a joined choice that starts with "-" must not reach argparse as a separate flag
     assert parser.parse_args(["inputmodel", "makeartismodel1dslicefromcone", "-axis-z"]).axis == "-z"
+    # "=" gives a list option one value alone, thus a joined negative number stays separate from the flag
+    assert parser.parse_args(["plotspectra", "-plotviewingangle-1", "0"]).plotviewingangle == [-1, 0]
 
     # argparse lets the last flag of a group of switches take a value
     args = parser.parse_args(["plotspectra", "-qo", "/plots/x.pdf"])
@@ -2957,5 +2959,27 @@ def test_linefluxes_refuse_overlapping_time_bins() -> None:
     with pytest.raises(ValueError, match="time bins overlap"):
         at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 150.0], [200.0, 250.0])
 
-    # bins that meet at an edge are no overlap
+    # bins that meet at an edge are no overlap, in either order
     at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [100.0, 200.0], [200.0, 300.0])
+    at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [200.0, 100.0], [300.0, 200.0])
+
+
+def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: Path) -> None:
+    """Each time bin of the emitting regions has its own figure, thus two bins can overlap.
+
+    The command wrote each figure to the one name that -o gives, thus only the last one stayed.
+    """
+    # the test data holds no floers_te_nne.json, thus one reference point stands in for it
+    refdata = (["5"], np.array([5.0]), [{"ne": [5.0], "temp": [5000.0]}])
+    with mock.patch.object(at.plotlinefluxes, "read_te_nne_refdata", return_value=refdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            use_lastemissiontype=True,
+            timebins_tstart=[4.0, 5.0],
+            timebins_tend=[6.0, 7.0],
+            outputfile=tmp_path / "emreg.pdf",
+        )
+
+    assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]

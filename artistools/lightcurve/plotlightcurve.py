@@ -427,7 +427,7 @@ def plot_artis_lightcurve(
     if linelabel is None:
         linelabel = get_model_name(modelpath)
     assert linelabel is not None
-    if escape_type == "TYPE_GAMMA":
+    if escape_type == "TYPE_GAMMA" and linelabel:
         linelabel += r" $\gamma$"
     if pellet_nucname is not None:
         linelabel = rf"$\;$ {pellet_nucname}"

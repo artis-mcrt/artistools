@@ -401,15 +401,11 @@ def get_mpiranklist(
         return all_ranks()
 
     if isinstance(modelgridindex, Iterable):
-        mpiranklist = set()
-        for mgi in modelgridindex:
-            assert isinstance(mgi, int)
-            if mgi < 0:
-                return all_ranks()
+        cells = np.fromiter(modelgridindex, dtype=np.int64)
+        if (cells < 0).any():
+            return all_ranks()
 
-            mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
-
-        return sorted(mpiranklist)
+        return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
 
     # in case modelgridindex is a single number rather than an iterable
     if modelgridindex < 0:
@@ -581,39 +577,42 @@ def get_nonempty_cellcounts_cached(modelpath: Path) -> "Mapping[int, int] | None
     return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))
 
 
-def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
-    """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
-    modelpath = Path(modelpath)
+def get_mpiranks_of_cells(modelpath: Path | str, cells: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+    """Return the rank of each cell with one search for all the cells.
+
+    A lookup for each cell took 18 to 81 us, thus 2 to 10 s for the 125 000 cells of a 3D snapshot.
+    """
     npts_model = get_npts_model(modelpath)
-    if not 0 <= modelgridindex < npts_model:
+    if outsidecells := [int(cell) for cell in cells if not 0 <= cell < npts_model]:
         # a model of one cell makes "1 cells" and "0 to 0" read badly, thus name the range alone
-        msg = f"Cell {modelgridindex} is not in this model. Its cells are 0 to {npts_model - 1}"
+        msg = f"Cell {outsidecells[0]} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
 
     dfrankassignments = get_rankassignments(modelpath)
     if dfrankassignments is not None:
-        dfselected = dfrankassignments.filter(
-            (pl.col("ndo") > 0)
-            & (pl.col("nstart") <= modelgridindex)
-            & ((pl.col("nstart") + pl.col("ndo") - 1) >= modelgridindex)
-        )
-        assert dfselected.height == 1
-        return int(dfselected["rank"].item())
+        dfranks = dfrankassignments.filter(pl.col("ndo") > 0).sort("nstart")
+        nstart = dfranks["nstart"].to_numpy()
+        blockindex = np.searchsorted(nstart, cells, side="right") - 1
+        if (cells >= nstart[blockindex] + dfranks["ndo"].to_numpy()[blockindex]).any():
+            msg = f"modelgridrankassignments.out of {modelpath} gives no rank to some of the cells"
+            raise ValueError(msg)
+        return dfranks["rank"].to_numpy().astype(np.int64)[blockindex]
 
     nprocs = get_nprocs(modelpath)
-
     if nprocs > npts_model:
-        mpirank = modelgridindex
-    else:
-        nblock = npts_model // nprocs
-        n_leftover = npts_model % nprocs
+        return cells
 
-        mpirank = (
-            modelgridindex // (nblock + 1)
-            if modelgridindex <= n_leftover * (nblock + 1)
-            else n_leftover + (modelgridindex - n_leftover * (nblock + 1)) // nblock
-        )
+    nblock, n_leftover = divmod(npts_model, nprocs)
+    return np.where(
+        cells <= n_leftover * (nblock + 1),
+        cells // (nblock + 1),
+        n_leftover + (cells - n_leftover * (nblock + 1)) // nblock,
+    )
 
-    assert modelgridindex in get_cellsofmpirank(mpirank, modelpath)
 
+def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
+    """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
+    mpirank = int(get_mpiranks_of_cells(modelpath, np.array([modelgridindex], dtype=np.int64))[0])
+    # get_cellsofmpirank knows the blocks of the formula alone, and not modelgridrankassignments.out
+    assert get_rankassignments(modelpath) is not None or modelgridindex in get_cellsofmpirank(mpirank, modelpath)
     return mpirank

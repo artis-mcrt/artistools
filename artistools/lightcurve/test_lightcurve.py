@@ -2140,3 +2140,16 @@ def test_scan_lightcurve_reads_many_leading_zeros(tmp_path: Path) -> None:
 
     assert dflc.height == 121
     assert dflc["luminosity_Lsun"][-1] == pytest.approx(1.5e7, rel=1e-9)
+
+
+def test_band_lightcurve_of_the_angle_average_with_virtual_packets() -> None:
+    """With -plotvspecpol, bin -1 is the angle average of spec.out, and a vpkt run can have no specpol.out.
+
+    The reader took the times of bin -1 from specpol.out, thus it stopped with FileNotFoundError.
+    """
+    from artistools.lightcurve.core import generate_band_lightcurve_data
+
+    bandmags = generate_band_lightcurve_data(
+        at.get_path("testdata") / "vpktcontrib", dirbin=-1, plotvspecpol=[0], filter=["B"]
+    )
+    assert bandmags["B"]
