@@ -897,19 +897,58 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
         )
 
 
-def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
-    """Return the I, Q, and U spectra of one direction bin, read from specpol.out or specpol_res_<dirbin>.out."""
-    assert modelpath is not None
-    specfilename = (
-        firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-        if dirbin == -1
-        else firstexisting(f"specpol_res_{dirbin}.out", folder=modelpath, tryzipped=True)
-    )
+def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
+    """Return the names with a _duplicated_<n> suffix on each repeat, as polars names a repeated header.
 
-    print(f"Reading {specfilename}")
-    specdata = drop_trailing_null_column(
-        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
-    ).with_columns(pl.all().cast(pl.Float64))
+    split_dataframe_stokesparams reads those suffixes, thus a file with no header row must get the
+    same names as a file that polars reads with a header row.
+    """
+    countofname: dict[str, int] = {}
+    newcolnames: list[str] = []
+    for name in colnames:
+        count = countofname.get(name, 0)
+        countofname[name] = count + 1
+        newcolnames.append(name if count == 0 else f"{name}_duplicated_{count - 1}")
+
+    return newcolnames
+
+
+def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U spectra of one direction bin.
+
+    specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
+    one table for each direction bin, in the layout of spec_res.out.
+    """
+    assert modelpath is not None
+    if dirbin == -1:
+        specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+        print(f"Reading {specfilename}")
+        specdata = drop_trailing_null_column(
+            pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
+        ).with_columns(pl.all().cast(pl.Float64))
+
+        return split_dataframe_stokesparams(specdata)
+
+    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
+    print(f"Reading {specfilename} (direction bin {dirbin})")
+    tables = split_multitable_dataframe(
+        drop_trailing_null_column(
+            pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
+        )
+    )
+    if dirbin not in tables:
+        msg = f"{specfilename} holds {len(tables)} direction bins, thus it has no direction bin {dirbin}"
+        raise ValueError(msg)
+
+    # the first row of each table holds the times, which the file repeats for the Q and the U block
+    oldcolnames = tables[dirbin].collect_schema().names()
+    timerow = [str(value) for value in tables[dirbin].select(pl.all().slice(0, 1)).collect().row(0)]
+    specdata = (
+        tables[dirbin]
+        .select(pl.all().slice(offset=1))
+        .with_columns(pl.all().cast(pl.Float64))
+        .rename(dict(zip(oldcolnames, name_repeated_columns(timerow), strict=True)))
+    )
 
     return split_dataframe_stokesparams(specdata)
 
@@ -1771,30 +1810,14 @@ def get_flux_contributions_from_packets(
         for groupname, dfgroup in groups.items():
             group_energy_sum[groupname] = group_energy_sum.get(groupname, 0.0) + float(dfgroup[energy_column].sum())
 
-    allgroupnames = list(group_energy_sum)
-
-    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in allgroupnames]):
+    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in group_energy_sum]):
         print_warning(f"(packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
-    def sortkey(groupname: str) -> tuple[int, float | int]:
-        grouptotal = group_energy_sum[groupname]
+    # the small contributions join one group here, thus the code below bins one spectrum for them
+    allgroupnames, other_groupnames = rank_flux_series_names(group_energy_sum, maxseriescount, fixedionlist)
 
-        if fixedionlist is None:
-            return (0, -grouptotal)
-
-        return (
-            (fixedionlist.index(groupname), 0.0) if groupname in fixedionlist else (len(fixedionlist) + 1, -grouptotal)
-        )
-
-    # group small contributions together to avoid the cost of binning individual spectra for them
-
-    allgroupnames.sort(key=sortkey)
-
-    if maxseriescount is None:
-        maxseriescount = len(allgroupnames)
-    if len(allgroupnames) > maxseriescount:
-        other_groupnames = allgroupnames[maxseriescount:]
-        allgroupnames = [*allgroupnames[:maxseriescount], "Other"]
+    if other_groupnames:
+        allgroupnames = [*allgroupnames, "Other"]
 
         # a group name can be present for only one of emission and absorption (e.g. "Fe II bound-free" is never an
         # absorption label), so each dict is combined independently and may get no contributions at all
@@ -1885,6 +1908,31 @@ def get_flux_contributions_from_packets(
     return contribution_list, array_flambda_emission_total, array_lambda
 
 
+def rank_flux_series_names(
+    fluxofname: Mapping[str, float], maxseriescount: int | None, fixedionlist: Sequence[str] | None = None
+) -> tuple[list[str], list[str]]:
+    """Return the names that the plot draws, in the order of the series, and the names of the "Other" series.
+
+    A -fixedionlist keeps every one of its entries, in the order that the list gives, thus
+    maxseriescount does not apply to it. Without that list, the names come in the order of the flux,
+    and each name after maxseriescount joins "Other". A name that is already "Other" joins it as well.
+    """
+
+    def flux_of_name(name: str) -> float:
+        return fluxofname[name]
+
+    namesbyflux = sorted(fluxofname, key=flux_of_name, reverse=True)
+    if fixedionlist:
+        keptnames = [name for name in fixedionlist if name in fluxofname]
+    else:
+        limit = len(namesbyflux) if maxseriescount is None else maxseriescount
+        keptnames = [name for name in namesbyflux if name != "Other"][:limit]
+
+    keptset = set(keptnames)
+
+    return keptnames, [name for name in namesbyflux if name not in keptset]
+
+
 def sort_and_reduce_flux_contribution_list(
     contribution_list_in: list[FluxContributionTuple],
     maxseriescount: int,
@@ -1893,24 +1941,15 @@ def sort_and_reduce_flux_contribution_list(
     hideother: bool = False,
 ) -> list[FluxContributionTuple]:
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
-    if fixedionlist:
-        if unrecognised_items := [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]:
-            print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
+    rowofname = {row.linelabel: row for row in contribution_list_in}
+    if fixedionlist and (unrecognised_items := [x for x in fixedionlist if x not in rowofname]):
+        print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
 
-        # sort in manual order
-        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
-            assert fixedionlist is not None
-            return (
-                fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1,
-                -x.fluxcontrib,
-            )
-
-    else:
-        # sort descending by flux contribution
-        def sortkey(x: FluxContributionTuple) -> tuple[int, float]:
-            return (0, -x.fluxcontrib)
-
-    contribution_list = sorted(contribution_list_in, key=sortkey)
+    keptnames, othernames = rank_flux_series_names(
+        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+    )
+    kept = [rowofname[name] for name in keptnames]
+    other = [rowofname[name] for name in othernames]
 
     import matplotlib.pyplot as plt
 
@@ -1925,16 +1964,6 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    # the series past maxseriescount, or outside the manual list, join one "Other" series. A row that
-    # already carries that name goes there without a line of its own
-    kept: list[FluxContributionTuple] = []
-    other: list[FluxContributionTuple] = []
-    for row in contribution_list:
-        if row.linelabel != "Other" and (row.linelabel in fixedionlist if fixedionlist else len(kept) < maxseriescount):
-            kept.append(row)
-        else:
-            other.append(row)
-
     for row in kept:
         print_contribution(row, arraylambda_angstroms)
 
@@ -1945,8 +1974,9 @@ def sort_and_reduce_flux_contribution_list(
         for row in othernamed[:maxnumotherprinted]:
             print_contribution(row, arraylambda_angstroms)
 
+    # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
     contribution_list_out = [
-        row._replace(color=color_list[fixedionlist.index(row.linelabel) if fixedionlist else index])
+        row._replace(color=color_list[(fixedionlist.index(row.linelabel) if fixedionlist else index) % len(color_list)])
         for index, row in enumerate(kept)
     ]
 
@@ -2040,7 +2070,12 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
 
     if "z" in metadata:
-        specdata = specdata.with_columns(lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]))
+        # the de-redshift divides the wavelength by (1 + z), thus the flux density in the rest frame
+        # is (1 + z) times the observed one, because the same energy falls in a narrower band
+        specdata = specdata.with_columns(
+            lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]),
+            f_lambda=pl.col("f_lambda") * (1 + metadata["z"]),
+        )
         print(f"Correcting for redshift z = {metadata['z']}")
 
     return specdata

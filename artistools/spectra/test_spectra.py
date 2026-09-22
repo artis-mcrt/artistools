@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.figure as mplfig
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -20,11 +21,11 @@ modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectraplot(mockplot: mock.MagicMock) -> None:
+def test_spectraplot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
-        outputfile=outputpath,
+        outputfile=tmp_path / "spectraplot.pdf",
         timemin=290,
         timemax=320,
         distmpc=1.0,
@@ -33,8 +34,9 @@ def test_spectraplot(mockplot: mock.MagicMock) -> None:
     arr_lambda = np.array(mockplot.call_args[0][1])
     arr_f_lambda = np.array(mockplot.call_args[0][2])
 
+    # the de-redshift of the reference spectrum at z = 0.0056 multiplies f_lambda by (1 + z)
     integral = np.trapezoid(y=arr_f_lambda, x=arr_lambda)
-    assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
+    assert np.isclose(integral, 5.903606996256828e-11, rtol=1e-6, atol=0.0)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -67,11 +69,11 @@ def test_spectra_outputtext(tmp_path: Path) -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot() -> None:
+def test_spectraemissionplot(tmp_path: Path) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path / "emission.pdf",
         timemin=290,
         timemax=320,
         emissionabsorption=True,
@@ -80,11 +82,11 @@ def test_spectraemissionplot() -> None:
 
 
 @pytest.mark.benchmark
-def test_spectraemissionplot_nostack() -> None:
+def test_spectraemissionplot_nostack(tmp_path: Path) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
-        outputfile=outputpath,
+        outputfile=tmp_path / "emission_nostack.pdf",
         timemin=290,
         timemax=320,
         emissionabsorption=True,
@@ -118,8 +120,8 @@ def test_spectra_get_spectrum() -> None:
     ].collect()
 
     # the packets file of the test model holds a part of the packets of the run, thus its flux is
-    # below the flux of spec.out. test_spectra_get_flux_contributions_from_packets compares the two
-    # sources for a complete model
+    # below the flux of spec.out. test_spectra_get_flux_contributions compares spec.out with the sum
+    # of the emission contributions
     check_spectrum(dfspectrumpkts, expectedmax=1.4601241778685615e-14, expectedmean=3.8221552332231758e-16)
 
 
@@ -280,11 +282,22 @@ def test_spectra_flux_contribution_labels_from_packets(
 # These two groups thus test the two conditions. The "line" group gives the same result as the "nucmass" group.
 @pytest.mark.parametrize("groupby", ["ion", "nucmass"])
 def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
-    """Each absorption label is a line label. The group of the emission contributions does not change this."""
+    """The group of the contributions sets the shape of each absorption label.
+
+    The ion group gives an ion label, e.g. "Co II". The nucmass group gives a line label, which also
+    names the wavelength of the line, e.g. "Co II λ3754 69-25". No label names a free-free process or
+    a bound-free process, because a packet absorbs in a line alone.
+    """
     contributions, _, _ = get_contributions_classic_3d(groupby=groupby, getemission=False)
 
-    assert contributions
-    assert all(contrib.linelabel for contrib in contributions)
+    labels = [contrib.linelabel for contrib in contributions]
+    assert labels
+    assert all(labels)
+    assert not [label for label in labels if "free" in label]
+    if groupby == "nucmass":
+        assert all("λ" in label for label in labels)
+    else:
+        assert not any("λ" in label for label in labels)
 
 
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
@@ -706,7 +719,7 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     # check each bin is not out by a large fraction
     diff = [
         abs(x - y)
-        for x, y in zip(reversed(array_flambda_emission_total), dfspectrum["f_lambda"].to_numpy(), strict=False)
+        for x, y in zip(reversed(array_flambda_emission_total), dfspectrum["f_lambda"].to_numpy(), strict=True)
     ]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
     assert max(diff) / integrated_flux_specout < 1e-9
@@ -763,7 +776,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
         lambda_bin_edges=lambda_bin_edges,
     )[-1].collect()
 
-    integrated_flux_specout = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
+    integrated_flux_frompackets = np.trapezoid(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
     _contribution_list, array_flambda_emission_total, arraylambda_angstroms = benchmark(
         lambda: at.spectra.get_flux_contributions_from_packets(
             modelpath_classic_3d, timelowdays=timelowdays, timehighdays=timehighdays, lambda_bin_edges=lambda_bin_edges
@@ -773,14 +786,14 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     integrated_flux_emission = np.trapezoid(array_flambda_emission_total, x=arraylambda_angstroms)
 
     # total spectrum should be equal to the sum of all emission processes
-    print(f"Integrated flux from spec.out:     {integrated_flux_specout}")
+    print(f"Integrated flux from the packets:  {integrated_flux_frompackets}")
     print(f"Integrated flux from emission sum: {integrated_flux_emission}")
-    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
+    assert math.isclose(integrated_flux_frompackets, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
-    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=False)]
-    print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
-    assert max(diff) / integrated_flux_specout < 1e-10
+    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), strict=True)]
+    print(f"Max f_lambda difference {max(diff) / integrated_flux_frompackets}")
+    assert max(diff) / integrated_flux_frompackets < 1e-10
 
 
 @pytest.mark.parametrize(
@@ -841,15 +854,20 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
-@pytest.mark.parametrize("beta", [0.0, 0.3, 0.6])
-def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, beta: float) -> None:
+# The escape time of a packet is the value in the file times the Lorentz factor of the escape surface.
+# The first packet stays inside the window of 1 to 2 days for every beta. The second one enters the
+# window only at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
+@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.3, 10.0), (0.6, 30.0)])
+def test_spectra_contributions_use_escape_time(
+    monkeypatch: pytest.MonkeyPatch, beta: float, expected_e_cmf_sum: float
+) -> None:
     """Contribution spectra must use the same escape-time packet set and energy as the total spectrum."""
     nu_rf = at.constants.c_ang_per_s / 5000.0
     dfpackets = pl.DataFrame({
         "e_rf": [1.0, 2.0],
         "e_cmf": [10.0, 20.0],
         "t_arrive_d": [1.5, 3.0],
-        "escape_time": [3.0 * at.constants.day_to_s, 1.5 * at.constants.day_to_s],
+        "escape_time": [1.5 * at.constants.day_to_s, 2.2 * at.constants.day_to_s],
         "pellet_nucindex": [0, 0],
         "nu_rf": [nu_rf, nu_rf],
     })
@@ -892,7 +910,7 @@ def test_spectra_contributions_use_escape_time(monkeypatch: pytest.MonkeyPatch, 
     assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), rtol=1e-12, atol=0.0)
 
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
-    expected_flux = 20.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
+    expected_flux = expected_e_cmf_sum / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
@@ -967,10 +985,15 @@ def test_plotspectra_title_arg() -> None:
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
-def test_spectraplot_custom_title(mocksettitle: mock.MagicMock) -> None:
+def test_spectraplot_custom_title(mocksettitle: mock.MagicMock, tmp_path: Path) -> None:
     """-title text must be passed through to the axis title (previously store_true produced a title of 'True')."""
     at.spectra.plot(
-        argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, title="Custom title"
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=tmp_path / "customtitle.pdf",
+        timemin=290,
+        timemax=320,
+        title="Custom title",
     )
     titles = [call[0][1] for call in mocksettitle.call_args_list]
     assert "Custom title" in titles
@@ -1567,3 +1590,192 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
             residuals=True,
             outputfile=tmp_path / "b.pdf",
         )
+
+
+def get_saved_axes(**plotargs: t.Any) -> list[mplax.Axes]:
+    """Return the axes of the figure that plotspectra saves, for a test that reads the axis properties."""
+    savedaxes: list[mplax.Axes] = []
+
+    def save_figure(fig: mplfig.Figure, *_args: t.Any, **_kwargs: t.Any) -> None:
+        savedaxes.extend(fig.axes)
+
+    with mock.patch.object(at.spectra.plotspectra, "save_figure", save_figure):
+        at.spectra.plot(argsraw=[], **plotargs)
+
+    return savedaxes
+
+
+def test_plotspectra_ymin_alone_keeps_the_top_of_the_data(tmp_path: Path) -> None:
+    """-ymin sets the bottom of the y range, and the top still follows the drawn flux.
+
+    A limit stops the autoscale of both sides. The command applied the limits before it drew a line,
+    thus -ymin alone froze the view at 0 to 1 and no spectrum was visible.
+    """
+    (axis,) = get_saved_axes(
+        specpath=modelpath, outputfile=tmp_path / "ymin.pdf", timemin=290, timemax=320, ymin=0.0, yscale="linear"
+    )
+
+    bottom, top = axis.get_ylim()
+    assert bottom == 0.0
+    assert 0.0 < top < 1e-9
+
+
+def test_plotspectra_multispecplot_prunes_the_ticks_of_a_log_axis(tmp_path: Path) -> None:
+    """-yscale auto must choose the scale of the panels before the command sets their locators.
+
+    The lowest tick of one panel meets the highest tick of the panel below it, thus a stack of panels
+    needs a locator that prunes both ends. The scale changed after the locators were already in place.
+    """
+    import artistools.plottools as pt
+
+    with mock.patch.object(pt, "wants_log_scale", return_value=True):
+        axes = get_saved_axes(
+            specpath=modelpath, outputfile=tmp_path / "multispec_log.pdf", timedayslist=["290", "300"]
+        )
+
+    assert len(axes) == 2
+    for axis in axes:
+        assert axis.get_yscale() == "log"
+        assert isinstance(axis.yaxis.get_major_locator(), pt.PrunedLogLocator)
+
+
+def test_plotspectra_multispecplot_draws_a_reference_on_every_panel(tmp_path: Path) -> None:
+    """--multispecplot gives each panel one epoch of the model, and every panel shows the reference spectrum.
+
+    Each reference spectrum went on the panel of its own index. Thus one reference reached the first
+    panel alone, and more references than epochs raised IndexError.
+    """
+    axes = get_saved_axes(
+        specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
+        outputfile=tmp_path / "multispec_ref.pdf",
+        timedayslist=["290", "300"],
+        distmpc=1.0,
+    )
+
+    assert len(axes) == 2
+    for axis in axes:
+        assert any(line.get_label() == "SN2011fe +364d" for line in axis.get_lines())
+
+
+def test_plotspectra_write_data_names_each_direction_bin(tmp_path: Path) -> None:
+    """--write_data writes one column for each direction bin, and not the last bin alone."""
+    outputfile = tmp_path / "dirbins.pdf"
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=outputfile,
+        timemin=4,
+        timemax=6.5,
+        plotviewingangle=[0, 5],
+        write_data=True,
+    )
+
+    columns = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ").columns
+    assert sum(column.endswith("_dirbin00") for column in columns) == 1
+    assert sum(column.endswith("_dirbin05") for column in columns) == 1
+
+
+def test_get_specpol_data_reads_one_direction_bin() -> None:
+    """ARTIS writes one file specpol_res.out that holds a table for each direction bin.
+
+    The reader asked for specpol_res_<dirbin>.out, which no run holds, thus every direction bin
+    raised FileNotFoundError.
+    """
+    dfdirbin = at.spectra.get_specpol_data(dirbin=0, modelpath=modelpath_classic_3d)["I"].collect()
+    dfaveraged = at.spectra.get_specpol_data(dirbin=-1, modelpath=modelpath_classic_3d)["I"].collect()
+
+    assert dfdirbin.columns == dfaveraged.columns
+    assert dfdirbin.columns[0] == "nu"
+    assert dfdirbin.height == dfaveraged.height
+    assert not dfdirbin.equals(dfaveraged)
+
+
+def test_plotspectra_emission_refuses_two_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An emission plot draws one ARTIS model, thus two of them give a message and not a silent choice."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath, modelpath_classic_3d],
+            outputfile=tmp_path / "twomodels.pdf",
+            timemin=290,
+            timemax=320,
+            emissionabsorption=True,
+        )
+
+    assert "one ARTIS model" in capsys.readouterr().err
+
+
+def test_plotspectra_emission_refuses_two_direction_bins(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An emission plot draws one direction bin, and the name of its file gives every requested bin."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            outputfile=tmp_path / "twobins.pdf",
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            plotviewingangle=[0, 5],
+        )
+
+    assert "one direction bin" in capsys.readouterr().err
+
+
+def test_plotspectra_vpkt_exclusion_names_the_missing_options(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--vpkt_match_emission_exclusion_to_opac names the options that it needs, and does not fail an assert."""
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath,
+            outputfile=tmp_path / "vpktexclusion.pdf",
+            timemin=290,
+            timemax=320,
+            vpkt_match_emission_exclusion_to_opac=True,
+        )
+
+    captured = capsys.readouterr().err
+    assert "--showemission" in captured
+    assert "-plotvspecpol" in captured
+
+
+def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
+    """A de-redshift divides the wavelength by (1 + z) and multiplies f_lambda by (1 + z).
+
+    The same energy falls in a narrower band in the rest frame, thus the flux density rises.
+    """
+    redshift = 0.5
+    specfile = tmp_path / "redshifted.txt"
+    specfile.write_text("4000 1.0\n5000 2.0\n6000 3.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {redshift}\n", encoding="utf-8")
+
+    specdata = atspectra.get_reference_spectrum(specfile)
+
+    lambda_obs = np.array([4000.0, 5000.0, 6000.0])
+    assert np.allclose(specdata["lambda_angstroms"].to_numpy(), lambda_obs / (1 + redshift), atol=0.0)
+    assert np.allclose(specdata["f_lambda"].to_numpy(), np.array([1.0, 2.0, 3.0]) * (1 + redshift), atol=0.0)
+
+
+@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
+def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
+    """The velocity range arguments must reach the packet reader that selects the contributions."""
+    contribution_list: list[atspectra.FluxContributionTuple] = []
+    mockgetcontributions.return_value = (contribution_list, np.zeros(2), np.array([4000.0, 5000.0]))
+
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath_classic_3d,
+        outputfile=tmp_path / "velocityranges_forwarded.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        emissionvelocityrange=["0.04c", "0.06c"],
+        emissionlosvelocityrange=[-15000, 15000],
+    )
+
+    velocityranges = mockgetcontributions.call_args.kwargs["velocityranges"]
+    assert set(velocityranges) == {"velocity", "losvelocity"}
+    assert np.isclose(velocityranges["velocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert np.isclose(velocityranges["velocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert velocityranges["losvelocity"] == (-15000.0, 15000.0)
