@@ -1783,3 +1783,20 @@ def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: 
     assert np.isclose(velocityranges["velocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
     assert np.isclose(velocityranges["velocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
     assert velocityranges["losvelocity"] == (-15000.0, 15000.0)
+
+
+def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The spectra of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus a second model in the same process got the spectra of
+    the first model.
+    """
+    for foldername, flux in (("modelA", 1.0), ("modelB", 2.0)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "spec.out").write_text(f"0 10.0\n1e15 {flux}\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert atspectra.read_spec(Path()).collect()["10.0"].item() == pytest.approx(1.0)
+
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert atspectra.read_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
