@@ -385,6 +385,9 @@ def read_wsv(
             schema_overrides=schema_overrides,
             infer_schema_length=infer_schema_length,
             null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
+            # the buffer comes from a sink that quotes nothing, thus a quotation mark in a value is
+            # data. A reader that takes it as a quote joins the fields that follow it into one column
+            quote_char=None,
         )
         return (lzscan.select(list(columns)) if columns is not None else lzscan).collect()
 
@@ -446,7 +449,9 @@ def firstexisting(
         yield Path(folder)
         if search_subfolders:
             for filename in filelist:
-                for p in Path(folder).glob(f"*/{filename}*"):
+                # a glob gives the names in the order of the file system, thus the result would
+                # differ between two machines. The natural order gives the order of the runs
+                for p in sorted(Path(folder).glob(f"*/{filename}*"), key=natural_sort_key):
                     yield p.parent
 
     for searchfolder in search_folders(filelist):
@@ -583,6 +588,29 @@ def path_is_codecomparison(filepath: Path | str) -> bool:
     filepath = Path(filepath)
 
     return not filepath.exists() and filepath.parts[:1] == ("codecomparison",)
+
+
+def natural_sort_key(path: Path | str) -> tuple[tuple[int, int, str], ...]:
+    """Return a sort key that orders a path by the value of each number that it holds.
+
+    A run folder carries the number of the job, e.g. "9876543.slurm". A lexical order puts
+    "10000001.slurm" in front of that folder, thus the later run would come first.
+    """
+    return tuple(
+        (0, int(token), "") if token.isdigit() else (1, 0, token) for token in re.split(r"(\d+)", str(path)) if token
+    )
+
+
+def resolve_modelpath(modelpath: Path | str) -> Path:
+    """Return the absolute path of a model.
+
+    A virtual codecomparison path stays as it is. A cached function takes the absolute path. The
+    default model path is the relative Path("."), thus a cache that holds it keeps the first answer
+    after the user changes the working folder.
+    """
+    path = Path(modelpath)
+
+    return path if path_is_codecomparison(path) else path.resolve()
 
 
 def readnoncommentline(file: t.IO[str]) -> str:
@@ -862,11 +890,17 @@ def rankbatch_parquet_staleness(
     A complete batch compares the newest text file with the stamp of the cache. An incomplete batch
     compares in one direction only. A text file that is newer than the stamp proves a rewrite. An
     absent text file proves nothing. The cache format version applies to a batch of either kind.
+
+    A cache from before the stamps holds no stamp of its own. Such a cache stays in use for an
+    incomplete batch, because the text files that rebuild it are gone. A complete batch holds every
+    text file, thus an unstamped cache there is stale and the code converts the text files again.
     """
-    # an archived run costs hours to convert again, thus a cache from before the stamps stays in
-    # use. See the accept_unstamped argument of read_parquet_cache_metadata
+    # See the accept_unstamped argument of read_parquet_cache_metadata
     pqmetadata, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, cacheversion, textsource_mtime if textsource_complete else None, accept_unstamped=True
+        parquetfilepath,
+        cacheversion,
+        textsource_mtime if textsource_complete else None,
+        accept_unstamped=not textsource_complete,
     )
     if stalereason is not None or textsource_complete or textsource_mtime is None:
         return stalereason

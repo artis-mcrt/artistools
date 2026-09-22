@@ -179,36 +179,40 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArra
     phi_lower = np.array([2 * math.pi * (1 - (step + 1) / nphibins) for step in phisteps])
     phi_upper = np.array([2 * math.pi * (1 - step / nphibins) for step in phisteps])
 
-    binlabels = ["" for _ in range(nphibins)]
-    for phibin, phibinmonotonicdesc in enumerate(phisteps):
+    binlabels = []
+    for phibin in range(nphibins):
         if usedegrees:
-            str_phi_lower = f"{phi_lower[phibinmonotonicdesc] / math.pi * 180:3.0f}°"
-            str_phi_upper = f"{phi_upper[phibinmonotonicdesc] / math.pi * 180:3.0f}°"
+            str_phi_lower = f"{phi_lower[phibin] / math.pi * 180:3.0f}°"
+            str_phi_upper = f"{phi_upper[phibin] / math.pi * 180:3.0f}°"
         else:
-            coeff_lower = phi_lower[phibinmonotonicdesc] / (2 * math.pi) * nphibins
+            coeff_lower = phi_lower[phibin] / (2 * math.pi) * nphibins
             assert np.isclose(coeff_lower, round(coeff_lower), rtol=0.01), coeff_lower
-            str_phi_lower = f"{round(coeff_lower)}π/{nphibins // 2}" if phi_lower[phibinmonotonicdesc] > 0.0 else "0"
-            coeff_upper = phi_upper[phibinmonotonicdesc] / (2 * math.pi) * nphibins
+            str_phi_lower = f"{round(coeff_lower)}π/{nphibins // 2}" if phi_lower[phibin] > 0.0 else "0"
+            coeff_upper = phi_upper[phibin] / (2 * math.pi) * nphibins
             assert np.isclose(coeff_upper, round(coeff_upper), rtol=0.01)
-            str_phi_upper = (
-                f"{round(coeff_upper)}π/{nphibins // 2}" if phi_upper[phibinmonotonicdesc] < 2 * math.pi else "2π"
-            )
+            str_phi_upper = f"{round(coeff_upper)}π/{nphibins // 2}" if phi_upper[phibin] < 2 * math.pi else "2π"
 
-        lower_compare = "≤" if phibin < (nphibins // 2) else "<"
-        upper_compare = "≤" if phibin > (nphibins // 2) else "<"
-        binlabels[phibinmonotonicdesc] = f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}"
+        # ARTIS puts a packet of the first half in the bin int(acos(cosphi) / 2 pi * n), and
+        # acos descends as phi ascends. Thus such a bin is open at the lower boundary and closed
+        # at the upper one. The second half takes int((acos(cosphi) + pi) / 2 pi * n), thus it is
+        # closed at the lower boundary and open at the upper one. The last bin also holds
+        # phi = pi, because ARTIS clamps that index. See get_directionbin in artistools/packets/core.py
+        firsthalf = phibin < nphibins // 2
+        lower_compare = "<" if firsthalf else "≤"
+        upper_compare = "≤" if firsthalf or phibin == nphibins - 1 else "<"
+        binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
 
     # if nphibins == 10, then binlabels = [
-    #     "9π/5 ≤ ϕ < 2π",
-    #     "8π/5 ≤ ϕ < 9π/5",
-    #     "7π/5 ≤ ϕ < 8π/5",
-    #     "6π/5 ≤ ϕ < 7π/5",
-    #     "5π/5 ≤ ϕ < 6π/5",
-    #     "0 < ϕ ≤ 1π/5",
-    #     "1π/5 < ϕ ≤ 2π/5",
-    #     "2π/5 < ϕ ≤ 3π/5",
-    #     "3π/5 < ϕ ≤ 4π/5",
-    #     "4π/5 < ϕ < 5π/5",
+    #     "9π/5 < ϕ ≤ 2π",
+    #     "8π/5 < ϕ ≤ 9π/5",
+    #     "7π/5 < ϕ ≤ 8π/5",
+    #     "6π/5 < ϕ ≤ 7π/5",
+    #     "5π/5 < ϕ ≤ 6π/5",
+    #     "0 ≤ ϕ < 1π/5",
+    #     "1π/5 ≤ ϕ < 2π/5",
+    #     "2π/5 ≤ ϕ < 3π/5",
+    #     "3π/5 ≤ ϕ < 4π/5",
+    #     "4π/5 ≤ ϕ ≤ 5π/5",
     # ]
 
     return phi_lower, phi_upper, binlabels

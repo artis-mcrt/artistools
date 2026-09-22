@@ -255,6 +255,15 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
         assert stalereason is not None
         return stalereason
 
+    # a file system can move the time of a file, even when the run wrote nothing. Thus a small
+    # difference counts as the same time
+    assert at.misc.read_parquet_cache_metadata(current, cacheversion, mtime + 6.0)[1] is None
+
+    # a difference above the tolerance is a rewrite, in either direction
+    assert "the text source changed" in str(
+        at.misc.read_parquet_cache_metadata(current, cacheversion, mtime - MTIME_TOLERANCE_S - 10.0)[1]
+    )
+
     # the text file changed after the run wrote the cache, thus the reason names both times
     changedmtime = mtime + MTIME_TOLERANCE_S + 10.0
     changedsource = get_reason(current, changedmtime)
@@ -1625,19 +1634,75 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
 
 
-def test_read_rank_outputfiles_takes_a_cell_list() -> None:
-    """A sequence of cells must give the same rows as the single-cell call that it replaces."""
+def write_rank_output_model(modelpath: Path, rowsoffolder: dict[str, list[tuple[int, int, float]]]) -> None:
+    """Write a model of five cells whose run folders hold one nlte file each.
+
+    rowsoffolder names each run folder, and it gives the timestep, the cell, and the value of each
+    row of the nlte file of that folder. A name of "." puts the files in the model folder itself.
+    """
+    modelpath.mkdir(parents=True, exist_ok=True)
+    (modelpath / "model.txt").write_text(
+        "5\n1.0\n" + "".join(f"{cell} {cell + 1}.0 0.0 0.0 0.0\n" for cell in range(5)), encoding="utf-8"
+    )
+    # get_nprocs reads the number of MPI processes from line 22 of input.txt
+    (modelpath / "input.txt").write_text("\n".join(["0"] * 21 + ["1"]) + "\n", encoding="utf-8")
+
+    for foldername, rows in rowsoffolder.items():
+        folderpath = modelpath / foldername
+        folderpath.mkdir(parents=True, exist_ok=True)
+        # a folder counts as a run folder when it holds an estimators file
+        timesteps = sorted({timestep for timestep, _, _ in rows})
+        (folderpath / "estimators_0000.out").write_text(
+            "".join(f"timestep {timestep} modelgridindex 0\n" for timestep in timesteps), encoding="utf-8"
+        )
+        (folderpath / "nlte_0000.out").write_text(
+            "timestep modelgridindex nnlevel\n"
+            + "".join(f"{timestep} {cell} {value}\n" for timestep, cell, value in rows),
+            encoding="utf-8",
+        )
+
+
+def test_read_rank_outputfiles_takes_a_cell_list(tmp_path: Path) -> None:
+    """A sequence of cells must give the same rows as the single-cell call that it replaces.
+
+    A model of one cell gives the same rows for every selection, thus this model holds five.
+    """
     from artistools.misc.modelinfo import read_rank_outputfiles
 
-    modelpath = at.get_path("testdata") / "testmodel"
-    df_single = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=0)
-    df_list = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0])
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(5)]})
+
+    df_single = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    df_list = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=[3])
     pltest.assert_frame_equal(df_list, df_single)
-    assert not df_single.is_empty()
+    assert df_single.height == 1
 
     # a negative cell number means no filter, also inside a sequence
-    df_all = read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40, modelgridindex=[0, -1])
-    pltest.assert_frame_equal(df_all, read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=40))
+    df_all = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=[3, -1])
+    assert df_all.height == 5, "a negative cell number must take every cell"
+    pltest.assert_frame_equal(df_all, read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0))
+
+
+def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path: Path) -> None:
+    """A restarted run writes its first timestep again, thus the rows of the earlier folder stay.
+
+    The code concatenated every run folder, thus each row of the repeated timestep appeared two times.
+    A plot of that timestep then read two values for one cell.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(
+        tmp_path,
+        {
+            "job0": [(0, 0, 1.0), (1, 0, 2.0)],
+            # the restart computes timestep 1 again, and it writes another value for it
+            "job1": [(1, 0, 9.0), (2, 0, 3.0)],
+        },
+    )
+
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
+
+    assert dfout["timestep"].to_list() == [0, 1, 2], "each timestep must appear one time"
+    assert dfout.filter(timestep=1)["nnlevel"].item() == 2.0, "the rows of the earlier folder stay"
 
 
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:
@@ -1745,7 +1810,7 @@ def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPat
     assert at.misc.import_optional("math").sqrt(4.0) == 2.0
 
 
-def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str]) -> None:
+def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     """A warning goes to the standard error, thus --quiet keeps it and a script reads a clean product.
 
     Every warning went to the standard output before, thus --quiet discarded all of them.
@@ -1769,6 +1834,25 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     )
     captured = capsys.readouterr()
     assert "estimator variables" in captured.out
+
+    # the warning of a command must also reach the standard error. The test model holds no
+    # deposition.out, thus get_escaped_arrivalrange gives a warning. That function caches its
+    # answer, thus this test clears the cache. An earlier test in this process would otherwise
+    # keep the warning
+    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+
+    get_escaped_arrivalrange_cached.cache_clear()
+    artistools.__main__.main(
+        argsraw=[
+            "plotlightcurves",
+            str(at.get_path("testdata") / "testmodel"),
+            "--quiet",
+            "-o",
+            str(tmp_path / "quietwarning.pdf"),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "WARNING: No deposition.out file found" in captured.err
 
 
 def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
@@ -2011,9 +2095,16 @@ def test_phibin_rank_ascends_with_phi() -> None:
     ranks = [at.misc.get_phibin_rank_ascending(phibin) for phibin in range(nphibins)]
     assert sorted(ranks) == list(range(nphibins))
 
-    phi_lower, _, _ = at.misc.get_phi_bins(usedegrees=False)
+    phi_lower, _, binlabels = at.misc.get_phi_bins(usedegrees=False)
     binsbyrank = sorted(range(nphibins), key=at.misc.get_phibin_rank_ascending)
     assert [phi_lower[phibin] for phibin in binsbyrank] == sorted(phi_lower)
+
+    # the bins of ARTIS are half-open, and the label of each one must say which end it holds. A
+    # packet that travels along +X has phi = 0, and get_directionbin puts it in a bin that holds 0
+    from artistools.packets.core import get_directionbin
+
+    dirbin = get_directionbin(1.0, 0.0, 0.0, nphibins, at.misc.get_viewingdirection_costhetabincount(), (0.0, 0.0, 1.0))
+    assert binlabels[dirbin % nphibins].startswith("0 \u2264"), binlabels[dirbin % nphibins]
 
 
 def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: Path) -> None:

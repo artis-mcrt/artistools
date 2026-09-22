@@ -121,7 +121,7 @@ class KeepGivenPaths(argparse.Action):
 
     def __call__(
         self,
-        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: "str | Sequence[t.Any] | None",
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
@@ -130,6 +130,52 @@ class KeepGivenPaths(argparse.Action):
         userwrote = bool(values) and values != self.default
         if userwrote or getattr(namespace, self.dest, None) is None:
             setattr(namespace, self.dest, values)
+
+        if not userwrote:
+            take_back_swallowed_folder(parser, namespace, self)
+
+
+def take_back_swallowed_folder(
+    parser: argparse.ArgumentParser, namespace: argparse.Namespace, pathaction: argparse.Action
+) -> None:
+    """Give the ARTIS folder back to the positional path argument when an option took it.
+
+    argparse gives every word that follows to an option that reads a list. Thus
+    "plotspectra -label mylabel mymodel" left the model path empty and made "mymodel" a second
+    label. The command then plotted the working folder, and it gave no message. The folder comes
+    back to the positional argument here, and the option keeps its other values.
+
+    Only the last value of an option can be the folder, because the user writes the path last. Two
+    options that each end with the name of a folder are ambiguous. The command then reads them as
+    the user wrote them.
+    """
+    given = getattr(namespace, pathaction.dest, None)
+    if given and given != pathaction.default:
+        return
+
+    def ends_with_a_folder(action: argparse.Action) -> bool:
+        values = getattr(namespace, action.dest, None)
+
+        return (
+            bool(action.option_strings)
+            and action.nargs in {"*", "+"}
+            and isinstance(values, list)
+            # the default list belongs to the parser, thus the user gave no value in that list
+            and values is not action.default
+            and bool(values)
+            and isinstance(values[-1], str)
+            and item_names_a_folder(values[-1])
+        )
+
+    candidates = [action for action in parser._actions if ends_with_a_folder(action)]  # ruff:ignore[private-member-access]
+    if len(candidates) != 1:
+        return
+
+    taken = getattr(namespace, candidates[0].dest)
+    setattr(namespace, candidates[0].dest, taken[:-1])
+    converter = pathaction.type
+    folder = converter(taken[-1]) if callable(converter) else taken[-1]
+    setattr(namespace, pathaction.dest, [folder] if pathaction.nargs in {"*", "+"} else folder)
 
 
 def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
@@ -431,7 +477,7 @@ def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
     oneletter = [flag for flag in declared if len(flag) == 2 and not flag.startswith("--")]
 
     # only a name that starts with a flag of this command can collide, thus each letter reads the
-    # names that start with it rather than the whole set of 155 names
+    # names that start with it rather than the whole set of declared names
     for letterflag in sorted(oneletter):
         for name in SINGLEDASHLONGFLAGS_BYLETTER.get(letterflag, ()):
             # a command that spells the same name with two dashes does take that argument
@@ -543,6 +589,20 @@ def color_arg(value: str) -> str:
     return value
 
 
+def dashes_arg(value: str) -> tuple[float, ...]:
+    """Return the dash pattern of one line, which matplotlib reads as a sequence of lengths.
+
+    The user writes the lengths of the dash and of the gap with a comma between them, e.g. 5,2.
+    matplotlib refuses the text, thus this function converts the numbers. The error message then
+    names -dashes.
+    """
+    try:
+        return tuple(float(part) for part in value.replace(" ", ",").split(",") if part)
+    except ValueError as exc:
+        msg = f"The value {value} is not a dash pattern such as 5,2"
+        raise argparse.ArgumentTypeError(msg) from exc
+
+
 def addarg_seriesstyle(
     parser: argparse.ArgumentParser,
     *,
@@ -567,9 +627,15 @@ def addarg_seriesstyle(
         group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
         group.add_argument("-linewidth", type=float, default=[], nargs="*", help="List of line widths")
     if include_linealpha:
-        group.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
+        group.add_argument("-linealpha", type=float, default=[], nargs="*", help="List of line alphas (opacities)")
     if include_dashes:
-        group.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
+        group.add_argument(
+            "-dashes",
+            type=dashes_arg,
+            default=[],
+            nargs="*",
+            help="List of dash patterns of lines, each one a list such as 5,2",
+        )
 
 
 def addarg_figscale(
@@ -1041,6 +1107,11 @@ def resolve_frameset_paths(
     return FrameSet(frametemplate, productpath, combines, gifduration)
 
 
+def takes_a_list(action: argparse.Action) -> bool:
+    """Return whether the command line gives this argument a list of values."""
+    return action.nargs in {"*", "+"} or (isinstance(action.nargs, int) and action.nargs > 1)
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary.
 
@@ -1059,6 +1130,14 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         for optstring in arg.option_strings:
             if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
                 kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
+
+    # an option that reads a list gets a list from the command line, thus main(plotviewingangle=0)
+    # must mean the same as -plotviewingangle 0
+    for arg in realactions:
+        value = kwargs.get(arg.dest)
+        # pyrefly: ignore[implicit-any-type-argument]
+        if value is not None and takes_a_list(arg) and not isinstance(value, list | tuple):
+            kwargs[arg.dest] = [value]
 
     parser.set_defaults(**kwargs)
     # every argument takes required=False. A keyword argument can give the value instead, thus a

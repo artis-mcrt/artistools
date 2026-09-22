@@ -13,6 +13,7 @@ from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
+from artistools.misc.fileio import natural_sort_key
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:
@@ -61,7 +62,12 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
 
 def get_first_ts_in_run_directory(modelpath: str | Path) -> dict[str, int]:
     """Return the first timestep contained in each run folder, since classic estimator files restart their numbering."""
-    folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
+    # a run folder carries the number of the job, thus a lexical order puts a run of 10000001 in
+    # front of a run of 9876543. The natural order gives the folders in the order of the runs
+    folderlist_all = (
+        *sorted((child for child in Path(modelpath).iterdir() if child.is_dir()), key=natural_sort_key),
+        Path(modelpath),
+    )
 
     first_timesteps_in_dir = {}
 

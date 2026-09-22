@@ -1,9 +1,10 @@
 #!/bin/sh
 # PostToolUse hook: format and check one edited Rust file.
 #
-# CI runs clippy but never `cargo fmt` (see .github/workflows/pytest.yml), thus
-# the format of the Rust code has no gate at all. clippy needs about 1.6 s after
-# a change to a source file, because only the local crate compiles again.
+# CI runs `cargo fmt --check` and clippy (see .github/workflows/pytest.yml).
+# This hook applies the format here, thus a change needs no second push. clippy
+# needs about 1.6 s after a change to a source file, because only the local
+# crate compiles again.
 
 set -u
 

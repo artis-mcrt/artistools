@@ -34,9 +34,11 @@ pip install --group dev --editable .[extras]
 prek install
 ```
 
-To learn how to enable command-line autocompletions, run:
+To enable command-line autocompletions, write the script to a file. Then source that file from your
+shell startup file:
 ```sh
-artistools completions
+artistools completions > ~/.artistoolscompletions.sh
+echo 'source "$HOME/.artistoolscompletions.sh"' >> ~/.zshrc
 ```
 
 ## Citing artistools

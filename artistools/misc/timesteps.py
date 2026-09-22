@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import math
-import re
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -16,6 +15,7 @@ import polars as pl
 from artistools.constants import C_cm_per_s
 from artistools.misc.cliutils import exit_with_error
 from artistools.misc.cliutils import parse_float_range
+from artistools.misc.cliutils import parse_range_list
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
@@ -25,6 +25,7 @@ from artistools.misc.fileio import path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
 
@@ -38,7 +39,6 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
-@lru_cache(maxsize=16)
 def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
     """Return a polars LazyFrame containing the deposition data.
 
@@ -46,6 +46,12 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
     for it once per model and again per escape type, so the parsed frame is cached. A LazyFrame has no
     in-place operations, so a caller cannot alter what the next one gets.
     """
+    return get_deposition_cached(resolve_modelpath(modelpath))
+
+
+@lru_cache(maxsize=16)
+def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
+    """Return the deposition data of the model at an absolute path."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -135,9 +141,17 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     )
 
 
-@lru_cache(maxsize=16)
 def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
-    """Return a list of the times in days of each timestep."""
+    """Return a list of the times in days of each timestep.
+
+    Do not change the list that this function returns. The next caller gets the same object.
+    """
+    return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
+
+
+@lru_cache(maxsize=16)
+def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
+    """Return the times in days of each timestep of the model at an absolute path."""
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
 
     if colname := colname_of_loc.get(loc):
@@ -220,8 +234,6 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
     if timestep is None:
         return None
 
-    from artistools.misc.cliutils import parse_range_list
-
     lasttimestep = len(get_timestep_times(modelpath, loc="mid")) - 1
     timesteps = parse_range_list(str(timestep), dictvars={"last": lasttimestep})
     if len(timesteps) > 1:
@@ -235,13 +247,6 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
         raise ValueError(get_bad_timestep_message(modelpath, timesteps[0]))
 
     return timesteps[0]
-
-
-def parse_timestep_token(token: str, dictvars: dict[str, int]) -> int:
-    """Return the timestep that a token names, resolving a keyword such as "last"."""
-    token = token.strip()
-
-    return dictvars[token] if token in dictvars else int(token)
 
 
 def apply_time_range_args(
@@ -340,28 +345,17 @@ def get_time_range(
             msg = "Specify only one of -timestep and -timedays"
             raise ValueError(msg)
 
-        # "last" names the final timestep, so that a command needs no arithmetic to ask for it
-        dictvars = {"last": len(tmids) - 1}
-        rangeparts = re.split(r"(?<=[0-9a-zA-Z])-", timestep_range_str.strip())
-        if len(rangeparts) == 2:
-            timestepmin, timestepmax = (parse_timestep_token(nts, dictvars) for nts in rangeparts)
-        elif len(rangeparts) > 2:
-            msg = f"'{timestep_range_str}' names more than one range of timesteps"
-            raise ValueError(msg)
-        else:
-            timestepmin = parse_timestep_token(timestep_range_str, dictvars)
-            timestepmax = timestepmin
+        # parse_range_list defines the grammar of a range of numbers, thus -timestep and
+        # -modelgridindex read the same text. "last" names the final timestep, so that a command
+        # needs no arithmetic to ask for it
+        lasttimestep = len(tmids) - 1
+        selectedtimesteps = parse_range_list(timestep_range_str, dictvars={"last": lasttimestep})
+        timestepmin = selectedtimesteps[0]
+        timestepmax = selectedtimesteps[-1]
 
         # a range that overshoots the end still starts inside the run, thus only the start must be in it
-        if timestepmin > dictvars["last"] or timestepmin < 0:
+        if timestepmin > lasttimestep or timestepmin < 0:
             msg = get_bad_timestep_message(modelpath, timestepmin)
-            raise ValueError(msg)
-
-        if timestepmax < timestepmin:
-            msg = (
-                f"'{timestep_range_str}' names the timestep range {timestepmin} to {timestepmax},"
-                " which ends before it starts"
-            )
             raise ValueError(msg)
     elif (timemin is not None or timemax is not None) or timedays_range_str is not None:
         if timemin is None and timemax is not None:
@@ -448,10 +442,14 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-@lru_cache(maxsize=16)
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
-    modelpath = Path(modelpath)
+    return get_escaped_arrivalrange_cached(resolve_modelpath(modelpath))
+
+
+@lru_cache(maxsize=16)
+def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
+    """Return the arrival time range of the model at an absolute path."""
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)

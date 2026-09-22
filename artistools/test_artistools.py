@@ -166,21 +166,27 @@ def test_module_entry_points_name_a_real_subcommand() -> None:
     A module that calls its own main function reads no --quiet, and it reports a bad argument with a
     traceback. run_subcommand gives it the path of a console script.
     """
-    names: dict[Path, str] = {}
-    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
-        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text()):
-            names[path] = match.group(1)
+    # a module can name more than one subcommand, thus each match counts. A name that holds a space
+    # is an iCloud conflict copy, which is not a module of the package
+    names: list[tuple[Path, str]] = [
+        (path, match.group(1))
+        for path in sorted(REPOPATH.glob("artistools/**/*.py"))
+        if " " not in path.name
+        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text(encoding="utf-8"))
+    ]
 
     assert names, "no module entry point routes through the dispatcher"
 
-    for path, subcommand in names.items():
+    for path, subcommand in names:
         spec = at.commands.subcommandtree.get(subcommand)
         assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
         assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
 
     # every command takes --quiet, thus no module may call its main function and skip run_command
     for path in sorted(REPOPATH.glob("artistools/**/*.py")):
-        text = path.read_text()
+        if " " in path.name:
+            continue
+        text = path.read_text(encoding="utf-8")
         if 'if __name__ == "__main__":' not in text or path.name.startswith("test_"):
             continue
         block = text.split('if __name__ == "__main__":')[1]
@@ -358,9 +364,8 @@ def test_package_modules_import_no_package_alias() -> None:
     offenders = [
         str(path.relative_to(packagedir))
         for path in sorted(packagedir.rglob("*.py"))
-        # a test and a top-level script can use the alias, and a name with a space is an iCloud conflict copy
+        # a test can use the alias, and a name with a space is an iCloud conflict copy
         if not path.name.startswith("test_")
-        and path.name not in {"__main__.py", "conftest.py"}
         and " " not in path.name
         and aliasimport.search(path.read_text(encoding="utf-8"))
     ]
@@ -2261,15 +2266,11 @@ def test_every_command_takes_quiet() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    for subcommand, subparser in subactions[0].choices.items():
-        flagsofdest = {
-            action.dest: action.option_strings
-            for action in subparser._actions  # ruff:ignore[private-member-access]
-        }
+    for subcommand, subparser in get_every_subcommand(parser):
         if subparser.get_default("argparser") is None:
             continue  # a group of subcommands holds no arguments of its own
 
+        flagsofdest = get_flags_of_dest(subparser)
         assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
 
 
@@ -2280,6 +2281,20 @@ def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str,
             for name, subparser in action.choices.items():
                 yield name, subparser
                 yield from get_every_subcommand(subparser)
+
+
+def get_flags_of_dest(parser: argparse.ArgumentParser) -> dict[str, list[str]]:
+    """Return the option strings of each dest.
+
+    The result merges every action that writes the same dest. A dest can hold more than one action,
+    e.g. a deprecated hidden alias. A dict that keeps the last action alone loses the flags of the
+    first one.
+    """
+    flagsofdest: dict[str, list[str]] = {}
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
+
+    return flagsofdest
 
 
 def test_an_output_template_takes_the_older_name_of_a_field() -> None:
@@ -2315,10 +2330,9 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
@@ -2358,10 +2372,9 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
         at.misc.get_single_modelgridindex("3-7")
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
@@ -2386,10 +2399,9 @@ def test_every_command_reads_the_same_timestep_grammar() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     seen: set[int] = set()
     checked = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if id(subparser) in seen:
             continue
         seen.add(id(subparser))
@@ -2402,6 +2414,37 @@ def test_every_command_reads_the_same_timestep_grammar() -> None:
             checked += 1
 
     assert checked >= 10, f"only {checked} commands take -timestep"
+
+
+def test_an_option_that_reads_a_list_gives_back_the_model_path() -> None:
+    """An option that reads a list must not keep the ARTIS folder that follows its values.
+
+    argparse gives every word that follows to such an option. Thus
+    "plotspectra -label mylabel mymodel" left the model path empty, and it made "mymodel" a second
+    label. normalize_path_list then gave the working folder, and the command plotted that folder
+    with no message.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+
+    args = parser.parse_args(["plotspectra", "-label", "mylabel", str(modelpath)])
+    assert args.specpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    args = parser.parse_args(["plotlightcurves", "-label", "mylabel", str(modelpath)])
+    assert args.modelpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    # the path that the user writes in front of the option still reaches the positional argument
+    args = parser.parse_args(["plotspectra", str(modelpath), "-label", "mylabel"])
+    assert args.specpath == [modelpath]
+    assert args.label == ["mylabel"]
+
+    # a value that names no folder stays with the option that reads it
+    args = parser.parse_args(["plotspectra", "-label", "mylabel"])
+    assert args.specpath == []
+    assert args.label == ["mylabel"]
 
 
 def test_a_joined_value_takes_the_longest_flag() -> None:
@@ -2463,10 +2506,7 @@ def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
     }
     seen = set()
     for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
-        flagsofdest = {
-            action.dest: action.option_strings
-            for action in subparser._actions  # ruff:ignore[private-member-access]
-        }
+        flagsofdest = get_flags_of_dest(subparser)
         olddest = olddestof.get(subcommand)
         if olddest is not None and olddest in flagsofdest:
             seen.add(subcommand)
@@ -2594,6 +2634,8 @@ def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
     }
 
     missing = names - at.commands.SINGLEDASHLONGFLAGS
+    stale = at.commands.SINGLEDASHLONGFLAGS - names
+    assert not stale, f"SINGLEDASHLONGFLAGS holds a name that no command declares: {sorted(stale)}"
     assert not missing, f"add these names to SINGLEDASHLONGFLAGS: {sorted(missing)}"
 
 
@@ -2662,7 +2704,6 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
     modulebycommand: dict[str, str] = {}
 
@@ -2676,7 +2717,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     walktree(at.commands.subcommandtree)
 
     withoutput = 0
-    for subcommand, subparser in subactions[0].choices.items():
+    for subcommand, subparser in get_every_subcommand(parser):
         if "outputfile" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
             continue
 
