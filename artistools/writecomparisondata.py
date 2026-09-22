@@ -334,9 +334,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         write_phys(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
         write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

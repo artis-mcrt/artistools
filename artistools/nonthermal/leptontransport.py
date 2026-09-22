@@ -190,9 +190,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_yscale("log")
     set_legend(axes[1], args)
     save_figure(fig, outputfile, format="pdf")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

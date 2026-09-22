@@ -3,7 +3,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
-import multiprocessing as mp
 import typing as t
 from collections.abc import Sequence
 from functools import partial
@@ -546,10 +545,3 @@ def plot_decay_powers(
     axes[-1].set_xlabel("Time [days]")
 
     save_figure(fig, outfilepath)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    mp.freeze_support()
-    run_module_as_subcommand(__spec__)

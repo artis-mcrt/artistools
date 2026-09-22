@@ -196,9 +196,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[1].set_ylim(bottom=0.0)
 
     save_figure(fig, args.outputfile, args=args)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

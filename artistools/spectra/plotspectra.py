@@ -25,7 +25,6 @@ from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
 from artistools.commands import get_path
-from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
@@ -2209,7 +2208,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             write_residual_stats(dfresidualstats, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotspectra")

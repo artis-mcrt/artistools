@@ -2,7 +2,6 @@
 
 from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
-from artistools.misc.cliutils import addarg_collidingflags as addarg_collidingflags
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter

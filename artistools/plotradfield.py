@@ -12,7 +12,6 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.commands import run_subcommand
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
@@ -467,7 +466,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
     # takes that plot for the product, because no plot of a merging run opened on its own
     frameset.finish(pdf_list, args)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotradfield")

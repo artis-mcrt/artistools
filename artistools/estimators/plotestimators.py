@@ -33,7 +33,6 @@ from artistools.atomic import get_elsymbolslist
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
-from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -2588,7 +2587,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
     else:
         write_snapshot_figures(args, modelpath, estimators, modelmeta, timesteps_included, plotlist)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotestimators")

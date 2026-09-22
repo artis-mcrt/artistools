@@ -20,7 +20,6 @@ from matplotlib.typing import MarkerType
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.atomic import get_linelist_pldf
-from artistools.commands import run_subcommand
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
@@ -892,7 +891,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_emitting_regions_plot(args)
     else:
         make_luminosity_ratio_plot(args)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotlinefluxes")

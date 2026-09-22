@@ -27,9 +27,6 @@ import pytest
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    from collections.abc import Iterable
-
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
 RETIRED_COMMANDS = (
@@ -174,56 +171,6 @@ def test_console_script_runs_its_own_subcommand(
 
     for dispatcher in at.commands.DISPATCHERSCRIPTS:
         assert at.commands.build_script_parser(dispatcher) is None
-
-
-def test_module_entry_points_name_a_real_subcommand() -> None:
-    """Each module entry point must run through the dispatcher and name a subcommand of the tree.
-
-    A module that calls its own main function reads no --quiet, and it reports a bad argument with a
-    traceback. run_subcommand gives it the path of a console script.
-    """
-    # a module can name more than one subcommand, thus each match counts. A name that holds a space
-    # is an iCloud conflict copy, which is not a module of the package
-    names: list[tuple[Path, str]] = [
-        (path, match.group(1))
-        for path in sorted(REPOPATH.glob("artistools/**/*.py"))
-        if " " not in path.name
-        for match in re.finditer(r'run_subcommand\("([^"]+)"\)', path.read_text(encoding="utf-8"))
-    ]
-
-    assert names, "no module entry point routes through the dispatcher"
-
-    for path, subcommand in names:
-        spec = at.commands.subcommandtree.get(subcommand)
-        assert spec is not None, f"{path.name} names the unknown subcommand {subcommand}"
-        assert not isinstance(spec, dict), f"{path.name} names the command group {subcommand}"
-
-    # every command takes --quiet, thus no module may call its main function and skip run_command
-    for path in sorted(REPOPATH.glob("artistools/**/*.py")):
-        if " " in path.name:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if 'if __name__ == "__main__":' not in text or path.name.startswith("test_"):
-            continue
-        block = text.split('if __name__ == "__main__":')[1]
-        if "run_subcommand" in block or "run_module_as_subcommand" in block:
-            continue
-
-        modulename = ".".join(path.relative_to(REPOPATH).with_suffix("").parts)
-        assert at.commands.get_words_of_module(modulename) is None, (
-            f"{modulename} is a subcommand, thus its entry point must run through the dispatcher"
-        )
-
-    # the tree names the module of each subcommand, thus the reverse lookup finds every one of them
-    def walkspecs(tree: dict[str, t.Any]) -> "Iterable[at.commands.CommandSpec]":
-        for node in tree.values():
-            if isinstance(node, at.commands.CommandSpec):
-                yield node
-            else:
-                yield from walkspecs(node)
-
-    for spec in walkspecs(at.commands.subcommandtree):
-        assert at.commands.get_words_of_module(spec.module) is not None, f"no command names the module {spec.module}"
 
 
 def test_transitions_alias_of_the_partition_function_still_works() -> None:
@@ -542,9 +489,6 @@ def test_describeinputmodel_names() -> None:
 
     # the top-level name is an alias, thus the listing of the commands leaves it out
     assert "describeinputmodel" not in parser.format_help()
-
-    # the module gives the name that the help lists, and not the hidden alias of the top level
-    assert at.commands.get_words_of_module("artistools.inputmodel.describeinputmodel") == ("inputmodel", "describe")
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2631,43 +2575,6 @@ def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
     assert Path(opened[0]).is_file()
 
 
-def test_singledashlongflags_holds_every_name_of_the_tree() -> None:
-    """The table of the long flag names must hold what the commands declare.
-
-    addarg_collidingflags reads that table, thus a name that no line of it holds gives no message when
-    another command reads it as a joined value. Building the tree to collect the names would import
-    every command module, which the per-command console scripts do not do.
-
-    The walk covers every depth. A command under "artistools inputmodel" declares its flags in the
-    same way, and the top level alone left 41 of those names outside the table.
-    """
-    import artistools.__main__
-
-    parser = artistools.__main__.build_parser()
-
-    def islongsingledash(flag: str) -> bool:
-        return flag.startswith("-") and not flag.startswith("--") and len(flag) > 2
-
-    names = {
-        flag
-        for _, subparser in get_every_subcommand(parser)
-        for action in subparser._actions  # ruff:ignore[private-member-access]
-        for flag in action.option_strings
-        if islongsingledash(flag) and not isinstance(action, at.misc.UnsupportedArgument)
-    }
-    names |= {
-        flag
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        for flag in action.option_strings
-        if islongsingledash(flag)
-    }
-
-    missing = names - at.commands.SINGLEDASHLONGFLAGS
-    stale = at.commands.SINGLEDASHLONGFLAGS - names
-    assert not stale, f"SINGLEDASHLONGFLAGS holds a name that no command declares: {sorted(stale)}"
-    assert not missing, f"add these names to SINGLEDASHLONGFLAGS: {sorted(missing)}"
-
-
 def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixture[str]) -> None:
     """Argparse joins a value to a flag of one letter, thus a long name of another command misparses.
 
@@ -2691,14 +2598,12 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     assert "300 days falls in timestep 54" in capsys.readouterr().out
 
 
-def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
+def test_a_name_that_starts_with_a_flag_of_one_letter_writes_nothing(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An abbreviation that matches a declared name of another command must stop the command.
+    """A name that starts with -o must stop the command, and not read as -o with a joined value.
 
-    addarg_collidingflags declares -outputfolder on a command that takes -o. A filter of the declared
-    names let argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder
-    of that name. Thus the parser keeps every match, and the user reads a message.
+    argparse read "-outputfol" as "-o utputfol", and plotdensity wrote its plot to a folder of that name.
     """
     import artistools.__main__
 
@@ -2706,10 +2611,9 @@ def test_an_abbreviation_of_a_declared_name_stays_ambiguous(
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfol", "--quiet"])
 
-    assert "ambiguous option: -outputfol" in capsys.readouterr().err
+    assert "-outputfol is not an argument of this command" in capsys.readouterr().err
     assert not list(tmp_path.iterdir()), "a command that stops must write nothing"
 
-    # the full name of another command gives its own message, because argparse reads it before a prefix
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotdensity", str(modelpath), "-outputfolder", "foo"])
 

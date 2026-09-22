@@ -22,7 +22,6 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
-from artistools.commands import run_subcommand
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
@@ -974,7 +973,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         for timestep in timesteps_included:
             make_singletimestep_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotnltepops")

@@ -15,7 +15,6 @@ import polars.selectors as cs
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_linelist_pldf
-from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.estimators import scan_estimators
@@ -496,7 +495,3 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         outputfilenames.append(outfilename)
 
     frameset.finish(outputfilenames, args)
-
-
-if __name__ == "__main__":
-    run_subcommand("plotspherical")

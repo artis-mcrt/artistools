@@ -452,9 +452,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         setgrid_fractionrmax=args.setgrid_fractionrmax,
         modifysmoothinglength=args.modifysmoothinglength,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

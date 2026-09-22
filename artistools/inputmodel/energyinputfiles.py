@@ -271,9 +271,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         assert isinstance(result, tuple)
         dftimes_and_rate, e_tot = result
         print(f"E_tot {e_tot:.4e} erg/g over {len(dftimes_and_rate)} times")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

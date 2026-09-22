@@ -21,7 +21,6 @@ from polars import selectors as cs
 from artistools import misc
 from artistools.atomic import get_nuclides
 from artistools.commands import get_path
-from artistools.commands import run_subcommand
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -1708,7 +1707,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             maxpacketfiles=args.maxpacketfiles,
             args=args,
         )
-
-
-if __name__ == "__main__":
-    run_subcommand("plotlightcurves")

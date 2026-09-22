@@ -149,9 +149,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
         make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

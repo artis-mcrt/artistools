@@ -145,9 +145,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname=modelname,
             modellogname=get_model_logname(modelpath),
         )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

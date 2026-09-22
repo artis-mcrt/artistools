@@ -330,9 +330,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     logprint = savetologfile(outputfolderpath=Path(args.outputfile), logfilename="make1dmodellog.txt")
 
     make_1d_model_files(args, logprint)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

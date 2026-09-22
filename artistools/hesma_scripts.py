@@ -281,9 +281,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis = axesgrid[0][0]
         plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action))
         save_or_show(fig, args.plotfile)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

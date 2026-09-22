@@ -215,9 +215,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         linelength=args.linelength,
         show_plot=args.show_plot,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

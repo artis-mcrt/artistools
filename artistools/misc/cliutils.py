@@ -517,31 +517,6 @@ class UnsupportedArgument(argparse.Action):
         )
 
 
-def addarg_collidingflags(parser: argparse.ArgumentParser) -> None:
-    """Declare the flag names of other commands that this command would read as a joined value.
-
-    argparse joins a value to a flag of one letter, thus "-obsspec 100" on a command that takes -o but
-    no -obsspec reads as "-o bsspec" and writes the plot to a file named bsspec. A declared name gives
-    a message in place of that.
-
-    An exact name comes before a prefix for argparse, thus a declared name keeps every flag of this
-    command and every abbreviation of one. A measurement over the tree gives the same 2208 abbreviations
-    with these names and without them.
-    """
-    from artistools.commands import SINGLEDASHLONGFLAGS_BYLETTER
-
-    declared = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
-    oneletter = [flag for flag in declared if len(flag) == 2 and not flag.startswith("--")]
-
-    # only a name that starts with a flag of this command can collide, thus each letter reads the
-    # names that start with it rather than the whole set of declared names
-    for letterflag in sorted(oneletter):
-        for name in SINGLEDASHLONGFLAGS_BYLETTER.get(letterflag, ()):
-            # a command that spells the same name with two dashes does take that argument
-            if name not in declared and f"-{name}" not in declared:
-                parser.add_argument(name, action=UnsupportedArgument, default=argparse.SUPPRESS)
-
-
 def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
     """Declare an argument that this command does not take, so that a user gets a clear message.
 
@@ -1053,7 +1028,6 @@ def parse_cli_args(
     addargsfunc(parser)
     # the dispatcher adds these to the parser that it builds, thus a direct call needs them here
     addarg_quiet(parser)
-    addarg_collidingflags(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     argcomplete.autocomplete(parser)
@@ -1187,9 +1161,9 @@ def takes_a_list(action: argparse.Action) -> bool:
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary.
 
-    A name that this command does not take raises. addarg_collidingflags declares the flag of another
-    command, so that a user of the command line gets a message. Such a flag is no argument of this
-    command, thus a keyword of that name raises as it did before those declarations.
+    A name that this command does not take raises. addarg_unsupported declares an old name, so that a
+    user of the command line gets a message. Such a name is no argument of this command, thus a keyword
+    of that name also raises.
     """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
     realactions = [

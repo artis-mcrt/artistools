@@ -113,9 +113,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")
         print(f"  kappa min {opacities.min():.4g}, max {opacities.max():.4g}, mean {opacities.mean():.4g} cm2/g")
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

@@ -13,7 +13,6 @@ from types import MappingProxyType
 if t.TYPE_CHECKING:
     from collections.abc import Generator
     from collections.abc import Sequence
-    from importlib.machinery import ModuleSpec
 
 
 def get_examples() -> tuple[tuple[str, str], ...]:
@@ -502,15 +501,12 @@ def get_subcommand_of_script(scriptname: str) -> tuple[str, ...]:
 
 def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
     """Add the arguments of one subcommand to a parser, and record how to run it."""
-    from artistools.misc import addarg_collidingflags
     from artistools.misc import addarg_quiet
 
     submodule = importlib.import_module(f"artistools.{spec.module}")
     submodule.addargs(parser)
     # run_command alone implements --quiet, thus every command takes it and no module declares it
     addarg_quiet(parser)
-    # the flags of the other commands come last, thus they take no name that this command declares
-    addarg_collidingflags(parser)
     # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
     # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
     # what the dispatcher gives it
@@ -609,32 +605,43 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         return out
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:
-        """Give the flag and the value of one argument that joins them, or that argument alone."""
+        """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
+
+        argparse reads the text after a single-dash flag of one letter as its value, thus "-obsspec 100"
+        on a command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value
+        is a number, e.g. -t300 or -ts70. Thus a joined value that starts with a letter stops the command.
+        """
+        if not argstring.startswith("-") or argstring.startswith("--") or len(argstring) <= 2:
+            return [argstring]
+
+        name, equals, _ = argstring.partition("=")
         declared = self._option_string_actions
-        # argparse reads the first two characters as the flag, thus it splits a flag of one letter
-        # and its value without help. It also splits the "=" form itself.
-        if not argstring.startswith("-") or argstring.startswith("--") or "=" in argstring or len(argstring) <= 3:
+        # a declared flag starts with itself, thus this one test also keeps an abbreviation of a flag,
+        # which argparse resolves or reports as ambiguous
+        if any(flag.startswith(name) for flag in declared):
             return [argstring]
 
-        # a flag that the parser declares starts with itself, thus this one test also keeps an
-        # abbreviation of a longer flag, which argparse resolves or reports as ambiguous
-        if any(flag.startswith(argstring) for flag in declared):
-            return [argstring]
-
-        # the longest flag first, down to the two characters that argparse reads without help
-        for length in range(len(argstring) - 1, 2, -1):
-            action = declared.get(argstring[:length])
+        # the longest flag first. argparse splits a flag of one letter from its value itself
+        for length in range(len(argstring) - 1, 1, -1):
+            flag = argstring[:length]
+            action = declared.get(flag)
             if action is None or action.nargs == 0:
                 continue
 
-            flag, value = argstring[:length], argstring[length:]
-            if value[0].isdigit():
-                return [flag, value]
+            if argstring[length].isdigit():
+                return [flag, argstring[length:]] if length > 2 and not equals else [argstring]
 
-            # a whole flag with letters after it is a mistake, e.g. -timesteps for -timestep. A split
-            # would give "s" to -timestep, and the number that follows would become a positional
-            # argument. Thus the message names the flag that the user means.
-            self.exit_with_help(f"{argstring} is not an argument of this command", f"Did you mean {flag}?")
+            # e.g. -timesteps for -timestep. A split would give "s" to -timestep and hide the number that
+            # follows, thus the message names the flag that the user means
+            helptext = f"Did you mean {flag}?" if length > 2 else ""
+            if not helptext:
+                from artistools.misc import suggest_flags
+
+                helptext = suggest_flags(name, self.get_visible_flags())
+            self.exit_with_help(
+                f"{name} is not an argument of this command",
+                helptext or f"Give a space between {flag} and its value, or run `{self.prog} --help`",
+            )
 
         return [argstring]
 
@@ -700,290 +707,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # argparse names the whole token, thus "-ti=300" carries its value. The flag alone
             # matches a name and gives a suggestion
             given = ambiguous.group(1).partition("=")[0]
-            # addarg_collidingflags declares the names of the other commands, which get_visible_flags
-            # leaves out, thus the suggestion names a flag of this command
+            # get_visible_flags leaves out a hidden alias, thus the suggestion names a flag that the help shows
             helptext = suggest_flags(given, self.get_visible_flags())
 
         self.exit_with_help(message, helptext or f"Run `{self.prog} --help` to see every argument")
-
-
-# argparse joins a value to a flag of one letter, thus "-obsspec 100" on a command that takes -o but no
-# -obsspec reads as "-o bsspec" and leaves 100 for a positional argument. This holds every single-dash
-# long flag name of the tree, so that a command can declare the ones that collide with its own one-letter
-# flags and give a message. A test holds this table to the names that the tree gives.
-SINGLEDASHLONGFLAGS = frozenset({
-    "-abundtype",
-    "-atomic_number",
-    "-atomicdatabase",
-    "-axis",
-    "-band",
-    "-binwidth",
-    "-cell",
-    "-cell-is-optically-thick",
-    "-channel",
-    "-channels",
-    "-cmap",
-    "-color",
-    "-colors",
-    "-colour_evolution",
-    "-composition",
-    "-coneangle",
-    "-coneshellspacingexponent",
-    "-dashes",
-    "-deltalambda",
-    "-deltalogx",
-    "-deltax",
-    "-dilution_factor",
-    "-dim",
-    "-dimensionreduce",
-    "-dimensions",
-    "-dirbin",
-    "-directions",
-    "-dist",
-    "-dist_mpc",
-    "-distmpc",
-    "-dlogx",
-    "-downsamplefactor",
-    "-dpi",
-    "-dtextra_seconds",
-    "-dx",
-    "-elem",
-    "-element",
-    "-emax",
-    "-emfeaturesearch",
-    "-emin",
-    "-emissionlosvelocityrange",
-    "-emissionvelocityrange",
-    "-energy",
-    "-escape_type",
-    "-exc-temperature",
-    "-figscale",
-    "-figwidthscale",
-    "-filter",
-    "-filtermovingavg",
-    "-filtersavgol",
-    "-fixedionlist",
-    "-floersmodelratiofile",
-    "-floorval",
-    "-fluxdistmpc",
-    "-format",
-    "-gaussian_sigma",
-    "-gaussian_window",
-    "-gridfolderpath",
-    "-groupby",
-    "-hesmafile",
-    "-inputfolder",
-    "-inputpath",
-    "-interpolrescale",
-    "-ion_stage",
-    "-ion_stages",
-    "-ionpoptype",
-    "-ionstage",
-    "-iso",
-    "-isomax",
-    "-isomin",
-    "-kappa",
-    "-label",
-    "-labelfontsize",
-    "-lambdamax",
-    "-lambdamin",
-    "-lambdaranges",
-    "-legendposition",
-    "-legendsubplotnumber",
-    "-levels",
-    "-linealpha",
-    "-linelength",
-    "-linestyle",
-    "-linewidth",
-    "-localdynscale",
-    "-maxatomicnumber",
-    "-maxlevel",
-    "-maxpacketfiles",
-    "-maxpacketsfiles",
-    "-maxseriescount",
-    "-mergecells",
-    "-mergerroot",
-    "-mgi",
-    "-modelgridindex",
-    "-modelname",
-    "-modelpath",
-    "-modeltag",
-    "-modifysmoothinglength",
-    "-nbins",
-    "-ncolslegend",
-    "-ncoordgrid",
-    "-ncosthetabins",
-    "-ngridrcyl",
-    "-ngridx",
-    "-ngridy",
-    "-ngridz",
-    "-nnebound",
-    "-nnefree",
-    "-nphibins",
-    "-npts",
-    "-npz",
-    "-nshells",
-    "-nsteps",
-    "-nucdata",
-    "-obsspec",
-    "-opacity",
-    "-opacityexclusions",
-    "-opdf",
-    "-ostat",
-    "-outputfile",
-    "-outputfolder",
-    "-outputgridsize",
-    "-outputpath",
-    "-pathtofiles",
-    "-pathtogriddata",
-    "-perturb3Dmodel",
-    "-plot",
-    "-plot_hesma_model",
-    "-plotfile",
-    "-plotlist",
-    "-plotstats",
-    "-plotvars",
-    "-plotviewingangle",
-    "-plotvspecpol",
-    "-poptype",
-    "-readonlymgi",
-    "-reflightcurves",
-    "-refspeccolors",
-    "-refspecfiles",
-    "-refspecmarkers",
-    "-replacedyn",
-    "-replacethr",
-    "-rhoscale",
-    "-scalefigwidth",
-    "-scalemass",
-    "-scaletoreftime",
-    "-scalevelocity",
-    "-selected_timesteps",
-    "-setgrid_fractionrmax",
-    "-sigma_v",
-    "-slice",
-    "-snapshot",
-    "-sort",
-    "-species",
-    "-specpath",
-    "-stokesparam",
-    "-surface_count",
-    "-surfaces3d",
-    "-targetmodeltime_days",
-    "-tau-max",
-    "-tdays",
-    "-temperature",
-    "-thetamax",
-    "-thetamin",
-    "-time",
-    "-timebins_tend",
-    "-timebins_tstart",
-    "-timedays",
-    "-timedayslist",
-    "-timedaysmax",
-    "-timedaysmin",
-    "-timemax",
-    "-timemin",
-    "-timestep",
-    "-timestepmax",
-    "-title",
-    "-tmax",
-    "-tmin",
-    "-topnucs",
-    "-trajectoryroot",
-    "-trajroot",
-    "-trajthermofile",
-    "-ts",
-    "-vary",
-    "-velocity",
-    "-velocityshells",
-    "-vgrid-lambdaranges",
-    "-vgrid-tmax",
-    "-vgrid-tmin",
-    "-vmax",
-    "-vmax_on_c",
-    "-vmin",
-    "-vspec-tmax",
-    "-vspec-tmin",
-    "-wavelen",
-    "-x_e",
-    "-xaxis",
-    "-xbins",
-    "-xmax",
-    "-xmin",
-    "-xunit",
-    "-xunits",
-    "-yaxis",
-    "-ye",
-    "-yemax",
-    "-yeshells",
-    "-ymax",
-    "-ymin",
-    "-yscale",
-    "-yvar",
-    "-yvariable",
-})
-
-# the same names, under the flag of one letter that reads each one as a joined value. Each parser of
-# the tree asks for the names of its own one-letter flags, thus it walks those names alone
-SINGLEDASHLONGFLAGS_BYLETTER: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    letterflag: tuple(sorted(name for name in SINGLEDASHLONGFLAGS if name.startswith(letterflag)))
-    for letterflag in sorted({name[:2] for name in SINGLEDASHLONGFLAGS})
-})
-
-
-def get_words_of_module(modulename: str) -> tuple[str, ...] | None:
-    """Return the words that name the subcommand of a module, or None when the tree holds no such module.
-
-    A hidden name is an alias of a visible one, thus the walk skips it. The usage text of
-    `python -m artistools.inputmodel.describeinputmodel` then gives the name that the help lists.
-    """
-    modulename = modulename.removeprefix("artistools.")
-
-    def walk(tree: CommandTree, prefix: tuple[str, ...]) -> tuple[str, ...] | None:
-        for name, node in tree.items():
-            if isinstance(node, CommandSpec):
-                if node.module == modulename and not node.hidden:
-                    return (*prefix, name)
-            elif (found := walk(node, (*prefix, name))) is not None:
-                return found
-
-        return None
-
-    return walk(subcommandtree, ())
-
-
-def run_module_as_subcommand(modulespec: "ModuleSpec | None") -> None:
-    """Run the subcommand of a module through the dispatcher.
-
-    A module that runs as `python -m artistools.plotlogfiles` gives its own __spec__, and the tree names
-    the module of each subcommand. Thus no module holds the name of its own subcommand, which can
-    drift. A module that runs as a file path carries no spec, and it has no name to look up.
-    """
-    if modulespec is None:
-        msg = "This module holds no spec. Run it as `python -m artistools.<module>` or `artistools <command>`"
-        raise ValueError(msg)
-
-    words = get_words_of_module(modulespec.name)
-    if words is None:
-        msg = f"No subcommand of the tree names the module {modulespec.name}"
-        raise ValueError(msg)
-
-    run_subcommand(*words)
-
-
-def run_subcommand(*words: str) -> None:
-    """Run one subcommand of the tree through the dispatcher.
-
-    A module that runs as `python -m artistools.plotradfield` calls its own main function, thus it read no
-    --quiet, and it reported a bad argument with a traceback. This gives it the path of a console
-    script.
-    """
-    import sys
-
-    from artistools.__main__ import main
-
-    main(argsraw=[*words, *sys.argv[1:]])
 
 
 def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) -> None:

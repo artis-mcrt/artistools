@@ -90,9 +90,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             lightcurvedataframe.write_csv(f, separator=" ", include_header=False, null_value="nan")
 
         print_saved(outfilepath)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

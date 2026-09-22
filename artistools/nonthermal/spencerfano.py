@@ -379,9 +379,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.ostat:
         write_ntstats_file(args.ostat, ostatrows)
         make_ntstats_plot(args.ostat)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

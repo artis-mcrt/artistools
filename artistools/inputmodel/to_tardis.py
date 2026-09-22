@@ -116,9 +116,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfout.write_csv(fileout, separator=",", quote_style="never")
 
     print_saved(outputfilepath)
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

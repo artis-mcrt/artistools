@@ -428,9 +428,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
     )
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_module_as_subcommand
-
-    run_module_as_subcommand(__spec__)

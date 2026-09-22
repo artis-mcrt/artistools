@@ -75,9 +75,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
     else:
         print_product(args, get_timesteps_table(args.modelpath))
-
-
-if __name__ == "__main__":
-    from artistools.commands import run_subcommand
-
-    run_subcommand("timesteps")

@@ -1982,11 +1982,10 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 
 
 def test_a_keyword_that_the_command_does_not_take_raises() -> None:
-    """A name that names no argument of the command must raise, as it did before the marker flags.
+    """A name that names no argument of the command must raise.
 
-    addarg_collidingflags declares the flag of another command, so that a user of the command line gets
-    a message. Such a marker gave argparse a dest, thus the test for an unknown keyword took it for an
-    argument of this command and a wrong keyword passed without a word.
+    A declared name that only stops the command gave argparse a dest, thus the test for an unknown
+    keyword took it for an argument of this command, and a wrong keyword passed without a word.
     """
     import artistools.timesteps
 
