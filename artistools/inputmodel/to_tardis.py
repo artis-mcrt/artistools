@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Convert an ARTIS input model into a TARDIS model file."""
 
 import argparse

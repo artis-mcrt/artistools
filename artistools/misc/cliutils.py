@@ -493,7 +493,7 @@ def get_single_modelgridindex(modelgridindex: str | int | None) -> int | None:
 class UnsupportedArgument(argparse.Action):
     """Stop the command, and name the argument to give in place of the one that the user gave."""
 
-    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str = "", **kwargs: t.Any) -> None:
+    def __init__(self, option_strings: "Sequence[str]", dest: str, instead: str, **kwargs: t.Any) -> None:
         """Take the name of the argument that this command does take."""
         super().__init__(option_strings, dest, nargs="?", help=argparse.SUPPRESS, **kwargs)
         self.instead = instead
@@ -508,13 +508,7 @@ class UnsupportedArgument(argparse.Action):
     ) -> None:
         """Report that this command does not take the argument."""
         assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
-        helptext = self.instead and f"Give {self.instead} instead"
-        parser.exit_with_help(
-            f"{option_string} is not an argument of this command",
-            helptext
-            or suggest_flags(str(option_string), parser.get_visible_flags())
-            or f"Run `{parser.prog} --help` to see every argument",
-        )
+        parser.exit_with_help(f"{option_string} is not an argument of this command", f"Give {self.instead} instead")
 
 
 def addarg_unsupported(parser: argparse.ArgumentParser, *flags: str, instead: str) -> None:
@@ -1022,15 +1016,12 @@ def parse_cli_args(
     if args is not None:
         return args
 
-    import argcomplete
-
     parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
-    # the dispatcher adds these to the parser that it builds, thus a direct call needs them here
+    # the dispatcher adds --quiet to the parser that it builds, thus a direct call needs it here
     addarg_quiet(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
-    argcomplete.autocomplete(parser)
     args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)

@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot mass density against velocity for one or more ARTIS input models."""
 
 import argparse

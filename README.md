@@ -34,22 +34,8 @@ pip install --group dev --editable .[extras]
 prek install
 ```
 
-To enable tab completion, run `artistools completions`. The command detects your shell and prints
-the steps. For zsh, write the file to a folder:
-```sh
-mkdir -p ~/.zfunc
-artistools completions zsh > ~/.zfunc/_artistools
-```
-Then put this line in `~/.zshrc` before the line that runs `compinit`. The folder must come first,
-because zsh has a completion for a different `at` command:
-```sh
-fpath=(~/.zfunc $fpath)
-```
-For bash, write the file and source it from `~/.bashrc`:
-```sh
-artistools completions bash > ~/.artistools-completion.bash
-echo 'source ~/.artistools-completion.bash' >> ~/.bashrc
-```
+To enable tab completion, run `artistools completions`. The command detects your shell and gives the
+steps for it.
 
 ## Citing artistools
 

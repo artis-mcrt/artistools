@@ -12,6 +12,25 @@ import pytest
 import artistools as at
 
 
+def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
+    """Return the direction bin of one packet, computed in float64 for a viewing direction along +z.
+
+    The polars binning of the package works in Float32, thus this function checks it by a separate path.
+    """
+    syn_dir = np.array([0.0, 0.0, 1.0])
+    pkt_dir = np.array([dirx, diry, dirz]) / math.sqrt(dirx**2 + diry**2 + dirz**2)
+    costhetabin = min(int((float(pkt_dir @ syn_dir) + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
+
+    vec1 = np.cross(pkt_dir, syn_dir)
+    if np.linalg.norm(vec1) == 0.0:
+        return costhetabin * nphibins
+
+    vec2 = np.cross(np.array([1.0, 0.0, 0.0]), syn_dir)
+    cosphi = float(vec1 @ vec2) / float(np.linalg.norm(vec1)) / float(np.linalg.norm(vec2))
+    phi = math.acos(cosphi) if float(vec1 @ np.cross(vec2, syn_dir)) > 0 else math.acos(cosphi) + math.pi
+    return costhetabin * nphibins + min(int(phi / 2.0 / math.pi * nphibins), nphibins - 1)
+
+
 def test_directionbins() -> None:
     nphibins = 10
     ncosthetabins = 10
@@ -45,6 +64,7 @@ def test_directionbins() -> None:
         assert costhetabinlowers[pkt["costhetabin"]] <= pkt["costheta_defined"] * 1.01
         assert costhetabinuppers[pkt["costhetabin"]] > pkt["costheta_defined"] * 0.99
 
+        assert pkt["dirbin"] == get_reference_dirbin(pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins, ncosthetabins)
         assert pkt["costhetabin"] == pkt["dirbin"] // nphibins
         assert pkt["phibin"] == pkt["dirbin"] % nphibins
 
@@ -85,6 +105,7 @@ def test_directionbins_unequal_bincounts() -> None:
 
         # dirbin packs the costheta index in the high part and the phi index in the low part
         assert pkt["dirbin"] == pkt["costhetabin"] * nphibins + pkt["phibin"]
+        assert pkt["dirbin"] == get_reference_dirbin(pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins, ncosthetabins)
 
 
 @pytest.mark.parametrize("nphibins", [4, 10])
@@ -101,7 +122,7 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     ).collect()
 
     assert binned["phibin"].item() == nphibins - 1
-    assert binned["dirbin"].item() < nphibins * ncosthetabins
+    assert binned["dirbin"].item() == get_reference_dirbin(dirx, diry, dirz, nphibins, ncosthetabins)
 
 
 def test_get_virtual_packets() -> None:

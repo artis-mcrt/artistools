@@ -715,8 +715,7 @@ def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     return read_spec_cached(resolve_modelpath(modelpath), gamma)
 
 
-# maxsize is small because, unlike read_spec above, this reads eagerly and every cached entry
-# retains a whole spec_res file: the per-dirbin frames are all slices of one parsed frame
+# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
 @lru_cache(maxsize=2)
 def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
@@ -1007,7 +1006,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
 @lru_cache(maxsize=2)
-def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
     Callers must not mutate the returned dict, which is shared between calls.
@@ -1026,6 +1025,14 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
+
+
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return get_vspecpol_data_cached(vspecindex, resolve_modelpath(modelpath))
 
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
@@ -1132,7 +1139,7 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
 
 
 @lru_cache(maxsize=4)
-def get_flux_contributions(
+def get_flux_contributions_cached(
     modelpath: Path,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timestepmin: int = -1,
@@ -1308,6 +1315,40 @@ def get_flux_contributions(
                 )
 
     return contribution_list, array_flambda_emission_total, arraylambda
+
+
+def get_flux_contributions(
+    modelpath: Path | str,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    timestepmin: int = -1,
+    timestepmax: int = -1,
+    getemission: bool = True,
+    getabsorption: bool = True,
+    use_lastemissiontype: bool = True,
+    directionbin: int | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    lambda_min: float = 0.0,
+    lambda_max: float = math.inf,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
+    return get_flux_contributions_cached(
+        resolve_modelpath(modelpath),
+        filterfunc,
+        timestepmin,
+        timestepmax,
+        getemission,
+        getabsorption,
+        use_lastemissiontype,
+        directionbin,
+        average_over_phi,
+        average_over_theta,
+        lambda_min,
+        lambda_max,
+    )
 
 
 def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFrame:

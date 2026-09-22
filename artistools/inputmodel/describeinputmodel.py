@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Summarise the mass, velocity structure, and abundances of an ARTIS input model."""
 
 import argparse

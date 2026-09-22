@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot density, Ye, and abundances of a multidimensional ARTIS model as 2D slices or 3D surfaces."""
 
 import argparse

@@ -1797,12 +1797,6 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
         assert excinfo.value.code == 1, argsraw
 
 
-def test_timedays_of_a_joined_ts_value_names_the_mistake() -> None:
-    """-ts70 reads as -t s70, thus the message must say to put a space after -ts."""
-    with pytest.raises(ValueError, match=r"reads as -t s70, thus put a space after -ts"):
-        at.get_timestep_of_timedays(at.get_path("testdata") / "testmodel", "s70")
-
-
 def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing optional dependency must say how to install it, and not give a bare traceback."""
     import builtins
@@ -1984,8 +1978,8 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 def test_a_keyword_that_the_command_does_not_take_raises() -> None:
     """A name that names no argument of the command must raise.
 
-    A declared name that only stops the command gave argparse a dest, thus the test for an unknown
-    keyword took it for an argument of this command, and a wrong keyword passed without a word.
+    A declared name that only stops the command gave argparse a dest. Thus the test for an unknown keyword
+    took that name for an argument of the command, and a wrong keyword gave no error.
     """
     import artistools.timesteps
 

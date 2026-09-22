@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Functions for plotting artis estimators and internal structure.
 
 Examples are temperatures, populations, heating/cooling rates.
@@ -191,7 +190,11 @@ def get_ylabel(variable: str) -> str:
 
 
 def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, float]:
-    """Return the colour with its lightness scaled by amount, so related series can share a hue."""
+    """Return the colour with its lightness scaled by amount, so related series can share a hue.
+
+    The lightness stays below 0.85, because a lighter colour is almost white and a point of that colour does not
+    show on the white background.
+    """
     import colorsys
 
     try:
@@ -199,7 +202,30 @@ def adjust_lightness(color: t.Any, amount: float = 0.5) -> tuple[float, float, f
     except (SyntaxWarning, KeyError, TypeError):
         c = color
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-    return colorsys.hls_to_rgb(c[0], max(0.0, min(1.0, amount * c[1])), c[2])
+    return colorsys.hls_to_rgb(c[0], max(0.0, min(0.85, amount * c[1])), c[2])
+
+
+def draw_points(
+    ax: mplax.Axes, dfpoints: pl.DataFrame, seriescolor: t.Any, plotkwargs: dict[str, t.Any], label: str | None
+) -> None:
+    """Draw every point of a series in a lighter shade of the colour of the series.
+
+    The ticks of the axes draw above the points. --markers and -xbins 0 both draw with this function, thus a plot
+    with and without bins agrees.
+    """
+    pointkwargs: dict[str, t.Any] = plotkwargs | {
+        "linestyle": "None",
+        "marker": ".",
+        "markersize": 5,
+        "color": adjust_lightness(seriescolor, 1.5),
+        "markeredgewidth": 0,
+        "zorder": -1,
+    }
+    pointkwargs.pop("dashes", None)
+    pointkwargs.pop("label", None)
+    if dfpoints.height > 10000:
+        pointkwargs["rasterized"] = True
+    ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), label=label, **pointkwargs)
 
 
 def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool) -> pl.DataFrame:
@@ -260,7 +286,7 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
 
 
 def draw_series(
-    dflinepoints: pl.DataFrame,
+    dflinepoints: pl.DataFrame | None,
     dfpoints: pl.DataFrame | None,
     ax: mplax.Axes,
     label: str | None,
@@ -273,24 +299,10 @@ def draw_series(
     dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
     and --markers draws them. -xbins 0 draws those points alone, with no average line.
     """
-    if args.xbins == 0:
+    if dflinepoints is None:
         assert dfpoints is not None
-        # no line object exists, thus the colour comes from the caller or from the cycle of the axes. The
-        # points take the lighter shade of the --markers points, thus a plot with and without bins agrees
-        seriescolor = plotkwargs.get("color") or get_next_color(ax)
-        # the ticks of the axes draw above the points, as they do above the markers of --markers
-        plotkwargs_points: dict[str, t.Any] = plotkwargs | {
-            "linestyle": "None",
-            "marker": ".",
-            "markersize": 5,
-            "color": adjust_lightness(seriescolor, 1.5),
-            "markeredgewidth": 0,
-            "zorder": -1,
-        }
-        plotkwargs_points.pop("dashes", None)
-        if dfpoints.height > 10000:
-            plotkwargs_points["rasterized"] = True
-        ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), label=label, **plotkwargs_points)
+        # -xbins 0 draws no line, thus the colour comes from the caller or from the cycle of the axes
+        draw_points(ax, dfpoints, plotkwargs.get("color") or get_next_color(ax), plotkwargs, label=label)
         return
 
     # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
@@ -314,19 +326,7 @@ def draw_series(
 
     if args.markers:
         assert dfpoints is not None
-        plotkwargs_markers: dict[str, t.Any] = plotkwargs | {
-            "linestyle": "None",
-            "marker": ".",
-            "markersize": 5,
-            "color": adjust_lightness(color, 1.5),
-            "markeredgewidth": 0,
-            "zorder": -1,
-        }
-        plotkwargs_markers.pop("dashes", None)
-        plotkwargs_markers.pop("label", None)
-        if dfpoints.height > 10000:
-            plotkwargs_markers["rasterized"] = True
-        ax.plot(dfpoints.get_column("xvalue"), dfpoints.get_column("yvalue"), **plotkwargs_markers)
+        draw_points(ax, dfpoints, color, plotkwargs, label=None)
 
     else:
         yvalues_binned_min = dflinepoints.get_column("yvalue_binned_min")
@@ -345,13 +345,16 @@ def draw_subplot_items(
     of every item.
     """
     plans = [plan for series, _ in items for plan in series]
-    lazyframes = [get_line_points(plan.dfseries, args) for plan in plans]
+    # -xbins 0 draws the points alone, thus it needs no average line
+    drawsline = args.xbins != 0
+    lazyframes = [get_line_points(plan.dfseries, args) for plan in plans] if drawsline else []
     if args.markers:
         lazyframes += [plan.dfseries.select("xvalue", "yvalue") for plan in plans]
 
     frames = pl.collect_all(lazyframes)
-    dflinepoints_of_plan = frames[: len(plans)]
-    dfpoints_of_plan = frames[len(plans) :] if args.markers else [None] * len(plans)
+    nlineframes = len(plans) if drawsline else 0
+    dflinepoints_of_plan: list[pl.DataFrame | None] = [*frames[:nlineframes]] if drawsline else [None] * len(plans)
+    dfpoints_of_plan: list[pl.DataFrame | None] = [*frames[nlineframes:]] if args.markers else [None] * len(plans)
 
     planindex = 0
     for series, finish in items:

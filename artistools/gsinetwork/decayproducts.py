@@ -1,6 +1,5 @@
 """Script to load beta-decay (beta- and beta+) energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
 
-# PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
 import typing as t

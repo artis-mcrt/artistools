@@ -599,9 +599,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     def split_one_joined_flag(self, argstring: str) -> list[str]:
         """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
 
-        argparse reads the text after a single-dash flag of one letter as its value, thus "-obsspec 100"
-        on a command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value
-        is a number, e.g. -t300 or -ts70. Thus a joined value that starts with a letter stops the command.
+        argparse reads the text after a single-dash flag of one letter as its value. Thus "-obsspec 100" on a
+        command that takes -o but no -obsspec wrote the plot to a file named bsspec. A joined value that starts
+        with a letter stops the command, unless it is a choice of the flag. A group of switches, e.g. -qv,
+        stays whole.
         """
         if not argstring.startswith("-") or argstring.startswith("--") or len(argstring) <= 2:
             return [argstring]
@@ -613,27 +614,33 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         if any(flag.startswith(name) for flag in declared):
             return [argstring]
 
-        # the longest flag first. argparse splits a flag of one letter from its value itself
+        # the longest flag first
         for length in range(len(argstring) - 1, 1, -1):
             flag = argstring[:length]
             action = declared.get(flag)
-            if action is None or action.nargs == 0:
+            if action is None or (action.nargs == 0 and length > 2):
                 continue
 
-            if argstring[length].isdigit():
-                return [flag, argstring[length:]] if length > 2 and not equals else [argstring]
+            value = argstring[length:]
+            if action.nargs == 0:
+                if all(getattr(declared.get(f"-{letter}"), "nargs", None) == 0 for letter in value):
+                    return [argstring]
+            elif not value[0].isalpha() or value in (action.choices or ()):
+                # e.g. -t300, -o./plot.pdf, or -fpng. argparse splits a flag of one letter from its value itself
+                return [flag, value] if length > 2 and not equals else [argstring]
 
-            # e.g. -timesteps for -timestep. A split would give "s" to -timestep and hide the number that
-            # follows, thus the message names the flag that the user means
-            helptext = f"Did you mean {flag}?" if length > 2 else ""
-            if not helptext:
-                from artistools.misc import suggest_flags
+            from artistools.misc import suggest_flags
 
-                helptext = suggest_flags(name, self.get_visible_flags())
-            self.exit_with_help(
-                f"{name} is not an argument of this command",
-                helptext or f"Give a space between {flag} and its value, or run `{self.prog} --help`",
-            )
+            if length > 2:
+                # e.g. -timesteps for -timestep. A split would give "s" to -timestep and hide the number
+                helptext = f"Did you mean {flag}?"
+            elif action.nargs == 0:
+                helptext = (
+                    suggest_flags(name, self.get_visible_flags()) or f"Run `{self.prog} --help` to see every argument"
+                )
+            else:
+                helptext = suggest_flags(name, self.get_visible_flags()) or f"Put a space between {flag} and its value"
+            self.exit_with_help(f"{name} is not an argument of this command", helptext)
 
         return [argstring]
 

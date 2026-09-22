@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot packet escape luminosity and estimator values on a sphere of viewing directions."""
 
 import argparse

@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot the mass fractions of an ARTIS input model against atomic or mass number."""
 
 import argparse

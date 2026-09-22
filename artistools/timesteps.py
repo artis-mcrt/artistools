@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """List the timesteps of an ARTIS model and the days that each one covers."""
 
 import argparse

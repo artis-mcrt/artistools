@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Give the deposition rate of a model per unit volume, per ion, and per unit mass."""
 
 import argparse

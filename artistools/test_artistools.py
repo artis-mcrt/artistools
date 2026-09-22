@@ -102,20 +102,34 @@ def test_polarscompat_is_still_necessary() -> None:
     )
 
 
-@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
-def test_polars_holds_the_real_numpy() -> None:
-    """Check that numpy loads before polars, and not as the lazy proxy of polars.
+@pytest.mark.parametrize("firstimport", ["artistools", "polars"])
+def test_polars_holds_the_real_numpy(firstimport: str) -> None:
+    """Check that polars holds numpy itself, and not its lazy proxy, in either order of the imports.
 
-    On free-threaded 3.15, two threads that resolve that proxy at once raise with "'module' object
+    On a free-threaded build, two threads that resolve that proxy at once raise with "'module' object
     does not support item assignment". gsinetworkdecayproducts did this in parallel_map.
     """
-    # a fresh interpreter, because the test session has loaded numpy already
-    code = "import artistools, polars._dependencies as d; print(type(d.numpy).__name__)"
+    # a fresh interpreter, because the test session loaded numpy before this test
+    code = f"import {firstimport}, artistools, polars._dependencies as d; print(type(d.numpy).__name__)"
     result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
 
     assert result.stdout.strip() == "module"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
+def test_an_import_with_no_module_name_still_works() -> None:
+    """The lazy-import filter applies to the whole process, thus it must take code that has no __name__.
+
+    Python gives such code no name of the importing module. jinja2 runs its templates in this way.
+    """
+    code = 'import artistools; exec("import json", {}); print("ok")'
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+
+    assert result.stdout.strip() == "ok", result.stderr
 
 
 def get_console_scripts() -> dict[str, str]:
@@ -2256,8 +2270,7 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
         seen.add(id(subparser))
         flagsofdest: dict[str, list[str]] = {}
         for action in subparser._actions:  # ruff:ignore[private-member-access]
-            if type(action).__name__ != "UnsupportedArgument":
-                flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
+            flagsofdest.setdefault(action.dest, []).extend(action.option_strings)
 
         for flags in flagsofdest.values():
             # a command that takes one of the two spellings takes the other one for the same value
@@ -2297,7 +2310,7 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
             continue
         seen.add(id(subparser))
         for action in subparser._actions:  # ruff:ignore[private-member-access]
-            if "-modelgridindex" not in action.option_strings or type(action).__name__ == "UnsupportedArgument":
+            if "-modelgridindex" not in action.option_strings:
                 continue
 
             assert action.type is None, f"{subcommand} gives -modelgridindex a type of its own"
@@ -2569,6 +2582,19 @@ def test_a_flag_of_another_command_names_the_mistake(capsys: pytest.CaptureFixtu
     artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath), "-t300"])
     assert "300 days falls in timestep 54" in capsys.readouterr().out
 
+    # a joined value that starts with no letter, or that is a choice of the flag, reaches the flag
+    parser = artistools.__main__.build_parser()
+    assert parser.parse_args(["plotspectra", "-o/plots/x.pdf"]).outputfile == Path("/plots/x.pdf")
+    assert parser.parse_args(["plotspectra", "-t.5"]).timedays == ".5"
+    assert parser.parse_args(["plotestimators", "-fpng", "Te"]).format == "png"
+
+    # -h and -v take no value. argparse read "-hesmafile" as -h and printed the help with exit status 0
+    for argsraw in (["plotspectra", "-hesmafile", "x.dat"], ["deposition", "-vmax", "0.3"]):
+        with pytest.raises(SystemExit) as excinfo:
+            parser.parse_args(argsraw)
+        assert excinfo.value.code == 2
+        assert f"{argsraw[1]} is not an argument of this command" in capsys.readouterr().err
+
 
 def test_a_name_that_starts_with_a_flag_of_one_letter_writes_nothing(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -2796,3 +2822,46 @@ def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
         for row in datarows:
             assert len(row) == nstages
             assert all(float(value) == 0.0 for value in row[: lowermost_of_elsymbol[elsymbol] - 1])
+
+
+def test_writecomparisondata_keeps_a_tiny_ion_fraction(tmp_path: Path) -> None:
+    """An ion fraction below 1e-38 must keep its digits.
+
+    The estimator cache stores a population as Float32. A Float32 ratio below 1e-38 is subnormal, thus it lost
+    digits or became zero. The old reader divided Python floats, and the files of the two readers differed.
+    """
+    from artistools.writecomparisondata import write_ionfracts
+
+    dfestimators = pl.DataFrame(
+        {"timestep": [0], "vel_r_mid": [1e9], "nnelement_Fe": [1e8], "nnion_Fe_II": [1e-37]},
+        schema={"timestep": pl.Int32, "vel_r_mid": pl.Float64, "nnelement_Fe": pl.Float32, "nnion_Fe_II": pl.Float32},
+    )
+    write_ionfracts(modelpath, "tiny", [0], dfestimators, tmp_path)
+
+    datalines = [
+        line
+        for line in (tmp_path / "ionfrac_fe_tiny_artisnebular.txt").read_text().splitlines()
+        if not line.startswith("#")
+    ]
+    expected = float(np.float32(1e-37)) / float(np.float32(1e8))
+    # the columns are the velocity, then the stages from the neutral stage, thus Fe II is the third value
+    assert float(datalines[0].split()[2]) == pytest.approx(expected, rel=1e-4, abs=0.0)
+
+
+def test_completions_keeps_the_code_and_hides_the_instructions_from_a_redirect(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--quiet must keep the code, and a redirect of the standard output must get no instructions.
+
+    --quiet sent the code to the null device, thus "completions zsh --quiet > file" wrote an empty file. The
+    instructions went to the standard output, thus the old "completions > file" wrote text that the shell ran.
+    """
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["completions", "zsh", "--quiet"])
+    assert capsys.readouterr().out.startswith("#compdef at artistools")
+
+    artistools.__main__.main(argsraw=["completions"])
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "To enable tab completion" in captured.err

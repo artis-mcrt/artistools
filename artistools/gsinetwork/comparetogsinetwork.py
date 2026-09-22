@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Compare ARTIS heating rates and abundances against GSI nuclear network trajectory calculations."""
 
 import argparse

@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Build ARTIS model abundances from r-process nucleosynthesis trajectory calculations."""
 
 import argparse

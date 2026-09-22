@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Build an ARTIS input model from the gridded output of a neutron star merger hydrodynamics simulation."""
 
 import argparse

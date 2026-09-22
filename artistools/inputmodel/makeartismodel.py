@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Build an ARTIS input model by downscaling, dimension-reducing, or rescaling an existing model."""
 
 import argparse
@@ -69,7 +68,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    addarg_output(parser, kind="folder", helptext="Folder for output", default=Path())
+    addarg_output(parser, kind="folder", helptext="Folder for output")
+
+
+def get_griddata_outputfolder(outputfile: Path | None, modelpaths: Sequence[Path], modelpath_given: bool) -> Path:
+    """Return the output folder of --makemodelfromgriddata.
+
+    Before the -o argument existed, -modelpath gave the output folder. The command keeps that behaviour when the
+    command line holds no -o.
+    """
+    if outputfile is not None:
+        return outputfile
+
+    if modelpath_given:
+        print_warning(f"-modelpath sets the output folder to {modelpaths[0]}. Use -o for the output folder.")
+        return Path(modelpaths[0])
+
+    return Path()
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -80,14 +95,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.modelpath = normalize_path_list(args.modelpath)
 
     if args.downscale3dgrid:
-        # -o holds the working folder when the user gave none, and the default output folder is a
-        # subfolder of the model
-        outputfolder = args.outputfile if Path(args.outputfile) != Path() else None
+        # with no -o, the output folder is a subfolder of the model
         make_downscaled_3d_grid(
             modelpath=Path(args.modelpath[0]),
             outputgridsize=args.outputgridsize,
             plot=args.downscaleplot,
-            outputfolder=outputfolder,
+            outputfolder=args.outputfile,
         )
         return
 
@@ -127,15 +140,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.makemodelfromgriddata:
         print(args)
-        # before the -o argument existed, -modelpath gave the output folder. The command keeps that
-        # behaviour when the command line holds no -o.
-        outputpath = args.outputfile
-        if Path(args.outputfile) == Path() and modelpath_given:
-            outputpath = args.modelpath[0]
-            print_warning(f"-modelpath sets the output folder to {outputpath}. Use -o for the output folder.")
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=outputpath,
+            outputpath=get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given),
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )
@@ -148,4 +155,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         print(f"total mass {Mtot_grams / Msun_to_g} Msun")
 
-        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile)
+        make_energy_files(rho, Mtot_grams, outputpath=args.outputfile or Path())

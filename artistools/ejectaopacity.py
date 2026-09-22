@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Script for computing binned expansion opacities and Planck-mean opacities in postprocessing."""
 
 import argparse

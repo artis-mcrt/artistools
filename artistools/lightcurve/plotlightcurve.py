@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot ARTIS bolometric and band light curves, colour evolution, and deposition curves."""
 
 import argparse

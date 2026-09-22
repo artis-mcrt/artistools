@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 """Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
 
 import argparse

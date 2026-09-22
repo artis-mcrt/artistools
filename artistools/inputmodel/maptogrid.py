@@ -1,4 +1,3 @@
-# PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 """Map SPH ejecta particles onto a Cartesian grid using a cubic spline kernel."""

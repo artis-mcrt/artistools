@@ -7,21 +7,31 @@ for the ARTIS radiative transfer code.
 # ruff:file-ignore[non-empty-init-module]
 import sys
 
+# numpy has to load before polars. Otherwise polars makes a proxy for numpy, and on a free-threaded build two
+# threads that resolve that proxy at once raise "'module' object does not support item assignment". This
+# import comes before set_lazy_imports, thus it is eager. Every command loads numpy, thus it costs no time
+import numpy as np  # ruff:ignore[unused-import]
+
+if "polars._dependencies" in sys.modules:
+    # the caller imported polars first, thus polars can hold the proxy. One access resolves it in this thread
+    _ = sys.modules["polars._dependencies"].numpy.ndarray
+
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
-        # matplotlib registers docstring parts as a side effect of some imports, and later modules read them at
-        # import time. Thus the imports inside matplotlib stay eager, but an import of matplotlib can be lazy
+        # matplotlib registers docstring parts as a side effect of some of its imports, and its later modules
+        # read them at import time. Thus an import of matplotlib from inside matplotlib stays eager. Code that
+        # runs with no __name__ gives no importing module
         lambda importing, imported, _fromlist: (
-            importing.partition(".")[0] not in {"matplotlib", "mpl_toolkits"}
-            and not imported.startswith(("numpy", "polars", "polars.exceptions", "polars.selectors"))
+            not (
+                imported.startswith("polars")
+                or (
+                    (importing or "").startswith(("matplotlib", "mpl_toolkits"))
+                    and imported.startswith(("matplotlib", "mpl_toolkits"))
+                )
+            )
         )
     )
     sys.set_lazy_imports("all")
-
-    # numpy has to reach sys.modules before anything imports polars. Otherwise polars makes its own proxy
-    # for numpy, and on free-threaded 3.15 two threads that resolve that proxy at once raise with "'module'
-    # object does not support item assignment". Every command loads numpy, thus this costs no start time
-    import numpy as np  # ruff:ignore[unused-import]
 
 if sys.version_info >= (3, 15):
     from artistools._polarscompat import repair_series_expr_dispatch
