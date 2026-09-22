@@ -156,6 +156,33 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
+def test_get_modeldata_keeps_a_cache_of_version_1(tmp_path: Path) -> None:
+    """A cache of version 1 holds the same columns as version 2, thus the reader must keep it.
+
+    The version increased to 2 only because the text reader now rejects an inconsistent vmax. A
+    regeneration of the cache of a large model costs minutes and gives the same data.
+    """
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    textfilepath = tmp_path / "model.txt"
+    cachefilepath = tmp_path / "model.txt.parquet.tmp"
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    at.misc.write_parquet_atomic(
+        lzdfmodel.collect(),
+        cachefilepath,
+        metadata={
+            "cacheversion": "1",
+            "textsource_mtime": str(textfilepath.stat().st_mtime),
+            "modelmeta_json": json.dumps(modelmeta | {"cachemarker": "version 1"}),
+        },
+    )
+
+    lzdfmodel_cached, modelmeta_cached = at.get_modeldata(modelpath=tmp_path)
+
+    assert modelmeta_cached["cachemarker"] == "version 1"
+    assert pl.read_parquet_metadata(cachefilepath)["cacheversion"] == "1"
+    pltest.assert_frame_equal(lzdfmodel_cached.collect(), lzdfmodel.collect())
+
+
 def test_get_cell_angle() -> None:
     lzmodeldata, _ = get_derived_modeldata(modelpath_3d)
     modeldata = at.inputmodel.core.get_cell_angle(lzmodeldata).collect()

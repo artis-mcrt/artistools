@@ -384,9 +384,12 @@ def read_modelfile_text(
 
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
-# incorrect, e.g. a new column or a different data type in either one. Version 2: the reader rejects a 3D
-# model with a vmax that does not agree with the cell positions, which a cache of version 1 can hold.
+# incorrect, e.g. a new column or a different data type in either one.
 CACHEVERSION = 2
+# A cache of version 1 holds the same columns and the same types. Version 2 shows only that the text
+# reader now rejects a 3D model with a vmax that does not agree with the cell positions. The reader
+# keeps a cache of version 1, because a regeneration of a large cache costs minutes.
+READABLE_CACHEVERSIONS = (1,)
 
 
 def read_parquet_cache(
@@ -401,7 +404,9 @@ def read_parquet_cache(
     if not parquetfilepath.is_file():
         return None
 
-    pqmetadata, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+    pqmetadata, stalereason = read_parquet_cache_metadata(
+        parquetfilepath, CACHEVERSION, textsource_mtime, readableversions=READABLE_CACHEVERSIONS
+    )
     if pqmetadata is not None and (missingkey := next((key for key in metadatakeys if key not in pqmetadata), None)):
         pqmetadata, stalereason = None, f"the file has no {missingkey} stamp"
 

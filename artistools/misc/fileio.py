@@ -905,7 +905,12 @@ def parquet_is_readable(parquetfilepath: Path) -> bool:
 
 
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, accept_unstamped: bool = False
+    parquetfilepath: Path,
+    cacheversion: int,
+    textsource_mtime: float | None,
+    *,
+    accept_unstamped: bool = False,
+    readableversions: Sequence[int] = (),
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -929,6 +934,9 @@ def read_parquet_cache_metadata(
 
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
+
+    readableversions gives the older cache format versions that the reader also accepts, e.g. a
+    version that holds the same columns. The writer still stamps cacheversion into a new cache.
     """
     try:
         pqmetadata = pl.read_parquet_metadata(parquetfilepath)
@@ -938,12 +946,11 @@ def read_parquet_cache_metadata(
         return None, f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
 
     foundversion = pqmetadata.get("cacheversion", str(cacheversion) if accept_unstamped else None)
-    if foundversion != str(cacheversion):
-        return None, (
-            f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
-            if foundversion is not None
-            else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
-        )
+    if foundversion is None:
+        return None, "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
+
+    if foundversion != str(cacheversion) and foundversion not in {str(version) for version in readableversions}:
+        return None, f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
 
     foundmtime = pqmetadata.get("textsource_mtime")
     if foundmtime is None and accept_unstamped:

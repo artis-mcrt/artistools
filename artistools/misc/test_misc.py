@@ -274,6 +274,8 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
         pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
     )
     assert f"version is 0, but this artistools version writes {cacheversion}" in get_reason(oldversion, mtime)
+    # a reader that gives an older version in readableversions keeps such a cache
+    assert at.misc.read_parquet_cache_metadata(oldversion, cacheversion, mtime, readableversions=(0,))[1] is None
 
     unreadable = tmp_path / "unreadable.parquet"
     unreadable.write_bytes(b"not parquet")
