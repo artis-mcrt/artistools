@@ -105,6 +105,22 @@ def test_polarscompat_is_still_necessary() -> None:
     )
 
 
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="lazy imports start with Python 3.15")
+def test_polars_holds_the_real_numpy() -> None:
+    """Check that numpy loads before polars, and not as the lazy proxy of polars.
+
+    On free-threaded 3.15, two threads that resolve that proxy at once raise with "'module' object
+    does not support item assignment". gsinetworkdecayproducts did this in parallel_map.
+    """
+    # a fresh interpreter, because the test session has loaded numpy already
+    code = "import artistools, polars._dependencies as d; print(type(d.numpy).__name__)"
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+
+    assert result.stdout.strip() == "module"
+
+
 def get_console_scripts() -> dict[str, str]:
     """Return the declared target of each console script in pyproject.toml."""
     with (REPOPATH / "pyproject.toml").open("rb") as f:

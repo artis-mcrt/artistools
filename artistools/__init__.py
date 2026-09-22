@@ -13,10 +13,15 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
         # import time. Thus the imports inside matplotlib stay eager, but an import of matplotlib can be lazy
         lambda importing, imported, _fromlist: (
             importing.partition(".")[0] not in {"matplotlib", "mpl_toolkits"}
-            and not imported.startswith(("polars", "polars.exceptions", "polars.selectors"))
+            and not imported.startswith(("numpy", "polars", "polars.exceptions", "polars.selectors"))
         )
     )
     sys.set_lazy_imports("all")
+
+    # numpy has to reach sys.modules before anything imports polars. Otherwise polars makes its own proxy
+    # for numpy, and on free-threaded 3.15 two threads that resolve that proxy at once raise with "'module'
+    # object does not support item assignment". Every command loads numpy, thus this costs no start time
+    import numpy as np  # ruff:ignore[unused-import]
 
 if sys.version_info >= (3, 15):
     from artistools._polarscompat import repair_series_expr_dispatch
