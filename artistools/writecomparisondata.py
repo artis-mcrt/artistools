@@ -146,11 +146,13 @@ def write_edep(
 
 
 def get_column_or_zero(dfestimators: pl.DataFrame, colname: str) -> pl.Expr:
-    """Return the column of the estimators, or zero when this run holds no such column.
+    """Return the column of the estimators as Float64, or zero when this run holds no such column.
 
-    ARTIS writes no population for an ion that a cell does not hold, and a whole run can hold none.
+    ARTIS writes a population only for an ion that a cell holds, and a whole run can hold none. The
+    estimator cache stores a population as Float32, and a ratio of two Float32 values loses precision
+    below 1e-38.
     """
-    return pl.col(colname).fill_null(0.0) if colname in dfestimators.columns else pl.lit(0.0)
+    return pl.col(colname).cast(pl.Float64).fill_null(0.0) if colname in dfestimators.columns else pl.lit(0.0)
 
 
 def write_ionfracts(
