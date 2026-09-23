@@ -2063,6 +2063,14 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give one time with -timedays. Run the command again for each other time",
         )
 
+    # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
+    if args.showabsorption and args.groupby == "nuc":
+        exit_with_error(
+            "a nuclide emits a packet, but a nuclide does not absorb a packet. Thus -groupby nuc cannot group the"
+            " absorption contributions",
+            "Give -groupby ion or line, or remove --showabsorption",
+        )
+
     if args.yvariable == "packetcount":
         exit_with_error(
             "an emission plot draws a flux for each contribution, and it has no count of packets",

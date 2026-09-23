@@ -1962,7 +1962,10 @@ def test_interactive_emission_options() -> None:
     # the test model has no emission.out, thus plotspectra cannot draw its emission plot
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     oldvalues, command = viewer.values, viewer.get_command()
-    assert viewer.change(dc.replace(viewer.values, showemission=True)) == interactive.REJECTED_MESSAGE
+    # the status line gives the first line of the error, which names the missing files
+    message = viewer.change(dc.replace(viewer.values, showemission=True))
+    assert message is not None
+    assert message.startswith("None of these files exist")
     assert viewer.values == oldvalues
     assert viewer.get_command() == command
 
@@ -1972,3 +1975,26 @@ def test_interactive_emission_options() -> None:
     assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5)) is None
     assert viewer.get_command().endswith(" --showabsorption -groupby ion -maxseriescount 5")
     assert viewer.fig.get_figheight() > figheight
+
+    # the window disables a choice that plotspectra rejects, thus the test must find the rejection without a plot
+    rejection = viewer.get_rejection(dc.replace(viewer.values, groupby="nuc"))
+    assert rejection is not None
+    assert "nuclide" in rejection
+
+
+def test_interactive_xunit_and_references() -> None:
+    """A new x unit converts and sorts the limits, and a reference spectrum goes after the model paths."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-deltax", "20", "--interactive"])
+    # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
+    inhertz = interactive.convert_xunit(viewer.values, "hz", gamma=False)
+    assert (inhertz.xmin, inhertz.xmax, inhertz.deltax) == ("1.578e+14", "1.199e+15", "")
+    back = interactive.convert_xunit(inhertz, "angstroms", gamma=False)
+    assert np.isclose(float(back.xmin), 2500.0, rtol=1e-3, atol=0.0)
+    assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
+
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    assert viewer.change(dc.replace(inhertz, references=(reference,))) is None
+    tokens = shlex.split(viewer.get_command())[2:]
+    assert tokens[:4] == [str(modelpath), reference, "-t", "300.3"]
+    assert "-xunit" in tokens
+    assert len(viewer.axes[0].get_lines()) == 2
