@@ -20,11 +20,13 @@ from artistools.commands import SuggestingArgumentParser
 from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_error
+from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
@@ -112,6 +114,9 @@ SLIDER_STEPS: t.Final = 1000
 
 # the Play button waits for this time after each plot, thus the user can see each timestep
 PLAY_MILLISECONDS: t.Final = 150
+
+# the time after the last change of a control, before the full plot replaces the preview
+FULL_DRAW_MILLISECONDS: t.Final = 250
 
 
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
@@ -586,6 +591,11 @@ class SpectrumViewer:
         self.residualaxis: mplax.Axes | None = None
         # each option in frameskey changes the layout or the size of the frames, thus a change of one makes new frames
         self.frameskey: tuple[bool, bool, float, float] | None = None
+        # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
+        self.previewmaxpacketfiles = (
+            RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
+        )
+        self.drewpreview = False
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
@@ -737,7 +747,7 @@ class SpectrumViewer:
             return "A different option of the command keeps the emission plot on"
         return None
 
-    def draw(self, *, quiet: bool = True) -> str | None:
+    def draw(self, *, quiet: bool = True, preview: bool = False) -> str | None:
         """Draw the plot of the command, and return the reason for the status line if plotspectra rejects it.
 
         Each plot prints the same lines again, e.g. the list of the ions of an emission plot. Thus a quiet plot
@@ -747,7 +757,7 @@ class SpectrumViewer:
         errors = io.StringIO()
         try:
             with output, contextlib.redirect_stderr(errors):
-                return self.draw_command()
+                return self.draw_command(preview=preview)
         except SystemExit:
             # exit_with_error printed a line that starts with "error: ", and a help line
             return get_first_line(errors.getvalue())
@@ -757,11 +767,21 @@ class SpectrumViewer:
         finally:
             sys.stderr.write(errors.getvalue())
 
-    def draw_command(self) -> str | None:
-        """Parse the command and draw its plot, or return a message if the plot differs from the values."""
+    def draw_command(self, *, preview: bool = False) -> str | None:
+        """Parse the command and draw its plot, or return a message if the plot differs from the values.
+
+        A preview of a plot of the packets reads the first batch of ranks only. For the 20 batches of a kilonova run,
+        a range of 8 days took 0.12 s in place of 1.1 s. The flux stays correct, because the reader divides by the
+        number of ranks that it reads. The command in the window has no -maxpacketfiles for the preview.
+        """
         plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
         resolve_plot_args(plotargs)
         check_viewer_args(plotargs)
+        self.drewpreview = bool(
+            preview and plotargs.frompackets and plotargs.maxpacketfiles is None and self.previewmaxpacketfiles
+        )
+        if self.drewpreview:
+            plotargs.maxpacketfiles = self.previewmaxpacketfiles
         shown = (plotargs.showemission, plotargs.showabsorption)
         if shown != (self.values.showemission, self.values.showabsorption):
             return "A different option of the command keeps the emission plot on"
@@ -814,14 +834,14 @@ class SpectrumViewer:
         centre = min(max(values.centre, low), high)
         return values if centre == values.centre else dc.replace(values, centre=centre)
 
-    def change(self, values: ControlValues) -> str | None:
+    def change(self, values: ControlValues, *, preview: bool = False) -> str | None:
         """Draw the plot of the new values, and keep the old values if plotspectra rejects the new command."""
         oldvalues, self.values = self.values, self.clamp_time(values)
-        message = self.draw()
+        message = self.draw(preview=preview)
         if message is not None:
             self.values = oldvalues
             # the old values drew a plot before, thus they draw again
-            self.draw()
+            self.draw(preview=preview)
         return message
 
     def get_drawn_series(self) -> tuple[str, ...]:
@@ -1036,6 +1056,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         return
     windows.append(window)
 
+    fulldrawtimer = QtCore.QTimer()
+    fulldrawtimer.setSingleShot(True)
+    fulldrawtimer.setInterval(FULL_DRAW_MILLISECONDS)
     fittimer = QtCore.QTimer()
     fittimer.setSingleShot(True)
     fittimer.setInterval(FIT_MILLISECONDS)
@@ -1687,21 +1710,45 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         starttime = time.perf_counter()
         try:
-            message = viewer.change(values)
+            message = viewer.change(values, preview=True)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
-        drawtimelabel.setText(f"Plot time: {time.perf_counter() - starttime:.2f} s")
+        drawkind = "Preview" if viewer.drewpreview else "Plot"
+        drawtimelabel.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
         # clear the readout, because it holds the values of the old plot until the mouse moves again
         readoutlabel.setText("")
         messagelabel.setText(message or "")
         show_values()
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
+        # each change starts the timer again, thus the full plot follows after the last change
+        if viewer.drewpreview:
+            fulldrawtimer.start()
         # a rejection occurs again at each step, thus a rejection stops the Play button
         if message is not None:
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             QtCore.QTimer.singleShot(PLAY_MILLISECONDS, play_step)
+
+    def draw_full() -> None:
+        """Replace the preview with the plot of all the packets."""
+        # a change in the queue, or the Play button, draws a new preview and starts this timer again
+        if requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
+            return
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+        drawtimelabel.setText("Plot in progress...")
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        starttime = time.perf_counter()
+        try:
+            message = viewer.change(viewer.values)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        drawtimelabel.setText(f"Plot time: {time.perf_counter() - starttime:.2f} s")
+        readoutlabel.setText("")
+        messagelabel.setText(message or "")
+        show_values()
+
+    fulldrawtimer.timeout.connect(draw_full)
 
     def show_error(message: str) -> None:
         messagelabel.setText(message)
@@ -1793,6 +1840,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         playbutton.setText("Pause" if checked else "Play")
         if checked:
             play_step()
+        elif viewer.drewpreview:
+            fulldrawtimer.start()
 
     def set_xlimits(low: float, high: float) -> None:
         # a value of 3 significant digits gives a short command, and a text field gives an exact value
