@@ -1974,6 +1974,13 @@ def test_interactive_time_range_argument() -> None:
     # the valid times of the test model start at 256.67 d, thus the range starts there
     assert interactive.get_timedays_argument(260.0, 10.0, (256.67, 333.82)) == "256.67-265"
 
+    # format_days rounded a time at a bound to 6 decimals, and the time went outside the valid times. plotspectra
+    # rejects such a time
+    bounds = (0.1413524, 79.9999996)
+    for centre, width in ((0.1413, 0.0), (0.1414, 0.001), (79.99999, 0.1), (40.0, 100.0)):
+        for text in interactive.get_timedays_argument(centre, width, bounds).split("-"):
+            assert bounds[0] <= float(text) <= bounds[1], (centre, width, text)
+
 
 def test_interactive_valid_timesteps() -> None:
     """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
@@ -1985,6 +1992,14 @@ def test_interactive_valid_timesteps() -> None:
     assert viewer.get_selection(viewer.values) == (viewer.validtimesteps[-1], viewer.validtimesteps[-1])
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
+
+    # a continuous time alone selects the whole timestep that holds it. At each end of the valid times, that
+    # timestep is only in part valid, thus plotspectra rejected the command
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    for bound, timestep in ((validstart, viewer.validtimesteps[0]), (validend, viewer.validtimesteps[-1])):
+        assert viewer.change(dc.replace(viewer.values, centre=bound, width=0.0)) is None
+        assert viewer.values.centre == viewer.tmids[timestep]
+        assert viewer.change(dc.replace(viewer.values, centre=bound, width=1.0)) is None
 
 
 def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:

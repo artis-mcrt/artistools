@@ -78,6 +78,9 @@ CONTROLLED_DESTS: t.Final = frozenset({
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
 
+# the number of decimals of a time in days in the command
+DAYS_DECIMALS: t.Final = 6
+
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
@@ -331,7 +334,22 @@ def split_option_rows(parser: SuggestingArgumentParser, tokens: "Sequence[str]")
 
 def format_days(value: float) -> str:
     """Return a time in days in fixed-point notation. The option -timedays reads the "-" of 1e-05 as a range."""
-    return np.format_float_positional(value, precision=6, trim="-")
+    return np.format_float_positional(value, precision=DAYS_DECIMALS, trim="-")
+
+
+def format_days_inside(value: float, bounds: tuple[float, float]) -> str:
+    """Return a time in days in fixed-point notation, with a value inside the bounds.
+
+    format_days rounds to the nearest decimal, and a time near a bound can then go outside it. plotspectra rejects
+    such a time, thus the nearest decimal inside the bound replaces it.
+    """
+    scale = 10.0**DAYS_DECIMALS
+    text = format_days(min(max(value, bounds[0]), bounds[1]))
+    if float(text) < bounds[0]:
+        return format_days(math.ceil(bounds[0] * scale) / scale)
+    if float(text) > bounds[1]:
+        return format_days(math.floor(bounds[1] * scale) / scale)
+    return text
 
 
 def get_timedays_argument(centre: float, width: float, bounds: tuple[float, float]) -> str:
@@ -341,12 +359,12 @@ def get_timedays_argument(centre: float, width: float, bounds: tuple[float, floa
     stays inside the bounds, which are the valid times of the first run.
     """
     if width > 0.0:
-        lowtext = format_days(max(centre - width / 2.0, bounds[0]))
-        hightext = format_days(min(centre + width / 2.0, bounds[1]))
+        lowtext = format_days_inside(centre - width / 2.0, bounds)
+        hightext = format_days_inside(centre + width / 2.0, bounds)
         if float(lowtext) < float(hightext):
             return f"{lowtext}-{hightext}"
 
-    return format_days(centre)
+    return format_days_inside(centre, bounds)
 
 
 def get_shortest_decimal(low: float, high: float, *, roundup: bool) -> str:
@@ -534,7 +552,7 @@ class SpectrumViewer:
             figwidthscale=args.figwidthscale,
             otheroptions=otheroptions,
         )
-        self.values = values if values.notimeclamp else self.snap(values, *self.get_selection(values))
+        self.values = self.clamp_time(values) if values.notimeclamp else self.snap(values, *self.get_selection(values))
 
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
@@ -752,9 +770,24 @@ class SpectrumViewer:
         # 2 decimals give a short command, and a small change of the window then keeps the frames
         return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
 
+    def clamp_time(self, values: ControlValues) -> ControlValues:
+        """Return the values with a continuous time that gives a plot of valid times only.
+
+        A range stays inside the valid times. A time alone selects the whole timestep that holds it. Thus such a
+        time stays between the middles of the first and the last valid timestep.
+        """
+        if not values.notimeclamp:
+            return values
+        if values.width > 0.0:
+            low, high = self.timebounds
+        else:
+            low, high = self.tmids[self.validtimesteps[0]], self.tmids[self.validtimesteps[-1]]
+        centre = min(max(values.centre, low), high)
+        return values if centre == values.centre else dc.replace(values, centre=centre)
+
     def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values if plotspectra rejects the new command."""
-        oldvalues, self.values = self.values, values
+        oldvalues, self.values = self.values, self.clamp_time(values)
         message = self.draw()
         if message is not None:
             self.values = oldvalues

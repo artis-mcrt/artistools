@@ -1964,9 +1964,6 @@ def get_flux_contributions_from_packets(
         )
         group_energy_sum = dict(zip(dftotals["label"].to_list(), dftotals[energy_column].to_list(), strict=True))
 
-    if fixedionlist is not None and (unrecognised_items := [x for x in fixedionlist if x not in group_energy_sum]):
-        print_warning(f"(packets) did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
-
     # the small contributions join one group here, thus the code below gives one spectrum for them
     allgroupnames, other_groupnames = rank_flux_series_names(group_energy_sum, maxseriescount, fixedionlist)
     drawnnames = allgroupnames.copy()
@@ -2054,8 +2051,9 @@ def sort_and_reduce_flux_contribution_list(
 ) -> list[FluxContributionTuple]:
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
     rowofname = {row.linelabel: row for row in contribution_list_in}
+    # each plot gives its contributions to this function, thus this is the one warning for a missing item
     if fixedionlist and (unrecognised_items := [x for x in fixedionlist if x not in rowofname]):
-        print_warning(f"did not understand these items in fixedionlist: {unrecognised_items}")
+        print_warning(f"did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     keptnames, othernames = rank_flux_series_names(
         {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
