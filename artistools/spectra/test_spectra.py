@@ -2511,15 +2511,23 @@ def test_interactive_direction_and_bin_controls() -> None:
     assert "--average_every_tenth_viewing_angle" not in command
     assert command[command.index("-plotviewingangle") + 1] == "10"
 
-    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta")
+    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
     assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())
     assert "--average_over_theta_angle" in command
     assert not {"--average_over_phi_angle", "-deltalogx"} & set(command)
 
+    # the legend gives the angles of the direction, and the command keeps --usedegrees only with a direction
+    assert viewer.change(dc.replace(viewer.values, usedegrees=True)) is None
+    assert "--usedegrees" in shlex.split(viewer.get_command())
+    legend = viewer.axes[0].get_legend()
+    assert legend is not None
+    assert any("°" in text.get_text() for text in legend.get_texts())
+
     assert viewer.change(dc.replace(viewer.values, directionkind="", directionbins=())) is None
-    assert not {"-plotviewingangle", "--average_over_theta_angle"} & set(shlex.split(viewer.get_command()))
+    command = set(shlex.split(viewer.get_command()))
+    assert not {"-plotviewingangle", "--average_over_theta_angle", "--usedegrees"} & command
 
 
 def test_interactive_option_rows() -> None:

@@ -90,6 +90,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "average_over_phi_angle",
     "average_over_theta_angle",
     "average_every_tenth_viewing_angle",
+    "usedegrees",
     "fixedionlist",
     "figwidthscale",
     "interactive",
@@ -175,6 +176,7 @@ class ControlValues:
     # - "vpkt" for -plotvspecpol.
     directionkind: str
     directionbins: tuple[int, ...]
+    usedegrees: bool
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
     figwidthscale: float
@@ -556,7 +558,7 @@ def get_direction_kind(args: argparse.Namespace) -> str:
     return "theta" if args.average_over_theta_angle else "bin"
 
 
-def get_direction_choices(runfolder: Path, directionkind: str) -> list[tuple[int, str]]:
+def get_direction_choices(runfolder: Path, directionkind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
     """Return each bin of a kind of viewing direction with its label.
 
     An average over the phi angle or the theta angle takes the first bin of each group, as get_dirbins gives it.
@@ -568,6 +570,7 @@ def get_direction_choices(runfolder: Path, directionkind: str) -> list[tuple[int
         vpkt_observers=directionkind == "vpkt",
         average_over_phi=averagephi,
         average_over_theta=averagetheta,
+        usedegrees=usedegrees,
     )
     return list(labels.items())
 
@@ -725,6 +728,7 @@ class SpectrumViewer:
             usethermalemissiontype=bool(args.use_thermalemissiontype),
             directionkind=get_direction_kind(args),
             directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
+            usedegrees=bool(args.usedegrees),
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in self.startpaths if path_is_reference_spectrum(path)),
             figwidthscale=args.figwidthscale,
@@ -819,6 +823,8 @@ class SpectrumViewer:
             (values.usethermalemissiontype, "--use_thermalemissiontype"),
             (values.directionkind == "phi", "--average_over_phi_angle"),
             (values.directionkind == "theta", "--average_over_theta_angle"),
+            # the angles of a direction go in the labels, thus the flag has no effect without a direction
+            (values.usedegrees and bool(values.directionkind), "--usedegrees"),
         ):
             if isgiven:
                 options.append(flag)
@@ -1609,12 +1615,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
                 directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
             )
     directionbox.setToolTip("The direction bin of the plot, or the observer of the virtual packets")
-    add_row(directiongrid, 0, [directionkindbox])
+    usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
+    usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
+    add_row(directiongrid, 0, [directionkindbox, usedegreescheck])
     # the label of a direction bin is long, thus the box of the direction bins takes the full width of the sidebar
     directiongrid.addWidget(directionbox, 1, 0, 1, -1)
     # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
-    directionchoices: dict[str, list[tuple[int, str]]] = {}
-    shownkind: str | None = None
+    directionchoices: dict[tuple[str, bool], list[tuple[int, str]]] = {}
+    shownchoices: tuple[str, bool] | None = None
     for box in (countbox, binwidthbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
@@ -1851,6 +1859,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         thermalcheck,
         directionkindbox,
         directionbox,
+        usedegreescheck,
     ]
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
@@ -1889,22 +1898,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         binwidthbox.setRange(low, high)
         binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
 
-    def show_direction_choices(directionkind: str) -> None:
+    def show_direction_choices(directionkind: str, usedegrees: bool) -> None:
         """Fill the box of the direction bins with the bins of a kind of viewing direction."""
-        nonlocal shownkind
-        if directionkind == shownkind:
+        nonlocal shownchoices
+        if (directionkind, usedegrees) == shownchoices:
             return
         directionbox.clear()
-        for dirbin, label in get_direction_choices_of_kind(directionkind):
+        for dirbin, label in get_direction_choices_of_kind(directionkind, usedegrees):
             directionbox.addItem(f"{dirbin}: {label}", dirbin)
-        shownkind = directionkind
+        shownchoices = (directionkind, usedegrees)
 
-    def get_direction_choices_of_kind(directionkind: str) -> list[tuple[int, str]]:
+    def get_direction_choices_of_kind(directionkind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if not directionkind:
             return []
-        if directionkind not in directionchoices:
-            directionchoices[directionkind] = get_direction_choices(viewer.runfolders[0], directionkind)
-        return directionchoices[directionkind]
+        if (directionkind, usedegrees) not in directionchoices:
+            directionchoices[directionkind, usedegrees] = get_direction_choices(
+                viewer.runfolders[0], directionkind, usedegrees=usedegrees
+            )
+        return directionchoices[directionkind, usedegrees]
 
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
@@ -2060,7 +2071,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         for widget in (hidenetcheck, hideothercheck, thermalcheck):
             widget.setEnabled(values.showemission or values.showabsorption)
         directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
-        show_direction_choices(values.directionkind)
+        usedegreescheck.setChecked(values.usedegrees)
+        usedegreescheck.setEnabled(bool(values.directionkind))
+        show_direction_choices(values.directionkind, values.usedegrees)
         directionbox.setCurrentIndex(directionbox.findData(values.directionbins[0]) if values.directionbins else -1)
         directionbox.setEnabled(bool(values.directionkind))
         if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
@@ -2349,7 +2362,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_direction() -> None:
         directionkind: str = directionkindbox.currentData()
-        dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind)]
+        usedegrees = usedegreescheck.isChecked()
+        dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees)]
         if directionkind == viewer.values.directionkind:
             directionbins = (directionbox.currentData(),) if directionkind else ()
         else:
@@ -2357,7 +2371,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             directionbins = tuple(dirbin for dirbin in viewer.values.directionbins[:1] if dirbin in dirbins) or tuple(
                 dirbins[:1]
             )
-        values = dc.replace(viewer.values, directionkind=directionkind, directionbins=directionbins)
+        values = dc.replace(
+            viewer.values, directionkind=directionkind, directionbins=directionbins, usedegrees=usedegrees
+        )
         if values != viewer.values:
             apply(values)
 
@@ -2518,6 +2534,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     normalisedcheck.toggled.connect(on_axes)
     directionkindbox.currentIndexChanged.connect(on_direction)
     directionbox.currentIndexChanged.connect(on_direction)
+    usedegreescheck.toggled.connect(on_direction)
     addbutton.clicked.connect(on_add_reference)
     removebutton.clicked.connect(on_remove_reference)
     copybutton.clicked.connect(on_copy)
