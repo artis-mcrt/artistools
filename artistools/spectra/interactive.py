@@ -1061,7 +1061,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     layout.addWidget(plotarea, stretch=1)
     window.setCentralWidget(central)
 
-    # the sections scroll, and the command stays at the bottom of the panel
+    # the sections and the command scroll together
     sidebar = QtWidgets.QWidget()
     sidebar.setFixedWidth(600)
     sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
@@ -1076,30 +1076,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     sidebarlayout.addWidget(panelscroll, stretch=1)
     layout.addWidget(sidebar)
 
-    def add_section(title: str, *, expanded: bool = True) -> tuple[QtWidgets.QToolButton, QtWidgets.QGridLayout]:
-        """Add a section with a header that shows or hides its controls."""
-        header = QtWidgets.QToolButton()
-        header.setText(title)
-        header.setCheckable(True)
-        header.setChecked(expanded)
-        header.setAutoRaise(True)
-        # a section header is a heading and not a button, thus it has no border in either state
-        header.setStyleSheet("QToolButton { border: none; }")
-        header.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        header.setArrowType(QtCore.Qt.ArrowType.DownArrow if expanded else QtCore.Qt.ArrowType.RightArrow)
+    def add_section(title: str) -> tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]:
+        """Add a section with a heading and a grid for its controls."""
+        header = QtWidgets.QLabel(title)
         font = header.font()
         font.setBold(True)
         header.setFont(font)
         content = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(content)
         grid.setColumnStretch(1, 1)
-        content.setVisible(expanded)
-
-        def on_toggled(checked: bool) -> None:
-            header.setArrowType(QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow)
-            content.setVisible(checked)
-
-        header.toggled.connect(on_toggled)
         panellayout.addWidget(header)
         panellayout.addWidget(content)
         return header, grid
@@ -1178,7 +1163,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         xgrid.addWidget(slider, row, 1)
         xgrid.addWidget(edit, row, 2)
 
-    _, axesgrid = add_section("Axes", expanded=False)
+    _, axesgrid = add_section("Axes")
     xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
     yscalebox.addItems(viewer.yscalechoices)
@@ -1243,7 +1228,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     )
     emissiongrid.addWidget(lockbutton, 4, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignLeft)
 
-    _, bingrid = add_section("Bins of the packet spectrum", expanded=bool(viewer.values.deltax))
+    _, bingrid = add_section("Bins of the packet spectrum")
     # an empty check box gives no -deltax, and plotspectra then takes its default bins
     deltaxcheck = QtWidgets.QCheckBox()
 
@@ -1268,7 +1253,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
 
-    _, referencegrid = add_section("Reference spectra", expanded=bool(viewer.values.references))
+    _, referencegrid = add_section("Reference spectra")
     referencelist = QtWidgets.QListWidget()
     referencelist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
     referencelist.setFixedHeight(4 * referencelist.fontMetrics().lineSpacing() + 12)
@@ -1281,7 +1266,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     referencegrid.addWidget(addbutton, 1, 0)
     referencegrid.addWidget(removebutton, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
-    _, optiongrid = add_section("Other options", expanded=bool(viewer.values.otheroptions))
+    _, optiongrid = add_section("Other options")
     optiontable = QtWidgets.QTableWidget(0, 2)
     optiontable.setHorizontalHeaderLabels(["Option", "Value"])
     optiontable.verticalHeader().setVisible(False)
@@ -1446,10 +1431,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         optiontable.setFixedHeight(rowsheight + headerheight + 2 * optiontable.frameWidth())
 
     show_option_rows()
+    # the command is the last section, at the bottom of the panel
     panellayout.addStretch(1)
-
-    commandbox = QtWidgets.QGroupBox("Command")
-    commandgrid = QtWidgets.QGridLayout(commandbox)
+    _, commandgrid = add_section("Command")
+    # the command text takes the width, and the Copy button keeps its size at the right
+    commandgrid.setColumnStretch(0, 1)
+    commandgrid.setColumnStretch(1, 0)
     commandtext = QtWidgets.QPlainTextEdit()
     commandtext.setReadOnly(True)
     commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
@@ -1458,7 +1445,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
     commandgrid.addWidget(commandtext, 0, 0)
     commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
-    sidebarlayout.addWidget(commandbox)
 
     # the status bar gives the messages at the left, and the readout, the time of the plot, and the help at the right
     statusbar = window.statusBar()
