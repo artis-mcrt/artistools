@@ -416,10 +416,10 @@ CACHEVERSION = 1
 RANKS_PER_BATCH: t.Final = 100
 
 
-def get_packets_textsource_mtimes(
+def find_packets_textsources(
     modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
-) -> list[float]:
-    """Return source modification times with at most one scan of each folder.
+) -> dict[str, os.DirEntry[str]]:
+    """Return the text file that the reader reads for each file name, with at most one scan of each folder.
 
     A caller that reads several batches gives one folderlistings for all of them. Each folder then has one scan
     for all the batches. For the 20 batches of a 3D kilonova model, the scans took 0.2 s each time the code read
@@ -434,7 +434,7 @@ def get_packets_textsource_mtimes(
                 folderlistings[folder] = {entry.name: entry for entry in entries}
         return folderlistings[folder]
 
-    mtimes: dict[str, float] = {}
+    found: dict[str, os.DirEntry[str]] = {}
     # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
     # conversion reads the file that it finds. A different order stamps the cache from another file
     subfolders = sorted(
@@ -443,19 +443,47 @@ def get_packets_textsource_mtimes(
     for folder in (modelpath, *subfolders):
         entries = get_listing(folder)
         for filename in filenames:
-            if filename in mtimes:
+            if filename in found:
                 continue
             # Use the same folder and compression order as the source reader.
             for suffix in ("", *COMPRESSED_EXTENSIONS):
                 if (entry := entries.get(f"{filename}{suffix}")) is None:
                     continue
-                # a link to a file that does not exist gives no time, because the reader does not find the file
+                # the reader does not find a link to a file that does not exist. The entry keeps the stat result
                 with contextlib.suppress(FileNotFoundError):
-                    mtimes[filename] = entry.stat().st_mtime
+                    entry.stat()
+                    found[filename] = entry
                     break
-        if len(mtimes) == len(filenames):
+        if len(found) == len(filenames):
             break
-    return list(mtimes.values())
+    return found
+
+
+def get_packets_textsource_mtimes(
+    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
+) -> list[float]:
+    """Return the modification times of the text files that the reader reads.
+
+    The function makes a maximum of one scan of each folder.
+    """
+    return [entry.stat().st_mtime for entry in find_packets_textsources(modelpath, filenames, folderlistings).values()]
+
+
+def get_packets_rankbatch_parquetpath(
+    modelpath: Path, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
+) -> Path:
+    """Return the path of the parquet cache of a batch of ranks."""
+    strpacket = "vpackets" if virtual else "packets"
+    return (
+        modelpath
+        / strpacket
+        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+    )
+
+
+def get_packets_textfilename(rank: int, virtual: bool) -> str:
+    """Return the name of the text file of the packets of a rank."""
+    return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
 
 
 def get_packets_rankbatch_parquetfile(
@@ -477,14 +505,9 @@ def get_packets_rankbatch_parquetfile(
         msg = f"artistools cannot make its cache folder {packetdir}, because the folder {modelpath} is read-only"
         raise PermissionError(msg) from exc
 
-    parquetfilename = (
-        f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
-    )
-    parquetfilepath = packetdir / parquetfilename
+    parquetfilepath = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual)
 
-    text_filenames = [
-        (f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out") for rank in batch_mpiranks
-    ]
+    text_filenames = [get_packets_textfilename(rank, virtual) for rank in batch_mpiranks]
 
     conversion_needed = True
     outdatedparquet: tuple[int, int] | None = None
@@ -607,13 +630,9 @@ def get_packets_rankbatch_parquetfile(
     return parquetfilepath
 
 
-def get_packets_batch_parquet_paths(
-    modelpath: str | Path, maxpacketfiles: int | None = None, virtual: bool = False
-) -> tuple[int, list[Path]]:
-    """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
-    nprocs = get_nprocs(modelpath)
-
-    mpirank_groups_all = list(enumerate(batched(range(nprocs), RANKS_PER_BATCH, strict=False)))
+def get_packets_mpirank_groups(modelpath: Path, maxpacketfiles: int | None) -> list[tuple[int, tuple[int, ...]]]:
+    """Return the index and the ranks of each batch that the reader reads."""
+    mpirank_groups_all = list(enumerate(batched(range(get_nprocs(modelpath)), RANKS_PER_BATCH, strict=False)))
     mpirank_groups = [
         (batchindex, batch_mpiranks)
         for batchindex, batch_mpiranks in mpirank_groups_all
@@ -624,6 +643,80 @@ def get_packets_batch_parquet_paths(
         msg = f"No packets batches selected. Set maxpacketfiles to at least {mpirank_groups_all[0][1][-1] + 1}"
         raise ValueError(msg)
 
+    return mpirank_groups
+
+
+@lru_cache(maxsize=8)
+def find_first_rank_textfiles(modelpath: Path, firstranks: tuple[int, ...], virtual: bool) -> tuple[Path, ...]:
+    """Return the text file of the first rank of each batch that has one.
+
+    The scan of the folders is slow on a network drive, thus the result stays in memory between two reads.
+    """
+    filenames = [get_packets_textfilename(rank, virtual) for rank in firstranks]
+    return tuple(Path(entry.path) for entry in find_packets_textsources(modelpath, filenames).values())
+
+
+def get_packets_cache_fingerprint(
+    modelpath: Path, mpirank_groups: Sequence[tuple[int, tuple[int, ...]]], virtual: bool
+) -> tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]]:
+    """Return the modification time of the first text file of each batch, and the identity of each cache.
+
+    The check of a batch reads the first text file and the cache. Thus a change to one of the two files changes
+    this value. The function raises FileNotFoundError if a text file of the last scan does not exist now.
+    """
+    firsttextfiles = find_first_rank_textfiles(
+        modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual
+    )
+    textmtimes = tuple(path.stat().st_mtime_ns for path in firsttextfiles)
+    cachestats: list[tuple[int, int] | None] = []
+    for batchindex, batch_mpiranks in mpirank_groups:
+        try:
+            cachestat = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual).stat()
+        except FileNotFoundError:
+            cachestats.append(None)
+        else:
+            cachestats.append((cachestat.st_ino, cachestat.st_mtime_ns))
+    return textmtimes, tuple(cachestats)
+
+
+def get_packets_batch_parquet_paths(
+    modelpath: str | Path, maxpacketfiles: int | None = None, virtual: bool = False
+) -> tuple[int, list[Path]]:
+    """Return the number of ranks that the reader reads and the paths of the parquet caches.
+
+    The function makes each outdated cache from the text files. The result of the check of the caches stays in
+    memory. For a run of 20 batches, the check took 9 ms at each plot of the spectrum viewer. A new check runs only
+    when the text file of the first rank of a batch changes, or when a cache changes.
+    """
+    modelpath = Path(modelpath).absolute()
+    mpirank_groups = get_packets_mpirank_groups(modelpath, maxpacketfiles)
+    try:
+        fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)
+    except FileNotFoundError:
+        # a text file of the last scan does not exist now, thus the result of that scan is incorrect
+        find_first_rank_textfiles.cache_clear()
+        fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)
+
+    nprocs_read, parquetpacketsfiles = check_packets_batch_parquet_paths(
+        modelpath, maxpacketfiles, virtual, fingerprint
+    )
+    return nprocs_read, list(parquetpacketsfiles)
+
+
+@lru_cache(maxsize=8)
+def check_packets_batch_parquet_paths(
+    modelpath: Path,
+    maxpacketfiles: int | None,
+    virtual: bool,
+    fingerprint: tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]],  # ruff:ignore[unused-function-argument]
+) -> tuple[int, tuple[Path, ...]]:
+    """Return the number of ranks and the parquet caches of the batches, and make each outdated cache.
+
+    The fingerprint is part of the lru_cache key, thus a change of a file gives a new check.
+    """
+    nprocs = get_nprocs(modelpath)
+    mpirank_groups = get_packets_mpirank_groups(modelpath, maxpacketfiles)
+
     if maxpacketfiles is not None and nprocs > maxpacketfiles:
         nprocs_read = mpirank_groups[-1][1][-1] + 1
         print(f"Reading packets from the first {nprocs_read} of {nprocs} ranks")
@@ -632,7 +725,7 @@ def get_packets_batch_parquet_paths(
 
     # each batch reads the same folders, thus all the batches use one scan of each folder
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
-    parquetpacketsfiles = [
+    parquetpacketsfiles = tuple(
         get_packets_rankbatch_parquetfile(
             modelpath,
             batch_mpiranks=batch_mpiranks,
@@ -641,7 +734,7 @@ def get_packets_batch_parquet_paths(
             folderlistings=folderlistings,
         )
         for batchindex, batch_mpiranks in mpirank_groups
-    ]
+    )
     assert bool(parquetpacketsfiles)
     nprocs_read = sum(len(batch_mpiranks) for _, batch_mpiranks in mpirank_groups)
     return nprocs_read, parquetpacketsfiles

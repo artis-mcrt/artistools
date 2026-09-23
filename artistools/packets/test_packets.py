@@ -271,6 +271,42 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     assert scandir.call_count <= 3
 
 
+def test_packets_cache_check_stays_in_memory(tmp_path: Path) -> None:
+    """A second read of the packets makes no scan of the folders, and a new cache gives a new check."""
+    from artistools.packets.core import CACHEVERSION
+    from artistools.packets.core import get_packets_batch_parquet_paths
+
+    sourcefolder = tmp_path / "run1"
+    sourcefolder.mkdir()
+    sourcefiles = [sourcefolder / f"packets00_{rank:04d}.out" for rank in range(32)]
+    for sourcefile in sourcefiles:
+        sourcefile.touch()
+    (tmp_path / "packets").mkdir()
+    cachepath = tmp_path / "packets" / "packetsbatch00_0000_0031.out.parquet.tmp"
+    metadata = {
+        "cacheversion": str(CACHEVERSION),
+        "textsource_mtime": str(max(path.stat().st_mtime for path in sourcefiles)),
+    }
+    at.misc.write_parquet_atomic(pl.DataFrame({"number": [0]}), cachepath, metadata=metadata)
+
+    with (
+        mock.patch("artistools.packets.core.get_nprocs", return_value=32),
+        mock.patch("os.scandir", wraps=os.scandir) as scandir,
+    ):
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
+
+        scandir.reset_mock()
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count == 0
+
+        # a new cache at the path can hold different data, thus the check runs again
+        cachepath.unlink()
+        at.misc.write_parquet_atomic(pl.DataFrame({"number": [1]}), cachepath, metadata=metadata)
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
+
+
 def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
     """Use the source reader's order for folders and compressed files, and omit absent sources."""
     sourcefolder = tmp_path / "run1"
