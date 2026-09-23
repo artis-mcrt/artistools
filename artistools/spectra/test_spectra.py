@@ -8,6 +8,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -2035,3 +2036,20 @@ def test_interactive_fixed_y_axis() -> None:
     assert " -ymin -1e-13 -ymax 3e-13" in viewer.get_command()
     assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
+
+
+def test_absorption_plot_keeps_a_linear_axis() -> None:
+    """An absorption plot must keep a linear y axis with -yscale auto, because its absorption part is negative.
+
+    The automatic rule read only the spectrum line, and it chose a log axis. The axis then showed no data.
+    """
+    args = at.misc.parse_cli_args(
+        plotspectra.addargs, None, None, [str(modelpath_classic_3d), "-t", "5", "--showemission", "--showabsorption"]
+    )
+    plotspectra.resolve_plot_args(args)
+    # the automatic rule then asks for a log axis for every set of values
+    with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
+        fig, axes, _, _ = plotspectra.make_plot(args)
+    assert axes[0].get_yscale() == "linear"
+    assert axes[0].get_ylim()[0] < 0.0
+    plt.close(fig)

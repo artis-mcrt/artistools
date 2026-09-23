@@ -1499,6 +1499,11 @@ def draw_plot(
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
 
+    # the absorption part of the plot is negative, and a log axis cannot show it. set_auto_yscale reads only the
+    # lines. The stacked areas of the contributions are not lines, thus set_auto_yscale can choose a log axis here
+    if args.showabsorption and args.yscale == "auto":
+        args.yscale = "linear"
+
     # -yscale auto reads the drawn values, thus the scale of the y axis follows the data
     set_auto_yscale(list(axes), args)
 
