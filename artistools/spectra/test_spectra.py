@@ -1,5 +1,7 @@
 import argparse
+import dataclasses as dc
 import math
+import shlex
 import typing as t
 from pathlib import Path
 from unittest import mock
@@ -10,10 +12,13 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 from artistools.spectra import core as atspectra
+from artistools.spectra import interactive
+from artistools.spectra import plotspectra
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -1852,3 +1857,118 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     plotted = [column for column in dfout.columns if column.startswith("flux_plotted")]
     assert len(plotted) == 1
     assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)
+
+
+def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
+    """-xmin alone on a frequency axis must stay the lower limit.
+
+    The default upper limit came from 19000 Å, which is a lower frequency than 2e14 Hz. The sort then made the
+    given -xmin the upper limit.
+    """
+    args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-xunit", "hz", "-xmin", "2e14"])
+    plotspectra.resolve_plot_args(args)
+    assert args.xmin == 2e14
+    assert np.isclose(args.xmax, at.spectra.convert_angstroms_to_unit(2500.0, "hz"), rtol=1e-12, atol=0.0)
+
+
+def test_interactive_command_tokens() -> None:
+    """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
+    parser = interactive.make_parser()
+    tokens = [
+        "my model",
+        "sn2011fe_PTF11kly_20120822_norm.txt",
+        "-t300",
+        "-xmin=3000",
+        "-lambdamax",
+        "9000",
+        "-label",
+        "foo",
+        "bar",
+        "--interactive",
+        "-timemin",
+        "290",
+        "-timema",
+        "320",
+        "-ts70",
+        "-time",
+        "300",
+        "--emissionabsorption",
+        "-maxseriescount",
+        "20",
+        "-groupby",
+        "nuc",
+        "-deltax=20",
+        "-plotviewingangle",
+        "-1",
+        "--",
+        "-folder",
+    ]
+    basetokens = interactive.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
+        "my model",
+        "sn2011fe_PTF11kly_20120822_norm.txt",
+        *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
+        *("-label", "foo", "bar", "-plotviewingangle", "-1", "--", "-folder"),
+    ]
+
+
+def test_interactive_time_range_argument() -> None:
+    """The time controls must give a -timedays value that plotspectra accepts.
+
+    A range that holds the middle of no timestep stops plotspectra, thus such a range gives the centre alone.
+    """
+    # timestep 54 of the test model starts at 299.812 d, ends at 300.823 d, and has its middle at 300.318 d
+    assert interactive.get_timedays_argument([modelpath], 306.4, 0.0) == "306.4"
+    assert interactive.get_timedays_argument([modelpath], 306.4, 5.0) == "303.9-308.9"
+    assert interactive.get_timedays_argument([modelpath], 300.0, 0.2) == "300"
+    # the range stays inside the run, which starts at 250 d
+    assert interactive.get_timedays_argument([modelpath], 251.0, 10.0) == "250-256"
+
+    assert at.misc.get_time_range(modelpath, timedays_range_str="303.9-308.9")[:2] == (58, 62)
+    assert at.misc.get_time_range(modelpath, timedays_range_str="300")[:2] == (54, 54)
+
+
+def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
+    """Return a viewer that draws on a canvas with no window, after its first plot."""
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer(tokens, fig)
+    assert viewer.draw() is None
+    return viewer
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The command that the viewer shows must draw the same data as the viewer."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    message = viewer.change(dc.replace(viewer.values, centre=306.4, width=5.0, xmin="3000", xmax="9000"))
+    assert message is None
+    command = viewer.get_command()
+    assert command.endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000")
+
+    # each plot clears the frame first, thus the frame holds only the series of the model
+    [viewerline] = viewer.axes[0].get_lines()
+    viewerx, viewery = np.asarray(viewerline.get_xdata()), np.asarray(viewerline.get_ydata())
+
+    mockplot.reset_mock()
+    at.spectra.plot(argsraw=[*shlex.split(command)[2:], "-o", str(tmp_path / "spectrum.pdf")])
+    assert mockplot.call_count == 1
+    assert np.allclose(np.array(mockplot.call_args[0][1]), viewerx, rtol=1e-12, atol=0.0)
+    assert np.allclose(np.array(mockplot.call_args[0][2]), viewery, rtol=1e-12, atol=0.0)
+
+
+def test_interactive_emission_options() -> None:
+    """A change that plotspectra rejects must keep the old values, and --showabsorption draws a taller frame."""
+    # the test model has no emission.out, thus plotspectra cannot draw its emission plot
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldvalues, command = viewer.values, viewer.get_command()
+    assert viewer.change(dc.replace(viewer.values, showemission=True)) == interactive.REJECTED_MESSAGE
+    assert viewer.values == oldvalues
+    assert viewer.get_command() == command
+
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-groupby", "ion", "--interactive"])
+    assert viewer.values.groupby == "ion"
+    figheight = viewer.fig.get_figheight()
+    assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5)) is None
+    assert viewer.get_command().endswith(" --showabsorption -groupby ion -maxseriescount 5")
+    assert viewer.fig.get_figheight() > figheight

@@ -62,6 +62,10 @@ extras = [
     "plotly>=6.9.0",
     "pypdf>=6.16.2",
     "pynonthermal>=2026.8.9",
+    # plotspectra --interactive needs this package, which has no wheels for Python 3.15. Its wheels use the stable
+    # application binary interface (ABI), and a free-threaded build cannot load them. CI installs the extras only on
+    # the build of Python 3.14 that is not free-threaded
+    "pyside6-essentials>=6.11.2;python_version<'3.15'",
     "pyvista>=0.48.4;python_version<'3.15'", # not compatible with 3.15 yet
 ]
 
@@ -179,6 +183,8 @@ ignore-missing-imports = [
     "plotly.*",
     "pynonthermal",
     "pypdf",
+    "PySide6",
+    "PySide6.*",
     "pyvista",
     "zstandard",
 ]

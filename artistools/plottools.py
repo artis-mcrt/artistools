@@ -469,6 +469,7 @@ def make_frame_figure(
     sharey: bool = False,
     fullwidth: bool = True,
     rowheights: Sequence[float] | None = None,
+    fig: mplfig.Figure | None = None,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -487,7 +488,8 @@ def make_frame_figure(
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
-    residual panel below the main frame.
+    residual panel below the main frame. If the caller gives an empty figure as fig, the function sets its
+    size and adds the frames to it, e.g. for a window that stays open.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
@@ -523,7 +525,10 @@ def make_frame_figure(
 
     figwidth = sum(size.fixed_size for size in horizontal)
     figheight = sum(size.fixed_size for size in vertical)
-    fig = plt.figure(figsize=(figwidth, figheight))
+    if fig is None:
+        fig = plt.figure(figsize=(figwidth, figheight))
+    else:
+        fig.set_size_inches(figwidth, figheight, forward=True)
     divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
 
     import numpy as np
@@ -679,10 +684,15 @@ RESIDUALROWHEIGHT: t.Final[float] = 0.35
 
 
 def make_frame_figure_with_residuals(
-    args: argparse.Namespace, aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES
+    args: argparse.Namespace,
+    aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
+    *,
+    fig: mplfig.Figure | None = None,
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes]:
     """Return a figure with a main frame and a residual panel below it, and the two axes."""
-    fig, axesgrid = make_frame_figure(args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT))
+    fig, axesgrid = make_frame_figure(
+        args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT), fig=fig
+    )
     return fig, axesgrid[0, 0], axesgrid[1, 0]
 
 

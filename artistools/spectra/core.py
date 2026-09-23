@@ -768,8 +768,14 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
     return read_spec_res_cached(resolve_modelpath(modelpath), gamma)
 
 
-def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
-    """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out."""
+@lru_cache(maxsize=2)
+def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
+    """Read emission.out, emissionpol.out, emissiontrue.out, or absorption.out into a DataFrame.
+
+    The viewer of plotspectra draws many time ranges from one file. For a 3D kilonova model, plotspectra used
+    0.4 s to parse the file for each plot. The cache holds an emission file and an absorption file, which use
+    300 MB for that model.
+    """
     try:
         emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
         print(f" Reading {emabsfilename} ({emissionfilesize:.2f} MiB)")
@@ -781,7 +787,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.LazyFrame:
         polars_source(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
     ).with_columns(pl.all().cast(pl.Float32, strict=True))
 
-    return drop_trailing_null_column(dfemabs)
+    return drop_trailing_null_column(dfemabs).collect()
 
 
 def get_spectra(
@@ -1206,7 +1212,8 @@ def get_flux_contributions_cached(
             filenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in filenames]
 
         emabsfilename = firstexisting(filenames, folder=modelpath, tryzipped=True)
-        dfemabs = read_emission_absorption_file(emabsfilename).collect()
+        # the cache takes the absolute path, thus a change of the working folder gives the new model
+        dfemabs = read_emission_absorption_file(Path(emabsfilename).absolute())
         ntimeblocks = get_emabs_timeblock_count(dfemabs, len(arraynu_full), len(arr_tmid), str(emabsfilename))
 
         if ntimeblocks > len(arr_tmid) and not polarisation_notified:
