@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -1914,6 +1916,7 @@ def test_interactive_command_tokens() -> None:
         "foo",
         "bar",
         "--interactive",
+        "--notimeclamp",
         "-timemin",
         "290",
         "-timema",
@@ -1927,6 +1930,9 @@ def test_interactive_command_tokens() -> None:
         "-groupby",
         "nuc",
         "-deltax=20",
+        "-fixedionlist",
+        "Fe II",
+        "Co II",
         "-plotviewingangle",
         "-1",
         "--",
@@ -1942,19 +1948,30 @@ def test_interactive_command_tokens() -> None:
 
 
 def test_interactive_time_range_argument() -> None:
-    """The time controls must give a -timedays value that plotspectra accepts.
+    """A snapped -timedays value must select its timesteps, and a continuous range must stay inside the valid times."""
+    tmids, tstarts, tends = (at.get_timestep_times(modelpath, loc=loc) for loc in ("mid", "start", "end"))
+    pairs = [(54, 58), (0, 3), (96, 99), (10, 11), *((timestep, timestep) for timestep in range(len(tmids)))]
+    for first, last in pairs:
+        timedays = interactive.get_snapped_timedays_argument(tmids, tstarts, tends, first, last)
+        assert at.misc.get_time_range(modelpath, timedays_range_str=timedays)[:2] == (first, last), timedays
+    assert interactive.get_snapped_timedays_argument(tmids, tstarts, tends, 54, 54) == "300"
 
-    A range that holds the middle of no timestep stops plotspectra, thus such a range gives the centre alone.
-    """
-    # timestep 54 of the test model starts at 299.812 d, ends at 300.823 d, and has its middle at 300.318 d
-    assert interactive.get_timedays_argument([modelpath], 306.4, 0.0) == "306.4"
-    assert interactive.get_timedays_argument([modelpath], 306.4, 5.0) == "303.9-308.9"
-    assert interactive.get_timedays_argument([modelpath], 300.0, 0.2) == "300"
-    # the range stays inside the run, which starts at 250 d
-    assert interactive.get_timedays_argument([modelpath], 251.0, 10.0) == "250-256"
+    assert interactive.get_timedays_argument(306.4, 0.0, (250.0, 350.0)) == "306.4"
+    assert interactive.get_timedays_argument(306.4, 5.0, (250.0, 350.0)) == "303.9-308.9"
+    # the valid times of the test model start at 256.67 d, thus the range starts there
+    assert interactive.get_timedays_argument(260.0, 10.0, (256.67, 333.82)) == "256.67-265"
 
-    assert at.misc.get_time_range(modelpath, timedays_range_str="303.9-308.9")[:2] == (58, 62)
-    assert at.misc.get_time_range(modelpath, timedays_range_str="300")[:2] == (54, 54)
+
+def test_interactive_valid_timesteps() -> None:
+    """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
+    viewer = make_headless_viewer([str(modelpath), "--interactive"])
+    validstart, validend = viewer.timebounds
+    assert viewer.tstarts[viewer.validtimesteps[0]] >= validstart > viewer.tstarts[0]
+    assert viewer.tends[viewer.validtimesteps[-1]] <= validend < viewer.tends[-1]
+    viewer.values = viewer.move_to_end(last=True)
+    assert viewer.get_selection(viewer.values) == (viewer.validtimesteps[-1], viewer.validtimesteps[-1])
+    assert viewer.step_time(1) is None
+    assert viewer.draw() is None
 
 
 def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
@@ -1970,10 +1987,13 @@ def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
 def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """The command that the viewer shows must draw the same data as the viewer."""
     viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
-    message = viewer.change(dc.replace(viewer.values, centre=306.4, width=5.0, xmin="3000", xmax="9000"))
-    assert message is None
+    # a continuous range gives --notimeclamp, and the snapped range below gives whole timesteps
+    continuous = dc.replace(viewer.values, notimeclamp=True, centre=306.4, width=5.0, xmin="3000", xmax="9000")
+    assert viewer.change(continuous) is None
+    assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
+    assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
+    assert "timesteps 58 to 62" in viewer.get_timesteps_text()
     command = viewer.get_command()
-    assert command.endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000")
 
     # each plot clears the frame first, thus the frame holds only the series of the model
     [viewerline] = viewer.axes[0].get_lines()
@@ -2024,7 +2044,7 @@ def test_interactive_xunit_and_references() -> None:
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
     assert viewer.change(dc.replace(inhertz, references=(reference,))) is None
     tokens = shlex.split(viewer.get_command())[2:]
-    assert tokens[:4] == [str(modelpath), reference, "-t", "300.3"]
+    assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
     assert "-xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
 
@@ -2053,3 +2073,32 @@ def test_absorption_plot_keeps_a_linear_axis() -> None:
     assert axes[0].get_yscale() == "linear"
     assert axes[0].get_ylim()[0] < 0.0
     plt.close(fig)
+
+
+def test_interactive_lock_series() -> None:
+    """A locked list of series keeps the colour of each series when the time changes."""
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+
+    def get_series_colours() -> dict[str, tuple[float, float, float, float]]:
+        legend = viewer.axes[0].get_legend()
+        assert legend is not None
+        return {
+            text.get_text(): mplcolors.to_rgba(handle.get_facecolor())
+            for text, handle in zip(legend.get_texts(), legend.legend_handles, strict=True)
+            if isinstance(handle, mpatches.Patch)
+        }
+
+    locked = viewer.get_drawn_series()
+    assert len(locked) > 1
+    assert viewer.change(dc.replace(viewer.values, fixedionlist=locked)) is None
+    tokens = shlex.split(viewer.get_command())
+    assert tokens[tokens.index("-fixedionlist") + 1 :] == list(locked)
+    colours = get_series_colours()
+
+    later = viewer.step_time(3)
+    assert later is not None
+    assert viewer.change(later) is None
+    latercolours = get_series_colours()
+    shared = set(colours) & set(latercolours)
+    assert shared
+    assert all(colours[name] == latercolours[name] for name in shared)
