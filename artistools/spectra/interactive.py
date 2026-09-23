@@ -77,6 +77,19 @@ CONTROLLED_DESTS: t.Final = frozenset({
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
 
+# these options give a different action from one plot of spectra, thus the table of the window does not offer them
+TABLE_EXCLUDED_DESTS: t.Final = frozenset({
+    "help",
+    "timedayslist",
+    "multispecplot",
+    "makevspecpol",
+    "averagevspecpolfiles",
+    "output_spectra",
+})
+
+# each option of the table with its values, in the order of the command
+type OptionRows = tuple[tuple[str, tuple[str, ...]], ...]
+
 # the process that runs from the application bundle of the viewer has this environment variable
 MACOS_BUNDLE_VARIABLE: t.Final = "ARTISTOOLS_VIEWER_IN_BUNDLE"
 
@@ -122,6 +135,7 @@ class ControlValues:
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
     figwidthscale: float
+    otheroptions: OptionRows
 
 
 def get_command_tokens(
@@ -185,12 +199,13 @@ def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple
     return None, False
 
 
+def is_flag(argstring: str) -> bool:
+    """Return True if the argument is a flag, and not a value such as a negative number."""
+    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring)
+
+
 def remove_options(parser: SuggestingArgumentParser, tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
     """Return the tokens without the options of these dests and without the values of those options."""
-
-    def isflag(argstring: str) -> bool:
-        return argstring.startswith("-") and not re.match(r"-\.?\d", argstring)
-
     argstrings = parser.split_joined_flags(tokens)
     kept: list[str] = []
     index = 0
@@ -215,11 +230,102 @@ def remove_options(parser: SuggestingArgumentParser, tokens: "Sequence[str]", de
 
         # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the next flag
         maxvalues = 1 if action.nargs == "?" else len(argstrings)
-        while maxvalues and index < len(argstrings) and not isflag(argstrings[index]):
+        while maxvalues and index < len(argstrings) and not is_flag(argstrings[index]):
             index += 1
             maxvalues -= 1
 
     return kept
+
+
+def get_table_actions(parser: argparse.ArgumentParser) -> list[argparse.Action]:
+    """Return the options that the table of the window offers, which are the options that no other control sets."""
+    return [
+        action
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if action.option_strings
+        and action.help != argparse.SUPPRESS
+        and action.dest not in CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS
+    ]
+
+
+def get_option_kind(action: argparse.Action) -> str:
+    """Return the type of control that sets the value of an option in the table of the window.
+
+    The types are these:
+
+    - "flag": the option takes no value;
+    - "choice": one value from a list;
+    - "int": one integer that has a default, thus a spin box can show it;
+    - "values": a fixed number of values, each in a separate field;
+    - "list": a list of values that spaces separate;
+    - "text": one value, or no value for an option with nargs "?".
+    """
+    if action.nargs == 0:
+        return "flag"
+    if isinstance(action.nargs, int):
+        return "values"
+    if action.nargs in {"*", "+"}:
+        return "list"
+    if action.choices:
+        return "choice"
+    if action.type is int and isinstance(action.default, int) and not isinstance(action.default, bool):
+        return "int"
+    return "text"
+
+
+def get_default_tokens(action: argparse.Action) -> tuple[str, ...] | None:
+    """Return the values of a new row of the table, or None if the option needs a value that has no default."""
+    kind = get_option_kind(action)
+    if kind == "flag" or action.nargs == "?":
+        return ()
+    if kind == "choice":
+        choices = [str(choice) for choice in action.choices or ()]
+        return (str(action.default) if str(action.default) in choices else choices[0],)
+    if kind == "int":
+        return (str(action.default),)
+    return None
+
+
+def split_option_rows(parser: SuggestingArgumentParser, tokens: "Sequence[str]") -> tuple[OptionRows, list[str]]:
+    """Return each option of the tokens with its values, and the tokens that are not part of an option.
+
+    Each row gives the first flag of the option, thus an alias, e.g. -dx, becomes the full flag, e.g. -deltax.
+    """
+    rows: list[tuple[str, tuple[str, ...]]] = []
+    othertokens: list[str] = []
+    argstrings = parser.split_joined_flags(tokens)
+    index = 0
+    while index < len(argstrings):
+        argstring = argstrings[index]
+        index += 1
+        if argstring == "--":
+            othertokens.extend(argstrings[index - 1 :])
+            break
+
+        action, holdsvalue = find_option_action(parser, argstring)
+        if action is None:
+            othertokens.append(argstring)
+            continue
+
+        values: list[str] = []
+        if holdsvalue:
+            _, equals, value = argstring.partition("=")
+            values.append(value if equals else argstring[2:])
+        elif action.nargs is None or isinstance(action.nargs, int):
+            count = 1 if action.nargs is None else action.nargs
+            values.extend(argstrings[index : index + count])
+        else:
+            # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the
+            # next flag
+            maxvalues = 1 if action.nargs == "?" else len(argstrings)
+            while len(values) < maxvalues and index + len(values) < len(argstrings):
+                if is_flag(argstrings[index + len(values)]):
+                    break
+                values.append(argstrings[index + len(values)])
+        index += 0 if holdsvalue else len(values)
+        rows.append((action.option_strings[0], tuple(values)))
+
+    return tuple(rows), othertokens
 
 
 def format_days(value: float) -> str:
@@ -375,7 +481,14 @@ class SpectrumViewer:
         pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
         startpaths = basetokens[:pathcount]
         self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
-        self.othertokens = basetokens[pathcount:]
+        # the table of the window edits each option that no other control sets
+        otheroptions, self.othertokens = split_option_rows(parser, basetokens[pathcount:])
+        self.tableflags = [action.option_strings[0] for action in get_table_actions(parser)]
+        self.actionsbyflag = {
+            action.option_strings[0]: action
+            for action in parser._actions  # ruff:ignore[private-member-access]
+            if action.option_strings
+        }
 
         # a range of one timestep is a single time, and a plot with no time starts in the middle of the run
         if args.timemin is not None and args.timemax is not None:
@@ -419,14 +532,15 @@ class SpectrumViewer:
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in startpaths if path_is_reference_spectrum(path)),
             figwidthscale=args.figwidthscale,
+            otheroptions=otheroptions,
         )
         self.values = values if values.notimeclamp else self.snap(values, *self.get_selection(values))
 
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        # --showabsorption and -figwidthscale change the frame size, thus a change of either makes new frames
-        self.frameskey: tuple[bool, float] | None = None
+        # each option in frameskey changes the layout or the size of the frames, thus a change of one makes new frames
+        self.frameskey: tuple[bool, bool, float, float] | None = None
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
@@ -494,7 +608,10 @@ class SpectrumViewer:
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["-fixedionlist", *values.fixedionlist]
-        return make_command_tokens([*self.modelpathtokens, *values.references, *self.othertokens], options)
+        othertokens = [token for flag, optionvalues in values.otheroptions for token in (flag, *optionvalues)]
+        return make_command_tokens(
+            [*self.modelpathtokens, *values.references, *othertokens, *self.othertokens], options
+        )
 
     def get_command(self) -> str:
         """Return the command that draws the plot of the values."""
@@ -566,6 +683,7 @@ class SpectrumViewer:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
                 plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
                 resolve_plot_args(plotargs)
+                check_viewer_args(plotargs)
         except SystemExit:
             return get_first_line(errors.getvalue())
         except (FileNotFoundError, ValueError) as exc:
@@ -598,6 +716,7 @@ class SpectrumViewer:
         """Parse the command and draw its plot, or return a message if the plot differs from the values."""
         plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
         resolve_plot_args(plotargs)
+        check_viewer_args(plotargs)
         shown = (plotargs.showemission, plotargs.showabsorption)
         if shown != (self.values.showemission, self.values.showabsorption):
             return "A different option of the command keeps the emission plot on"
@@ -606,7 +725,7 @@ class SpectrumViewer:
 
     def draw_frames(self, plotargs: argparse.Namespace) -> None:
         """Draw the plot on empty frames."""
-        frameskey = (plotargs.showabsorption, plotargs.figwidthscale)
+        frameskey = (plotargs.showabsorption, plotargs.residuals, plotargs.figwidthscale, plotargs.figscale)
         if frameskey != self.frameskey:
             self.fig.clear()
             _, self.axes, self.residualaxis = make_plot_figure(plotargs, fig=self.fig)
@@ -1100,6 +1219,171 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     referencegrid.addWidget(addbutton, 1, 0)
     referencegrid.addWidget(removebutton, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
+    _, optiongrid = add_section("Other options", expanded=bool(viewer.values.otheroptions))
+    optiontable = QtWidgets.QTableWidget(0, 2)
+    optiontable.setHorizontalHeaderLabels(["Option", "Value"])
+    optiontable.verticalHeader().setVisible(False)
+    optiontable.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+    optiontable.setToolTip("Give each option of plotspectra that no other control sets. Type part of a name to search.")
+    optiontable.setColumnWidth(0, optiontable.fontMetrics().horizontalAdvance("-emissionlosvelocityrange") + 48)
+    optiontable.horizontalHeader().setStretchLastSection(True)
+    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
+    # a row that holds None needs a value from the user, and the command does not give it yet
+    optionrows: list[tuple[str, tuple[str, ...] | None]] = list(viewer.values.otheroptions)
+
+    def get_complete_rows() -> OptionRows:
+        return tuple((flag, optionvalues) for flag, optionvalues in optionrows if optionvalues is not None)
+
+    def on_option_rows() -> None:
+        rows = get_complete_rows()
+        if rows != viewer.values.otheroptions:
+            apply(dc.replace(viewer.values, otheroptions=rows))
+
+    def set_option(row: int, flag: str) -> None:
+        """Put a different option in a row.
+
+        An empty option removes the row. An option in the empty last row adds a new row.
+        """
+        oldflag = optionrows[row][0] if row < len(optionrows) else ""
+        if flag == oldflag or (flag and flag not in viewer.actionsbyflag):
+            return
+        if not flag:
+            del optionrows[row]
+        elif row < len(optionrows):
+            optionrows[row] = (flag, get_default_tokens(viewer.actionsbyflag[flag]))
+        else:
+            optionrows.append((flag, get_default_tokens(viewer.actionsbyflag[flag])))
+        show_option_rows()
+        on_option_rows()
+
+    def set_option_values(row: int, flag: str, optionvalues: tuple[str, ...] | None) -> None:
+        # a field that loses the focus when the table changes can send the values of a row that is not there now
+        if row < len(optionrows) and optionrows[row][0] == flag:
+            optionrows[row] = (flag, optionvalues)
+            on_option_rows()
+
+    def make_flag_box(row: int, flag: str) -> QtWidgets.QComboBox:
+        """Return a list of the options that the user can search, with the option of the row."""
+        box = QtWidgets.QComboBox()
+        box.setEditable(True)
+        box.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+        flags = ["", *viewer.tableflags]
+        # an option that a hidden flag gave, e.g. an old spelling, stays in its row
+        if flag not in flags:
+            flags.append(flag)
+        box.addItems(flags)
+        for index, itemflag in enumerate(flags[1:], start=1):
+            helptext = helptexts.get(viewer.actionsbyflag[itemflag].dest, "")
+            box.setItemData(index, helptext, QtCore.Qt.ItemDataRole.ToolTipRole)
+        if (completer := box.completer()) is not None:
+            completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+            completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+        box.setCurrentText(flag)
+        if (lineedit := box.lineEdit()) is not None:
+            lineedit.setPlaceholderText("Add an option")
+
+        def on_flag() -> None:
+            # the new rows replace this box, thus the change waits until Qt finishes with the signal
+            QtCore.QTimer.singleShot(0, lambda: set_option(row, box.currentText()))
+
+        box.activated.connect(on_flag)
+        return box
+
+    def make_value_editor(row: int, flag: str, optionvalues: tuple[str, ...] | None) -> QtWidgets.QWidget:
+        """Return the control for the value of an option, which matches the type of the option."""
+        action = viewer.actionsbyflag[flag]
+        kind = get_option_kind(action)
+        editor = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(editor)
+        layout.setContentsMargins(2, 0, 2, 0)
+        if kind == "flag":
+            label = QtWidgets.QLabel("no value")
+            label.setEnabled(False)
+            layout.addWidget(label, 1)
+        elif kind == "choice":
+            choicebox = QtWidgets.QComboBox()
+            choicebox.addItems([str(choice) for choice in action.choices or ()])
+            choicebox.setCurrentText(optionvalues[0] if optionvalues else "")
+
+            def on_choice(text: str) -> None:
+                set_option_values(row, flag, (text,))
+
+            choicebox.currentTextChanged.connect(on_choice)
+            layout.addWidget(choicebox, 1)
+        elif kind == "int":
+            spinbox = QtWidgets.QSpinBox()
+            spinbox.setRange(-(2**31), 2**31 - 1)
+            spinbox.setValue(int(optionvalues[0]) if optionvalues else action.default)
+            spinbox.setKeyboardTracking(False)
+
+            def on_spinbox(value: int) -> None:
+                set_option_values(row, flag, (str(value),))
+
+            spinbox.valueChanged.connect(on_spinbox)
+            layout.addWidget(spinbox, 1)
+        else:
+            islist = kind == "list"
+            fieldcount = action.nargs if isinstance(action.nargs, int) else 1
+            fields = [QtWidgets.QLineEdit() for _ in range(fieldcount)]
+            texts = [shlex.join(optionvalues or ())] if islist else list(optionvalues or ())
+            for field, text in zip(fields, texts, strict=False):
+                field.setText(text)
+            for field in fields:
+                if action.type in {int, float} and not islist:
+                    validator = QtGui.QDoubleValidator() if action.type is float else QtGui.QIntValidator()
+                    validator.setLocale(QtCore.QLocale.c())
+                    field.setValidator(validator)
+                if islist:
+                    field.setPlaceholderText("values with spaces between them")
+                elif action.default is not None:
+                    field.setPlaceholderText(f"default {action.default}")
+                layout.addWidget(field, 1)
+
+            def on_fields() -> None:
+                texts = [field.text().strip() for field in fields]
+                newvalues: tuple[str, ...] | None
+                if islist:
+                    try:
+                        newvalues = tuple(shlex.split(texts[0]))
+                    except ValueError:
+                        newvalues = None
+                    # nargs "+" needs a value, and nargs "*" accepts none
+                    if not newvalues and action.nargs == "+":
+                        newvalues = None
+                elif action.nargs == "?":
+                    newvalues = (texts[0],) if texts[0] else ()
+                else:
+                    newvalues = tuple(texts) if all(texts) else None
+                set_option_values(row, flag, newvalues)
+
+            for field in fields:
+                field.editingFinished.connect(on_fields)
+
+        removebutton = QtWidgets.QToolButton()
+        removebutton.setText("✕")
+        removebutton.setAutoRaise(True)
+        removebutton.setToolTip(f"Remove {flag} from the command")
+        removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, lambda: set_option(row, "")))
+        layout.addWidget(removebutton)
+        editor.setToolTip(helptexts.get(action.dest, ""))
+        return editor
+
+    def show_option_rows() -> None:
+        """Make a row of the table for each option, and an empty row at the end that adds an option."""
+        optiontable.setRowCount(len(optionrows) + 1)
+        for row, (flag, optionvalues) in enumerate([*optionrows, ("", None)]):
+            optiontable.setCellWidget(row, 0, make_flag_box(row, flag))
+            if flag:
+                optiontable.setCellWidget(row, 1, make_value_editor(row, flag, optionvalues))
+            else:
+                optiontable.removeCellWidget(row, 1)
+        optiontable.resizeRowsToContents()
+        # the sidebar scrolls, thus the table shows each row and does not scroll itself
+        rowsheight = sum(optiontable.rowHeight(row) for row in range(optiontable.rowCount()))
+        headerheight = optiontable.horizontalHeader().sizeHint().height()
+        optiontable.setFixedHeight(rowsheight + headerheight + 2 * optiontable.frameWidth())
+
+    show_option_rows()
     panellayout.addStretch(1)
 
     commandbox = QtWidgets.QGroupBox("Command")
@@ -1196,7 +1480,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     def get_rejections() -> tuple[list[str | None], str | None, str | None]:
         """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption."""
         values = viewer.values
-        key = (values.showemission, values.showabsorption, values.groupby, values.references, bool(values.deltax))
+        key = (
+            values.showemission,
+            values.showabsorption,
+            values.groupby,
+            values.references,
+            bool(values.deltax),
+            values.otheroptions,
+        )
         if key not in rejections:
             groupbys = [
                 None
@@ -1297,6 +1588,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
             referencelist.clear()
             referencelist.addItems(list(values.references))
+        # after plotspectra rejects a command, the table shows the old options again without the rows with no value
+        if get_complete_rows() != values.otheroptions:
+            optionrows[:] = list(values.otheroptions)
+            show_option_rows()
         commandtext.setPlainText(viewer.get_command())
         show_rejections()
         for blocker in blockers:

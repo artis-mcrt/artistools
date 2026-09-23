@@ -2083,6 +2083,54 @@ def test_interactive_figwidthscale_fills_the_plot_area() -> None:
         assert f" -figwidthscale {figwidthscale:g}" in viewer.get_command()
 
 
+def test_interactive_option_rows() -> None:
+    """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
+    parser = interactive.make_parser()
+    tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
+    rows, othertokens = interactive.split_option_rows(parser, [*tokens, "--", "rest"])
+    assert rows == (
+        ("-deltax", ("5",)),
+        ("-label", ("a b", "c")),
+        ("-filtersavgol", ("5", "2")),
+        ("--normalised", ()),
+        ("-title", ("My plot",)),
+        ("-dpi", ("300",)),
+    )
+    assert othertokens == ["--", "rest"]
+
+    actions = {action.option_strings[0]: action for action in interactive.get_table_actions(parser)}
+    # the other controls of the window set these options, and a list of times draws more than one plot
+    assert not {"-timedays", "-xmin", "-groupby", "-timedayslist", "-h"} & actions.keys()
+    kinds = {flag: interactive.get_option_kind(actions[flag]) for flag in ("--normalised", "-yvariable", "-dpi")}
+    assert kinds == {"--normalised": "flag", "-yvariable": "choice", "-dpi": "int"}
+    assert [interactive.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+        "values",
+        "list",
+        "text",
+    ]
+    # an option with no default needs a value from the user before the command can give it
+    assert interactive.get_default_tokens(actions["-dpi"]) == ("250",)
+    assert interactive.get_default_tokens(actions["-title"]) is None
+
+
+def test_interactive_other_options_reach_the_command() -> None:
+    """The command contains each row of the table, and the viewer keeps the old options when plotspectra rejects a row."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-filtermovingavg", "3", "--interactive"])
+    assert viewer.values.otheroptions == (("-filtermovingavg", ("3",)),)
+
+    otheroptions = (("-filtermovingavg", ("5",)), ("-title", ("A title",)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+    command = viewer.get_command()
+    assert " -filtermovingavg 5 -title 'A title'" in command
+    assert viewer.axes[0].get_title() == "A title"
+
+    # a ratio of Stokes parameters is a different plot from the one that the window shows
+    message = viewer.change(dc.replace(viewer.values, otheroptions=(("-stokesparam", ("Q/I",)),)))
+    assert message is not None
+    assert "-stokesparam Q/I" in message
+    assert viewer.values.otheroptions == otheroptions
+
+
 def test_absorption_plot_keeps_a_linear_axis() -> None:
     """An absorption plot must keep a linear y axis with -yscale auto, because its absorption part is negative.
 
