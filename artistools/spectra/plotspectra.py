@@ -1826,8 +1826,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
-    # -yscale auto chose a log axis for a kilonova at 3 to 5 days. A spectrum usually has a linear axis
-    addarg_yscale(parser, default="linear")
+    addarg_yscale(parser)
 
     # the older spelling of "-yscale log"
     parser.add_argument("--logscaley", action="store_true", help="Use log scale for y values")

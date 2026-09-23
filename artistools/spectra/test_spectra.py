@@ -1117,12 +1117,11 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="auto", timedays=300, outputfile=outputpath / "sp.pdf")
     assert not mockyscale.call_args_list
 
-    # -yscale auto chose a log axis for a kilonova spectrum at 3 to 5 days, where the middle half of the flux
-    # covers a ratio between 15 and 41. A spectrum keeps a linear axis unless the command asks for a different scale
+    # the default is -yscale auto, thus the rule of the drawn values chooses the scale
     mockyscale.reset_mock()
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
         at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outputpath / "sp.pdf")
-    assert not mockyscale.call_args_list
+    assert {call.args[1] for call in mockyscale.call_args_list} == {"log"}
 
     # --logscaley replaces the default scale
     mockyscale.reset_mock()
