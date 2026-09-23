@@ -2239,7 +2239,8 @@ def test_interactive_fixed_y_axis() -> None:
     """A fixed y axis keeps a negative -ymin through the command, and the limits stay when the time changes."""
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     assert viewer.change(dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
-    assert " -ymin -1e-13 -ymax 3e-13" in viewer.get_command()
+    # Python 3.13 reads a separate -1e-13 as an option, thus the value joins its flag
+    assert " -ymin=-1e-13 -ymax 3e-13" in viewer.get_command()
     assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 

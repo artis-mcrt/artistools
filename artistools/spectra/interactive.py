@@ -455,6 +455,14 @@ def get_snapped_timedays_argument(
     return f"{lowtext}-{hightext}"
 
 
+def get_option_tokens(flag: str, value: str) -> list[str]:
+    """Return the tokens of an option with one value.
+
+    Python 3.13 reads a value such as -1e-13 as an option, thus a value that starts with "-" joins its flag.
+    """
+    return [f"{flag}={value}"] if value.startswith("-") else [flag, value]
+
+
 def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -> list[str]:
     """Return the plotspectra arguments with the options of the controls after the paths at the start."""
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
@@ -782,7 +790,7 @@ class SpectrumViewer:
             timedays = get_timedays_argument(values.centre, values.width, self.timebounds)
         else:
             timedays = get_snapped_timedays_argument(self.tmids, self.tstarts, self.tends, *self.get_selection(values))
-        options = ["-t", timedays, "-xmin", values.xmin, "-xmax", values.xmax]
+        options = ["-t", timedays, *get_option_tokens("-xmin", values.xmin), *get_option_tokens("-xmax", values.xmax)]
         if values.notimeclamp:
             options.append("--notimeclamp")
         if values.xunit != self.defaultxunit:
@@ -792,9 +800,9 @@ class SpectrumViewer:
         if values.yscale != self.defaultyscale:
             options += ["-yscale", values.yscale]
         if values.ymin:
-            options += ["-ymin", values.ymin]
+            options += get_option_tokens("-ymin", values.ymin)
         if values.ymax:
-            options += ["-ymax", values.ymax]
+            options += get_option_tokens("-ymax", values.ymax)
         if values.showemission:
             options.append("--showemission")
         if values.showabsorption:
@@ -841,7 +849,11 @@ class SpectrumViewer:
             *(path for path in self.startpaths if path in self.modelpathtokens or path in values.references),
             *(path for path in values.references if path not in self.startpaths),
         ]
-        othertokens = [token for flag, optionvalues in values.otheroptions for token in (flag, *optionvalues)]
+        othertokens = [
+            token
+            for flag, optionvalues in values.otheroptions
+            for token in (get_option_tokens(flag, *optionvalues) if len(optionvalues) == 1 else (flag, *optionvalues))
+        ]
         return make_command_tokens([*paths, *othertokens], options)
 
     def get_command(self) -> str:
