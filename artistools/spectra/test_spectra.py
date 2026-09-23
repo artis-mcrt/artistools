@@ -1930,6 +1930,7 @@ def test_interactive_command_tokens() -> None:
         "-groupby",
         "nuc",
         "-deltax=20",
+        "--nostack",
         "-fixedionlist",
         "Fe II",
         "Co II",
@@ -2021,8 +2022,8 @@ def test_interactive_emission_options() -> None:
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-groupby", "ion", "--interactive"])
     assert viewer.values.groupby == "ion"
     figheight = viewer.fig.get_figheight()
-    assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5)) is None
-    assert viewer.get_command().endswith(" --showabsorption -groupby ion -maxseriescount 5")
+    assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
+    assert viewer.get_command().endswith(" --showabsorption -groupby ion -maxseriescount 5 --nostack")
     assert viewer.fig.get_figheight() > figheight
 
     # the window disables a choice that plotspectra rejects, thus the test must find the rejection without a plot

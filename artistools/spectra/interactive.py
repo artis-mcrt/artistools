@@ -65,6 +65,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "emissionabsorption",
     "groupby",
     "maxseriescount",
+    "nostack",
     "deltax",
     "fixedionlist",
     "interactive",
@@ -100,6 +101,7 @@ class ControlValues:
     showabsorption: bool
     groupby: str | None
     maxseriescount: int
+    nostack: bool
     deltax: str
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
@@ -393,6 +395,7 @@ class SpectrumViewer:
             showabsorption=bool(args.showabsorption),
             groupby=givengroupby,
             maxseriescount=args.maxseriescount,
+            nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in startpaths if path_is_reference_spectrum(path)),
@@ -461,6 +464,8 @@ class SpectrumViewer:
         # the count applies to an emission plot alone, thus a different plot leaves it out
         if (values.showemission or values.showabsorption) and values.maxseriescount != self.defaultmaxseriescount:
             options += ["-maxseriescount", str(values.maxseriescount)]
+        if (values.showemission or values.showabsorption) and values.nostack:
+            options.append("--nostack")
         if values.deltax:
             options += ["-deltax", values.deltax]
         # a list option takes each word that follows it, thus it comes after every other option
@@ -932,13 +937,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     emissiongrid.addWidget(groupbybox, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     emissiongrid.addWidget(countlabel, 2, 0)
     emissiongrid.addWidget(countbox, 2, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+    nostackcheck = QtWidgets.QCheckBox("--nostack")
+    nostackcheck.setToolTip(helptexts.get("nostack", ""))
+    emissiongrid.addWidget(nostackcheck, 3, 0, 1, 2)
     lockbutton = QtWidgets.QPushButton("Lock series")
     lockbutton.setCheckable(True)
     lockbutton.setToolTip(
         "Keep the series of the plot and their colours when the time or the x range changes. The command gives the"
         " series with -fixedionlist."
     )
-    emissiongrid.addWidget(lockbutton, 3, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignLeft)
+    emissiongrid.addWidget(lockbutton, 4, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignLeft)
 
     _, bingrid = add_section("Bins of the packet spectrum", expanded=bool(viewer.values.deltax))
     # an empty check box gives no -deltax, and plotspectra then takes its default bins
@@ -1007,6 +1015,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         absorptioncheck,
         groupbybox,
         countbox,
+        nostackcheck,
         lockbutton,
         deltaxcheck,
         deltaxbox,
@@ -1146,9 +1155,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         absorptioncheck.setChecked(values.showabsorption)
         groupbybox.setCurrentText(values.groupby or "none")
         countbox.setValue(values.maxseriescount)
-        # -maxseriescount applies only to an emission or absorption plot, and a disabled box keeps its place
-        for widget in (countlabel, countbox, lockbutton):
+        # these options apply only to an emission or absorption plot, and a disabled control keeps its place
+        for widget in (countlabel, countbox, nostackcheck, lockbutton):
             widget.setEnabled(values.showemission or values.showabsorption)
+        nostackcheck.setChecked(values.nostack)
         lockbutton.setChecked(bool(values.fixedionlist))
         lockbutton.setText(f"Lock series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock series")
         deltaxcheck.setChecked(bool(values.deltax))
@@ -1366,6 +1376,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
             showabsorption=absorptioncheck.isChecked(),
             groupby=groupby,
             maxseriescount=countbox.value(),
+            nostack=nostackcheck.isChecked(),
             deltax=format(deltaxbox.value(), ".10g") if deltaxcheck.isChecked() else "",
             fixedionlist=fixedionlist,
         )
@@ -1509,6 +1520,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     absorptioncheck.toggled.connect(on_emission_options)
     groupbybox.currentTextChanged.connect(on_emission_options)
     countbox.valueChanged.connect(on_emission_options)
+    nostackcheck.toggled.connect(on_emission_options)
     lockbutton.toggled.connect(on_lock)
     deltaxcheck.toggled.connect(on_emission_options)
     deltaxbox.valueChanged.connect(on_emission_options)
