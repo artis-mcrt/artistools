@@ -1437,6 +1437,19 @@ def test_plotspectra_timestep_with_only_a_reference_spectrum(
     assert "-timestep names a timestep of a model" in capsys.readouterr().err
 
 
+def test_read_emission_absorption_file_reads_a_new_version(tmp_path: Path) -> None:
+    """The cache of an emission file gives the new data after a simulation writes the file again.
+
+    The key of the cache held only the path, thus the viewer of plotspectra showed the old contributions.
+    """
+    emissionfile = tmp_path / "emission.out"
+    emissionfile.write_text("1.0 2.0\n3.0 4.0\n")
+    assert at.spectra.core.read_emission_absorption_file(emissionfile).row(0) == (1.0, 2.0)
+
+    emissionfile.write_text("5.0 6.0 7.0\n8.0 9.0 10.0\n")
+    assert at.spectra.core.read_emission_absorption_file(emissionfile).row(0) == (5.0, 6.0, 7.0)
+
+
 def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first.
 

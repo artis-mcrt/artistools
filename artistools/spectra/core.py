@@ -769,20 +769,25 @@ def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.La
     return read_spec_res_cached(resolve_modelpath(modelpath), gamma)
 
 
-@lru_cache(maxsize=2)
 def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
     """Read emission.out, emissionpol.out, emissiontrue.out, or absorption.out into a DataFrame.
 
     The viewer of plotspectra draws many time ranges from one file. For a 3D kilonova model, plotspectra used
     0.4 s to parse the file for each plot. The cache holds an emission file and an absorption file, which use
-    300 MB for that model.
+    300 MB for that model. A running simulation writes the file again, thus the state of the file is part of the
+    key of the cache.
     """
-    try:
-        emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
-        print(f" Reading {emabsfilename} ({emissionfilesize:.2f} MiB)")
+    filestat = Path(emabsfilename).stat()
+    return read_emission_absorption_file_cached(
+        emabsfilename, (filestat.st_ino, filestat.st_mtime_ns, filestat.st_size)
+    )
 
-    except AttributeError:
-        print(f" Reading {emabsfilename}")
+
+@lru_cache(maxsize=2)
+def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[int, int, int]) -> pl.DataFrame:
+    """Read an emission or absorption file with the inode, the modification time, and the size of the file."""
+    _, _, filesize = filestate
+    print(f" Reading {emabsfilename} ({filesize / 1024 / 1024:.2f} MiB)")
 
     dfemabs = pl.scan_csv(
         polars_source(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
