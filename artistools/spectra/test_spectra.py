@@ -2117,6 +2117,39 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
         assert args.maxseriescount == maxseriescount
 
 
+def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
+    """A preview of a plot of the packets reads the first batch of ranks, and the command keeps all the packets."""
+    from artistools.packets.core import RANKS_PER_BATCH
+
+    getcontributions = plotspectra.get_flux_contributions_from_packets
+    # the test model has few ranks, thus a model of more than one batch comes from a patch of the rank count
+    with (
+        mock.patch.object(interactive, "get_nprocs", return_value=10 * RANKS_PER_BATCH),
+        mock.patch.object(plotspectra, "get_flux_contributions_from_packets", wraps=getcontributions) as mockget,
+    ):
+        viewer = make_headless_viewer([
+            str(modelpath_classic_3d),
+            "-t",
+            "4",
+            "--showemission",
+            "--frompackets",
+            "--interactive",
+        ])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert viewer.drewpreview
+        assert mockget.call_args.kwargs["maxpacketfiles"] == RANKS_PER_BATCH
+        assert "-maxpacketfiles" not in viewer.get_command()
+
+        assert viewer.change(viewer.values) is None
+        assert not viewer.drewpreview
+        assert mockget.call_args.kwargs["maxpacketfiles"] is None
+
+        # a plot of the spectrum files reads no packets, thus it has no faster preview
+        viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert not viewer.drewpreview
+
+
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()
@@ -2148,7 +2181,7 @@ def test_interactive_option_rows() -> None:
 
 
 def test_interactive_other_options_reach_the_command() -> None:
-    """The command contains each row of the table, and the viewer keeps the old options when plotspectra rejects a row."""
+    """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "-filtermovingavg", "3", "--interactive"])
     assert viewer.values.otheroptions == (("-filtermovingavg", ("3",)),)
 
