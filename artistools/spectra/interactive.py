@@ -77,6 +77,9 @@ CONTROLLED_DESTS: t.Final = frozenset({
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
 
+# the process that runs from the application bundle of the viewer has this environment variable
+MACOS_BUNDLE_VARIABLE: t.Final = "ARTISTOOLS_VIEWER_IN_BUNDLE"
+
 # the limits of the -figwidthscale that the viewer gives the plot to fill the plot area
 MIN_FIGWIDTHSCALE: t.Final[float] = 0.3
 MAX_FIGWIDTHSCALE: t.Final[float] = 4.0
@@ -722,34 +725,76 @@ KEYBOARD_HELP: t.Final = """<table>
 </table>"""
 
 
-def set_macos_application_name(name: str) -> None:
-    """Give the Dock and the menu bar the name of the command, and not the name of the Python executable.
+def get_macos_bundle_executable() -> Path:
+    """Return the Python executable in the application bundle of the viewer.
 
-    A Python process has no application bundle, thus macOS shows the name of the executable. Chromium sets the name
-    of its process with the same private LaunchServices function. Call this after Qt makes the QApplication.
+    Make the bundle if it does not exist. The bundle holds a hard link to the Python executable, thus it uses almost
+    no disk space. On a different volume, it holds a copy. If the Python executable changes, this function replaces
+    the link.
     """
-    import ctypes
-    import ctypes.util
+    import os
+    import plistlib
+    import shutil
 
-    # Apple can remove these private functions in a new macOS version. The Dock then shows the name "python"
+    baseexecutable = Path(sys.executable).resolve()
+    contents = Path.home() / "Library" / "Caches" / "artistools" / f"{APPLICATION_NAME}.app" / "Contents"
+    executable = contents / "MacOS" / baseexecutable.name
+    if executable.exists() and executable.samefile(baseexecutable):
+        return executable
+
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    # two viewers can make the bundle at the same time, thus each file receives its final name in one step
+    tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
     try:
-        launchservices = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/CoreServices.framework/CoreServices")
-        corefoundation = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation") or "CoreFoundation")
-        getasn = launchservices["_LSGetCurrentApplicationASN"]
-        setinfoitem = launchservices["_LSSetApplicationInformationItem"]
-        displaynamekey = ctypes.c_void_p.in_dll(launchservices, "_kLSDisplayNameKey")
-    except (AttributeError, OSError, ValueError):
+        tmpexecutable.hardlink_to(baseexecutable)
+    except OSError:
+        # a hard link must be on the same volume as its target
+        shutil.copy2(baseexecutable, tmpexecutable)
+    tmpexecutable.replace(executable)
+
+    info = {
+        "CFBundleName": APPLICATION_NAME,
+        "CFBundleDisplayName": APPLICATION_NAME,
+        "CFBundleIdentifier": "io.github.artis-mcrt.artistools.plotspectra",
+        "CFBundleExecutable": executable.name,
+        "CFBundlePackageType": "APPL",
+        "NSHighResolutionCapable": True,
+    }
+    tmpinfo = contents / f"Info.plist.{os.getpid()}.tmp"
+    tmpinfo.write_bytes(plistlib.dumps(info))
+    tmpinfo.replace(contents / "Info.plist")
+    return executable
+
+
+def relaunch_in_macos_bundle() -> None:
+    """Run the command again from an application bundle, which gives its name to the Dock and to the menu bar.
+
+    The Dock gives a process outside a bundle the file name of its executable, e.g. "python3.14". A process cannot
+    change that name after it starts. The new process finds the packages of the virtual environment through
+    __PYVENV_LAUNCHER__.
+    """
+    import os
+    import sysconfig
+
+    # the new process runs sys.orig_argv again, thus a call from Python code, e.g. in a notebook, continues here.
+    # A framework build starts Python.app, which names each process "Python", thus a bundle has no effect
+    if (
+        os.environ.get(MACOS_BUNDLE_VARIABLE)
+        or "--interactive" not in sys.orig_argv
+        or sysconfig.get_config_var("PYTHONFRAMEWORK")
+    ):
         return
 
-    createstring = corefoundation.CFStringCreateWithCString
-    createstring.restype = ctypes.c_void_p
-    createstring.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
-    getasn.restype = ctypes.c_void_p
-    setinfoitem.restype = ctypes.c_int32
-    setinfoitem.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-    kcfstringencodingutf8 = 0x08000100
-    # -2 selects the session of the user that runs the process
-    setinfoitem(-2, getasn(), displaynamekey, createstring(None, name.encode(), kcfstringencodingutf8), None)
+    try:
+        executable = get_macos_bundle_executable()
+    except OSError:
+        # the viewer can open without the bundle, and the Dock then gives the name of the executable
+        return
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    environment = os.environ | {MACOS_BUNDLE_VARIABLE: "1", "__PYVENV_LAUNCHER__": sys.executable}
+    os.execve(executable, [str(executable), *sys.orig_argv[1:]], environment)  # ruff:ignore[start-process-with-no-shell]
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
@@ -759,6 +804,9 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     of the screen, thus the plot has the full resolution of a Retina display.
     """
     import os
+
+    if sys.platform == "darwin":
+        relaunch_in_macos_bundle()
 
     import_optional("PySide6.QtWidgets")
     import matplotlib.pyplot as plt
@@ -778,8 +826,6 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     assert isinstance(app, QtWidgets.QApplication)
     app.setApplicationName("artistools")
     app.setApplicationDisplayName(APPLICATION_NAME)
-    if sys.platform == "darwin":
-        set_macos_application_name(APPLICATION_NAME)
     app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512)))
 
     # each window holds a reference here, thus Python keeps it while it is open
