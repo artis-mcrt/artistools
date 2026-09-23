@@ -89,7 +89,7 @@ from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
-from artistools.plottools import get_drawn_yvalues
+from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
@@ -1262,7 +1262,7 @@ def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
     The vertical range of the axes carries a margin above and below the data, thus a test against that
     range accepts a limit that leaves every point out of view.
     """
-    drawn = get_drawn_yvalues(ax)
+    drawn, _ = get_drawn_values(ax)
     finite = drawn[np.isfinite(drawn)]
 
     return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
