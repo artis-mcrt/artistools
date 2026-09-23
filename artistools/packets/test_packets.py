@@ -213,7 +213,10 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
 
 
 def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
-    """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
+    """A text file of the first rank that is newer than the cache makes the cache stale.
+
+    ARTIS writes the files of all the ranks at the same time, thus the first rank gives the time of the batch.
+    """
     import shutil
 
     from artistools.packets.core import get_packets_rankbatch_parquetfile
@@ -225,7 +228,6 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
 
-    # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
     newtime = firstrankfile.stat().st_mtime + 100.0
     os.utime(firstrankfile, (newtime, newtime))

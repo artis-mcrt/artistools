@@ -1,7 +1,9 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
+import contextlib
 import datetime
 import math
+import os
 import time
 import typing as t
 from collections.abc import Sequence
@@ -410,37 +412,46 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 # version 1: the stokes1/2/3 columns became stokes_q/stokes_u, and the schema omits the redundant stokes I
 CACHEVERSION = 1
 
+# the number of ranks in each parquet cache of the packets
+RANKS_PER_BATCH: t.Final = 100
+
 
 def get_packets_textsource_mtimes(
-    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, Path]] | None = None
+    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
 ) -> list[float]:
     """Return source modification times with at most one scan of each folder.
 
     A caller that reads several batches gives one folderlistings for all of them. Each folder then has one scan
     for all the batches. For the 20 batches of a 3D kilonova model, the scans took 0.2 s each time the code read
-    packets.
+    packets. A scan with os.scandir gives the type of each entry with no stat call.
     """
     if folderlistings is None:
         folderlistings = {}
 
-    def get_listing(folder: Path) -> dict[str, Path]:
+    def get_listing(folder: Path) -> dict[str, os.DirEntry[str]]:
         if folder not in folderlistings:
-            folderlistings[folder] = {entry.name: entry for entry in folder.iterdir()}
+            with os.scandir(folder) as entries:
+                folderlistings[folder] = {entry.name: entry for entry in entries}
         return folderlistings[folder]
 
     mtimes: dict[str, float] = {}
     # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
     # conversion reads the file that it finds. A different order stamps the cache from another file
-    subfolders = sorted((entry for entry in get_listing(modelpath).values() if entry.is_dir()), key=natural_sort_key)
+    subfolders = sorted(
+        (Path(entry.path) for entry in get_listing(modelpath).values() if entry.is_dir()), key=natural_sort_key
+    )
     for folder in (modelpath, *subfolders):
-        paths = get_listing(folder)
+        entries = get_listing(folder)
         for filename in filenames:
             if filename in mtimes:
                 continue
             # Use the same folder and compression order as the source reader.
             for suffix in ("", *COMPRESSED_EXTENSIONS):
-                if (path := paths.get(f"{filename}{suffix}")) is not None and path.exists():
-                    mtimes[filename] = path.stat().st_mtime
+                if (entry := entries.get(f"{filename}{suffix}")) is None:
+                    continue
+                # a link to a file that does not exist gives no time, because the reader does not find the file
+                with contextlib.suppress(FileNotFoundError):
+                    mtimes[filename] = entry.stat().st_mtime
                     break
         if len(mtimes) == len(filenames):
             break
@@ -452,7 +463,7 @@ def get_packets_rankbatch_parquetfile(
     batch_mpiranks: Sequence[int],
     batchindex: int,
     virtual: bool,
-    folderlistings: dict[Path, dict[str, Path]] | None = None,
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None,
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
     modelpath = Path(modelpath)
@@ -479,20 +490,17 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
-        # restart rewrote then makes the whole batch cache stale
-        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
-        allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
-
-        # one rule decides the freshness of every batch cache of this repository. A text file of the
-        # batch that is absent gives no full comparison of the modification times, but the cache
-        # format version still applies
+        # ARTIS writes the packet files of all the ranks at the same time, thus the file of the first rank gives the
+        # time of the batch. A check of each file took 4900 stat calls for each read of a run of 1920 ranks. The
+        # stamp is the newest time of all the files, thus a first file that is newer than the stamp shows a rewrite
+        firstmtimes = get_packets_textsource_mtimes(modelpath, text_filenames[:1], folderlistings)
         stalereason = rankbatch_parquet_staleness(
-            parquetfilepath,
-            CACHEVERSION,
-            max(textsource_mtimes) if textsource_mtimes else None,
-            textsource_complete=allranksfound,
+            parquetfilepath, CACHEVERSION, firstmtimes[0] if firstmtimes else None, textsource_complete=False
         )
+        # a conversion needs every text file of the batch, thus only a stale cache needs the check of each one
+        allranksfound = stalereason is not None and len(
+            get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
+        ) == len(batch_mpiranks)
 
         if stalereason is None:
             conversion_needed = False
@@ -528,7 +536,7 @@ def get_packets_rankbatch_parquetfile(
             for filename in text_filenames
         ]
 
-        # the stamp uses the same rule as the freshness check: the newest text file of the batch
+        # the stamp is the newest text file of the batch, thus the check of the first file finds a rewrite of that file
         textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)
 
         column_names = (
@@ -605,7 +613,7 @@ def get_packets_batch_parquet_paths(
     """Get a list of Paths to parquet-formatted packets files, (which are generated from text files if needed)."""
     nprocs = get_nprocs(modelpath)
 
-    mpirank_groups_all = list(enumerate(batched(range(nprocs), 100, strict=False)))
+    mpirank_groups_all = list(enumerate(batched(range(nprocs), RANKS_PER_BATCH, strict=False)))
     mpirank_groups = [
         (batchindex, batch_mpiranks)
         for batchindex, batch_mpiranks in mpirank_groups_all
@@ -623,7 +631,7 @@ def get_packets_batch_parquet_paths(
         print(f"Reading packets from {nprocs} ranks")
 
     # each batch reads the same folders, thus all the batches use one scan of each folder
-    folderlistings: dict[Path, dict[str, Path]] = {}
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
     parquetpacketsfiles = [
         get_packets_rankbatch_parquetfile(
             modelpath,
