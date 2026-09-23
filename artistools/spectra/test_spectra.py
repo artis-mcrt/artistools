@@ -2,6 +2,7 @@ import argparse
 import dataclasses as dc
 import math
 import shlex
+import sys
 import typing as t
 from pathlib import Path
 from unittest import mock
@@ -2360,6 +2361,120 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
         assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
         viewer.fig.canvas.draw()
         assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
+
+
+def test_interactive_status_line_gives_the_error() -> None:
+    """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
+    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
+    assert interactive.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert interactive.get_first_line("A file is missing\nThe second line") == "A file is missing"
+
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
+    assert rejection is not None
+    assert rejection.startswith("argument -deltalambda")
+
+
+def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
+    """A minimum wavelength of 0 becomes a range of frequencies above the other limit, and not below it.
+
+    The zero limit took the default limit at the same position, thus the range went to the other side of 5000 Å.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    values = dc.replace(viewer.values, xmin="0", xmax="5000")
+    inhertz = interactive.convert_xunit(values, "hz", gamma=False)
+    assert np.isclose(float(inhertz.xmin), at.constants.c_ang_per_s / 5000.0, rtol=1e-3, atol=0.0)
+    # the range goes from 5000 Å to shorter wavelengths, which are higher frequencies
+    assert float(inhertz.xmax) > float(inhertz.xmin)
+    # a change between two units of wavelength keeps a minimum of 0
+    inmicrons = interactive.convert_xunit(values, "micron", gamma=False)
+    assert float(inmicrons.xmin) == 0.0
+
+
+def test_interactive_single_time_ends_at_the_next_start() -> None:
+    """A single time selects its timestep by the rule of get_timestep_of_timedays: a timestep ends at the next start.
+
+    The end of a timestep can be a little after the start of the next one, and 2 then selected the next timestep.
+    """
+    tmids, tstarts, tends = [1.75, 2.25], [1.5, 2.0], [2.000008, 2.5]
+    timedays = interactive.get_snapped_timedays_argument(tmids, tstarts, tends, 0, 0)
+    assert tstarts[0] <= float(timedays) < tstarts[1]
+
+
+def test_interactive_reference_name_finds_the_picked_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command gives a bundled reference by its name only when plotspectra finds that same file by the name.
+
+    plotspectra searches the working folder first, thus a file of the same name there took the place of the file
+    that the user selected.
+    """
+    name = "sn2011fe_PTF11kly_20120822_norm.txt"
+    bundledfile = plotspectra.find_reference_spectrum_file_or_none(name)
+    assert bundledfile is not None
+    monkeypatch.chdir(tmp_path)
+    assert interactive.get_reference_token(str(bundledfile)) == name
+    (tmp_path / name).write_text("1000 1\n2000 2\n")
+    assert interactive.get_reference_token(str(bundledfile)) == str(bundledfile)
+
+
+def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: pytest.CaptureFixture[str]) -> None:
+    """An item after -maxseriescount gives no warning, because the plot does not show it.
+
+    The packet reader keeps a part of the list only, and the warning then named items that the packets hold.
+    """
+    arraylambda = np.array([4000.0, 5000.0])
+    contributions = [
+        atspectra.FluxContributionTuple(fluxcontrib, label, np.ones(2), np.zeros(2))
+        for fluxcontrib, label in ((2.0, "Fe II"), (1.0, "Co II"))
+    ]
+    for maxseriescount, haswarning in ((2, False), (3, True)):
+        atspectra.sort_and_reduce_flux_contribution_list(
+            contributions, maxseriescount, arraylambda, fixedionlist=["Fe II", "Co II", "Ni II"]
+        )
+        assert ("did not find" in capsys.readouterr().err) is haswarning
+
+
+def test_interactive_valid_times_of_each_run() -> None:
+    """The time controls stay inside the times that are valid for every run of the command.
+
+    plotspectra checks the times of each run, and the viewer took the valid times of the first run only.
+    """
+    # each call of the mock gives the valid range of the next run
+    ranges = [(None, 260.0, 330.0), (None, 270.0, 320.0)]
+    with mock.patch.object(interactive, "get_escaped_arrivalrange", side_effect=ranges):
+        viewer = make_headless_viewer([str(modelpath), str(modelpath), "-t", "300", "--interactive"])
+    assert viewer.timebounds == (270.0, 320.0)
+
+
+def test_interactive_command_of_a_dispatcher_call() -> None:
+    """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
+    from artistools.__main__ import main as dispatcher_main
+
+    with (
+        mock.patch.object(interactive, "run_viewer") as mockrunviewer,
+        mock.patch.object(sys, "argv", ["myscript.py", "--flag", "x"]),
+    ):
+        dispatcher_main(argsraw=["plotspectra", str(modelpath), "-t", "300", "--interactive"])
+    mockrunviewer.assert_called_once_with([str(modelpath), "-t", "300", "--interactive"])
+
+
+def test_interactive_unlock_gives_the_default_count() -> None:
+    """A count that came from the length of -fixedionlist becomes the default count when the lock ends."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2)
+    assert interactive.remove_series_lock(locked).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
+    assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
+
+
+def test_interactive_typed_centre_gives_back_the_range() -> None:
+    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
+
+    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
+    """
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    for count in (1, 2, 3, 4):
+        for start in range(len(tmids) - count + 1):
+            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
+            assert interactive.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
 def test_interactive_option_rows() -> None:

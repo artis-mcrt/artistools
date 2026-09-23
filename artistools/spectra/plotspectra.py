@@ -2123,7 +2123,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         from artistools.spectra.interactive import get_command_tokens
         from artistools.spectra.interactive import run_viewer
 
-        run_viewer(get_command_tokens(argsraw, kwargs, fromdispatcher=fromdispatcher))
+        run_viewer(
+            get_command_tokens(
+                argsraw,
+                kwargs,
+                fromdispatcher=fromdispatcher,
+                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
+            )
+        )
         return
 
     resolve_plot_args(args)

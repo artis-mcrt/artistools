@@ -39,6 +39,7 @@ from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import draw_plot
+from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_artis_run_folders
 from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import make_plot_figure
@@ -153,12 +154,17 @@ class ControlValues:
 
 
 def get_command_tokens(
-    argsraw: "Sequence[str] | None", kwargs: "Mapping[str, t.Any]", *, fromdispatcher: bool
+    argsraw: "Sequence[str] | None",
+    kwargs: "Mapping[str, t.Any]",
+    *,
+    fromdispatcher: bool,
+    dispatcherargsraw: "Sequence[str] | None",
 ) -> list[str]:
     """Return the arguments that the user gave to plotspectra, without the name of the command.
 
-    The dispatcher gives the parsed arguments alone, thus the tokens then come from sys.argv. A script for one
-    command, e.g. plotartisspectrum, takes no word for the subcommand.
+    The dispatcher gives the parsed arguments alone. The tokens then come from the words of a call from Python code
+    (dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
+    plotartisspectrum, takes no word for the subcommand.
     """
     if kwargs:
         exit_with_error(
@@ -168,6 +174,9 @@ def get_command_tokens(
 
     if argsraw is not None:
         return list(argsraw)
+
+    if dispatcherargsraw is not None:
+        return list(dispatcherargsraw[1:])
 
     if not fromdispatcher:
         return sys.argv[1:]
@@ -401,10 +410,12 @@ def get_snapped_timedays_argument(
     between two middles. One timestep takes a single time, which selects the timestep that holds it.
     """
     if first == last:
-        # a single time selects the timestep that holds it, from the start of the timestep up to its end
+        # a single time selects the timestep that holds it. get_timestep_of_timedays ends a timestep at the start of
+        # the next one, because the end time of a timestep can be a little after that start
+        end = tstarts[first + 1] if first + 1 < len(tstarts) else tends[first]
         for decimals in range(8):
             text = f"{round(tmids[first], decimals):.{decimals}f}"
-            if tstarts[first] <= float(text) < tends[first]:
+            if tstarts[first] <= float(text) < end:
                 return text
         return format_days(tmids[first])
     lowlimit = tmids[first - 1] if first > 0 else 0.0
@@ -447,27 +458,75 @@ def fix_title_position(axis: "mplax.Axes") -> None:
 
 
 def get_first_line(errortext: str) -> str:
-    """Return the first line of an error for the status line of the window, without the "error: " of print_error."""
+    """Return the line of an error for the status line of the window, without the "error: " of print_error.
+
+    argparse prints its usage line before the error, and a warning can come before an error. Thus the function
+    returns the line that starts with "error: ". If no line has that start, it returns the first line.
+    """
     lines = [line.strip() for line in errortext.splitlines() if line.strip()]
-    return lines[0].removeprefix("error: ") if lines else REJECTED_MESSAGE
+    errorline = next((line for line in lines if line.startswith("error: ")), lines[0] if lines else None)
+    return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
 
 def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlValues:
     """Return the values with the x limits in a new unit of the x axis.
 
     A frequency or an energy increases where the wavelength decreases, thus the function sorts the limits again. A bin
-    width has no linear conversion between a wavelength and a frequency, thus the new unit takes no -deltax. A
-    limit of 0 or less has no conversion to a frequency, thus it takes the default limit of the new unit.
+    width has no linear conversion between a wavelength and a frequency, thus the new unit takes no -deltax.
+
+    A minimum of 0 has no conversion between a wavelength and a frequency, because the range then has no end on that
+    side. The new range thus goes past the other limit to the default limit of the new unit, or further. A change
+    between two units of wavelength, or between two units of frequency or energy, keeps a minimum of 0.
     """
-    defaultlimits = get_default_xlimits(xunit, gamma=gamma)
-    limits = sorted(
-        convert_angstroms_to_unit(convert_unit_to_angstroms(float(text), values.xunit), xunit)
-        if float(text) > 0.0
-        else defaultlimit
-        for text, defaultlimit in zip((values.xmin, values.xmax), defaultlimits, strict=True)
-    )
+
+    def convert(limit: float) -> float:
+        return convert_angstroms_to_unit(convert_unit_to_angstroms(limit, values.xunit), xunit)
+
+    xminold, xmaxold = float(values.xmin), float(values.xmax)
+    if xminold > 0.0:
+        limits = sorted((convert(xminold), convert(xmaxold)))
+    elif convert(2.0) < convert(1.0):
+        otherlimit = convert(xmaxold)
+        limits = [otherlimit, max(get_default_xlimits(xunit, gamma=gamma)[1], 2.0 * otherlimit)]
+    else:
+        limits = [0.0, convert(xmaxold)]
     xmin, xmax = (format(float(f"{limit:.4g}"), ".10g") for limit in limits)
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
+
+
+def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int) -> int:
+    """Return the first index of the range of count timesteps that has its centre nearest to the given time.
+
+    The time field shows the centre of the range, thus a Return with no edit gives the same range. The centre of a
+    range of an even count is near the boundary of two timesteps. Thus either timestep can hold the time.
+    """
+
+    def get_centre_offset(start: int) -> float:
+        return abs((tmids[start] + tmids[start + count - 1]) / 2.0 - centre)
+
+    return min(range(len(tmids) - count + 1), key=get_centre_offset)
+
+
+def get_reference_token(filename: str) -> str:
+    """Return the name of a reference file if plotspectra finds that same file by the name, and the path if not.
+
+    plotspectra searches the working folder before the reference data of artistools. Thus a file of the same name in
+    the working folder takes the place of a file from the reference data. The name alone gives a short command.
+    """
+    found = find_reference_spectrum_file_or_none(Path(filename).name)
+    return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
+
+
+def remove_series_lock(values: ControlValues) -> ControlValues:
+    """Return the values with no -fixedionlist.
+
+    plotspectra gives a missing -maxseriescount the length of -fixedionlist. A count equal to that length thus came
+    from the list, and without the list the count is the default count.
+    """
+    fromlist = bool(values.fixedionlist) and values.maxseriescount == len(values.fixedionlist)
+    return dc.replace(
+        values, fixedionlist=(), maxseriescount=DEFAULT_MAXSERIESCOUNT if fromlist else values.maxseriescount
+    )
 
 
 def check_viewer_args(args: argparse.Namespace) -> None:
@@ -521,16 +580,18 @@ class SpectrumViewer:
         self.tends = get_timestep_times(self.runfolders[0], loc="end")
         self.twidths = get_timestep_times(self.runfolders[0], loc="delta")
 
-        # plotspectra rejects a time outside the arrival times of the escaped packets, thus the controls stay inside
-        # them. With --plotinvalidpart, plotspectra accepts all times.
-        validstart, validend = None, None
+        # plotspectra rejects a time outside the arrival times of the escaped packets of each run. Thus the controls
+        # stay inside the times that are valid for all the runs. With --plotinvalidpart, plotspectra accepts all times
+        timebounds = [self.tstarts[0], self.tends[-1]]
         if not args.plotinvalidpart:
-            with contextlib.suppress(FileNotFoundError):
-                _, validstart, validend = get_escaped_arrivalrange(self.runfolders[0])
-        self.timebounds = (
-            self.tstarts[0] if validstart is None else max(self.tstarts[0], float(validstart)),
-            self.tends[-1] if validend is None else min(self.tends[-1], float(validend)),
-        )
+            for runfolder in self.runfolders:
+                with contextlib.suppress(FileNotFoundError):
+                    _, validstart, validend = get_escaped_arrivalrange(runfolder)
+                    if validstart is not None:
+                        timebounds[0] = max(timebounds[0], float(validstart))
+                    if validend is not None:
+                        timebounds[1] = min(timebounds[1], float(validend))
+        self.timebounds = (timebounds[0], timebounds[1])
         self.validtimesteps = [
             timestep
             for timestep in range(len(self.tmids))
@@ -1045,6 +1106,7 @@ def run_viewer(tokens: "Sequence[str]") -> None:
 
     import_optional("PySide6.QtWidgets")
     import matplotlib.pyplot as plt
+    from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
@@ -1062,6 +1124,50 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app.setApplicationName("artistools")
     app.setApplicationDisplayName(APPLICATION_NAME)
     app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512)))
+
+    arrowkeys = {
+        QtCore.Qt.Key.Key_Left,
+        QtCore.Qt.Key.Key_Right,
+        QtCore.Qt.Key.Key_Up,
+        QtCore.Qt.Key.Key_Down,
+        QtCore.Qt.Key.Key_Home,
+        QtCore.Qt.Key.Key_End,
+    }
+
+    class KeyOwnerFilter(QtCore.QObject):
+        """Give a key to the widget with the focus when that widget uses the key, and not to a window shortcut.
+
+        These widgets use the keys, but the shortcuts of the window took the keys from them:
+
+        - a spin box;
+        - a combo box;
+        - a slider;
+        - a list;
+        - a button, which uses only the space key.
+
+        For example, the Up key in -maxseriescount made the time range wider.
+        """
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            if event.type() == QtCore.QEvent.Type.ShortcutOverride and isinstance(event, QtGui.QKeyEvent):
+                focuswidget = QtWidgets.QApplication.focusWidget()
+                usesarrows = isinstance(
+                    focuswidget,
+                    QtWidgets.QAbstractSpinBox
+                    | QtWidgets.QComboBox
+                    | QtWidgets.QAbstractSlider
+                    | QtWidgets.QAbstractItemView,
+                )
+                usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
+                key = event.key()
+                if (usesarrows and key in arrowkeys) or (usesspace and key == QtCore.Qt.Key.Key_Space):
+                    event.accept()
+                    return True
+            return super().eventFilter(watched, event)
+
+    keyownerfilter = KeyOwnerFilter(app)
+    app.installEventFilter(keyownerfilter)
 
     # each window holds a reference here, thus Python keeps it while it is open
     windows: list[QtWidgets.QMainWindow] = []
@@ -1090,10 +1196,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         return False
     windows.append(window)
 
-    fulldrawtimer = QtCore.QTimer()
+    # a timer with the window as parent stops when the window closes, thus it does not act on deleted widgets
+    fulldrawtimer = QtCore.QTimer(window)
     fulldrawtimer.setSingleShot(True)
     fulldrawtimer.setInterval(FULL_DRAW_MILLISECONDS)
-    fittimer = QtCore.QTimer()
+    fittimer = QtCore.QTimer(window)
     fittimer.setSingleShot(True)
     fittimer.setInterval(FIT_MILLISECONDS)
 
@@ -1388,7 +1495,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
         def on_flag() -> None:
             # the new rows replace this box, thus the change waits until Qt finishes with the signal
-            QtCore.QTimer.singleShot(0, lambda: set_option(row, box.currentText()))
+            QtCore.QTimer.singleShot(0, window, lambda: set_option(row, box.currentText()))
 
         box.activated.connect(on_flag)
         return box
@@ -1467,7 +1574,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         removebutton.setText("✕")
         removebutton.setAutoRaise(True)
         removebutton.setToolTip(f"Remove {flag} from the command")
-        removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, lambda: set_option(row, "")))
+        removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
         layout.addWidget(removebutton)
         editor.setToolTip(helptexts.get(action.dest, ""))
         return editor
@@ -1636,11 +1743,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         logicaldpi = max(min(area.width() / figwidth, area.height() / figheight), 20.0)
         size = QtCore.QSize(math.ceil(figwidth * logicaldpi), math.ceil(figheight * logicaldpi))
         dpi = logicaldpi * canvas.device_pixel_ratio
-        if canvas.size() == size and math.isclose(viewer.fig.dpi, dpi, rel_tol=1e-6):
+        # matplotlib changes the size of the figure in inches when the pixel ratio of the screen changes
+        sizeinches = tuple(viewer.fig.get_size_inches())
+        if canvas.size() == size and math.isclose(viewer.fig.dpi, dpi, rel_tol=1e-6) and sizeinches == viewer.figsize:
             return
         viewer.fig.set_dpi(dpi)
+        viewer.fig.set_size_inches(figwidth, figheight, forward=False)
         canvas.setFixedSize(size)
         canvas.draw_idle()
+
+    def set_edit_text(edit: QtWidgets.QLineEdit, text: str) -> None:
+        """Show the text in a field, unless the user types in that field.
+
+        A plot or a Play step can end while the user types. Without this check, the text of the values replaces the
+        text that the user typed.
+        """
+        if not (edit.hasFocus() and edit.isModified()):
+            edit.setText(text)
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1654,25 +1773,25 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthslider.setValue(to_position(values.width, 0.0, widthmax))
-            widthedit.setText(f"{values.width:g}")
+            set_edit_text(widthedit, f"{values.width:g}")
         else:
             first, last = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
             timeslider.setValue((first + last) // 2)
             widthslider.setValue(last - first + 1)
-            widthedit.setText(str(last - first + 1))
-        timeedit.setText(f"{values.centre:.4g}")
+            set_edit_text(widthedit, str(last - first + 1))
+        set_edit_text(timeedit, f"{values.centre:.4g}")
         timestepslabel.setText(viewer.get_timesteps_text())
         xminslider.setValue(to_position(math.log10(max(float(values.xmin), 10.0 ** logxrange[0])), *logxrange))
         xmaxslider.setValue(to_position(math.log10(max(float(values.xmax), 10.0 ** logxrange[0])), *logxrange))
-        xminedit.setText(values.xmin)
-        xmaxedit.setText(values.xmax)
+        set_edit_text(xminedit, values.xmin)
+        set_edit_text(xmaxedit, values.xmax)
         xunitbox.setCurrentText(values.xunit)
         yscalebox.setCurrentText(values.yscale)
         logscalexcheck.setChecked(values.logscalex)
         isyfixed = bool(values.ymin or values.ymax)
         fixycheck.setChecked(isyfixed)
-        yminedit.setText(values.ymin)
-        ymaxedit.setText(values.ymax)
+        set_edit_text(yminedit, values.ymin)
+        set_edit_text(ymaxedit, values.ymax)
         for edit in (yminedit, ymaxedit):
             edit.setEnabled(isyfixed)
         emissioncheck.setChecked(values.showemission)
@@ -1704,11 +1823,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         fit_canvas()
 
     requestedvalues: ControlValues | None = None
+    # viewer.values holds the last values that the user gave, and drawnvalues holds the values of the plot
+    drawnvalues = viewer.values
 
     def fit_figwidthscale() -> None:
         """Give the plot the -figwidthscale that fills the plot area."""
         area = plotarea.contentsRect()
-        values = requestedvalues or viewer.values
+        values = viewer.values
         if area.width() <= 0 or area.height() <= 0 or viewer.figsize[0] <= 0.0:
             return
         figwidthscale = viewer.get_fitted_figwidthscale(area.width(), area.height())
@@ -1725,18 +1846,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         """
         nonlocal requestedvalues
         if requestedvalues is None:
-            QtCore.QTimer.singleShot(0, draw_requested)
+            QtCore.QTimer.singleShot(0, window, draw_requested)
         requestedvalues = values
-        # show_values reads viewer.values, thus the viewer holds the new values for this call only
-        oldvalues, viewer.values = viewer.values, values
-        try:
-            show_values()
-        finally:
-            viewer.values = oldvalues
+        # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
+        viewer.values = values
+        show_values()
 
     def draw_requested() -> None:
         """Draw the plot of the last values, or show a message and keep the old values if plotspectra rejects them."""
-        nonlocal requestedvalues
+        nonlocal requestedvalues, drawnvalues
         values, requestedvalues = requestedvalues, None
         if values is None:
             return
@@ -1745,9 +1863,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         drawtimelabel.setText("Plot in progress...")
         QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         starttime = time.perf_counter()
+        # change() keeps the values of the last plot when plotspectra rejects the new values
+        viewer.values = drawnvalues
         try:
             message = viewer.change(values, preview=True)
         finally:
+            drawnvalues = viewer.values
             QtWidgets.QApplication.restoreOverrideCursor()
         drawkind = "Preview" if viewer.drewpreview else "Plot"
         drawtimelabel.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
@@ -1764,10 +1885,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if message is not None:
             playbutton.setChecked(False)
         elif playbutton.isChecked():
-            QtCore.QTimer.singleShot(PLAY_MILLISECONDS, play_step)
+            QtCore.QTimer.singleShot(PLAY_MILLISECONDS, window, play_step)
 
     def draw_full() -> None:
         """Replace the preview with the plot of all the packets."""
+        nonlocal drawnvalues
         # a change in the queue, or the Play button, draws a new preview and starts this timer again
         if requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
             return
@@ -1776,8 +1898,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         starttime = time.perf_counter()
         try:
-            message = viewer.change(viewer.values)
+            message = viewer.change(drawnvalues)
         finally:
+            drawnvalues = viewer.values
             QtWidgets.QApplication.restoreOverrideCursor()
         drawtimelabel.setText(f"Plot time: {time.perf_counter() - starttime:.2f} s")
         readoutlabel.setText("")
@@ -1836,24 +1959,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if values.notimeclamp:
             newvalues = dc.replace(values, centre=float(f"{centre:.4g}"), width=float(f"{width:.3g}"))
         else:
-            # a snapped time takes the valid timestep that holds the typed time, and the typed count of timesteps.
-            # A time between the valid timesteps takes the valid timestep with the nearest middle
-            count = max(1, round(width))
-            holding = [
-                position
-                for position, timestep in enumerate(viewer.validtimesteps)
-                if viewer.tstarts[timestep] <= centre < viewer.tends[timestep]
-            ]
-            middle = (
-                holding[0]
-                if holding
-                else min(
-                    range(nvalid), key=lambda position: abs(viewer.tmids[viewer.validtimesteps[position]] - centre)
-                )
+            count = min(max(1, round(width)), nvalid)
+            start = get_nearest_range_start(
+                [viewer.tmids[timestep] for timestep in viewer.validtimesteps], centre, count
             )
-            start = min(max(middle - (count - 1) // 2, 0), max(nvalid - count, 0))
-            last = min(start + count - 1, nvalid - 1)
-            newvalues = viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[last])
+            newvalues = viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1])
         if newvalues != values:
             apply(newvalues)
 
@@ -1957,8 +2067,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         # plotspectra takes the default -groupby when the command gives none, thus the command stays short
         if groupby == viewer.defaultgroupby:
             groupby = None
-        # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
-        fixedionlist = viewer.values.fixedionlist if groupby == viewer.values.groupby else ()
         values = dc.replace(
             viewer.values,
             showemission=showemission,
@@ -1967,14 +2075,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             maxseriescount=countbox.value(),
             nostack=nostackcheck.isChecked(),
             deltax=format(deltaxbox.value(), ".10g") if deltaxcheck.isChecked() else "",
-            fixedionlist=fixedionlist,
         )
+        # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
+        if groupby != viewer.values.groupby:
+            values = remove_series_lock(values)
         if values != viewer.values:
             apply(values)
 
     def on_lock(checked: bool) -> None:
         if not checked:
-            apply(dc.replace(viewer.values, fixedionlist=()))
+            apply(remove_series_lock(viewer.values))
             return
         if not (series := viewer.get_drawn_series()):
             show_error("The plot has no series of contributions to lock")
@@ -1983,11 +2093,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_add_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
-        # plotspectra finds a file of the reference data by its name, thus the command stays short
-        names = [
-            Path(filename).name if Path(filename).parent.resolve() == referencefolder.resolve() else filename
-            for filename in filenames
-        ]
+        names = [get_reference_token(filename) for filename in filenames]
         references = (*viewer.values.references, *(name for name in names if name not in viewer.values.references))
         if references != viewer.values.references:
             apply(dc.replace(viewer.values, references=references))
@@ -2085,6 +2191,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_closed() -> None:
         print(viewer.get_command())
+        # the list holds a reference to each open window, thus Python does not delete the window. A closed window
+        # leaves the list
+        windows.remove(window)
 
     menubar = window.menuBar()
     filemenu = menubar.addMenu("File")
@@ -2152,4 +2261,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     window.resize(plotwidth + sidebar.width() + 40, max(plotheight, 700))
     window.show()
     show_values()
+    if (windowhandle := window.windowHandle()) is not None:
+
+        def on_screen(_screen: QtGui.QScreen) -> None:
+            # matplotlib handles the new pixel ratio first, thus the fit waits until Qt has no other events
+            QtCore.QTimer.singleShot(0, window, fit_canvas)
+
+        windowhandle.screenChanged.connect(on_screen)
     return True

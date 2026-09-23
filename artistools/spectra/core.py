@@ -2066,8 +2066,9 @@ def sort_and_reduce_flux_contribution_list(
 ) -> list[FluxContributionTuple]:
     """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
     rowofname = {row.linelabel: row for row in contribution_list_in}
-    # each plot gives its contributions to this function, thus this is the one warning for a missing item
-    if fixedionlist and (unrecognised_items := [x for x in fixedionlist if x not in rowofname]):
+    # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
+    # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
+    if fixedionlist and (unrecognised_items := [x for x in fixedionlist[:maxseriescount] if x not in rowofname]):
         print_warning(f"did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     keptnames, othernames = rank_flux_series_names(
