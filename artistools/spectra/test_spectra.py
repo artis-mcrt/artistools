@@ -801,6 +801,34 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     assert max(diff) / integrated_flux_frompackets < 1e-10
 
 
+@pytest.mark.parametrize(("directionbin", "average_over_phi"), [(12, False), (10, True)])
+def test_spectra_packet_contributions_of_a_direction_bin(directionbin: int, average_over_phi: bool) -> None:
+    """Check that the emission contributions of a direction bin have the same sum as the packet spectrum of that bin.
+
+    get_flux_contributions_from_packets does not call get_from_packets, thus it must apply the solid angle of the bin.
+    """
+    lambda_bin_edges = np.arange(3000.0, 9020.0, 20.0)
+    dfspectrum = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=4.0,
+        timehighdays=7.0,
+        lambda_bin_edges=lambda_bin_edges,
+        directionbins=[directionbin],
+        average_over_phi=average_over_phi,
+    )[directionbin].collect()
+    _, array_flambda_emission_total, _ = at.spectra.get_flux_contributions_from_packets(
+        modelpath_classic_3d,
+        timelowdays=4.0,
+        timehighdays=7.0,
+        lambda_bin_edges=lambda_bin_edges,
+        directionbin=directionbin,
+        average_over_phi=average_over_phi,
+        getabsorption=False,
+    )
+    assert np.max(dfspectrum["f_lambda"].to_numpy()) > 0.0
+    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), rtol=1e-9, atol=0.0)
+
+
 @pytest.mark.parametrize(
     ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
 )

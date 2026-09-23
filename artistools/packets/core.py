@@ -411,16 +411,29 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 CACHEVERSION = 1
 
 
-def get_packets_textsource_mtimes(modelpath: Path, filenames: Sequence[str]) -> list[float]:
-    """Return source modification times with at most one scan of each folder."""
-    rootentries = list(modelpath.iterdir())
+def get_packets_textsource_mtimes(
+    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, Path]] | None = None
+) -> list[float]:
+    """Return source modification times with at most one scan of each folder.
+
+    A caller that reads several batches gives one folderlistings for all of them. Each folder then has one scan
+    for all the batches. For the 20 batches of a 3D kilonova model, the scans took 0.2 s each time the code read
+    packets.
+    """
+    if folderlistings is None:
+        folderlistings = {}
+
+    def get_listing(folder: Path) -> dict[str, Path]:
+        if folder not in folderlistings:
+            folderlistings[folder] = {entry.name: entry for entry in folder.iterdir()}
+        return folderlistings[folder]
+
     mtimes: dict[str, float] = {}
     # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
     # conversion reads the file that it finds. A different order stamps the cache from another file
-    subfolders = sorted((entry for entry in rootentries if entry.is_dir()), key=natural_sort_key)
+    subfolders = sorted((entry for entry in get_listing(modelpath).values() if entry.is_dir()), key=natural_sort_key)
     for folder in (modelpath, *subfolders):
-        entries = rootentries if folder == modelpath else folder.iterdir()
-        paths = {entry.name: entry for entry in entries}
+        paths = get_listing(folder)
         for filename in filenames:
             if filename in mtimes:
                 continue
@@ -435,7 +448,11 @@ def get_packets_textsource_mtimes(modelpath: Path, filenames: Sequence[str]) -> 
 
 
 def get_packets_rankbatch_parquetfile(
-    modelpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
+    modelpath: Path | str,
+    batch_mpiranks: Sequence[int],
+    batchindex: int,
+    virtual: bool,
+    folderlistings: dict[Path, dict[str, Path]] | None = None,
 ) -> Path:
     """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
     modelpath = Path(modelpath)
@@ -464,7 +481,7 @@ def get_packets_rankbatch_parquetfile(
         parquetstat = parquetfilepath.stat()
         # every file of the batch counts, thus the newest one decides the freshness. One rank file that a
         # restart rewrote then makes the whole batch cache stale
-        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames)
+        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
         allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
 
         # one rule decides the freshness of every batch cache of this repository. A text file of the
@@ -605,9 +622,15 @@ def get_packets_batch_parquet_paths(
     else:
         print(f"Reading packets from {nprocs} ranks")
 
+    # each batch reads the same folders, thus all the batches use one scan of each folder
+    folderlistings: dict[Path, dict[str, Path]] = {}
     parquetpacketsfiles = [
         get_packets_rankbatch_parquetfile(
-            modelpath, batch_mpiranks=batch_mpiranks, batchindex=batchindex, virtual=virtual
+            modelpath,
+            batch_mpiranks=batch_mpiranks,
+            batchindex=batchindex,
+            virtual=virtual,
+            folderlistings=folderlistings,
         )
         for batchindex, batch_mpiranks in mpirank_groups
     ]
@@ -830,6 +853,18 @@ def filter_packets_dirbin(
     return dfpackets.filter(pl.col("dirbin") == dirbin), float(get_viewingdirectionbincount())
 
 
+def get_bin_index_expr(column: str, bins: Sequence[float | int]) -> pl.Expr:
+    """Return the index of the bin of each value of the column.
+
+    bins gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which also
+    holds its upper edge. cut() puts a value exactly on that final edge into the overflow bin. min_horizontal moves it
+    back to the last bin.
+    """
+    return pl.min_horizontal(
+        pl.col(column).cut(breaks=bins, left_closed=True).to_physical().cast(pl.Int32) - 1, len(bins) - 2
+    )
+
+
 def bin_and_sum(
     df: pl.DataFrame | pl.LazyFrame,
     bincol: str,
@@ -845,13 +880,7 @@ def bin_and_sum(
         df
         .lazy()
         .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
-        .with_columns(
-            # each bin is [lower, upper), except the last one, which also includes its upper edge. cut() would put a
-            # value sitting exactly on that final edge into the overflow bin, so clamp it back into the last bin
-            pl.min_horizontal(
-                pl.col(bincol).cut(breaks=bins, left_closed=True).to_physical().cast(pl.Int32) - 1, nbins - 1
-            ).alias(f"{bincol}_bin")
-        )
+        .with_columns(get_bin_index_expr(bincol, bins).alias(f"{bincol}_bin"))
     )
 
     if sumcols is None:
