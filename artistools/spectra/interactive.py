@@ -25,7 +25,9 @@ from artistools.misc import get_timestep_times
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_error
+from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
+from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import get_xunit
@@ -58,6 +60,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "xunit",
     "logscalex",
     "yscale",
+    "logscaley",
     "ymin",
     "ymax",
     "showemission",
@@ -68,8 +71,18 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "nostack",
     "deltax",
     "fixedionlist",
+    "figwidthscale",
     "interactive",
 })
+
+APPLICATION_NAME: t.Final = "artistools plotspectra"
+
+# the limits of the -figwidthscale that the viewer gives the plot to fill the plot area
+MIN_FIGWIDTHSCALE: t.Final[float] = 0.3
+MAX_FIGWIDTHSCALE: t.Final[float] = 4.0
+
+# the time after the last resize of the window, before the plot takes the new shape
+FIT_MILLISECONDS: t.Final[int] = 200
 
 REJECTED_MESSAGE: t.Final = "plotspectra cannot draw this plot. The terminal shows the error"
 
@@ -105,6 +118,7 @@ class ControlValues:
     deltax: str
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
+    figwidthscale: float
 
 
 def get_command_tokens(
@@ -378,7 +392,9 @@ class SpectrumViewer:
             if action.help and action.help != argparse.SUPPRESS
         }
         self.defaultmaxseriescount: int = parser.get_default("maxseriescount")
+        self.defaultyscale: str = parser.get_default("yscale")
         self.defaultxunit = "kev" if args.gamma else "angstroms"
+        self.defaultgroupby = "nuc" if args.gamma else "ion"
         # 4 significant digits of the time and 3 of the width give a short command
         values = ControlValues(
             centre=float(f"{centre:.4g}"),
@@ -388,7 +404,7 @@ class SpectrumViewer:
             xmax=format(args.xmax, ".10g"),
             xunit=args.xunit,
             logscalex=bool(args.logscalex),
-            yscale=args.yscale,
+            yscale="log" if args.logscaley and args.yscale == self.defaultyscale else args.yscale,
             ymin="" if args.ymin is None else format(args.ymin, ".10g"),
             ymax="" if args.ymax is None else format(args.ymax, ".10g"),
             showemission=bool(args.showemission),
@@ -399,13 +415,15 @@ class SpectrumViewer:
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in startpaths if path_is_reference_spectrum(path)),
+            figwidthscale=args.figwidthscale,
         )
         self.values = values if values.notimeclamp else self.snap(values, *self.get_selection(values))
 
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        self.framesforabsorption: bool | None = None
+        # --showabsorption and -figwidthscale change the frame size, thus a change of either makes new frames
+        self.frameskey: tuple[bool, float] | None = None
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
@@ -449,7 +467,7 @@ class SpectrumViewer:
             options += ["-xunit", values.xunit]
         if values.logscalex:
             options.append("--logscalex")
-        if values.yscale != "auto":
+        if values.yscale != self.defaultyscale:
             options += ["-yscale", values.yscale]
         if values.ymin:
             options += ["-ymin", values.ymin]
@@ -468,6 +486,8 @@ class SpectrumViewer:
             options.append("--nostack")
         if values.deltax:
             options += ["-deltax", values.deltax]
+        if values.figwidthscale != 1.0:
+            options += ["-figwidthscale", format(values.figwidthscale, "g")]
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["-fixedionlist", *values.fixedionlist]
@@ -582,14 +602,12 @@ class SpectrumViewer:
         return None
 
     def draw_frames(self, plotargs: argparse.Namespace) -> None:
-        """Draw the plot on empty frames.
-
-        --showabsorption draws a taller frame, thus a change of it makes new frames.
-        """
-        if plotargs.showabsorption != self.framesforabsorption:
+        """Draw the plot on empty frames."""
+        frameskey = (plotargs.showabsorption, plotargs.figwidthscale)
+        if frameskey != self.frameskey:
             self.fig.clear()
             _, self.axes, self.residualaxis = make_plot_figure(plotargs, fig=self.fig)
-            self.framesforabsorption = plotargs.showabsorption
+            self.frameskey = frameskey
             figwidth, figheight = self.fig.get_size_inches()
             self.figsize = (float(figwidth), float(figheight))
         else:
@@ -599,6 +617,18 @@ class SpectrumViewer:
 
         self.dfalldata, _ = draw_plot(plotargs, self.axes, self.residualaxis)
         self.fig.canvas.draw_idle()
+
+    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
+        """Return the -figwidthscale that gives the figure the shape of the plot area.
+
+        The frame width is proportional to -figwidthscale, and the margins and the height stay the same.
+        """
+        figwidth, figheight = self.figsize
+        margins = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
+        widthperscale = (figwidth - margins) / self.values.figwidthscale
+        fitted = (figheight * areawidth / areaheight - margins) / widthperscale
+        # 2 decimals give a short command, and a small change of the window then keeps the frames
+        return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
 
     def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values if plotspectra rejects the new command."""
@@ -692,6 +722,36 @@ KEYBOARD_HELP: t.Final = """<table>
 </table>"""
 
 
+def set_macos_application_name(name: str) -> None:
+    """Give the Dock and the menu bar the name of the command, and not the name of the Python executable.
+
+    A Python process has no application bundle, thus macOS shows the name of the executable. Chromium sets the name
+    of its process with the same private LaunchServices function. Call this after Qt makes the QApplication.
+    """
+    import ctypes
+    import ctypes.util
+
+    # Apple can remove these private functions in a new macOS version. The Dock then shows the name "python"
+    try:
+        launchservices = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/CoreServices.framework/CoreServices")
+        corefoundation = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation") or "CoreFoundation")
+        getasn = launchservices["_LSGetCurrentApplicationASN"]
+        setinfoitem = launchservices["_LSSetApplicationInformationItem"]
+        displaynamekey = ctypes.c_void_p.in_dll(launchservices, "_kLSDisplayNameKey")
+    except (AttributeError, OSError, ValueError):
+        return
+
+    createstring = corefoundation.CFStringCreateWithCString
+    createstring.restype = ctypes.c_void_p
+    createstring.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+    getasn.restype = ctypes.c_void_p
+    setinfoitem.restype = ctypes.c_int32
+    setinfoitem.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    kcfstringencodingutf8 = 0x08000100
+    # -2 selects the session of the user that runs the process
+    setinfoitem(-2, getasn(), displaynamekey, createstring(None, name.encode(), kcfstringencodingutf8), None)
+
+
 def run_viewer(tokens: "Sequence[str]") -> None:
     """Open the window of the viewer, and print the command of the last plot when the window closes.
 
@@ -717,7 +777,9 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     assert isinstance(app, QtWidgets.QApplication)
     app.setApplicationName("artistools")
-    app.setApplicationDisplayName("artistools")
+    app.setApplicationDisplayName(APPLICATION_NAME)
+    if sys.platform == "darwin":
+        set_macos_application_name(APPLICATION_NAME)
     app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512)))
 
     # each window holds a reference here, thus Python keeps it while it is open
@@ -738,7 +800,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     viewer = SpectrumViewer(tokens, mplfig.Figure())
     window = QtWidgets.QMainWindow()
     window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-    window.setWindowTitle(f"plotspectra {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
+    window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
     canvas = FigureCanvasQTAgg(viewer.fig)
     if viewer.draw(quiet=False) is not None:
         # the arguments of the user give the error, and the terminal shows it
@@ -747,6 +809,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         return
     windows.append(window)
 
+    fittimer = QtCore.QTimer()
+    fittimer.setSingleShot(True)
+    fittimer.setInterval(FIT_MILLISECONDS)
+
     class PlotArea(QtWidgets.QWidget):
         """The area of the plot, which scales the figure to its size."""
 
@@ -754,6 +820,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
             super().resizeEvent(event)
             fit_canvas()
+            # a new plot takes up to 1 s, thus the plot takes the new shape only when the resize stops
+            fittimer.start()
 
     plotarea = PlotArea()
     plotarea.setMinimumSize(320, 240)
@@ -920,7 +988,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     emissioncheck = QtWidgets.QCheckBox("--showemission")
     absorptioncheck = QtWidgets.QCheckBox("--showabsorption")
     groupbybox = QtWidgets.QComboBox()
-    groupbybox.addItems(["none", *viewer.groupbychoices])
+    groupbybox.addItems(viewer.groupbychoices)
     countlabel = QtWidgets.QLabel("-maxseriescount")
     countbox = QtWidgets.QSpinBox()
     countbox.setRange(1, 200)
@@ -951,7 +1019,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     _, bingrid = add_section("Bins of the packet spectrum", expanded=bool(viewer.values.deltax))
     # an empty check box gives no -deltax, and plotspectra then takes its default bins
     deltaxcheck = QtWidgets.QCheckBox()
-    deltaxbox = QtWidgets.QDoubleSpinBox()
+
+    class DeltaxSpinBox(QtWidgets.QDoubleSpinBox):
+        """A box for -deltax that shows the shortest text of its value.
+
+        The box accepts more decimals than a bin width usually has. A fixed count of decimals then shows "20.000".
+        """
+
+        @t.override
+        def textFromValue(self, v: float) -> str:
+            return format(v, ".10g")
+
+    deltaxbox = DeltaxSpinBox()
+    # each arrow step is one power of ten below the value, thus the arrows reach each bin width
+    deltaxbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
     for widget in (deltaxcheck, deltaxbox):
         widget.setToolTip(helptexts.get("deltax", ""))
     bingrid.addWidget(deltaxcheck, 0, 0)
@@ -980,11 +1061,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     commandtext = QtWidgets.QPlainTextEdit()
     commandtext.setReadOnly(True)
     commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    commandtext.setFixedHeight(5 * commandtext.fontMetrics().lineSpacing() + 12)
+    commandtext.setFixedHeight(3 * commandtext.fontMetrics().lineSpacing() + 12)
     copybutton = QtWidgets.QPushButton("Copy")
     copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
-    commandgrid.addWidget(commandtext, 0, 0, 1, 2)
-    commandgrid.addWidget(copybutton, 1, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+    commandgrid.addWidget(commandtext, 0, 0)
+    commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
     sidebarlayout.addWidget(commandbox)
 
     # the status bar gives the messages at the left, and the readout, the time of the plot, and the help at the right
@@ -1036,9 +1117,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         # a step of approximately 1/1000 of the x range is correct for each x unit, e.g. 10 Å for wavelengths
         xspan = defaultxmax - defaultxmin
         deltaxstep = 10.0 ** math.floor(math.log10(xspan / 1000.0))
-        deltaxbox.setDecimals(max(0, -math.floor(math.log10(deltaxstep))))
-        deltaxbox.setRange(deltaxstep, xspan)
-        deltaxbox.setSingleStep(deltaxstep)
+        # 3 more decimals than the default step let the user give a bin width that is not a multiple of the step
+        decimals = max(0, -math.floor(math.log10(deltaxstep))) + 3
+        deltaxbox.setDecimals(decimals)
+        deltaxbox.setRange(10.0**-decimals, xspan)
         if not values.deltax:
             deltaxbox.setValue(2.0 * deltaxstep)
         xunit = get_xunit(values.xunit)
@@ -1072,9 +1154,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         if key not in rejections:
             groupbys = [
                 None
-                if choice in {"none", values.groupby}
+                if choice == (values.groupby or viewer.defaultgroupby)
                 else viewer.get_rejection(dc.replace(values, groupby=choice, showemission=True))
-                for choice in ("none", *viewer.groupbychoices)
+                for choice in viewer.groupbychoices
             ]
             emission = None if values.showemission else viewer.get_rejection(dc.replace(values, showemission=True))
             absorption = (
@@ -1153,7 +1235,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
             edit.setEnabled(isyfixed)
         emissioncheck.setChecked(values.showemission)
         absorptioncheck.setChecked(values.showabsorption)
-        groupbybox.setCurrentText(values.groupby or "none")
+        groupbybox.setCurrentText(values.groupby or viewer.defaultgroupby)
         countbox.setValue(values.maxseriescount)
         # these options apply only to an emission or absorption plot, and a disabled control keeps its place
         for widget in (countlabel, countbox, nostackcheck, lockbutton):
@@ -1176,6 +1258,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         fit_canvas()
 
     requestedvalues: ControlValues | None = None
+
+    def fit_figwidthscale() -> None:
+        """Give the plot the -figwidthscale that fills the plot area."""
+        area = plotarea.contentsRect()
+        values = requestedvalues or viewer.values
+        if area.width() <= 0 or area.height() <= 0 or viewer.figsize[0] <= 0.0:
+            return
+        figwidthscale = viewer.get_fitted_figwidthscale(area.width(), area.height())
+        if figwidthscale != values.figwidthscale:
+            apply(dc.replace(values, figwidthscale=figwidthscale))
+
+    fittimer.timeout.connect(fit_figwidthscale)
 
     def apply(values: ControlValues) -> None:
         """Show the new values now, and draw them when Qt has no other events to process.
@@ -1212,6 +1306,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         readoutlabel.setText("")
         messagelabel.setText(message or "")
         show_values()
+        # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
+        fittimer.start()
         # a rejection occurs again at each step, thus a rejection stops the Play button
         if message is not None:
             playbutton.setChecked(False)
@@ -1360,13 +1456,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
             apply(values)
 
     def on_emission_options() -> None:
-        groupby = None if groupbybox.currentText() == "none" else groupbybox.currentText()
+        groupby = groupbybox.currentText()
         showemission = emissioncheck.isChecked()
         # -groupby colours the emission plot, thus a choice of -groupby also sets --showemission.
         # An empty --showemission check box removes the -groupby choice.
-        if groupby != viewer.values.groupby and groupby is not None:
+        if groupby != (viewer.values.groupby or viewer.defaultgroupby):
             showemission = True
         elif not showemission:
+            groupby = viewer.defaultgroupby
+        # plotspectra takes the default -groupby when the command gives none, thus the command stays short
+        if groupby == viewer.defaultgroupby:
             groupby = None
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         fixedionlist = viewer.values.fixedionlist if groupby == viewer.values.groupby else ()

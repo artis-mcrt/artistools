@@ -880,7 +880,7 @@ def addarg_labelfontsize(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addarg_yscale(parser: argparse.ArgumentParser) -> None:
+def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> None:
     """Add the -yscale argument that selects the scale of the vertical axis.
 
     "auto" reads the drawn values and takes a log scale when they cover more than one order of
@@ -890,19 +890,22 @@ def addarg_yscale(parser: argparse.ArgumentParser) -> None:
     arggroup(parser, "appearance").add_argument(
         "-yscale",
         choices=["log", "linear", "lin", "auto"],
-        default="auto",
-        help="Scale of the vertical axis. auto takes a log scale for values that cover a wide range",
+        default=default,
+        help=(
+            "Scale of the vertical axis. auto takes a log scale for values that cover a wide range."
+            " The default is %(default)s"
+        ),
     )
 
 
-def resolve_yscale(args: argparse.Namespace) -> None:
+def resolve_yscale(args: argparse.Namespace, defaultyscale: str = "auto") -> None:
     """Set args.logscaley from -yscale, which every plot helper reads.
 
-    --logscaley is the older spelling of "-yscale log". Two arguments that ask for a different scale
-    get a message rather than a silent precedence.
+    --logscaley is the older spelling of "-yscale log", thus it replaces the default of the command.
+    Two arguments that ask for a different scale get a message rather than a silent precedence.
     """
     yscale = getattr(args, "yscale", "auto")
-    if yscale == "auto":
+    if yscale == "auto" or (yscale == defaultyscale and getattr(args, "logscaley", False)):
         return
 
     wantlog = yscale == "log"
@@ -1026,7 +1029,7 @@ def parse_cli_args(
     args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)
-    resolve_yscale(args)
+    resolve_yscale(args, parser.get_default("yscale"))
 
     return args
 

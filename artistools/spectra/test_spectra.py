@@ -1116,6 +1116,18 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="auto", timedays=300, outputfile=outputpath / "sp.pdf")
     assert not mockyscale.call_args_list
 
+    # -yscale auto chose a log axis for a kilonova spectrum at 3 to 5 days, where the middle half of the flux
+    # covers a ratio between 15 and 41. A spectrum keeps a linear axis unless the command asks for a different scale
+    mockyscale.reset_mock()
+    with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outputpath / "sp.pdf")
+    assert not mockyscale.call_args_list
+
+    # --logscaley replaces the default scale
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], logscaley=True, timedays=300, outputfile=outputpath / "sp.pdf")
+    assert [call.args[1] for call in mockyscale.call_args_list] == ["log"]
+
 
 def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
     """-xunit reads the name while argparse parses, thus a mistake stops the command before it reads a file.
@@ -1670,7 +1682,7 @@ def test_plotspectra_multispecplot_prunes_the_ticks_of_a_log_axis(tmp_path: Path
 
     with mock.patch.object(pt, "wants_log_scale", return_value=True):
         axes = get_saved_axes(
-            specpath=modelpath, outputfile=tmp_path / "multispec_log.pdf", timedayslist=["290", "300"]
+            specpath=modelpath, outputfile=tmp_path / "multispec_log.pdf", timedayslist=["290", "300"], yscale="auto"
         )
 
     assert len(axes) == 2
@@ -2059,13 +2071,28 @@ def test_interactive_fixed_y_axis() -> None:
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 
 
+def test_interactive_figwidthscale_fills_the_plot_area() -> None:
+    """The viewer sets -figwidthscale to give the figure the shape of the plot area, and the command shows it."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-figwidthscale", "1.5", "--interactive"])
+    for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
+        figwidthscale = viewer.get_fitted_figwidthscale(areawidth, areaheight)
+        assert viewer.change(dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
+        figwidth, figheight = viewer.fig.get_size_inches()
+        # the scale has 2 decimals, thus the shape of the figure differs a little from the shape of the area
+        assert np.isclose(figwidth / figheight, areawidth / areaheight, rtol=0.01)
+        assert f" -figwidthscale {figwidthscale:g}" in viewer.get_command()
+
+
 def test_absorption_plot_keeps_a_linear_axis() -> None:
     """An absorption plot must keep a linear y axis with -yscale auto, because its absorption part is negative.
 
     The automatic rule read only the spectrum line, and it chose a log axis. The axis then showed no data.
     """
     args = at.misc.parse_cli_args(
-        plotspectra.addargs, None, None, [str(modelpath_classic_3d), "-t", "5", "--showemission", "--showabsorption"]
+        plotspectra.addargs,
+        None,
+        None,
+        [str(modelpath_classic_3d), "-t", "5", "--showemission", "--showabsorption", "-yscale", "auto"],
     )
     plotspectra.resolve_plot_args(args)
     # the automatic rule then asks for a log axis for every set of values
