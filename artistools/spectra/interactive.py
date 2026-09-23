@@ -1309,23 +1309,96 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     timegrid.addWidget(timestepslabel, 3, 0, 1, 2)
     timegrid.addWidget(playbutton, 3, 2)
 
+    class RangeSlider(QtWidgets.QWidget):
+        """A slider with two handles, which give the minimum and the maximum of a range.
+
+        Qt has no slider with two handles. A drag moves the handle that is nearer to the pointer, and the minimum
+        stays below the maximum. The signal gives the index of the handle that moved and its new position.
+        """
+
+        limitmoved = QtCore.Signal(int, int)
+        handleradius: t.Final = 8.0
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.positions = [0, SLIDER_STEPS]
+            self.draghandle: int | None = None
+            self.setMinimumHeight(round(3 * self.handleradius))
+            self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            # the arrow keys move the time and change the width, thus the slider must not take them
+            self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+
+        def set_positions(self, low: int, high: int) -> None:
+            self.positions = [low, high]
+            self.update()
+
+        def get_pixel(self, position: int) -> float:
+            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / SLIDER_STEPS
+
+        def get_position(self, pixel: float) -> int:
+            fraction = (pixel - self.handleradius) / max(self.width() - 2.0 * self.handleradius, 1.0)
+            return round(min(max(fraction, 0.0), 1.0) * SLIDER_STEPS)
+
+        @t.override
+        def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            palette = self.palette()
+            middle = self.height() / 2.0
+            lowpixel, highpixel = (self.get_pixel(position) for position in self.positions)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            for left, right, colourrole in (
+                (self.handleradius, self.width() - self.handleradius, QtGui.QPalette.ColorRole.Mid),
+                (lowpixel, highpixel, QtGui.QPalette.ColorRole.Highlight),
+            ):
+                painter.setBrush(palette.color(colourrole))
+                painter.drawRoundedRect(QtCore.QRectF(left, middle - 2.0, right - left, 4.0), 2.0, 2.0)
+            painter.setPen(QtGui.QPen(palette.color(QtGui.QPalette.ColorRole.Mid)))
+            painter.setBrush(palette.color(QtGui.QPalette.ColorRole.Light))
+            for pixel in (lowpixel, highpixel):
+                painter.drawEllipse(QtCore.QPointF(pixel, middle), self.handleradius - 1.0, self.handleradius - 1.0)
+            painter.end()
+
+        @t.override
+        def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+            pixel = event.position().x()
+            midpixel = sum(self.get_pixel(position) for position in self.positions) / 2.0
+            self.draghandle = 0 if pixel < midpixel else 1
+            self.move_handle(pixel)
+
+        @t.override
+        def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+            if self.draghandle is not None:
+                self.move_handle(event.position().x())
+
+        @t.override
+        def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+            self.draghandle = None
+
+        def move_handle(self, pixel: float) -> None:
+            if self.draghandle is None:
+                return
+            position = self.get_position(pixel)
+            if self.draghandle == 0:
+                position = min(position, self.positions[1] - 1)
+            else:
+                position = max(position, self.positions[0] + 1)
+            if position != self.positions[self.draghandle]:
+                self.positions[self.draghandle] = position
+                self.update()
+                self.limitmoved.emit(self.draghandle, position)
+
     xheader, xgrid = add_section("")
-    xminslider, xmaxslider = make_slider(), make_slider()
-    for slider in (xminslider, xmaxslider):
-        slider.setRange(0, SLIDER_STEPS)
+    xrangeslider = RangeSlider()
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    xminlabel, xmaxlabel = QtWidgets.QLabel(), QtWidgets.QLabel()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
-    for row, (label, slider, edit, dest) in enumerate([
-        (xminlabel, xminslider, xminedit, "xmin"),
-        (xmaxlabel, xmaxslider, xmaxedit, "xmax"),
-    ]):
-        edit.setFixedWidth(110)
-        for widget in (slider, edit):
+    xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)
+    for column, (widget, dest) in enumerate(((xminedit, "xmin"), (xrangeslider, ""), (xmaxedit, "xmax"))):
+        if dest:
+            widget.setFixedWidth(110)
             widget.setToolTip(helptexts.get(dest, "") + zoomtip)
-        xgrid.addWidget(label, row, 0)
-        xgrid.addWidget(slider, row, 1)
-        xgrid.addWidget(edit, row, 2)
+        xgrid.addWidget(widget, 0, column)
+    xgrid.setColumnStretch(1, 1)
 
     _, axesgrid = add_section("Axes")
     xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
@@ -1628,8 +1701,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         continuousbutton,
         timeslider,
         widthslider,
-        xminslider,
-        xmaxslider,
+        xrangeslider,
         xunitbox,
         yscalebox,
         logscalexcheck,
@@ -1644,7 +1716,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         deltaxbox,
     ]
 
-    # the x sliders and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
+    # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
     logxrange = (0.0, 1.0)
     rangesunit: str | None = None
 
@@ -1652,7 +1724,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         nonlocal logxrange, rangesunit
         values = viewer.values
         defaultxmin, defaultxmax = get_default_xlimits(values.xunit, gamma=viewer.args.gamma)
-        # the x sliders act on log10(x), thus their range must be above zero
+        # the x slider acts on log10(x), thus its range must be above zero
         xlow = min(value for value in (float(values.xmin), defaultxmin) if value > 0.0) / 2.0
         xhigh = max(float(values.xmax), defaultxmax) * 2.0
         logxrange = (math.log10(xlow), math.log10(xhigh))
@@ -1666,9 +1738,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if not values.deltax:
             deltaxbox.setValue(2.0 * deltaxstep)
         xunit = get_xunit(values.xunit)
-        xheader.setText(xunit.kind.capitalize())
-        xminlabel.setText(f"{xunit.kind.capitalize()} min [{xunit.label}]")
-        xmaxlabel.setText(f"{xunit.kind.capitalize()} max [{xunit.label}]")
+        xheader.setText(f"{xunit.kind.capitalize()} [{xunit.label}]")
         deltaxcheck.setText(f"-deltax [{xunit.label}]")
         rangesunit = values.xunit
 
@@ -1781,8 +1851,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             set_edit_text(widthedit, str(last - first + 1))
         set_edit_text(timeedit, f"{values.centre:.4g}")
         timestepslabel.setText(viewer.get_timesteps_text())
-        xminslider.setValue(to_position(math.log10(max(float(values.xmin), 10.0 ** logxrange[0])), *logxrange))
-        xmaxslider.setValue(to_position(math.log10(max(float(values.xmax), 10.0 ** logxrange[0])), *logxrange))
+        xrangeslider.set_positions(
+            *(
+                to_position(math.log10(max(float(limit), 10.0 ** logxrange[0])), *logxrange)
+                for limit in (values.xmin, values.xmax)
+            )
+        )
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
         xunitbox.setCurrentText(values.xunit)
@@ -1995,24 +2069,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if low < high:
             apply(dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g")))
 
-    def set_slider_xlimit(slider: QtWidgets.QSlider) -> None:
-        """Set the limit of the slider that moved, and keep the other limit as its text field gives it.
+    def on_xrange(handle: int, position: int) -> None:
+        """Set the limit of the handle that moved, and keep the other limit as its text field gives it.
 
-        A slider position is on a fixed range with a step, thus it cannot show each limit that the user types.
+        A position of the slider is on a fixed range with a step, thus it cannot show each limit that the user types.
         """
         # a value of 3 significant digits gives a short command
-        limit = float(f"{10.0 ** from_position(slider.value(), *logxrange):.3g}")
+        limit = float(f"{10.0 ** from_position(position, *logxrange):.3g}")
         values = viewer.values
-        if slider is xminslider and limit < float(values.xmax):
+        if handle == 0 and limit < float(values.xmax):
             apply(dc.replace(values, xmin=format(limit, ".10g")))
-        elif slider is xmaxslider and limit > float(values.xmin):
+        elif handle == 1 and limit > float(values.xmin):
             apply(dc.replace(values, xmax=format(limit, ".10g")))
-
-    def on_xminslider(_position: int) -> None:
-        set_slider_xlimit(xminslider)
-
-    def on_xmaxslider(_position: int) -> None:
-        set_slider_xlimit(xmaxslider)
 
     def on_xedit() -> None:
         try:
@@ -2215,8 +2283,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
-    xminslider.valueChanged.connect(on_xminslider)
-    xmaxslider.valueChanged.connect(on_xmaxslider)
+    xrangeslider.limitmoved.connect(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
     xunitbox.currentTextChanged.connect(on_axes)
