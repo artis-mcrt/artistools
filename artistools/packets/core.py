@@ -37,6 +37,7 @@ from artistools.misc.fileio import is_readonly_error
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
+from artistools.misc.fileio import read_parquet_cache_metadata
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -520,6 +521,10 @@ def get_packets_rankbatch_parquetfile(
         stalereason = rankbatch_parquet_staleness(
             parquetfilepath, CACHEVERSION, firstmtimes[0] if firstmtimes else None, textsource_complete=False
         )
+        # the one-way check keeps a cache with no stamp. The reader can make that cache again from the text files,
+        # thus the cache is stale
+        if stalereason is None and firstmtimes:
+            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, None)
         # a conversion needs every text file of the batch, thus only a stale cache needs the check of each one
         allranksfound = stalereason is not None and len(
             get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
@@ -647,27 +652,42 @@ def get_packets_mpirank_groups(modelpath: Path, maxpacketfiles: int | None) -> l
 
 
 @lru_cache(maxsize=8)
-def find_first_rank_textfiles(modelpath: Path, firstranks: tuple[int, ...], virtual: bool) -> tuple[Path, ...]:
-    """Return the text file of the first rank of each batch that has one.
+def find_first_rank_textfiles(
+    modelpath: Path, firstranks: tuple[int, ...], virtual: bool
+) -> tuple[tuple[Path, ...], tuple[tuple[Path, int], ...]]:
+    """Return the text file of the first rank in each batch, and the time of each scanned folder.
 
-    The scan of the folders is slow on a network drive, thus the result stays in memory between two reads.
+    The scan of the folders is slow on a network drive, thus the result stays in memory between two reads. A new
+    text file changes the time of its folder, and a new subfolder changes the time of the model folder. Thus the
+    times of the folders show when the result is old. The function reads the times before the scan, thus the times
+    also show a change during the scan.
     """
+    with os.scandir(modelpath) as entries:
+        subfolders = [Path(entry.path) for entry in entries if entry.is_dir()]
+    foldermtimes = tuple((folder, folder.stat().st_mtime_ns) for folder in (modelpath, *subfolders))
     filenames = [get_packets_textfilename(rank, virtual) for rank in firstranks]
-    return tuple(Path(entry.path) for entry in find_packets_textsources(modelpath, filenames).values())
+    textfiles = tuple(Path(entry.path) for entry in find_packets_textsources(modelpath, filenames).values())
+    return textfiles, foldermtimes
 
 
 def get_packets_cache_fingerprint(
     modelpath: Path, mpirank_groups: Sequence[tuple[int, tuple[int, ...]]], virtual: bool
-) -> tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]]:
+) -> tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]] | None:
     """Return the modification time of the first text file of each batch, and the identity of each cache.
 
     The check of a batch reads the first text file and the cache. Thus a change to one of the two files changes
-    this value. The function raises FileNotFoundError if a text file of the last scan does not exist now.
+    this value. The function returns None if a folder of the last scan changed, or if a text file of the last scan
+    does not exist now.
     """
-    firsttextfiles = find_first_rank_textfiles(
+    firsttextfiles, foldermtimes = find_first_rank_textfiles(
         modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual
     )
-    textmtimes = tuple(path.stat().st_mtime_ns for path in firsttextfiles)
+    try:
+        if any(folder.stat().st_mtime_ns != mtime for folder, mtime in foldermtimes):
+            return None
+        textmtimes = tuple(path.stat().st_mtime_ns for path in firsttextfiles)
+    except FileNotFoundError:
+        return None
     cachestats: list[tuple[int, int] | None] = []
     for batchindex, batch_mpiranks in mpirank_groups:
         try:
@@ -686,20 +706,26 @@ def get_packets_batch_parquet_paths(
 
     The function makes each outdated cache from the text files. The result of the check of the caches stays in
     memory. For a run of 20 batches, the check took 9 ms at each plot of the spectrum viewer. A new check runs only
-    when the text file of the first rank of a batch changes, or when a cache changes.
+    when the text file of the first rank of a batch changes, when a cache changes, or when a folder of the scan
+    changes.
     """
     modelpath = Path(modelpath).absolute()
     mpirank_groups = get_packets_mpirank_groups(modelpath, maxpacketfiles)
-    try:
-        fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)
-    except FileNotFoundError:
-        # a text file of the last scan does not exist now, thus the result of that scan is incorrect
+    fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)
+    if fingerprint is None:
+        # the result of the last scan is old, thus a new scan finds the text files that the reader reads now
         find_first_rank_textfiles.cache_clear()
         fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)
 
-    nprocs_read, parquetpacketsfiles = check_packets_batch_parquet_paths(
-        modelpath, maxpacketfiles, virtual, fingerprint
-    )
+    if fingerprint is None:
+        # a folder changed during the new scan, thus the check runs now and its result does not stay in memory
+        nprocs_read, parquetpacketsfiles = check_packets_batch_parquet_paths.__wrapped__(
+            modelpath, maxpacketfiles, virtual, ((), ())
+        )
+    else:
+        nprocs_read, parquetpacketsfiles = check_packets_batch_parquet_paths(
+            modelpath, maxpacketfiles, virtual, fingerprint
+        )
     return nprocs_read, list(parquetpacketsfiles)
 
 

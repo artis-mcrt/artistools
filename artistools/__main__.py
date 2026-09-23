@@ -99,7 +99,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             check_time_selection(argparser, args, argsraw)
             # the parser of the command recorded what it writes, thus -o takes its rule here
             resolve_output_argument(args)
-            resolve_yscale(args, argparser.get_default("yscale"))
+            resolve_yscale(args)
 
         run_command(func, args)
     except (AssertionError, FileNotFoundError, ModuleNotFoundError, PermissionError, ValueError) as exc:

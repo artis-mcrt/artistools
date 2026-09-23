@@ -1869,15 +1869,8 @@ def get_flux_contributions_from_packets(
             spectra[str(label)] = spectrum
         return spectra
 
-    # a shell label comes from the position of each packet, thus the label is the type of the packet
-    emission_typecolumn = "emissiontype_str" if groupby in SHELLCOLUMNS else emtypecolumn
-    absorption_typecolumn = "absorptiontype_str" if groupby in SHELLCOLUMNS else "absorption_type"
-    dfemission = bin_by_type(dfpackets, emission_typecolumn, dirbin_nu_column) if getemission else None
-    dfabsorption = bin_by_type(dfpackets, absorption_typecolumn, "absorption_freq") if getabsorption else None
-    del dfpackets
-
-    # The code adds the labels after it bins the packets. Thus it finds a label only for a code that a packet uses.
-    if dfemission is not None and groupby not in SHELLCOLUMNS:
+    def get_emission_labels(typecodes: pl.Series, linelist: pl.DataFrame) -> pl.DataFrame:
+        """Return the label of each emission type code, for the codes in typecodes."""
         if groupby == "nuc":
             emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
         elif groupby == "nucmass":
@@ -1894,7 +1887,7 @@ def get_flux_contributions_from_packets(
             )
 
             emtypelabels = pl.concat([
-                get_line_labels(dflines, dfemission[emtypecolumn], groupby, "emissiontype_str"),
+                get_line_labels(linelist, typecodes, groupby, "emissiontype_str"),
                 pl.LazyFrame(
                     {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
@@ -1908,23 +1901,45 @@ def get_flux_contributions_from_packets(
 
         # Select only the key column and the label column. The nuclide table has more columns, and the join must
         # not add them.
-        dfemission = dfemission.join(
-            emtypelabels.select(emtypecolumn, "emissiontype_str").collect(), on=emtypecolumn, how="left"
-        ).drop(emtypecolumn)
+        return emtypelabels.select(emtypecolumn, "emissiontype_str").collect()
 
-        if vpkt_match_emission_exclusion_to_opac and directionbins_are_vpkt_observers:
-            assert vpkt_config is not None
-            assert opacchoiceindex is not None
-            z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
-            if z_exclude == -1:
-                # no bound-bound
-                dfemission = dfemission.filter(pl.col("emissiontype_str").str.contains("bound-free"))
-            elif z_exclude == -2:
-                # no bound-free
-                dfemission = dfemission.filter(pl.col("emissiontype_str").str.contains("bound-free").not_())
-            elif z_exclude > 0:
-                elsymb = get_elsymbol(z_exclude)
-                dfemission = dfemission.filter(pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_())
+    # the exclusion removes whole packets, thus the absorption of an excluded packet also leaves the plot
+    if (
+        getemission
+        and groupby not in SHELLCOLUMNS
+        and vpkt_match_emission_exclusion_to_opac
+        and directionbins_are_vpkt_observers
+    ):
+        assert vpkt_config is not None
+        assert opacchoiceindex is not None
+        z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
+        keptlabel: pl.Expr | None = None
+        if z_exclude == -1:
+            # no bound-bound
+            keptlabel = pl.col("emissiontype_str").str.contains("bound-free")
+        elif z_exclude == -2:
+            # no bound-free
+            keptlabel = pl.col("emissiontype_str").str.contains("bound-free").not_()
+        elif z_exclude > 0:
+            elsymb = get_elsymbol(z_exclude)
+            keptlabel = pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_()
+        if keptlabel is not None:
+            # the filter drops a code with no label, as the filter of the labelled packets did
+            keptcodes = get_emission_labels(dfpackets[emtypecolumn], dflines).filter(keptlabel)[emtypecolumn]
+            dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(keptcodes.implode()))
+
+    # a shell label comes from the position of each packet, thus the label is the type of the packet
+    emission_typecolumn = "emissiontype_str" if groupby in SHELLCOLUMNS else emtypecolumn
+    absorption_typecolumn = "absorptiontype_str" if groupby in SHELLCOLUMNS else "absorption_type"
+    dfemission = bin_by_type(dfpackets, emission_typecolumn, dirbin_nu_column) if getemission else None
+    dfabsorption = bin_by_type(dfpackets, absorption_typecolumn, "absorption_freq") if getabsorption else None
+    del dfpackets
+
+    # The code adds the labels after it bins the packets. Thus it finds a label only for a code that a packet uses.
+    if dfemission is not None and groupby not in SHELLCOLUMNS:
+        dfemission = dfemission.join(
+            get_emission_labels(dfemission[emtypecolumn], dflines), on=emtypecolumn, how="left"
+        ).drop(emtypecolumn)
 
     if dfabsorption is not None and groupby not in SHELLCOLUMNS:
         abstypelabels = pl.concat([

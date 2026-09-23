@@ -1129,6 +1129,25 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     assert [call.args[1] for call in mockyscale.call_args_list] == ["log"]
 
 
+def test_explicit_linear_yscale_with_logscaley_stops_the_command() -> None:
+    """An explicit -yscale linear gives a different scale from --logscaley, also when linear is the default.
+
+    resolve_yscale compared -yscale with the default of the command, thus it did not see an explicit linear as a
+    choice of the user.
+    """
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-yscale", "linear", "--logscaley"])
+    # a keyword becomes a default of the parser, and it is still a choice of the user
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(plotspectra.addargs, None, None, None, {"yscale": "linear", "logscaley": True})
+
+    # the viewer has no box item for the alias "lin", thus the resolved scale has the spelling "linear"
+    args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-yscale", "lin"])
+    assert (args.yscale, args.logscaley) == ("linear", False)
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-yscale", "lin", "--interactive"])
+    assert viewer.values.yscale in viewer.yscalechoices
+
+
 def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
     """-xunit reads the name while argparse parses, thus a mistake stops the command before it reads a file.
 
@@ -1792,6 +1811,68 @@ def test_plotspectra_vpkt_exclusion_names_the_missing_options(
     assert "-plotvspecpol" in captured
 
 
+def test_vpkt_exclusion_removes_the_absorption_of_an_excluded_packet() -> None:
+    """--vpkt_match_emission_exclusion_to_opac removes each excluded packet from the emission and the absorption.
+
+    The code filtered only the emission after it binned both, thus the absorption kept the excluded packets.
+    """
+    c = at.constants.c_ang_per_s
+    # packet 1: last emission in an Fe II line (line 0) at 5000 A, absorbed before in a Co II line (line 1) at 4000 A.
+    # packet 2: last emission in the Co II line at 6000 A, absorbed before in the Fe II line at 4500 A
+    packets = pl.LazyFrame(
+        {
+            "dir0_nu_rf": [c / 5000.0, c / 6000.0],
+            "dir0_t_arrive_d": [5.0, 5.0],
+            "dir0_e_rf_0": [1.0, 1.0],
+            "dir0_e_rf_1": [1.0, 1.0],
+            "emissiontype": [0, 1],
+            "absorption_type": [1, 0],
+            "absorption_freq": [c / 4000.0, c / 4500.0],
+        },
+        schema={
+            "dir0_nu_rf": pl.Float32,
+            "dir0_t_arrive_d": pl.Float32,
+            "dir0_e_rf_0": pl.Float64,
+            "dir0_e_rf_1": pl.Float64,
+            "emissiontype": pl.Int32,
+            "absorption_type": pl.Int32,
+            "absorption_freq": pl.Float32,
+        },
+    )
+    # the second spectrum of the direction excludes the emission of iron (Z = 26)
+    vpktconfig = {"nobsdirections": 1, "nspectraperobs": 2, "z_excludelist": [0, 26]}
+    bflist = pl.LazyFrame({"bfindex": [], "ion_str": []}, schema={"bfindex": pl.Int32, "ion_str": pl.String})
+    with (
+        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
+        mock.patch.object(
+            atspectra,
+            "get_linelist_label_columns",
+            return_value=pl.DataFrame({"atomic_number": [26, 27], "ion_stage": [2, 2]}),
+        ),
+        mock.patch.object(atspectra, "get_bflist", return_value=bflist),
+    ):
+        contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
+            Path(),
+            timelowdays=4.0,
+            timehighdays=6.0,
+            lambda_bin_edges=np.arange(3000.0, 8000.0, 100.0),
+            groupby="ion",
+            directionbin=1,
+            directionbins_are_vpkt_observers=True,
+            vpkt_match_emission_exclusion_to_opac=True,
+        )
+
+    def get_wavelengths(fluxes: npt.NDArray[np.floating]) -> list[float]:
+        return [float(value) for value in array_lambda[fluxes > 0.0]]
+
+    series = {
+        row.linelabel: (get_wavelengths(row.array_flambda_emission), get_wavelengths(row.array_flambda_absorption))
+        for row in contributions
+    }
+    assert series == {"Co II": ([6050.0], []), "Fe II": ([], [4550.0])}
+
+
 def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
     """A de-redshift divides the wavelength by (1 + z) and multiplies f_lambda by (1 + z).
 
@@ -1982,6 +2063,20 @@ def test_interactive_time_range_argument() -> None:
             assert bounds[0] <= float(text) <= bounds[1], (centre, width, text)
 
 
+def test_interactive_continuous_range_keeps_its_bounds() -> None:
+    """A --notimeclamp range of days keeps its bounds when the viewer opens, also inside one timestep.
+
+    The viewer changed a range that holds the middle of one timestep or of no timestep into a single time, and a
+    single time reads the whole timestep.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "299.5-301", "--notimeclamp", "--interactive"])
+    tokens = shlex.split(viewer.get_command())
+    assert tokens[tokens.index("-t") + 1] == "299.5-301"
+
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    assert viewer.values.width == 0.0
+
+
 def test_interactive_valid_timesteps() -> None:
     """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
     viewer = make_headless_viewer([str(modelpath), "--interactive"])
@@ -2046,11 +2141,13 @@ def test_interactive_emission_options() -> None:
     assert viewer.values == oldvalues
     assert viewer.get_command() == command
 
+    # the viewer stores the default grouping as None. A stored "ion" was not equal to the None of the controls, thus a
+    # change of an emission option removed the series lock
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-groupby", "ion", "--interactive"])
-    assert viewer.values.groupby == "ion"
+    assert viewer.values.groupby is None
     figheight = viewer.fig.get_figheight()
     assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
-    assert viewer.get_command().endswith(" --showabsorption -groupby ion -maxseriescount 5 --nostack")
+    assert viewer.get_command().endswith(" --showabsorption -maxseriescount 5 --nostack")
     assert viewer.fig.get_figheight() > figheight
 
     # the window disables a choice that plotspectra rejects, thus the test must find the rejection without a plot
@@ -2075,6 +2172,58 @@ def test_interactive_xunit_and_references() -> None:
     assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
     assert "-xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
+
+
+def test_interactive_paths_keep_their_place() -> None:
+    """Each path of the command stays a path and keeps its place, also a path after an option.
+
+    The viewer took the paths only from the start of the command, and it put the references after the models. Thus a
+    path after an option left the command, and -label named the wrong series.
+    """
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    viewer = make_headless_viewer([
+        reference,
+        str(modelpath),
+        "-label",
+        "Observed",
+        "Model",
+        "-t",
+        "300",
+        "--interactive",
+    ])
+    assert shlex.split(viewer.get_command())[2:4] == [reference, str(modelpath)]
+
+    viewer = make_headless_viewer(["-t", "300", "--notitle", str(modelpath), "--interactive"])
+    assert viewer.modelpathtokens == [str(modelpath)]
+    # the command without the option starts with the path, and the viewer still reads the time of the command
+    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert "timestep 54" in viewer.get_timesteps_text()
+
+    # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
+    viewer = make_headless_viewer([
+        "--showemission",
+        "-fixedionlist",
+        "Fe II",
+        "Co II",
+        str(modelpath_classic_3d),
+        "--interactive",
+    ])
+    assert viewer.modelpathtokens == [str(modelpath_classic_3d)]
+    assert str(modelpath_classic_3d) in shlex.split(viewer.get_command())
+
+
+def test_interactive_command_gives_the_series_count_of_the_box() -> None:
+    """The command gives the count of the box, also when that count is the default without -fixedionlist.
+
+    plotspectra gives a missing count the length of -fixedionlist, thus a count of 14 with a list needs the option.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    series = viewer.get_drawn_series()
+    for fixedionlist, maxseriescount in ((series[:3], plotspectra.DEFAULT_MAXSERIESCOUNT), (series[:3], 3), ((), 5)):
+        values = dc.replace(viewer.values, fixedionlist=fixedionlist, maxseriescount=maxseriescount)
+        args = at.misc.parse_cli_args(plotspectra.addargs, None, None, viewer.get_plot_tokens(values))
+        plotspectra.resolve_plot_args(args)
+        assert args.maxseriescount == maxseriescount
 
 
 def test_interactive_fixed_y_axis() -> None:
@@ -2149,6 +2298,33 @@ def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
         assert viewer.change(viewer.values, preview=True) is None
         assert not viewer.drewpreview
 
+        # the reader divides the flux by the number of ranks, but not a count of packets
+        viewer = make_headless_viewer([
+            str(modelpath_classic_3d),
+            "-t",
+            "4",
+            "--frompackets",
+            "-yvariable",
+            "packetcount",
+            "--interactive",
+        ])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert not viewer.drewpreview
+
+
+def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
+    """An AssertionError of plotspectra is a rejection, and the viewer keeps the old values.
+
+    The viewer caught fewer errors than the CLI, thus the error left the window with the rejected values.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldvalues = viewer.values
+    # resolve_plot_args asserts that the command does not give both kinds of viewing angle
+    newvalues = dc.replace(oldvalues, otheroptions=(("-plotvspecpol", ("0",)), ("-plotviewingangle", ("0",))))
+    assert viewer.get_rejection(newvalues) is not None
+    assert viewer.change(newvalues) is not None
+    assert viewer.values == oldvalues
+
 
 def test_interactive_redraw_matches_a_new_plot() -> None:
     """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
@@ -2172,6 +2348,18 @@ def test_interactive_redraw_matches_a_new_plot() -> None:
         canvas.draw()
         pixels.append(np.asarray(canvas.buffer_rgba()).copy())
     assert np.array_equal(pixels[0], pixels[1])
+
+
+def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
+    """The tick labels come back when the user removes --hidexticklabels from the table.
+
+    cla() keeps the tick parameters, and the plot hides the labels only when the command gives the option.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    for otheroptions, labelsvisible in (((("--hidexticklabels", ()),), False), ((), True)):
+        assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+        viewer.fig.canvas.draw()
+        assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
 
 
 def test_interactive_option_rows() -> None:

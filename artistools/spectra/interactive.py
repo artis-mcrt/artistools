@@ -26,6 +26,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_error
+from artistools.misc import separate_trailing_folders
 from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
@@ -106,6 +107,9 @@ MAX_FIGWIDTHSCALE: t.Final[float] = 4.0
 
 # the time after the last resize of the window, before the plot takes the new shape
 FIT_MILLISECONDS: t.Final[int] = 200
+
+# plotspectra raises these errors for a bad argument or input file. The dispatcher of the CLI reports the same errors
+USER_ERRORS: t.Final = (AssertionError, FileNotFoundError, ModuleNotFoundError, PermissionError, ValueError)
 
 REJECTED_MESSAGE: t.Final = "plotspectra cannot draw this plot. The terminal shows the error"
 
@@ -493,10 +497,15 @@ class SpectrumViewer:
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
         parser = make_parser()
-        basetokens = remove_options(parser, tokens, CONTROLLED_DESTS)
-        args = parse_cli_args(addargs, None, None, remove_options(parser, tokens, {"interactive"}))
+        usertokens = remove_options(parser, tokens, {"interactive"})
+        # parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list, e.g.
+        # -fixedionlist, does not take a folder. The removal of the controlled options must keep those folders
+        basetokens = remove_options(parser, separate_trailing_folders(usertokens), CONTROLLED_DESTS)
+        args = parse_cli_args(addargs, None, None, usertokens)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
+        # with --notimeclamp, a range of days keeps its bounds, and a single time or a timestep reads a whole timestep
+        givesdaysrange = args.timemin is not None or (args.timedays is not None and "-" in args.timedays)
         resolve_plot_args(args)
         check_viewer_args(args)
         self.args = args
@@ -528,12 +537,13 @@ class SpectrumViewer:
             if self.tstarts[timestep] >= self.timebounds[0] and self.tends[timestep] <= self.timebounds[1]
         ] or list(range(len(self.tmids)))
 
-        # the window adds and removes the reference spectra, thus it keeps them separate from the model paths
+        # the table of the window shows each option that no other control sets. The tokens that no option takes are
+        # paths, e.g. the path of "--notitle mymodel", or the paths after "--"
         pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
-        startpaths = basetokens[:pathcount]
-        self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
-        # the table of the window edits each option that no other control sets
-        otheroptions, self.othertokens = split_option_rows(parser, basetokens[pathcount:])
+        otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
+        # the order of the paths gives the -label and the style of each series, thus the paths keep their order
+        self.startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
+        self.modelpathtokens = [path for path in self.startpaths if not path_is_reference_spectrum(path)]
         self.tableflags = [action.option_strings[0] for action in get_table_actions(parser)]
         self.actionsbyflag = {
             action.option_strings[0]: action
@@ -545,9 +555,10 @@ class SpectrumViewer:
         if args.timemin is not None and args.timemax is not None:
             centre = (args.timemin + args.timemax) / 2.0
             coversseveral = sum(args.timemin <= tmid <= args.timemax for tmid in self.tmids) > 1
-            width = args.timemax - args.timemin if coversseveral else 0.0
+            width = args.timemax - args.timemin if coversseveral or (args.notimeclamp and givesdaysrange) else 0.0
         else:
-            centre, width = self.tmids[self.validtimesteps[len(self.validtimesteps) // 2]], 0.0
+            # 4 significant digits of the middle timestep give a short command
+            centre, width = float(f"{self.tmids[self.validtimesteps[len(self.validtimesteps) // 2]]:.4g}"), 0.0
 
         actions = {action.dest: action for action in parser._actions}  # ruff:ignore[private-member-access]
         self.groupbychoices = [str(choice) for choice in actions["groupby"].choices or ()]
@@ -558,29 +569,30 @@ class SpectrumViewer:
             for dest, action in actions.items()
             if action.help and action.help != argparse.SUPPRESS
         }
-        self.defaultyscale: str = parser.get_default("yscale")
+        self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultxunit = "kev" if args.gamma else "angstroms"
         self.defaultgroupby = "nuc" if args.gamma else "ion"
-        # 4 significant digits of the time and 3 of the width give a short command
+        # the time of the command stays exact, because a rounded time can select a different timestep
         values = ControlValues(
-            centre=float(f"{centre:.4g}"),
-            width=float(f"{width:.3g}"),
+            centre=centre,
+            width=width,
             notimeclamp=bool(args.notimeclamp),
             xmin=format(args.xmin, ".10g"),
             xmax=format(args.xmax, ".10g"),
             xunit=args.xunit,
             logscalex=bool(args.logscalex),
-            yscale="log" if args.logscaley and args.yscale == self.defaultyscale else args.yscale,
+            yscale=args.yscale,
             ymin="" if args.ymin is None else format(args.ymin, ".10g"),
             ymax="" if args.ymax is None else format(args.ymax, ".10g"),
             showemission=bool(args.showemission),
             showabsorption=bool(args.showabsorption),
-            groupby=givengroupby,
+            # None is the default grouping, thus a -groupby that names the default gives None as well
+            groupby=None if givengroupby == self.defaultgroupby else givengroupby,
             maxseriescount=args.maxseriescount,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
             fixedionlist=tuple(args.fixedionlist or ()),
-            references=tuple(path for path in startpaths if path_is_reference_spectrum(path)),
+            references=tuple(path for path in self.startpaths if path_is_reference_spectrum(path)),
             figwidthscale=args.figwidthscale,
             otheroptions=otheroptions,
         )
@@ -589,8 +601,8 @@ class SpectrumViewer:
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        # each option in frameskey changes the layout or the size of the frames, thus a change of one makes new frames
-        self.frameskey: tuple[bool, bool, float, float] | None = None
+        # the options in frameskey change the layout, the size, or the tick parameters of the frames
+        self.frameskey: tuple[bool, bool, float, float, bool, bool, float | None] | None = None
         # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
         self.previewmaxpacketfiles = (
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
@@ -651,8 +663,10 @@ class SpectrumViewer:
             options.append("--showabsorption")
         if values.groupby is not None:
             options += ["-groupby", values.groupby]
-        # the count applies to an emission plot alone, thus a different plot leaves it out
-        if (values.showemission or values.showabsorption) and values.maxseriescount != DEFAULT_MAXSERIESCOUNT:
+        # the count applies only to an emission or absorption plot, thus the command of a different plot leaves it
+        # out. plotspectra gives a missing count the length of -fixedionlist, or DEFAULT_MAXSERIESCOUNT without a list
+        defaultcount = len(values.fixedionlist) if values.fixedionlist else DEFAULT_MAXSERIESCOUNT
+        if (values.showemission or values.showabsorption) and values.maxseriescount != defaultcount:
             options += ["-maxseriescount", str(values.maxseriescount)]
         if (values.showemission or values.showabsorption) and values.nostack:
             options.append("--nostack")
@@ -663,10 +677,13 @@ class SpectrumViewer:
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["-fixedionlist", *values.fixedionlist]
+        # a reference that the user added goes after the paths of the command line
+        paths = [
+            *(path for path in self.startpaths if path in self.modelpathtokens or path in values.references),
+            *(path for path in values.references if path not in self.startpaths),
+        ]
         othertokens = [token for flag, optionvalues in values.otheroptions for token in (flag, *optionvalues)]
-        return make_command_tokens(
-            [*self.modelpathtokens, *values.references, *othertokens, *self.othertokens], options
-        )
+        return make_command_tokens([*paths, *othertokens], options)
 
     def get_command(self) -> str:
         """Return the command that draws the plot of the values."""
@@ -674,7 +691,9 @@ class SpectrumViewer:
 
     def get_timesteps_text(self) -> str:
         """Return the timesteps and the days that the plot reads from spec.out, which holds complete timesteps."""
-        timedays = self.get_plot_tokens()[len(self.modelpathtokens) + len(self.values.references) + 1]
+        # a path does not start with "-", and the -t of the controls comes before each other option
+        plottokens = self.get_plot_tokens()
+        timedays = plottokens[plottokens.index("-t") + 1]
         timestepmin, timestepmax, daysmin, daysmax = get_time_range(
             self.runfolders[0], timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
         )
@@ -741,7 +760,7 @@ class SpectrumViewer:
                 check_viewer_args(plotargs)
         except SystemExit:
             return get_first_line(errors.getvalue())
-        except (FileNotFoundError, ValueError) as exc:
+        except USER_ERRORS as exc:
             return get_first_line(str(exc))
         if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
             return "A different option of the command keeps the emission plot on"
@@ -761,8 +780,8 @@ class SpectrumViewer:
         except SystemExit:
             # exit_with_error printed a line that starts with "error: ", and a help line
             return get_first_line(errors.getvalue())
-        except (FileNotFoundError, ValueError) as exc:
-            print_error(str(exc))
+        except USER_ERRORS as exc:
+            print_error(str(exc) or type(exc).__name__)
             return get_first_line(str(exc))
         finally:
             sys.stderr.write(errors.getvalue())
@@ -772,13 +791,18 @@ class SpectrumViewer:
 
         A preview of a plot of the packets reads the first batch of ranks only. For the 20 batches of a kilonova run,
         a range of 8 days took 0.12 s in place of 1.1 s. The flux stays correct, because the reader divides by the
-        number of ranks that it reads. The command in the window has no -maxpacketfiles for the preview.
+        number of ranks that it reads. The reader does not divide a count of packets, thus a plot of
+        -yvariable packetcount has no preview. The command in the window has no -maxpacketfiles for the preview.
         """
         plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
         resolve_plot_args(plotargs)
         check_viewer_args(plotargs)
         self.drewpreview = bool(
-            preview and plotargs.frompackets and plotargs.maxpacketfiles is None and self.previewmaxpacketfiles
+            preview
+            and plotargs.frompackets
+            and plotargs.maxpacketfiles is None
+            and plotargs.yvariable != "packetcount"
+            and self.previewmaxpacketfiles
         )
         if self.drewpreview:
             plotargs.maxpacketfiles = self.previewmaxpacketfiles
@@ -790,7 +814,17 @@ class SpectrumViewer:
 
     def draw_frames(self, plotargs: argparse.Namespace) -> None:
         """Draw the plot on empty frames."""
-        frameskey = (plotargs.showabsorption, plotargs.residuals, plotargs.figwidthscale, plotargs.figscale)
+        # cla() keeps the tick parameters, and the plot sets them only for these options. Thus a change to one of
+        # them makes new frames
+        frameskey = (
+            plotargs.showabsorption,
+            plotargs.residuals,
+            plotargs.figwidthscale,
+            plotargs.figscale,
+            plotargs.hidexticklabels,
+            plotargs.hideyticklabels,
+            getattr(plotargs, "labelfontsize", None),
+        )
         if frameskey != self.frameskey:
             self.fig.clear()
             _, self.axes, self.residualaxis = make_plot_figure(plotargs, fig=self.fig)
@@ -1035,8 +1069,8 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app.exec()
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
-    """Open a window of the viewer for the plotspectra arguments in tokens."""
+def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
+    """Open a window of the viewer for the plotspectra arguments in tokens, and return True if it opened."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -1053,7 +1087,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
             raise SystemExit(1)
-        return
+        return False
     windows.append(window)
 
     fulldrawtimer = QtCore.QTimer()
@@ -1695,8 +1729,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         requestedvalues = values
         # show_values reads viewer.values, thus the viewer holds the new values for this call only
         oldvalues, viewer.values = viewer.values, values
-        show_values()
-        viewer.values = oldvalues
+        try:
+            show_values()
+        finally:
+            viewer.values = oldvalues
 
     def draw_requested() -> None:
         """Draw the plot of the last values, or show a message and keep the old values if plotspectra rejects them."""
@@ -1849,8 +1885,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
         if low < high:
             apply(dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g")))
 
-    def on_xslider(_position: int) -> None:
-        set_xlimits(*(10.0 ** from_position(slider.value(), *logxrange) for slider in (xminslider, xmaxslider)))
+    def set_slider_xlimit(slider: QtWidgets.QSlider) -> None:
+        """Set the limit of the slider that moved, and keep the other limit as its text field gives it.
+
+        A slider position is on a fixed range with a step, thus it cannot show each limit that the user types.
+        """
+        # a value of 3 significant digits gives a short command
+        limit = float(f"{10.0 ** from_position(slider.value(), *logxrange):.3g}")
+        values = viewer.values
+        if slider is xminslider and limit < float(values.xmax):
+            apply(dc.replace(values, xmin=format(limit, ".10g")))
+        elif slider is xmaxslider and limit > float(values.xmin):
+            apply(dc.replace(values, xmax=format(limit, ".10g")))
+
+    def on_xminslider(_position: int) -> None:
+        set_slider_xlimit(xminslider)
+
+    def on_xmaxslider(_position: int) -> None:
+        set_slider_xlimit(xmaxslider)
 
     def on_xedit() -> None:
         try:
@@ -1975,8 +2027,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
 
     def on_open_model() -> None:
         folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(Path.cwd()))
-        if folder:
-            open_window([folder, *viewer.othertokens], windows)
+        if not folder:
+            return
+        # a SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window
+        errors = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(errors):
+                opened = open_window([folder], windows)
+        except SystemExit:
+            opened = False
+        finally:
+            sys.stderr.write(errors.getvalue())
+        if not opened:
+            show_error(f"The viewer cannot open {folder}: {get_first_line(errors.getvalue())}")
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
@@ -2043,8 +2106,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
-    xminslider.valueChanged.connect(on_xslider)
-    xmaxslider.valueChanged.connect(on_xslider)
+    xminslider.valueChanged.connect(on_xminslider)
+    xmaxslider.valueChanged.connect(on_xmaxslider)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
     xunitbox.currentTextChanged.connect(on_axes)
@@ -2089,3 +2152,4 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> None:
     window.resize(plotwidth + sidebar.width() + 40, max(plotheight, 700))
     window.show()
     show_values()
+    return True

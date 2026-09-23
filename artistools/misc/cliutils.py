@@ -886,33 +886,43 @@ def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> 
     "auto" reads the drawn values and takes a log scale when they cover more than one order of
     magnitude. It keeps --logscaley working, which asks for a log scale whatever the values are.
     "lin" means "linear".
+
+    The argument has no default, thus resolve_yscale can find an explicit -yscale that gives a different
+    scale from --logscaley. args.defaultyscale holds the default of the command.
     """
     arggroup(parser, "appearance").add_argument(
         "-yscale",
         choices=["log", "linear", "lin", "auto"],
-        default=default,
+        default=None,
         help=(
             "Scale of the vertical axis. auto takes a log scale for values that cover a wide range."
-            " The default is %(default)s"
+            f" The default is {default}"
         ),
     )
+    parser.set_defaults(defaultyscale=default)
 
 
-def resolve_yscale(args: argparse.Namespace, defaultyscale: str = "auto") -> None:
-    """Set args.logscaley from -yscale, which every plot helper reads.
+def resolve_yscale(args: argparse.Namespace) -> None:
+    """Set args.yscale to the scale that the plot takes, and set args.logscaley from it.
 
     --logscaley is the older spelling of "-yscale log", thus it replaces the default of the command.
-    Two arguments that ask for a different scale get a message rather than a silent precedence.
+    If two arguments ask for different scales, the command stops with an error message. The result
+    has the spelling "linear" for "lin", thus the code that reads args.yscale compares with one spelling.
     """
-    yscale = getattr(args, "yscale", "auto")
-    if yscale == "auto" or (yscale == defaultyscale and getattr(args, "logscaley", False)):
+    if not hasattr(args, "yscale"):
         return
 
-    wantlog = yscale == "log"
-    if getattr(args, "logscaley", False) and not wantlog:
+    logscaley = getattr(args, "logscaley", False)
+    yscale = args.yscale
+    if logscaley and yscale in {"linear", "lin"}:
         exit_with_error(f"specify only one of --logscaley and -yscale {yscale}")
+    # "auto" chooses a scale, thus --logscaley gives that choice
+    if yscale is None or (logscaley and yscale == "auto"):
+        yscale = "log" if logscaley else getattr(args, "defaultyscale", "auto")
 
-    args.logscaley = wantlog
+    args.yscale = "linear" if yscale == "lin" else yscale
+    if args.yscale != "auto":
+        args.logscaley = args.yscale == "log"
 
 
 def addarg_notitle(parser: argparse.ArgumentParser) -> None:
@@ -1029,7 +1039,7 @@ def parse_cli_args(
     args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
     check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
     resolve_output_argument(args)
-    resolve_yscale(args, parser.get_default("yscale"))
+    resolve_yscale(args)
 
     return args
 

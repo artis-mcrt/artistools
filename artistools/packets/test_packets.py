@@ -237,6 +237,28 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     assert parquetpath.stat().st_mtime_ns > firstwrite
 
 
+def test_packets_cache_without_stamps_is_stale_when_the_text_files_exist(tmp_path: Path) -> None:
+    """The reader replaces a cache with no stamp with a cache from the text files, as for a complete batch.
+
+    The check of the first rank compares in one direction, and that rule also kept a cache with no stamp.
+    """
+    import shutil
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+    (tmp_path / "packets").mkdir()
+    cachepath = tmp_path / "packets" / "packetsbatch00_0000_0001.out.parquet.tmp"
+    pl.DataFrame({"unstampedcolumn": [0]}).write_parquet(cachepath)
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    assert parquetpath == cachepath
+    assert "unstampedcolumn" not in pl.read_parquet_schema(parquetpath)
+
+
 @pytest.mark.parametrize("virtual", [False, True])
 def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> None:
     """Keep the number of directory scans independent of the number of ranks."""
@@ -303,6 +325,15 @@ def test_packets_cache_check_stays_in_memory(tmp_path: Path) -> None:
         # a new cache at the path can hold different data, thus the check runs again
         cachepath.unlink()
         at.misc.write_parquet_atomic(pl.DataFrame({"number": [1]}), cachepath, metadata=metadata)
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
+
+        # the reader searches the model folder before run1, thus a new text file there needs a new scan. The file is
+        # older than the stamp, thus the cache stays current
+        scandir.reset_mock()
+        newtextfile = tmp_path / "packets00_0000.out"
+        newtextfile.touch()
+        os.utime(newtextfile, (1000.0, 1000.0))
         assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
         assert scandir.call_count > 0
 
