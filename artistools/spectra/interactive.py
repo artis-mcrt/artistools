@@ -72,6 +72,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "showemission",
     "showabsorption",
     "emissionabsorption",
+    "frompackets",
     "groupby",
     "maxseriescount",
     "nostack",
@@ -147,6 +148,7 @@ class ControlValues:
     maxseriescount: int
     nostack: bool
     deltax: str
+    frompackets: bool
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
     figwidthscale: float
@@ -563,6 +565,8 @@ class SpectrumViewer:
         args = parse_cli_args(addargs, None, None, usertokens)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
+        # -deltax also makes plotspectra read the packets, thus the box shows only a --frompackets that the user gave
+        givesfrompackets = bool(args.frompackets)
         # with --notimeclamp, a range of days keeps its bounds, and a single time or a timestep reads a whole timestep
         givesdaysrange = args.timemin is not None or (args.timedays is not None and "-" in args.timedays)
         resolve_plot_args(args)
@@ -652,6 +656,7 @@ class SpectrumViewer:
             maxseriescount=args.maxseriescount,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
+            frompackets=givesfrompackets,
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in self.startpaths if path_is_reference_spectrum(path)),
             figwidthscale=args.figwidthscale,
@@ -733,6 +738,8 @@ class SpectrumViewer:
             options.append("--nostack")
         if values.deltax:
             options += ["-deltax", values.deltax]
+        if values.frompackets:
+            options.append("--frompackets")
         if values.figwidthscale != 1.0:
             options += ["-figwidthscale", format(values.figwidthscale, "g")]
         # a list option takes each word that follows it, thus it comes after every other option
@@ -1232,6 +1239,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     sidebarlayout.setContentsMargins(0, 0, 0, 0)
     panel = QtWidgets.QWidget()
     panellayout = QtWidgets.QVBoxLayout(panel)
+    panellayout.setSpacing(2)
     panelscroll = QtWidgets.QScrollArea()
     panelscroll.setWidget(panel)
     panelscroll.setWidgetResizable(True)
@@ -1248,10 +1256,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         header.setFont(font)
         content = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(content)
+        # a small space between the rows and the sections keeps more of the controls in view
+        grid.setContentsMargins(8, 2, 0, 6)
+        grid.setVerticalSpacing(4)
         grid.setColumnStretch(1, 1)
         panellayout.addWidget(header)
         panellayout.addWidget(content)
         return header, grid
+
+    def add_row(grid: QtWidgets.QGridLayout, row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
+        """Put the widgets side by side in one row of the grid, from the left."""
+        rowlayout = QtWidgets.QHBoxLayout()
+        for widget in widgets:
+            rowlayout.addWidget(widget)
+        rowlayout.addStretch(1)
+        grid.addLayout(rowlayout, row, 0, 1, -1)
 
     def make_slider() -> QtWidgets.QSlider:
         slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
@@ -1405,33 +1424,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     xunitbox.addItems(list(XUNITS))
     yscalebox.addItems(viewer.yscalechoices)
     logscalexcheck = QtWidgets.QCheckBox("--logscalex")
-    for row, (label, widget, dest) in enumerate([
-        (QtWidgets.QLabel("-xunit"), xunitbox, "xunit"),
-        (QtWidgets.QLabel("-yscale"), yscalebox, "yscale"),
-    ]):
-        widget.setToolTip(helptexts.get(dest, ""))
-        axesgrid.addWidget(label, row, 0)
-        axesgrid.addWidget(widget, row, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
-    logscalexcheck.setToolTip(helptexts.get("logscalex", ""))
-    axesgrid.addWidget(logscalexcheck, 2, 0, 1, 2)
     fixycheck = QtWidgets.QCheckBox("Fix the y axis")
     fixycheck.setToolTip(
         "Keep the y limits of the plot when the time or a different option changes. The command gives the limits"
         " with -ymin and -ymax."
     )
-    axesgrid.addWidget(fixycheck, 3, 0, 1, 2)
     yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    ylimits = QtWidgets.QHBoxLayout()
-    for label, edit, dest in (
-        (QtWidgets.QLabel("-ymin"), yminedit, "ymin"),
-        (QtWidgets.QLabel("-ymax"), ymaxedit, "ymax"),
+    for widget, dest in (
+        (xunitbox, "xunit"),
+        (yscalebox, "yscale"),
+        (logscalexcheck, "logscalex"),
+        (yminedit, "ymin"),
+        (ymaxedit, "ymax"),
     ):
+        widget.setToolTip(helptexts.get(dest, ""))
+    for edit in (yminedit, ymaxedit):
         edit.setFixedWidth(110)
-        edit.setToolTip(helptexts.get(dest, ""))
-        ylimits.addWidget(label)
-        ylimits.addWidget(edit)
-    ylimits.addStretch(1)
-    axesgrid.addLayout(ylimits, 4, 0, 1, 2)
+    add_row(axesgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("-yscale"), yscalebox, logscalexcheck])
+    add_row(axesgrid, 1, [fixycheck, QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit])
 
     _, emissiongrid = add_section("Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -1448,22 +1458,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         (countbox, "maxseriescount"),
     ):
         widget.setToolTip(helptexts.get(dest, ""))
-    emissiongrid.addWidget(emissioncheck, 0, 0)
-    emissiongrid.addWidget(absorptioncheck, 0, 1)
-    emissiongrid.addWidget(QtWidgets.QLabel("-groupby"), 1, 0)
-    emissiongrid.addWidget(groupbybox, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
-    emissiongrid.addWidget(countlabel, 2, 0)
-    emissiongrid.addWidget(countbox, 2, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     nostackcheck = QtWidgets.QCheckBox("--nostack")
     nostackcheck.setToolTip(helptexts.get("nostack", ""))
-    emissiongrid.addWidget(nostackcheck, 3, 0, 1, 2)
     lockbutton = QtWidgets.QPushButton("Lock series")
     lockbutton.setCheckable(True)
     lockbutton.setToolTip(
         "Keep the series of the plot and their colours when the time or the x range changes. The command gives the"
         " series with -fixedionlist."
     )
-    emissiongrid.addWidget(lockbutton, 4, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignLeft)
+    add_row(emissiongrid, 0, [emissioncheck, absorptioncheck, nostackcheck])
+    add_row(emissiongrid, 1, [QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
 
     _, bingrid = add_section("Bins of the packet spectrum")
     # an empty check box gives no -deltax, and plotspectra then takes its default bins
@@ -1484,8 +1488,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     deltaxbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
     for widget in (deltaxcheck, deltaxbox):
         widget.setToolTip(helptexts.get("deltax", ""))
-    bingrid.addWidget(deltaxcheck, 0, 0)
-    bingrid.addWidget(deltaxbox, 0, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+    frompacketscheck = QtWidgets.QCheckBox("--frompackets")
+    frompacketscheck.setToolTip(helptexts.get("frompackets", ""))
+    add_row(bingrid, 0, [frompacketscheck, deltaxcheck, deltaxbox])
     for box in (countbox, deltaxbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
@@ -1714,6 +1719,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         lockbutton,
         deltaxcheck,
         deltaxbox,
+        frompacketscheck,
     ]
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
@@ -1883,6 +1889,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if values.deltax:
             deltaxbox.setValue(float(values.deltax))
         deltaxbox.setEnabled(bool(values.deltax))
+        frompacketscheck.setChecked(values.frompackets)
         if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
             referencelist.clear()
             referencelist.addItems(list(values.references))
@@ -2143,6 +2150,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             maxseriescount=countbox.value(),
             nostack=nostackcheck.isChecked(),
             deltax=format(deltaxbox.value(), ".10g") if deltaxcheck.isChecked() else "",
+            frompackets=frompacketscheck.isChecked(),
         )
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
@@ -2300,6 +2308,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     lockbutton.toggled.connect(on_lock)
     deltaxcheck.toggled.connect(on_emission_options)
     deltaxbox.valueChanged.connect(on_emission_options)
+    frompacketscheck.toggled.connect(on_emission_options)
     addbutton.clicked.connect(on_add_reference)
     removebutton.clicked.connect(on_remove_reference)
     copybutton.clicked.connect(on_copy)

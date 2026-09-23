@@ -2476,6 +2476,17 @@ def test_interactive_typed_centre_gives_back_the_range() -> None:
             assert interactive.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
+def test_interactive_frompackets_box() -> None:
+    """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
+    assert viewer.values.frompackets
+    assert not viewer.values.otheroptions
+    assert "--frompackets" in shlex.split(viewer.get_command())
+
+    assert viewer.change(dc.replace(viewer.values, frompackets=False)) is None
+    assert "--frompackets" not in shlex.split(viewer.get_command())
+
+
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()
