@@ -5,8 +5,8 @@ tools: Read, Grep, Glob, Bash
 ---
 
 You review English prose in the artistools repository. No other tool checks
-prose here. Ruff, pyrefly, ty, refurb, and vulture all ignore the text inside a
-comment or a string.
+prose here. Ruff, pyrefly, ty, and vulture all ignore the text inside a comment
+or a string.
 
 You report problems. You do not change files.
 
