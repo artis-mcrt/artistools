@@ -1998,3 +1998,12 @@ def test_interactive_xunit_and_references() -> None:
     assert tokens[:4] == [str(modelpath), reference, "-t", "300.3"]
     assert "-xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
+
+
+def test_interactive_fixed_y_axis() -> None:
+    """A fixed y axis keeps a negative -ymin through the command, and the limits stay when the time changes."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
+    assert " -ymin -1e-13 -ymax 3e-13" in viewer.get_command()
+    assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
+    assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)

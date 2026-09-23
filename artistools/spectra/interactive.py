@@ -53,6 +53,8 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "xunit",
     "logscalex",
     "yscale",
+    "ymin",
+    "ymax",
     "showemission",
     "showabsorption",
     "emissionabsorption",
@@ -85,6 +87,8 @@ class ControlValues:
     xunit: str
     logscalex: bool
     yscale: str
+    ymin: str
+    ymax: str
     showemission: bool
     showabsorption: bool
     groupby: str | None
@@ -325,6 +329,8 @@ class SpectrumViewer:
             xunit=args.xunit,
             logscalex=bool(args.logscalex),
             yscale=args.yscale,
+            ymin="" if args.ymin is None else format(args.ymin, ".10g"),
+            ymax="" if args.ymax is None else format(args.ymax, ".10g"),
             showemission=bool(args.showemission),
             showabsorption=bool(args.showabsorption),
             groupby=givengroupby,
@@ -354,6 +360,10 @@ class SpectrumViewer:
             options.append("--logscalex")
         if values.yscale != "auto":
             options += ["-yscale", values.yscale]
+        if values.ymin:
+            options += ["-ymin", values.ymin]
+        if values.ymax:
+            options += ["-ymax", values.ymax]
         if values.showemission:
             options.append("--showemission")
         if values.showabsorption:
@@ -609,6 +619,24 @@ def run_viewer(tokens: "Sequence[str]") -> None:
         axesgrid.addWidget(widget, row, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     logscalexcheck.setToolTip(helptexts.get("logscalex", ""))
     axesgrid.addWidget(logscalexcheck, 2, 0, 1, 2)
+    fixycheck = QtWidgets.QCheckBox("Fix the y axis")
+    fixycheck.setToolTip(
+        "Keep the y limits of the plot when the time or a different option changes. The command gives the limits"
+        " with -ymin and -ymax."
+    )
+    axesgrid.addWidget(fixycheck, 3, 0, 1, 2)
+    yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    ylimits = QtWidgets.QHBoxLayout()
+    for label, edit, dest in (
+        (QtWidgets.QLabel("-ymin"), yminedit, "ymin"),
+        (QtWidgets.QLabel("-ymax"), ymaxedit, "ymax"),
+    ):
+        edit.setFixedWidth(110)
+        edit.setToolTip(helptexts.get(dest, ""))
+        ylimits.addWidget(label)
+        ylimits.addWidget(edit)
+    ylimits.addStretch(1)
+    axesgrid.addLayout(ylimits, 4, 0, 1, 2)
 
     _, emissiongrid = add_section("Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -680,6 +708,7 @@ def run_viewer(tokens: "Sequence[str]") -> None:
         xunitbox,
         yscalebox,
         logscalexcheck,
+        fixycheck,
         emissioncheck,
         absorptioncheck,
         groupbybox,
@@ -791,6 +820,12 @@ def run_viewer(tokens: "Sequence[str]") -> None:
         xunitbox.setCurrentText(values.xunit)
         yscalebox.setCurrentText(values.yscale)
         logscalexcheck.setChecked(values.logscalex)
+        isyfixed = bool(values.ymin or values.ymax)
+        fixycheck.setChecked(isyfixed)
+        yminedit.setText(values.ymin)
+        ymaxedit.setText(values.ymax)
+        for edit in (yminedit, ymaxedit):
+            edit.setEnabled(isyfixed)
         emissioncheck.setChecked(values.showemission)
         absorptioncheck.setChecked(values.showabsorption)
         groupbybox.setCurrentText(values.groupby or "none")
@@ -916,6 +951,27 @@ def run_viewer(tokens: "Sequence[str]") -> None:
         if values != viewer.values:
             apply(values)
 
+    def on_fixy(checked: bool) -> None:
+        if not checked:
+            apply(dc.replace(viewer.values, ymin="", ymax=""))
+            return
+        # the limits of the plot on the screen become the limits of the command, thus the plot does not change
+        low, high = (format(float(f"{limit:.3g}"), ".10g") for limit in viewer.axes[0].get_ylim())
+        apply(dc.replace(viewer.values, ymin=low, ymax=high))
+
+    def on_yedit() -> None:
+        try:
+            low, high = float(yminedit.text()), float(ymaxedit.text())
+        except ValueError:
+            show_error("Give two numbers for -ymin and -ymax")
+            return
+        if not low < high:
+            show_error("Give a -ymin that is less than -ymax")
+            return
+        values = dc.replace(viewer.values, ymin=format(low, ".10g"), ymax=format(high, ".10g"))
+        if values != viewer.values:
+            apply(values)
+
     def on_axes() -> None:
         values = viewer.values
         if xunitbox.currentText() != values.xunit:
@@ -1016,6 +1072,9 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     xunitbox.currentTextChanged.connect(on_axes)
     yscalebox.currentTextChanged.connect(on_axes)
     logscalexcheck.toggled.connect(on_axes)
+    fixycheck.toggled.connect(on_fixy)
+    yminedit.editingFinished.connect(on_yedit)
+    ymaxedit.editingFinished.connect(on_yedit)
     emissioncheck.toggled.connect(on_emission_options)
     absorptioncheck.toggled.connect(on_emission_options)
     groupbybox.currentTextChanged.connect(on_emission_options)
