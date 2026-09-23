@@ -26,10 +26,10 @@ from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
-# the ratio across the middle half of the values, above which a log scale wins. A kilonova light
-# curve gives 23 and its spectrum 7. Wider percentiles read the tails, not the data: the 5th and
-# 95th give 456 and 182, which no threshold parts.
-LOGSCALE_MINRATIO: t.Final[float] = 15.0
+# the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
+# the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a
+# kilonova has a median of 0.004 of the top. A decay over four decades has a median of 0.011
+LOGSCALE_MAXMEDIAN: t.Final[float] = 0.015
 
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
 # still shows the data. This fraction of the values is the most that a log axis may hide.
@@ -39,34 +39,42 @@ LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
 RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
 
 
-def get_drawn_yvalues(ax: "AxesTree") -> "npt.NDArray[np.float64]":
-    """Return the y values of every line that the axes holds."""
-    import numpy as np
+def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
+    """Return the y value of each point of every line that the axes holds, and the part of the x axis of each point.
 
-    columns = [np.asarray(line.get_ydata(), dtype=np.float64).ravel() for axis in iter_axes(ax) for line in axis.lines]
-    return np.concatenate(columns) if columns else np.empty(0, dtype=np.float64)
-
-
-def get_quartile_ratio(values: "npt.NDArray[np.float64]") -> float:
-    """Return the ratio that the middle half of a series of values above zero covers.
-
-    The quartiles hold the range of the data itself. A point of noise near zero changes nothing, and
-    neither does the end of a spectrum, where the flux falls away over a few points. A series that
-    decays over decades puts its quartiles decades apart, which is the difference that the scale of
-    the axis must answer.
+    A point covers half the distance to each of its neighbours, in the scale of the x axis. Thus a light curve at
+    times in a geometric sequence gives most of a linear time axis to its late points, which are few.
     """
     import numpy as np
 
-    quartile1, quartile3 = np.percentile(values, [25.0, 75.0])
-    return float(quartile3 / quartile1)
+    ycolumns: list[npt.NDArray[np.float64]] = []
+    widthcolumns: list[npt.NDArray[np.float64]] = []
+    for axis in iter_axes(ax):
+        xislog = axis.get_xscale() == "log"
+        for line in axis.lines:
+            ycolumns.append(np.asarray(line.get_ydata(), dtype=np.float64).ravel())
+            xvalues = np.asarray(line.get_xdata(), dtype=np.float64).ravel()
+            if xislog:
+                xvalues = np.log10(np.where(xvalues > 0.0, xvalues, np.nan))
+            # a point with no finite x covers no part of the axis
+            gaps = np.nan_to_num(np.abs(np.diff(xvalues)), nan=0.0, posinf=0.0)
+            widthcolumns.append(0.5 * (np.concatenate([gaps, [0.0]]) + np.concatenate([[0.0], gaps])))
+
+    if not ycolumns:
+        return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64)
+    return np.concatenate(ycolumns), np.concatenate(widthcolumns)
 
 
-def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
+def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.float64] | None" = None) -> bool:
     """Return True when a log scale shows the values better than a linear scale.
 
-    A linear axis draws the middle half of the values in a small part of itself when that half
-    covers more than the ratio, thus such a series needs a log axis. A value of zero or below has no
-    place on a log axis, thus many of them keep the linear one.
+    A linear axis draws a value far below the top on its line of zero, where the shape of the data is not visible. A
+    series that is below LOGSCALE_MAXMEDIAN of the top over half of the x axis thus needs a log axis, e.g. a decay. A
+    spectrum stays above that fraction over most of its wavelength range, and the linear axis shows it well. xwidths
+    gives the part of the x axis that each value covers. If xwidths is None, each value has the same part, e.g. each
+    cell of a grid.
+
+    A value of zero or below has no place on a log axis, thus many of them keep the linear one.
     """
     import numpy as np
 
@@ -78,7 +86,17 @@ def wants_log_scale(values: "npt.NDArray[np.float64]") -> bool:
     if countpositive < 4 or (countfinite - countpositive) > LOGSCALE_MAXHIDDEN * countfinite:
         return False
 
-    return get_quartile_ratio(values[ispositive]) > LOGSCALE_MINRATIO
+    # the 99th percentile is the top, thus a few points of noise above the data do not set it
+    top = float(np.percentile(values[ispositive], 99.0))
+    finitevalues = values[isfinite]
+    weights = np.ones(countfinite) if xwidths is None else xwidths[isfinite]
+    if not weights.sum() > 0.0:
+        # the lines cover no part of the x axis, e.g. each line has a single point
+        weights = np.ones(countfinite)
+    order = np.argsort(finitevalues)
+    cumulativeweights = np.cumsum(weights[order])
+    median = finitevalues[order][np.searchsorted(cumulativeweights, 0.5 * cumulativeweights[-1])]
+    return bool(median < LOGSCALE_MAXMEDIAN * top)
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
@@ -91,7 +109,7 @@ def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
     if getattr(args, "yscale", "auto") != "auto" or getattr(args, "logscaley", False):
         return
 
-    args.logscaley = wants_log_scale(get_drawn_yvalues(ax))
+    args.logscaley = wants_log_scale(*get_drawn_values(ax))
     if args.logscaley:
         for axis in iter_axes(ax):
             axis.set_yscale("log")
@@ -469,6 +487,7 @@ def make_frame_figure(
     sharey: bool = False,
     fullwidth: bool = True,
     rowheights: Sequence[float] | None = None,
+    fig: mplfig.Figure | None = None,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
 
@@ -487,7 +506,8 @@ def make_frame_figure(
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
-    residual panel below the main frame.
+    residual panel below the main frame. If the caller gives an empty figure as fig, the function sets its
+    size and adds the frames to it, e.g. for a window that stays open.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
@@ -523,7 +543,10 @@ def make_frame_figure(
 
     figwidth = sum(size.fixed_size for size in horizontal)
     figheight = sum(size.fixed_size for size in vertical)
-    fig = plt.figure(figsize=(figwidth, figheight))
+    if fig is None:
+        fig = plt.figure(figsize=(figwidth, figheight))
+    else:
+        fig.set_size_inches(figwidth, figheight, forward=True)
     divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
 
     import numpy as np
@@ -679,10 +702,15 @@ RESIDUALROWHEIGHT: t.Final[float] = 0.35
 
 
 def make_frame_figure_with_residuals(
-    args: argparse.Namespace, aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES
+    args: argparse.Namespace,
+    aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
+    *,
+    fig: mplfig.Figure | None = None,
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes]:
     """Return a figure with a main frame and a residual panel below it, and the two axes."""
-    fig, axesgrid = make_frame_figure(args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT))
+    fig, axesgrid = make_frame_figure(
+        args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT), fig=fig
+    )
     return fig, axesgrid[0, 0], axesgrid[1, 0]
 
 

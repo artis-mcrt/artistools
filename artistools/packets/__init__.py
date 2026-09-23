@@ -7,6 +7,7 @@ from artistools.packets.core import add_packet_directions_lazypolars as add_pack
 from artistools.packets.core import bin_and_sum as bin_and_sum
 from artistools.packets.core import bin_packet_directions_polars as bin_packet_directions_polars
 from artistools.packets.core import filter_packets_dirbin as filter_packets_dirbin
+from artistools.packets.core import get_bin_index_expr as get_bin_index_expr
 from artistools.packets.core import get_emission_velocity_expr as get_emission_velocity_expr
 from artistools.packets.core import get_emission_velocity_lineofsight_expr as get_emission_velocity_lineofsight_expr
 from artistools.packets.core import get_modelgridindex_expr as get_modelgridindex_expr

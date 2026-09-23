@@ -1420,22 +1420,53 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
 
     Return the figure, the axes, the plotted data, and the statistics of the residuals.
     """
+    fig, axes, residualaxis = make_plot_figure(args)
+    dfalldata, dfresidualstats = draw_plot(args, axes, residualaxis)
+
+    defaultoutputfile = (
+        "plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf"
+        if args.showemission or args.showabsorption
+        else "plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf"
+    )
+    args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
+
+    return fig, axes, dfalldata, dfresidualstats
+
+
+def make_plot_figure(
+    args: argparse.Namespace, *, fig: mplfig.Figure | None = None
+) -> tuple[mplfig.Figure, npt.NDArray[t.Any], mplax.Axes | None]:
+    """Return the figure, the axes of the spectra, and the residual panel if args asks for one.
+
+    If the caller gives an empty figure as fig, the function adds the frames to it, e.g. the figure of the viewer.
+    """
     nrows = len(args.timedayslist) if args.multispecplot else 1
-    dfresidualstats = pl.DataFrame()
 
     # an emission and absorption plot draws a taller frame
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     residualaxis = None
     if args.residuals:
-        fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect)
+        fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect, fig=fig)
         axesgrid = np.array([[mainaxis]], dtype=object)
     else:
-        fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=aspect, sharex=True, sharey=False)
+        fig, axesgrid = make_frame_figure(args, rows=nrows, aspect=aspect, sharex=True, sharey=False, fig=fig)
 
     # the residual panel is not one of these axes, thus the code below treats the main frame as before
     axes = axesgrid[:, 0]
     assert isinstance(axes, np.ndarray)
 
+    return fig, axes, residualaxis
+
+
+def draw_plot(
+    args: argparse.Namespace, axes: npt.NDArray[t.Any], residualaxis: mplax.Axes | None
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Draw the spectra that args selects, and return the plotted data and the statistics of the residuals.
+
+    The axes must be empty. This function writes no file, thus the viewer can call it again for each change
+    of a control.
+    """
+    dfresidualstats = pl.DataFrame()
     filterfunc = get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
@@ -1450,7 +1481,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     if args.showemission or args.showabsorption:
         legendncol = 2
-        defaultoutputfile = Path("plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf")
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             modelpath=Path(args.modelspecpaths[0]),
             axis=axes[-1],
@@ -1460,7 +1490,6 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         )
     else:
         legendncol = 1
-        defaultoutputfile = Path("plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf")
 
         # the legend comes from the first axis that a plot used, which is axes[0] for
         # --multispecplot and axes[-1] otherwise
@@ -1469,6 +1498,11 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
             args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
+
+    # the absorption part of the plot is negative, and a log axis cannot show it. set_auto_yscale reads only the
+    # lines. The stacked areas of the contributions are not lines, thus set_auto_yscale can choose a log axis here
+    if args.showabsorption and args.yscale == "auto":
+        args.yscale = "linear"
 
     # -yscale auto reads the drawn values, thus the scale of the y axis follows the data
     set_auto_yscale(list(axes), args)
@@ -1543,9 +1577,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
         for line in leg.get_lines():
             line.set_linewidth(2.0)
 
-    args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
-
-    return fig, axes, dfalldata, dfresidualstats
+    return dfalldata, dfresidualstats
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -1612,8 +1644,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-maxseriescount",
         type=int,
-        default=14,
-        help="Maximum number of plot series (ions/processes) for emission/absorption plot",
+        default=None,
+        help=(
+            "The maximum number of series (ions or processes) in an emission or absorption plot. The plot shows only"
+            " this number of -fixedionlist entries. The default is the length of -fixedionlist, or"
+            f" {DEFAULT_MAXSERIESCOUNT} without that list"
+        ),
     )
 
     addarg_filter(parser)
@@ -1629,7 +1665,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
+        "--notimeclamp",
+        action="store_true",
+        help="Do not extend the time range to the start and the end of its timesteps. This option reads the packets",
     )
 
     # no code reads this for plotspectra. It stays accepted, because a script holds the spelling,
@@ -1820,6 +1858,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser)
 
     addarg_show(parser)
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Open a window with controls for the time, the x range, and the emission plot, and show the command",
+    )
     addarg_verbose(parser)
 
     parser.add_argument(
@@ -1878,6 +1921,9 @@ def parse_velocity_values(
     unit: t.Literal["kmps", "c"] = "c" if any(valueunit == "c" for _, valueunit in parsedvalues) else "kmps"
     return [velocity_kmps for velocity_kmps, _ in parsedvalues], unit
 
+
+# the number of series of an emission or absorption plot without -maxseriescount or -fixedionlist
+DEFAULT_MAXSERIESCOUNT: t.Final = 14
 
 # the argument and the name in the title of the velocity range of each shell grouping
 VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
@@ -1969,6 +2015,9 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         "a velocity range": bool(args.velocityranges_kmps),
         "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
         "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),
+        # spec.out and the emission files hold whole timesteps, thus only the packets give a time range inside one
+        # timestep
+        "--notimeclamp": args.notimeclamp,
     }
     if args.frompackets:
         return
@@ -2031,6 +2080,14 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give one time with -timedays. Run the command again for each other time",
         )
 
+    # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
+    if args.showabsorption and args.groupby == "nuc":
+        exit_with_error(
+            "a nuclide emits a packet, but a nuclide does not absorb a packet. Thus -groupby nuc cannot group the"
+            " absorption contributions",
+            "Give -groupby ion or line, or remove --showabsorption",
+        )
+
     if args.yvariable == "packetcount":
         exit_with_error(
             "an emission plot draws a flux for each contribution, and it has no count of packets",
@@ -2062,8 +2119,98 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
+    # the dispatcher parses the command line and gives args alone, thus the viewer then reads sys.argv
+    fromdispatcher = args is not None
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    if args.interactive:
+        from artistools.spectra.interactive import get_command_tokens
+        from artistools.spectra.interactive import run_viewer
+
+        run_viewer(
+            get_command_tokens(
+                argsraw,
+                kwargs,
+                fromdispatcher=fromdispatcher,
+                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
+            )
+        )
+        return
+
+    resolve_plot_args(args)
+
+    if args.makevspecpol:
+        make_virtual_spectra_summed_file(args.specpath[0])
+        return
+
+    if args.averagevspecpolfiles:
+        make_averaged_vspecfiles(args.specpath)
+        return
+
+    if "/" in args.stokesparam:
+        plot_polarisation(args.specpath[0], args)
+        return
+
+    if args.output_spectra:
+        # -o names the folder of the files, and no -o keeps them in the spectra folder of the model
+        outputfile = Path(args.outputfile) if args.outputfile else None
+        if outputfile is not None and outputfile.suffixes and not outputfile.is_dir():
+            msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
+            raise ValueError(msg)
+        outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
+        for modelpath in args.specpath:
+            # the file names hold no model name, thus several models get a subfolder each
+            modeloutdirectory = (
+                outdirectory / get_model_name(modelpath)
+                if outdirectory is not None and len(args.specpath) > 1
+                else outdirectory
+            )
+            write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
+
+    else:
+        fig, _axes, dfalldata, dfresidualstats = make_plot(args)
+
+        strdirectionbins = (
+            "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
+            if args.plotviewingangle
+            else ""
+        )
+
+        filenameout = str(args.outputfile)
+        if args.timemin is not None and args.timemax is not None:
+            filenameout = filenameout.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
+        elif "{" in filenameout:
+            # no model resolved both bounds, thus the time placeholders get no values
+            filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
+
+        if args.write_data and len(dfalldata.columns) > 0:
+            datafilenameout = Path(filenameout).with_suffix(".txt")
+            dfalldata.write_csv(datafilenameout, separator=" ")
+            print_saved(datafilenameout)
+        if args.write_data:
+            write_residual_stats(dfresidualstats, filenameout)
+
+        save_figure(fig, filenameout, args=args, dpi=args.dpi)
+
+
+def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
+    """Return the x limits in increasing order for a command that gives no -xmin and no -xmax."""
+    lambdalimits = (0.2, 0.004) if gamma else (2500.0, 19000.0)
+    xmin, xmax = sorted(convert_angstroms_to_unit(value, xunit) for value in lambdalimits)
+    return xmin, xmax
+
+
+def get_artis_run_folders(modelpaths: Sequence[Path]) -> list[Path]:
+    """Return the folder of each ARTIS run in modelpaths. A reference spectrum or a code comparison file gives none."""
+    return [
+        get_model_folder(path)
+        for path in modelpaths
+        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+    ]
+
+
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Apply the defaults and the time range to args, and stop the command for a bad combination of arguments."""
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
@@ -2072,12 +2219,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.xunit = "kev" if args.gamma else "angstroms"
     args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
 
+    defaultxmin, defaultxmax = get_default_xlimits(args.xunit, gamma=args.gamma)
     if args.xmin is None:
-        args.xmin = convert_angstroms_to_unit(0.2 if args.gamma else 2500.0, args.xunit)
+        args.xmin = defaultxmin
     if args.xmax is None:
-        args.xmax = convert_angstroms_to_unit(0.004 if args.gamma else 19000.0, args.xunit)
+        args.xmax = defaultxmax
 
     args.xmin, args.xmax = sorted([args.xmin, args.xmax])
+
+    # -fixedionlist names each series, thus its length is the default count. A smaller -maxseriescount removes the
+    # last entries
+    if args.maxseriescount is None:
+        args.maxseriescount = len(args.fixedionlist) if args.fixedionlist else DEFAULT_MAXSERIESCOUNT
 
     assert (
         not args.plotvspecpol or not args.plotviewingangle
@@ -2103,11 +2256,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the emission plot and the default shells read the first model, thus every reader takes the same list
     args.modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
     modelspecpaths = args.modelspecpaths
-    artispaths = [
-        get_model_folder(path)
-        for path in modelspecpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
-    ]
+    artispaths = get_artis_run_folders(modelspecpaths)
     codecomparisonpaths = [path for path in modelspecpaths if path_is_codecomparison(path)]
     if args.timestep is not None and args.timedays is None and not artispaths and not codecomparisonpaths:
         # a reference spectrum has no timesteps. The command plotted it before the range resolution moved to main
@@ -2209,56 +2358,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     resolve_frompackets(args)
     check_emission_plot_args(args)
     check_yvariable_args(args)
-
-    if args.makevspecpol:
-        make_virtual_spectra_summed_file(args.specpath[0])
-        return
-
-    if args.averagevspecpolfiles:
-        make_averaged_vspecfiles(args.specpath)
-        return
-
-    if "/" in args.stokesparam:
-        plot_polarisation(args.specpath[0], args)
-        return
-
-    if args.output_spectra:
-        # -o names the folder of the files, and no -o keeps them in the spectra folder of the model
-        outputfile = Path(args.outputfile) if args.outputfile else None
-        if outputfile is not None and outputfile.suffixes and not outputfile.is_dir():
-            msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
-            raise ValueError(msg)
-        outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
-        for modelpath in args.specpath:
-            # the file names hold no model name, thus several models get a subfolder each
-            modeloutdirectory = (
-                outdirectory / get_model_name(modelpath)
-                if outdirectory is not None and len(args.specpath) > 1
-                else outdirectory
-            )
-            write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
-
-    else:
-        fig, _axes, dfalldata, dfresidualstats = make_plot(args)
-
-        strdirectionbins = (
-            "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
-            if args.plotviewingangle
-            else ""
-        )
-
-        filenameout = str(args.outputfile)
-        if args.timemin is not None and args.timemax is not None:
-            filenameout = filenameout.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
-        elif "{" in filenameout:
-            # no model resolved both bounds, thus the time placeholders get no values
-            filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
-
-        if args.write_data and len(dfalldata.columns) > 0:
-            datafilenameout = Path(filenameout).with_suffix(".txt")
-            dfalldata.write_csv(datafilenameout, separator=" ")
-            print_saved(datafilenameout)
-        if args.write_data:
-            write_residual_stats(dfresidualstats, filenameout)
-
-        save_figure(fig, filenameout, args=args, dpi=args.dpi)

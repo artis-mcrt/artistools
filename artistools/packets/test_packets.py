@@ -213,7 +213,10 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
 
 
 def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
-    """Every rank of a batch decides the freshness of its cache, and not the last rank alone."""
+    """A text file of the first rank that is newer than the cache makes the cache stale.
+
+    ARTIS writes the files of all the ranks at the same time, thus the first rank gives the time of the batch.
+    """
     import shutil
 
     from artistools.packets.core import get_packets_rankbatch_parquetfile
@@ -225,7 +228,6 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     firstwrite = parquetpath.stat().st_mtime_ns
 
-    # only the file of the first rank becomes newer, because a check of the last rank alone would miss it
     firstrankfile = tmp_path / "packets00_0000.out.zst"
     newtime = firstrankfile.stat().st_mtime + 100.0
     os.utime(firstrankfile, (newtime, newtime))
@@ -233,6 +235,28 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
 
     assert parquetpath.stat().st_mtime_ns > firstwrite
+
+
+def test_packets_cache_without_stamps_is_stale_when_the_text_files_exist(tmp_path: Path) -> None:
+    """The reader replaces a cache with no stamp with a cache from the text files, as for a complete batch.
+
+    The check of the first rank compares in one direction, and that rule also kept a cache with no stamp.
+    """
+    import shutil
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+    (tmp_path / "packets").mkdir()
+    cachepath = tmp_path / "packets" / "packetsbatch00_0000_0001.out.parquet.tmp"
+    pl.DataFrame({"unstampedcolumn": [0]}).write_parquet(cachepath)
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    assert parquetpath == cachepath
+    assert "unstampedcolumn" not in pl.read_parquet_schema(parquetpath)
 
 
 @pytest.mark.parametrize("virtual", [False, True])
@@ -267,6 +291,51 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     assert result == cachepath
     assert result.stat().st_mtime_ns == firstwrite
     assert scandir.call_count <= 3
+
+
+def test_packets_cache_check_stays_in_memory(tmp_path: Path) -> None:
+    """A second read of the packets makes no scan of the folders, and a new cache gives a new check."""
+    from artistools.packets.core import CACHEVERSION
+    from artistools.packets.core import get_packets_batch_parquet_paths
+
+    sourcefolder = tmp_path / "run1"
+    sourcefolder.mkdir()
+    sourcefiles = [sourcefolder / f"packets00_{rank:04d}.out" for rank in range(32)]
+    for sourcefile in sourcefiles:
+        sourcefile.touch()
+    (tmp_path / "packets").mkdir()
+    cachepath = tmp_path / "packets" / "packetsbatch00_0000_0031.out.parquet.tmp"
+    metadata = {
+        "cacheversion": str(CACHEVERSION),
+        "textsource_mtime": str(max(path.stat().st_mtime for path in sourcefiles)),
+    }
+    at.misc.write_parquet_atomic(pl.DataFrame({"number": [0]}), cachepath, metadata=metadata)
+
+    with (
+        mock.patch("artistools.packets.core.get_nprocs", return_value=32),
+        mock.patch("os.scandir", wraps=os.scandir) as scandir,
+    ):
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
+
+        scandir.reset_mock()
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count == 0
+
+        # a new cache at the path can hold different data, thus the check runs again
+        cachepath.unlink()
+        at.misc.write_parquet_atomic(pl.DataFrame({"number": [1]}), cachepath, metadata=metadata)
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
+
+        # the reader searches the model folder before run1, thus a new text file there needs a new scan. The file is
+        # older than the stamp, thus the cache stays current
+        scandir.reset_mock()
+        newtextfile = tmp_path / "packets00_0000.out"
+        newtextfile.touch()
+        os.utime(newtextfile, (1000.0, 1000.0))
+        assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
+        assert scandir.call_count > 0
 
 
 def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:

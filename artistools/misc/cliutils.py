@@ -88,7 +88,7 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
     parser.add_argument(
         "--usedegrees",
         action="store_true",
-        help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
+        help="Show the angles of the viewing directions in degrees, and not as cos θ and radians",
     )
 
     # averaging over one angle leaves one bin per index of the other, so the two cannot be combined. argparse
@@ -880,36 +880,49 @@ def addarg_labelfontsize(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addarg_yscale(parser: argparse.ArgumentParser) -> None:
+def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> None:
     """Add the -yscale argument that selects the scale of the vertical axis.
 
     "auto" reads the drawn values and takes a log scale when they cover more than one order of
     magnitude. It keeps --logscaley working, which asks for a log scale whatever the values are.
     "lin" means "linear".
+
+    The argument has no default, thus resolve_yscale can find an explicit -yscale that gives a different
+    scale from --logscaley. args.defaultyscale holds the default of the command.
     """
     arggroup(parser, "appearance").add_argument(
         "-yscale",
         choices=["log", "linear", "lin", "auto"],
-        default="auto",
-        help="Scale of the vertical axis. auto takes a log scale for values that cover a wide range",
+        default=None,
+        help=(
+            "Scale of the vertical axis. auto takes a log scale for values that cover a wide range."
+            f" The default is {default}"
+        ),
     )
+    parser.set_defaults(defaultyscale=default)
 
 
 def resolve_yscale(args: argparse.Namespace) -> None:
-    """Set args.logscaley from -yscale, which every plot helper reads.
+    """Set args.yscale to the scale that the plot takes, and set args.logscaley from it.
 
-    --logscaley is the older spelling of "-yscale log". Two arguments that ask for a different scale
-    get a message rather than a silent precedence.
+    --logscaley is the older spelling of "-yscale log", thus it replaces the default of the command.
+    If two arguments ask for different scales, the command stops with an error message. The result
+    has the spelling "linear" for "lin", thus the code that reads args.yscale compares with one spelling.
     """
-    yscale = getattr(args, "yscale", "auto")
-    if yscale == "auto":
+    if not hasattr(args, "yscale"):
         return
 
-    wantlog = yscale == "log"
-    if getattr(args, "logscaley", False) and not wantlog:
+    logscaley = getattr(args, "logscaley", False)
+    yscale = args.yscale
+    if logscaley and yscale in {"linear", "lin"}:
         exit_with_error(f"specify only one of --logscaley and -yscale {yscale}")
+    # "auto" chooses a scale, thus --logscaley gives that choice
+    if yscale is None or (logscaley and yscale == "auto"):
+        yscale = "log" if logscaley else getattr(args, "defaultyscale", "auto")
 
-    args.logscaley = wantlog
+    args.yscale = "linear" if yscale == "lin" else yscale
+    if args.yscale != "auto":
+        args.logscaley = args.yscale == "log"
 
 
 def addarg_notitle(parser: argparse.ArgumentParser) -> None:

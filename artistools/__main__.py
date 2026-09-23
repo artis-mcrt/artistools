@@ -88,6 +88,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args is None:
         args = parser.parse_args(separate_trailing_folders(argsraw))
+        # During a call from Python code, sys.argv holds a different command. Thus a command that shows its own
+        # command line, e.g. plotspectra --interactive, reads argsraw. The first word names the subcommand
+        if argsraw is not None:
+            args.dispatcherargsraw = list(argsraw)
 
     func = getattr(args, "func", None)
     if func is None:

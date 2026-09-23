@@ -1,19 +1,28 @@
 import argparse
+import dataclasses as dc
 import math
+import shlex
+import sys
 import typing as t
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 from artistools.spectra import core as atspectra
+from artistools.spectra import interactive
+from artistools.spectra import plotspectra
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -796,6 +805,34 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     assert max(diff) / integrated_flux_frompackets < 1e-10
 
 
+@pytest.mark.parametrize(("directionbin", "average_over_phi"), [(12, False), (10, True)])
+def test_spectra_packet_contributions_of_a_direction_bin(directionbin: int, average_over_phi: bool) -> None:
+    """Check that the emission contributions of a direction bin have the same sum as the packet spectrum of that bin.
+
+    get_flux_contributions_from_packets does not call get_from_packets, thus it must apply the solid angle of the bin.
+    """
+    lambda_bin_edges = np.arange(3000.0, 9020.0, 20.0)
+    dfspectrum = at.spectra.get_from_packets(
+        modelpath=modelpath_classic_3d,
+        timelowdays=4.0,
+        timehighdays=7.0,
+        lambda_bin_edges=lambda_bin_edges,
+        directionbins=[directionbin],
+        average_over_phi=average_over_phi,
+    )[directionbin].collect()
+    _, array_flambda_emission_total, _ = at.spectra.get_flux_contributions_from_packets(
+        modelpath_classic_3d,
+        timelowdays=4.0,
+        timehighdays=7.0,
+        lambda_bin_edges=lambda_bin_edges,
+        directionbin=directionbin,
+        average_over_phi=average_over_phi,
+        getabsorption=False,
+    )
+    assert np.max(dfspectrum["f_lambda"].to_numpy()) > 0.0
+    assert np.allclose(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy(), rtol=1e-9, atol=0.0)
+
+
 @pytest.mark.parametrize(
     ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
 )
@@ -1079,6 +1116,36 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     mockyscale.reset_mock()
     at.spectra.plot(argsraw=[], specpath=[modelpath], yscale="auto", timedays=300, outputfile=outputpath / "sp.pdf")
     assert not mockyscale.call_args_list
+
+    # the default is -yscale auto, thus the rule of the drawn values chooses the scale
+    mockyscale.reset_mock()
+    with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outputpath / "sp.pdf")
+    assert {call.args[1] for call in mockyscale.call_args_list} == {"log"}
+
+    # --logscaley replaces the default scale
+    mockyscale.reset_mock()
+    at.spectra.plot(argsraw=[], specpath=[modelpath], logscaley=True, timedays=300, outputfile=outputpath / "sp.pdf")
+    assert [call.args[1] for call in mockyscale.call_args_list] == ["log"]
+
+
+def test_explicit_linear_yscale_with_logscaley_stops_the_command() -> None:
+    """An explicit -yscale linear gives a different scale from --logscaley, also when linear is the default.
+
+    resolve_yscale compared -yscale with the default of the command, thus it did not see an explicit linear as a
+    choice of the user.
+    """
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-yscale", "linear", "--logscaley"])
+    # a keyword becomes a default of the parser, and it is still a choice of the user
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(plotspectra.addargs, None, None, None, {"yscale": "linear", "logscaley": True})
+
+    # the viewer has no box item for the alias "lin", thus the resolved scale has the spelling "linear"
+    args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-yscale", "lin"])
+    assert (args.yscale, args.logscaley) == ("linear", False)
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-yscale", "lin", "--interactive"])
+    assert viewer.values.yscale in viewer.yscalechoices
 
 
 def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1370,23 +1437,31 @@ def test_plotspectra_timestep_with_only_a_reference_spectrum(
     assert "-timestep names a timestep of a model" in capsys.readouterr().err
 
 
-def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path) -> None:
-    """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first."""
+def test_read_emission_absorption_file_reads_a_new_version(tmp_path: Path) -> None:
+    """The cache of an emission file gives the new data after a simulation writes the file again.
+
+    The key of the cache held only the path, thus the viewer of plotspectra showed the old contributions.
+    """
+    emissionfile = tmp_path / "emission.out"
+    emissionfile.write_text("1.0 2.0\n3.0 4.0\n")
+    assert at.spectra.core.read_emission_absorption_file(emissionfile).row(0) == (1.0, 2.0)
+
+    emissionfile.write_text("5.0 6.0 7.0\n8.0 9.0 10.0\n")
+    assert at.spectra.core.read_emission_absorption_file(emissionfile).row(0) == (5.0, 6.0, 7.0)
+
+
+def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first.
+
+    spec.out holds whole timesteps, thus --notimeclamp also makes plotspectra read the packets.
+    """
     at.spectra.plot(
-        argsraw=[
-            "--frompackets",
-            "--notimeclamp",
-            "-timemin",
-            "260",
-            "--plotinvalidpart",
-            str(modelpath),
-            "-outputfile",
-            str(tmp_path),
-        ]
+        argsraw=["--notimeclamp", "-timemin", "260", "--plotinvalidpart", str(modelpath), "-outputfile", str(tmp_path)]
     )
 
     pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
     assert pdfnames == ["plotspectra_260.00d-350.00d.pdf"]
+    assert "Enabling --frompackets, since --notimeclamp was specified" in capsys.readouterr().out
 
 
 def test_plotspectra_skips_a_folder_that_is_not_a_run(tmp_path: Path) -> None:
@@ -1634,7 +1709,7 @@ def test_plotspectra_multispecplot_prunes_the_ticks_of_a_log_axis(tmp_path: Path
 
     with mock.patch.object(pt, "wants_log_scale", return_value=True):
         axes = get_saved_axes(
-            specpath=modelpath, outputfile=tmp_path / "multispec_log.pdf", timedayslist=["290", "300"]
+            specpath=modelpath, outputfile=tmp_path / "multispec_log.pdf", timedayslist=["290", "300"], yscale="auto"
         )
 
     assert len(axes) == 2
@@ -1742,6 +1817,68 @@ def test_plotspectra_vpkt_exclusion_names_the_missing_options(
     captured = capsys.readouterr().err
     assert "--showemission" in captured
     assert "-plotvspecpol" in captured
+
+
+def test_vpkt_exclusion_removes_the_absorption_of_an_excluded_packet() -> None:
+    """--vpkt_match_emission_exclusion_to_opac removes each excluded packet from the emission and the absorption.
+
+    The code filtered only the emission after it binned both, thus the absorption kept the excluded packets.
+    """
+    c = at.constants.c_ang_per_s
+    # packet 1: last emission in an Fe II line (line 0) at 5000 A, absorbed before in a Co II line (line 1) at 4000 A.
+    # packet 2: last emission in the Co II line at 6000 A, absorbed before in the Fe II line at 4500 A
+    packets = pl.LazyFrame(
+        {
+            "dir0_nu_rf": [c / 5000.0, c / 6000.0],
+            "dir0_t_arrive_d": [5.0, 5.0],
+            "dir0_e_rf_0": [1.0, 1.0],
+            "dir0_e_rf_1": [1.0, 1.0],
+            "emissiontype": [0, 1],
+            "absorption_type": [1, 0],
+            "absorption_freq": [c / 4000.0, c / 4500.0],
+        },
+        schema={
+            "dir0_nu_rf": pl.Float32,
+            "dir0_t_arrive_d": pl.Float32,
+            "dir0_e_rf_0": pl.Float64,
+            "dir0_e_rf_1": pl.Float64,
+            "emissiontype": pl.Int32,
+            "absorption_type": pl.Int32,
+            "absorption_freq": pl.Float32,
+        },
+    )
+    # the second spectrum of the direction excludes the emission of iron (Z = 26)
+    vpktconfig = {"nobsdirections": 1, "nspectraperobs": 2, "z_excludelist": [0, 26]}
+    bflist = pl.LazyFrame({"bfindex": [], "ion_str": []}, schema={"bfindex": pl.Int32, "ion_str": pl.String})
+    with (
+        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
+        mock.patch.object(
+            atspectra,
+            "get_linelist_label_columns",
+            return_value=pl.DataFrame({"atomic_number": [26, 27], "ion_stage": [2, 2]}),
+        ),
+        mock.patch.object(atspectra, "get_bflist", return_value=bflist),
+    ):
+        contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
+            Path(),
+            timelowdays=4.0,
+            timehighdays=6.0,
+            lambda_bin_edges=np.arange(3000.0, 8000.0, 100.0),
+            groupby="ion",
+            directionbin=1,
+            directionbins_are_vpkt_observers=True,
+            vpkt_match_emission_exclusion_to_opac=True,
+        )
+
+    def get_wavelengths(fluxes: npt.NDArray[np.floating]) -> list[float]:
+        return [float(value) for value in array_lambda[fluxes > 0.0]]
+
+    series = {
+        row.linelabel: (get_wavelengths(row.array_flambda_emission), get_wavelengths(row.array_flambda_absorption))
+        for row in contributions
+    }
+    assert series == {"Co II": ([6050.0], []), "Fe II": ([], [4550.0])}
 
 
 def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
@@ -1852,3 +1989,662 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     plotted = [column for column in dfout.columns if column.startswith("flux_plotted")]
     assert len(plotted) == 1
     assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)
+
+
+def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
+    """-xmin alone on a frequency axis must stay the lower limit.
+
+    The default upper limit came from 19000 Å, which is a lower frequency than 2e14 Hz. The sort then made the
+    given -xmin the upper limit.
+    """
+    args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-xunit", "hz", "-xmin", "2e14"])
+    plotspectra.resolve_plot_args(args)
+    assert args.xmin == 2e14
+    assert np.isclose(args.xmax, at.spectra.convert_angstroms_to_unit(2500.0, "hz"), rtol=1e-12, atol=0.0)
+
+
+def test_interactive_command_tokens() -> None:
+    """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
+    parser = interactive.make_parser()
+    tokens = [
+        "my model",
+        "sn2011fe_PTF11kly_20120822_norm.txt",
+        "-t300",
+        "-xmin=3000",
+        "-lambdamax",
+        "9000",
+        "-label",
+        "foo",
+        "bar",
+        "--interactive",
+        "--notimeclamp",
+        "-timemin",
+        "290",
+        "-timema",
+        "320",
+        "-ts70",
+        "-time",
+        "300",
+        "--emissionabsorption",
+        "-maxseriescount",
+        "20",
+        "-groupby",
+        "nuc",
+        "-deltax=20",
+        "--nostack",
+        "-fixedionlist",
+        "Fe II",
+        "Co II",
+        "-plotviewingangle",
+        "-1",
+        "--",
+        "-folder",
+    ]
+    basetokens = interactive.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
+        "my model",
+        "sn2011fe_PTF11kly_20120822_norm.txt",
+        *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
+        # the viewer removes -plotviewingangle and also its negative value, which starts with "-"
+        *("-label", "foo", "bar", "--", "-folder"),
+    ]
+
+
+def test_interactive_time_range_argument() -> None:
+    """A snapped -timedays value must select its timesteps, and a continuous range must stay inside the valid times."""
+    tmids, tstarts, tends = (at.get_timestep_times(modelpath, loc=loc) for loc in ("mid", "start", "end"))
+    pairs = [(54, 58), (0, 3), (96, 99), (10, 11), *((timestep, timestep) for timestep in range(len(tmids)))]
+    for first, last in pairs:
+        timedays = interactive.get_snapped_timedays_argument(tmids, tstarts, tends, first, last)
+        assert at.misc.get_time_range(modelpath, timedays_range_str=timedays)[:2] == (first, last), timedays
+    assert interactive.get_snapped_timedays_argument(tmids, tstarts, tends, 54, 54) == "300"
+
+    assert interactive.get_timedays_argument(306.4, 0.0, (250.0, 350.0)) == "306.4"
+    assert interactive.get_timedays_argument(306.4, 5.0, (250.0, 350.0)) == "303.9-308.9"
+    # the valid times of the test model start at 256.67 d, thus the range starts there
+    assert interactive.get_timedays_argument(260.0, 10.0, (256.67, 333.82)) == "256.67-265"
+
+    # format_days rounded a time at a bound to 6 decimals, and the time went outside the valid times. plotspectra
+    # rejects such a time
+    bounds = (0.1413524, 79.9999996)
+    for centre, width in ((0.1413, 0.0), (0.1414, 0.001), (79.99999, 0.1), (40.0, 100.0)):
+        for text in interactive.get_timedays_argument(centre, width, bounds).split("-"):
+            assert bounds[0] <= float(text) <= bounds[1], (centre, width, text)
+
+
+def test_interactive_continuous_range_keeps_its_bounds() -> None:
+    """A --notimeclamp range of days keeps its bounds when the viewer opens, also inside one timestep.
+
+    The viewer changed a range that holds the middle of one timestep or of no timestep into a single time, and a
+    single time reads the whole timestep.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "299.5-301", "--notimeclamp", "--interactive"])
+    tokens = shlex.split(viewer.get_command())
+    assert tokens[tokens.index("-t") + 1] == "299.5-301"
+
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    assert viewer.values.width == 0.0
+
+
+def test_interactive_valid_timesteps() -> None:
+    """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
+    viewer = make_headless_viewer([str(modelpath), "--interactive"])
+    validstart, validend = viewer.timebounds
+    assert viewer.tstarts[viewer.validtimesteps[0]] >= validstart > viewer.tstarts[0]
+    assert viewer.tends[viewer.validtimesteps[-1]] <= validend < viewer.tends[-1]
+    viewer.values = viewer.move_to_end(last=True)
+    assert viewer.get_selection(viewer.values) == (viewer.validtimesteps[-1], viewer.validtimesteps[-1])
+    assert viewer.step_time(1) is None
+    assert viewer.draw() is None
+
+    # a continuous time alone selects the whole timestep that holds it. At each end of the valid times, that
+    # timestep is only in part valid, thus plotspectra rejected the command
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    for bound, timestep in ((validstart, viewer.validtimesteps[0]), (validend, viewer.validtimesteps[-1])):
+        assert viewer.change(dc.replace(viewer.values, centre=bound, width=0.0)) is None
+        assert viewer.values.centre == viewer.tmids[timestep]
+        assert viewer.change(dc.replace(viewer.values, centre=bound, width=1.0)) is None
+
+
+def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
+    """Return a viewer that draws on a canvas with no window, after its first plot."""
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer(tokens, fig)
+    assert viewer.draw() is None
+    return viewer
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The command that the viewer shows must draw the same data as the viewer."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    # a continuous range gives --notimeclamp, and the snapped range below gives whole timesteps
+    continuous = dc.replace(viewer.values, notimeclamp=True, centre=306.4, width=5.0, xmin="3000", xmax="9000")
+    assert viewer.change(continuous) is None
+    assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
+    assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
+    assert "timesteps 58 to 62" in viewer.get_timesteps_text()
+    command = viewer.get_command()
+
+    # each plot clears the frame first, thus the frame holds only the series of the model
+    [viewerline] = viewer.axes[0].get_lines()
+    viewerx, viewery = np.asarray(viewerline.get_xdata()), np.asarray(viewerline.get_ydata())
+
+    mockplot.reset_mock()
+    at.spectra.plot(argsraw=[*shlex.split(command)[2:], "-o", str(tmp_path / "spectrum.pdf")])
+    assert mockplot.call_count == 1
+    assert np.allclose(np.array(mockplot.call_args[0][1]), viewerx, rtol=1e-12, atol=0.0)
+    assert np.allclose(np.array(mockplot.call_args[0][2]), viewery, rtol=1e-12, atol=0.0)
+
+
+def test_interactive_emission_options() -> None:
+    """A change that plotspectra rejects must keep the old values, and --showabsorption draws a taller frame."""
+    # the test model has no emission.out, thus plotspectra cannot draw its emission plot
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldvalues, command = viewer.values, viewer.get_command()
+    # the status line gives the first line of the error, which names the missing files
+    message = viewer.change(dc.replace(viewer.values, showemission=True))
+    assert message is not None
+    assert message.startswith("None of these files exist")
+    assert viewer.values == oldvalues
+    assert viewer.get_command() == command
+
+    # the viewer stores the default grouping as None. A stored "ion" was not equal to the None of the controls, thus a
+    # change of an emission option removed the series lock
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-groupby", "ion", "--interactive"])
+    assert viewer.values.groupby is None
+    figheight = viewer.fig.get_figheight()
+    assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
+    assert viewer.get_command().endswith(" --showabsorption -maxseriescount 5 --nostack")
+    assert viewer.fig.get_figheight() > figheight
+
+    # the window disables a choice that plotspectra rejects, thus the test must find the rejection without a plot
+    rejection = viewer.get_rejection(dc.replace(viewer.values, groupby="nuc"))
+    assert rejection is not None
+    assert "nuclide" in rejection
+
+
+def test_interactive_xunit_and_references() -> None:
+    """A new x unit converts and sorts the limits, and a reference spectrum goes after the model paths."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-deltax", "20", "--interactive"])
+    # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
+    inhertz = interactive.convert_xunit(viewer.values, "hz", gamma=False)
+    assert (inhertz.xmin, inhertz.xmax, inhertz.deltax) == ("1.578e+14", "1.199e+15", "")
+    back = interactive.convert_xunit(inhertz, "angstroms", gamma=False)
+    assert np.isclose(float(back.xmin), 2500.0, rtol=1e-3, atol=0.0)
+    assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
+
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    assert viewer.change(dc.replace(inhertz, references=(reference,))) is None
+    tokens = shlex.split(viewer.get_command())[2:]
+    assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
+    assert "-xunit" in tokens
+    assert len(viewer.axes[0].get_lines()) == 2
+
+
+def test_interactive_paths_keep_their_place() -> None:
+    """Each path of the command stays a path and keeps its place, also a path after an option.
+
+    The viewer took the paths only from the start of the command, and it put the references after the models. Thus a
+    path after an option left the command, and -label named the wrong series.
+    """
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    viewer = make_headless_viewer([
+        reference,
+        str(modelpath),
+        "-label",
+        "Observed",
+        "Model",
+        "-t",
+        "300",
+        "--interactive",
+    ])
+    assert shlex.split(viewer.get_command())[2:4] == [reference, str(modelpath)]
+
+    viewer = make_headless_viewer(["-t", "300", "--notitle", str(modelpath), "--interactive"])
+    assert viewer.modelpathtokens == [str(modelpath)]
+    # the command without the option starts with the path, and the viewer still reads the time of the command
+    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert "timestep 54" in viewer.get_timesteps_text()
+
+    # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
+    viewer = make_headless_viewer([
+        "--showemission",
+        "-fixedionlist",
+        "Fe II",
+        "Co II",
+        str(modelpath_classic_3d),
+        "--interactive",
+    ])
+    assert viewer.modelpathtokens == [str(modelpath_classic_3d)]
+    assert str(modelpath_classic_3d) in shlex.split(viewer.get_command())
+
+
+def test_interactive_command_gives_the_series_count_of_the_box() -> None:
+    """The command gives the count of the box, also when that count is the default without -fixedionlist.
+
+    plotspectra gives a missing count the length of -fixedionlist, thus a count of 14 with a list needs the option.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    series = viewer.get_drawn_series()
+    for fixedionlist, maxseriescount in ((series[:3], plotspectra.DEFAULT_MAXSERIESCOUNT), (series[:3], 3), ((), 5)):
+        values = dc.replace(viewer.values, fixedionlist=fixedionlist, maxseriescount=maxseriescount)
+        args = at.misc.parse_cli_args(plotspectra.addargs, None, None, viewer.get_plot_tokens(values))
+        plotspectra.resolve_plot_args(args)
+        assert args.maxseriescount == maxseriescount
+
+
+def test_interactive_fixed_y_axis() -> None:
+    """A fixed y axis keeps a negative -ymin through the command, and the limits stay when the time changes."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
+    # Python 3.13 reads a separate -1e-13 as an option, thus the value joins its flag
+    assert " -ymin=-1e-13 -ymax 3e-13" in viewer.get_command()
+    assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
+    assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
+
+
+def test_interactive_figwidthscale_fills_the_plot_area() -> None:
+    """The viewer sets -figwidthscale to give the figure the shape of the plot area, and the command shows it."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-figwidthscale", "1.5", "--interactive"])
+    for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
+        figwidthscale = viewer.get_fitted_figwidthscale(areawidth, areaheight)
+        assert viewer.change(dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
+        figwidth, figheight = viewer.fig.get_size_inches()
+        # the scale has 2 decimals, thus the shape of the figure differs a little from the shape of the area
+        assert np.isclose(figwidth / figheight, areawidth / areaheight, rtol=0.01)
+        assert f" -figwidthscale {figwidthscale:g}" in viewer.get_command()
+
+
+def test_maxseriescount_cuts_the_fixedionlist() -> None:
+    """A smaller -maxseriescount removes the last entries of -fixedionlist, and a list alone keeps each entry.
+
+    Before the correction, a -fixedionlist kept each entry, and -maxseriescount applied only to the names in the
+    order of the flux.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    series = viewer.get_drawn_series()
+    assert len(series) > 2
+    assert viewer.change(dc.replace(viewer.values, fixedionlist=series[::-1], maxseriescount=2)) is None
+    assert viewer.get_drawn_series() == series[::-1][:2]
+
+    for extraargs, maxseriescount in (("", 20), ("-maxseriescount 5", 5)):
+        argsraw = [str(modelpath_classic_3d), "--showemission", "-fixedionlist", *(["Fe II"] * 20), *extraargs.split()]
+        args = at.misc.parse_cli_args(plotspectra.addargs, None, None, argsraw)
+        plotspectra.resolve_plot_args(args)
+        assert args.maxseriescount == maxseriescount
+
+
+def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
+    """A preview of a plot of the packets reads the first batch of ranks, and the command keeps all the packets."""
+    from artistools.packets.core import RANKS_PER_BATCH
+
+    getcontributions = plotspectra.get_flux_contributions_from_packets
+    # the test model has few ranks, thus a model of more than one batch comes from a patch of the rank count
+    with (
+        mock.patch.object(interactive, "get_nprocs", return_value=10 * RANKS_PER_BATCH),
+        mock.patch.object(plotspectra, "get_flux_contributions_from_packets", wraps=getcontributions) as mockget,
+    ):
+        viewer = make_headless_viewer([
+            str(modelpath_classic_3d),
+            "-t",
+            "4",
+            "--showemission",
+            "--frompackets",
+            "--interactive",
+        ])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert viewer.drewpreview
+        assert mockget.call_args.kwargs["maxpacketfiles"] == RANKS_PER_BATCH
+        assert "-maxpacketfiles" not in viewer.get_command()
+
+        assert viewer.change(viewer.values) is None
+        assert not viewer.drewpreview
+        assert mockget.call_args.kwargs["maxpacketfiles"] is None
+
+        # a plot of the spectrum files reads no packets, thus it has no faster preview
+        viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert not viewer.drewpreview
+
+        # the reader divides the flux by the number of ranks, but not a count of packets
+        viewer = make_headless_viewer([
+            str(modelpath_classic_3d),
+            "-t",
+            "4",
+            "--frompackets",
+            "-yvariable",
+            "packetcount",
+            "--interactive",
+        ])
+        assert viewer.change(viewer.values, preview=True) is None
+        assert not viewer.drewpreview
+
+
+def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
+    """An AssertionError of plotspectra is a rejection, and the viewer keeps the old values.
+
+    The viewer caught fewer errors than the CLI, thus the error left the window with the rejected values.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldvalues = viewer.values
+    # resolve_plot_args asserts that the command does not give both kinds of viewing angle
+    newvalues = dc.replace(oldvalues, otheroptions=(("-plotvspecpol", ("0",)), ("-plotviewingangle", ("0",))))
+    assert viewer.get_rejection(newvalues) is not None
+    assert viewer.change(newvalues) is not None
+    assert viewer.values == oldvalues
+
+
+def test_interactive_redraw_matches_a_new_plot() -> None:
+    """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
+
+    The viewer keeps the tick objects and the title position from one plot to the next.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    later = viewer.step_time(2)
+    assert later is not None
+    for values in (
+        dc.replace(viewer.values, yscale="log", logscalex=True),
+        dc.replace(viewer.values, showemission=True),
+        dc.replace(later, showemission=True, maxseriescount=4),
+    ):
+        assert viewer.change(values) is None
+    newviewer = make_headless_viewer([*shlex.split(viewer.get_command())[2:], "--interactive"])
+    canvases = [viewer.fig.canvas, newviewer.fig.canvas]
+    pixels = []
+    for canvas in canvases:
+        assert isinstance(canvas, FigureCanvasAgg)
+        canvas.draw()
+        pixels.append(np.asarray(canvas.buffer_rgba()).copy())
+    assert np.array_equal(pixels[0], pixels[1])
+
+
+def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
+    """The tick labels come back when the user removes --hidexticklabels from the table.
+
+    cla() keeps the tick parameters, and the plot hides the labels only when the command gives the option.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    for otheroptions, labelsvisible in (((("--hidexticklabels", ()),), False), ((), True)):
+        assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+        viewer.fig.canvas.draw()
+        assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
+
+
+def test_interactive_status_line_gives_the_error() -> None:
+    """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
+    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
+    assert interactive.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert interactive.get_first_line("A file is missing\nThe second line") == "A file is missing"
+
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
+    assert rejection is not None
+    assert rejection.startswith("argument -deltalambda")
+
+
+def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
+    """A minimum wavelength of 0 becomes a range of frequencies above the other limit, and not below it.
+
+    The zero limit took the default limit at the same position, thus the range went to the other side of 5000 Å.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    values = dc.replace(viewer.values, xmin="0", xmax="5000")
+    inhertz = interactive.convert_xunit(values, "hz", gamma=False)
+    assert np.isclose(float(inhertz.xmin), at.constants.c_ang_per_s / 5000.0, rtol=1e-3, atol=0.0)
+    # the range goes from 5000 Å to shorter wavelengths, which are higher frequencies
+    assert float(inhertz.xmax) > float(inhertz.xmin)
+    # a change between two units of wavelength keeps a minimum of 0
+    inmicrons = interactive.convert_xunit(values, "micron", gamma=False)
+    assert float(inmicrons.xmin) == 0.0
+
+
+def test_interactive_single_time_ends_at_the_next_start() -> None:
+    """A single time selects its timestep by the rule of get_timestep_of_timedays: a timestep ends at the next start.
+
+    The end of a timestep can be a little after the start of the next one, and 2 then selected the next timestep.
+    """
+    tmids, tstarts, tends = [1.75, 2.25], [1.5, 2.0], [2.000008, 2.5]
+    timedays = interactive.get_snapped_timedays_argument(tmids, tstarts, tends, 0, 0)
+    assert tstarts[0] <= float(timedays) < tstarts[1]
+
+
+def test_interactive_reference_name_finds_the_picked_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command gives a bundled reference by its name only when plotspectra finds that same file by the name.
+
+    plotspectra searches the working folder first, thus a file of the same name there took the place of the file
+    that the user selected.
+    """
+    name = "sn2011fe_PTF11kly_20120822_norm.txt"
+    bundledfile = plotspectra.find_reference_spectrum_file_or_none(name)
+    assert bundledfile is not None
+    monkeypatch.chdir(tmp_path)
+    assert interactive.get_reference_token(str(bundledfile)) == name
+    (tmp_path / name).write_text("1000 1\n2000 2\n")
+    assert interactive.get_reference_token(str(bundledfile)) == str(bundledfile)
+
+
+def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: pytest.CaptureFixture[str]) -> None:
+    """An item after -maxseriescount gives no warning, because the plot does not show it.
+
+    The packet reader keeps a part of the list only, and the warning then named items that the packets hold.
+    """
+    arraylambda = np.array([4000.0, 5000.0])
+    contributions = [
+        atspectra.FluxContributionTuple(fluxcontrib, label, np.ones(2), np.zeros(2))
+        for fluxcontrib, label in ((2.0, "Fe II"), (1.0, "Co II"))
+    ]
+    for maxseriescount, haswarning in ((2, False), (3, True)):
+        atspectra.sort_and_reduce_flux_contribution_list(
+            contributions, maxseriescount, arraylambda, fixedionlist=["Fe II", "Co II", "Ni II"]
+        )
+        assert ("did not find" in capsys.readouterr().err) is haswarning
+
+
+def test_interactive_valid_times_of_each_run() -> None:
+    """The time controls stay inside the times that are valid for every run of the command.
+
+    plotspectra checks the times of each run, and the viewer took the valid times of the first run only.
+    """
+    # each call of the mock gives the valid range of the next run
+    ranges = [(None, 260.0, 330.0), (None, 270.0, 320.0)]
+    with mock.patch.object(interactive, "get_escaped_arrivalrange", side_effect=ranges):
+        viewer = make_headless_viewer([str(modelpath), str(modelpath), "-t", "300", "--interactive"])
+    assert viewer.timebounds == (270.0, 320.0)
+
+
+def test_interactive_command_of_a_dispatcher_call() -> None:
+    """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
+    from artistools.__main__ import main as dispatcher_main
+
+    with (
+        mock.patch.object(interactive, "run_viewer") as mockrunviewer,
+        mock.patch.object(sys, "argv", ["myscript.py", "--flag", "x"]),
+    ):
+        dispatcher_main(argsraw=["plotspectra", str(modelpath), "-t", "300", "--interactive"])
+    mockrunviewer.assert_called_once_with([str(modelpath), "-t", "300", "--interactive"])
+
+
+def test_interactive_unlock_gives_the_default_count() -> None:
+    """A count that came from the length of -fixedionlist becomes the default count when the lock ends."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2)
+    assert interactive.remove_series_lock(locked).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
+    assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
+
+
+def test_interactive_typed_centre_gives_back_the_range() -> None:
+    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
+
+    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
+    """
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    for count in (1, 2, 3, 4):
+        for start in range(len(tmids) - count + 1):
+            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
+            assert interactive.get_nearest_range_start(tmids, centre, count) == start, (count, start)
+
+
+def test_interactive_frompackets_box() -> None:
+    """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
+    assert viewer.values.frompackets
+    assert not viewer.values.otheroptions
+    assert "--frompackets" in shlex.split(viewer.get_command())
+
+    assert viewer.change(dc.replace(viewer.values, frompackets=False)) is None
+    assert "--frompackets" not in shlex.split(viewer.get_command())
+
+
+def test_interactive_direction_and_bin_controls() -> None:
+    """The controls of the viewing direction and the bins take the options of the user, and give each option one time.
+
+    The deprecated --average_every_tenth_viewing_angle becomes --average_over_phi_angle, and the table of the other
+    options holds none of these options.
+    """
+    viewer = make_headless_viewer([
+        str(modelpath_classic_3d),
+        "-t",
+        "4",
+        "--average_every_tenth_viewing_angle",
+        "-plotviewingangle",
+        "10",
+        "-dlogx",
+        "0.002",
+        "--normalised",
+        "--interactive",
+    ])
+    values = viewer.values
+    assert (values.directionkind, values.directionbins, values.deltalogx) == ("phi", (10,), "0.002")
+    assert values.normalised
+    assert not values.otheroptions
+    command = shlex.split(viewer.get_command())
+    for option in ("--average_over_phi_angle", "-plotviewingangle", "-deltalogx", "--normalised"):
+        assert command.count(option) == 1
+    assert "--average_every_tenth_viewing_angle" not in command
+    assert command[command.index("-plotviewingangle") + 1] == "10"
+
+    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
+    assert [dirbin for dirbin, _ in choices] == list(range(10))
+    assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
+    command = shlex.split(viewer.get_command())
+    assert "--average_over_theta_angle" in command
+    assert not {"--average_over_phi_angle", "-deltalogx"} & set(command)
+
+    # the legend gives the angles of the direction, and the command keeps --usedegrees only with a direction
+    assert viewer.change(dc.replace(viewer.values, usedegrees=True)) is None
+    assert "--usedegrees" in shlex.split(viewer.get_command())
+    legend = viewer.axes[0].get_legend()
+    assert legend is not None
+    assert any("°" in text.get_text() for text in legend.get_texts())
+
+    assert viewer.change(dc.replace(viewer.values, directionkind="", directionbins=())) is None
+    command = set(shlex.split(viewer.get_command()))
+    assert not {"-plotviewingangle", "--average_over_theta_angle", "--usedegrees"} & command
+
+
+def test_interactive_option_rows() -> None:
+    """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
+    parser = interactive.make_parser()
+    tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
+    rows, othertokens = interactive.split_option_rows(parser, [*tokens, "--", "rest"])
+    assert rows == (
+        ("-deltax", ("5",)),
+        ("-label", ("a b", "c")),
+        ("-filtersavgol", ("5", "2")),
+        ("--normalised", ()),
+        ("-title", ("My plot",)),
+        ("-dpi", ("300",)),
+    )
+    assert othertokens == ["--", "rest"]
+
+    actions = {action.option_strings[0]: action for action in interactive.get_table_actions(parser)}
+    # the other controls of the window set these options, and a list of times draws more than one plot
+    assert (
+        not {"-timedays", "-xmin", "-groupby", "-yvariable", "-plotviewingangle", "-timedayslist", "-h"}
+        & actions.keys()
+    )
+    # no option of the table has choices now, but a new option with choices gets a list in the table
+    allactions = {
+        action.option_strings[0]: action
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if action.option_strings
+    }
+    kinds = {flag: interactive.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
+    assert [interactive.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+        "values",
+        "list",
+        "text",
+    ]
+    # an option with no default needs a value from the user before the command can give it
+    assert interactive.get_default_tokens(actions["-dpi"]) == ("250",)
+    assert interactive.get_default_tokens(actions["-title"]) is None
+
+
+def test_interactive_other_options_reach_the_command() -> None:
+    """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-filtermovingavg", "3", "--interactive"])
+    assert viewer.values.otheroptions == (("-filtermovingavg", ("3",)),)
+
+    otheroptions = (("-filtermovingavg", ("5",)), ("-title", ("A title",)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+    command = viewer.get_command()
+    assert " -filtermovingavg 5 -title 'A title'" in command
+    assert viewer.axes[0].get_title() == "A title"
+
+    # a ratio of Stokes parameters is a different plot from the one that the window shows
+    message = viewer.change(dc.replace(viewer.values, otheroptions=(("-stokesparam", ("Q/I",)),)))
+    assert message is not None
+    assert "-stokesparam Q/I" in message
+    assert viewer.values.otheroptions == otheroptions
+
+
+def test_absorption_plot_keeps_a_linear_axis() -> None:
+    """An absorption plot must keep a linear y axis with -yscale auto, because its absorption part is negative.
+
+    The automatic rule read only the spectrum line, and it chose a log axis. The axis then showed no data.
+    """
+    args = at.misc.parse_cli_args(
+        plotspectra.addargs,
+        None,
+        None,
+        [str(modelpath_classic_3d), "-t", "5", "--showemission", "--showabsorption", "-yscale", "auto"],
+    )
+    plotspectra.resolve_plot_args(args)
+    # the automatic rule then asks for a log axis for every set of values
+    with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
+        fig, axes, _, _ = plotspectra.make_plot(args)
+    assert axes[0].get_yscale() == "linear"
+    assert axes[0].get_ylim()[0] < 0.0
+    plt.close(fig)
+
+
+def test_interactive_lock_series() -> None:
+    """A locked list of series keeps the colour of each series when the time changes."""
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+
+    def get_series_colours() -> dict[str, tuple[float, float, float, float]]:
+        legend = viewer.axes[0].get_legend()
+        assert legend is not None
+        return {
+            text.get_text(): mplcolors.to_rgba(handle.get_facecolor())
+            for text, handle in zip(legend.get_texts(), legend.legend_handles, strict=True)
+            if isinstance(handle, mpatches.Patch)
+        }
+
+    locked = viewer.get_drawn_series()
+    assert len(locked) > 1
+    assert viewer.change(dc.replace(viewer.values, fixedionlist=locked)) is None
+    tokens = shlex.split(viewer.get_command())
+    assert tokens[tokens.index("-fixedionlist") + 1 :] == list(locked)
+    colours = get_series_colours()
+
+    later = viewer.step_time(3)
+    assert later is not None
+    assert viewer.change(later) is None
+    latercolours = get_series_colours()
+    shared = set(colours) & set(latercolours)
+    assert shared
+    assert all(colours[name] == latercolours[name] for name in shared)
