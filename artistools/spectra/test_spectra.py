@@ -2037,7 +2037,8 @@ def test_interactive_command_tokens() -> None:
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
         *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
-        *("-label", "foo", "bar", "-plotviewingangle", "-1", "--", "-folder"),
+        # the viewer removes -plotviewingangle and also its negative value, which starts with "-"
+        *("-label", "foo", "bar", "--", "-folder"),
     ]
 
 
@@ -2487,6 +2488,45 @@ def test_interactive_frompackets_box() -> None:
     assert "--frompackets" not in shlex.split(viewer.get_command())
 
 
+def test_interactive_direction_and_bin_controls() -> None:
+    """The controls of the viewing direction and the bins take the options of the user, and give each option one time.
+
+    The deprecated --average_every_tenth_viewing_angle becomes --average_over_phi_angle, and the table of the other
+    options holds none of these options.
+    """
+    viewer = make_headless_viewer([
+        str(modelpath_classic_3d),
+        "-t",
+        "4",
+        "--average_every_tenth_viewing_angle",
+        "-plotviewingangle",
+        "10",
+        "-dlogx",
+        "0.002",
+        "--normalised",
+        "--interactive",
+    ])
+    values = viewer.values
+    assert (values.directionkind, values.directionbins, values.deltalogx) == ("phi", (10,), "0.002")
+    assert values.normalised
+    assert not values.otheroptions
+    command = shlex.split(viewer.get_command())
+    for option in ("--average_over_phi_angle", "-plotviewingangle", "-deltalogx", "--normalised"):
+        assert command.count(option) == 1
+    assert "--average_every_tenth_viewing_angle" not in command
+    assert command[command.index("-plotviewingangle") + 1] == "10"
+
+    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta")
+    assert [dirbin for dirbin, _ in choices] == list(range(10))
+    assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
+    command = shlex.split(viewer.get_command())
+    assert "--average_over_theta_angle" in command
+    assert not {"--average_over_phi_angle", "-deltalogx"} & set(command)
+
+    assert viewer.change(dc.replace(viewer.values, directionkind="", directionbins=())) is None
+    assert not {"-plotviewingangle", "--average_over_theta_angle"} & set(shlex.split(viewer.get_command()))
+
+
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()
@@ -2504,9 +2544,18 @@ def test_interactive_option_rows() -> None:
 
     actions = {action.option_strings[0]: action for action in interactive.get_table_actions(parser)}
     # the other controls of the window set these options, and a list of times draws more than one plot
-    assert not {"-timedays", "-xmin", "-groupby", "-timedayslist", "-h"} & actions.keys()
-    kinds = {flag: interactive.get_option_kind(actions[flag]) for flag in ("--normalised", "-yvariable", "-dpi")}
-    assert kinds == {"--normalised": "flag", "-yvariable": "choice", "-dpi": "int"}
+    assert (
+        not {"-timedays", "-xmin", "-groupby", "-yvariable", "-plotviewingangle", "-timedayslist", "-h"}
+        & actions.keys()
+    )
+    # no option of the table has choices now, but a new option with choices gets a list in the table
+    allactions = {
+        action.option_strings[0]: action
+        for action in parser._actions  # ruff:ignore[private-member-access]
+        if action.option_strings
+    }
+    kinds = {flag: interactive.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
     assert [interactive.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
         "values",
         "list",

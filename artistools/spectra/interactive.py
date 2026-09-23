@@ -19,6 +19,8 @@ import polars as pl
 from artistools.commands import SuggestingArgumentParser
 from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
+from artistools.misc import get_dirbin_definitions
+from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
@@ -77,6 +79,17 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "maxseriescount",
     "nostack",
     "deltax",
+    "deltalogx",
+    "yvariable",
+    "normalised",
+    "hidenetspectrum",
+    "hideother",
+    "use_thermalemissiontype",
+    "plotviewingangle",
+    "plotvspecpol",
+    "average_over_phi_angle",
+    "average_over_theta_angle",
+    "average_every_tenth_viewing_angle",
     "fixedionlist",
     "figwidthscale",
     "interactive",
@@ -148,7 +161,20 @@ class ControlValues:
     maxseriescount: int
     nostack: bool
     deltax: str
+    deltalogx: str
     frompackets: bool
+    yvariable: str
+    normalised: bool
+    hidenetspectrum: bool
+    hideother: bool
+    usethermalemissiontype: bool
+    # the kind of viewing direction:
+    # - "" for all directions;
+    # - "bin" for -plotviewingangle;
+    # - "phi" and "theta" for the averages;
+    # - "vpkt" for -plotvspecpol.
+    directionkind: str
+    directionbins: tuple[int, ...]
     fixedionlist: tuple[str, ...]
     references: tuple[str, ...]
     figwidthscale: float
@@ -519,6 +545,33 @@ def get_reference_token(filename: str) -> str:
     return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
 
 
+def get_direction_kind(args: argparse.Namespace) -> str:
+    """Return the kind of viewing direction of the arguments, in the form of ControlValues.directionkind."""
+    if args.plotvspecpol:
+        return "vpkt"
+    if not args.plotviewingangle:
+        return ""
+    if args.average_over_phi_angle:
+        return "phi"
+    return "theta" if args.average_over_theta_angle else "bin"
+
+
+def get_direction_choices(runfolder: Path, directionkind: str) -> list[tuple[int, str]]:
+    """Return each bin of a kind of viewing direction with its label.
+
+    An average over the phi angle or the theta angle takes the first bin of each group, as get_dirbins gives it.
+    """
+    averagephi, averagetheta = directionkind == "phi", directionkind == "theta"
+    labels = get_dirbin_definitions(
+        runfolder,
+        get_dirbins(average_over_phi=averagephi, average_over_theta=averagetheta),
+        vpkt_observers=directionkind == "vpkt",
+        average_over_phi=averagephi,
+        average_over_theta=averagetheta,
+    )
+    return list(labels.items())
+
+
 def remove_series_lock(values: ControlValues) -> ControlValues:
     """Return the values with no -fixedionlist.
 
@@ -627,6 +680,7 @@ class SpectrumViewer:
 
         actions = {action.dest: action for action in parser._actions}  # ruff:ignore[private-member-access]
         self.groupbychoices = [str(choice) for choice in actions["groupby"].choices or ()]
+        self.yvariablechoices = [str(choice) for choice in actions["yvariable"].choices or ()]
         self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
         # a tooltip gives the help text of the option, thus the window and the command line agree
         self.helptexts = {
@@ -637,6 +691,11 @@ class SpectrumViewer:
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultxunit = "kev" if args.gamma else "angstroms"
         self.defaultgroupby = "nuc" if args.gamma else "ion"
+        self.defaultyvariable: str = parser.get_default("yvariable")
+        # a run with a configuration of virtual packets has observers for -plotvspecpol
+        self.directionkinds = ["", "bin", "phi", "theta"]
+        if (self.runfolders[0] / "vpkt.txt").is_file():
+            self.directionkinds.append("vpkt")
         # the time of the command stays exact, because a rounded time can select a different timestep
         values = ControlValues(
             centre=centre,
@@ -656,7 +715,15 @@ class SpectrumViewer:
             maxseriescount=args.maxseriescount,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
+            deltalogx="" if args.deltalogx is None else format(args.deltalogx, ".10g"),
             frompackets=givesfrompackets,
+            yvariable=args.yvariable,
+            normalised=bool(args.normalised),
+            hidenetspectrum=bool(args.hidenetspectrum),
+            hideother=bool(args.hideother),
+            usethermalemissiontype=bool(args.use_thermalemissiontype),
+            directionkind=get_direction_kind(args),
+            directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
             fixedionlist=tuple(args.fixedionlist or ()),
             references=tuple(path for path in self.startpaths if path_is_reference_spectrum(path)),
             figwidthscale=args.figwidthscale,
@@ -738,8 +805,25 @@ class SpectrumViewer:
             options.append("--nostack")
         if values.deltax:
             options += ["-deltax", values.deltax]
+        if values.deltalogx:
+            options += ["-deltalogx", values.deltalogx]
         if values.frompackets:
             options.append("--frompackets")
+        if values.yvariable != self.defaultyvariable:
+            options += ["-yvariable", values.yvariable]
+        for isgiven, flag in (
+            (values.normalised, "--normalised"),
+            (values.hidenetspectrum, "--hidenetspectrum"),
+            (values.hideother, "--hideother"),
+            (values.usethermalemissiontype, "--use_thermalemissiontype"),
+            (values.directionkind == "phi", "--average_over_phi_angle"),
+            (values.directionkind == "theta", "--average_over_theta_angle"),
+        ):
+            if isgiven:
+                options.append(flag)
+        if values.directionkind:
+            directionflag = "-plotvspecpol" if values.directionkind == "vpkt" else "-plotviewingangle"
+            options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
         if values.figwidthscale != 1.0:
             options += ["-figwidthscale", format(values.figwidthscale, "g")]
         # a list option takes each word that follows it, thus it comes after every other option
@@ -1442,6 +1526,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         edit.setFixedWidth(110)
     add_row(axesgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("-yscale"), yscalebox, logscalexcheck])
     add_row(axesgrid, 1, [fixycheck, QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit])
+    yvariablebox = QtWidgets.QComboBox()
+    yvariablebox.addItems(viewer.yvariablechoices)
+    normalisedcheck = QtWidgets.QCheckBox("--normalised")
+    for widget, dest in ((yvariablebox, "yvariable"), (normalisedcheck, "normalised")):
+        widget.setToolTip(helptexts.get(dest, ""))
+    add_row(axesgrid, 2, [QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck])
 
     _, emissiongrid = add_section("Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -1468,13 +1558,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     )
     add_row(emissiongrid, 0, [emissioncheck, absorptioncheck, nostackcheck])
     add_row(emissiongrid, 1, [QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
+    hidenetcheck = QtWidgets.QCheckBox("--hidenetspectrum")
+    hideothercheck = QtWidgets.QCheckBox("--hideother")
+    thermalcheck = QtWidgets.QCheckBox("--use_thermalemissiontype")
+    for widget, dest in (
+        (hidenetcheck, "hidenetspectrum"),
+        (hideothercheck, "hideother"),
+        (thermalcheck, "use_thermalemissiontype"),
+    ):
+        widget.setToolTip(helptexts.get(dest, ""))
+    add_row(emissiongrid, 2, [hidenetcheck, hideothercheck, thermalcheck])
 
     _, bingrid = add_section("Bins of the packet spectrum")
-    # an empty check box gives no -deltax, and plotspectra then takes its default bins
-    deltaxcheck = QtWidgets.QCheckBox()
+    # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
+    binmodebox = QtWidgets.QComboBox()
+    for binmode, binmodetext in (("", "Default bins"), ("deltax", "-deltax"), ("deltalogx", "-deltalogx")):
+        binmodebox.addItem(binmodetext, binmode)
+        binmodebox.setItemData(binmodebox.count() - 1, helptexts.get(binmode, ""), QtCore.Qt.ItemDataRole.ToolTipRole)
 
-    class DeltaxSpinBox(QtWidgets.QDoubleSpinBox):
-        """A box for -deltax that shows the shortest text of its value.
+    class BinWidthSpinBox(QtWidgets.QDoubleSpinBox):
+        """A box for the bin width that shows the shortest text of its value.
 
         The box accepts more decimals than a bin width usually has. A fixed count of decimals then shows "20.000".
         """
@@ -1483,15 +1586,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         def textFromValue(self, v: float) -> str:
             return format(v, ".10g")
 
-    deltaxbox = DeltaxSpinBox()
+    binwidthbox = BinWidthSpinBox()
     # each arrow step is one power of ten below the value, thus the arrows reach each bin width
-    deltaxbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
-    for widget in (deltaxcheck, deltaxbox):
-        widget.setToolTip(helptexts.get("deltax", ""))
+    binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
     frompacketscheck = QtWidgets.QCheckBox("--frompackets")
     frompacketscheck.setToolTip(helptexts.get("frompackets", ""))
-    add_row(bingrid, 0, [frompacketscheck, deltaxcheck, deltaxbox])
-    for box in (countbox, deltaxbox):
+    add_row(bingrid, 0, [frompacketscheck, binmodebox, binwidthbox])
+
+    _, directiongrid = add_section("Viewing direction")
+    directionkindbox, directionbox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+    for directionkind, directionkindtext, dest in (
+        ("", "All directions", ""),
+        ("bin", "-plotviewingangle", "plotviewingangle"),
+        ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
+        ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
+        ("vpkt", "-plotvspecpol", "plotvspecpol"),
+    ):
+        if directionkind in viewer.directionkinds:
+            directionkindbox.addItem(directionkindtext, directionkind)
+            directionkindbox.setItemData(
+                directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
+            )
+    directionbox.setToolTip("The direction bin of the plot, or the observer of the virtual packets")
+    add_row(directiongrid, 0, [directionkindbox])
+    # the label of a direction bin is long, thus the box of the direction bins takes the full width of the sidebar
+    directiongrid.addWidget(directionbox, 1, 0, 1, -1)
+    # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
+    directionchoices: dict[str, list[tuple[int, str]]] = {}
+    shownkind: str | None = None
+    for box in (countbox, binwidthbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
 
@@ -1717,9 +1840,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         countbox,
         nostackcheck,
         lockbutton,
-        deltaxcheck,
-        deltaxbox,
+        binmodebox,
+        binwidthbox,
         frompacketscheck,
+        yvariablebox,
+        normalisedcheck,
+        hidenetcheck,
+        hideothercheck,
+        thermalcheck,
+        directionkindbox,
+        directionbox,
     ]
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
@@ -1739,14 +1869,41 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         deltaxstep = 10.0 ** math.floor(math.log10(xspan / 1000.0))
         # 3 more decimals than the default step let the user give a bin width that is not a multiple of the step
         decimals = max(0, -math.floor(math.log10(deltaxstep))) + 3
-        deltaxbox.setDecimals(decimals)
-        deltaxbox.setRange(10.0**-decimals, xspan)
-        if not values.deltax:
-            deltaxbox.setValue(2.0 * deltaxstep)
+        binwidthranges["deltax"] = (decimals, 10.0**-decimals, xspan, 2.0 * deltaxstep)
+        # a -deltax of a different unit is not correct for the new unit
+        lastbinwidths.pop("deltax", None)
         xunit = get_xunit(values.xunit)
         xheader.setText(f"{xunit.kind.capitalize()} [{xunit.label}]")
-        deltaxcheck.setText(f"-deltax [{xunit.label}]")
+        binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
         rangesunit = values.xunit
+
+    # each bin mode keeps its decimals, its range, and its default width. The box keeps the last width of each mode
+    binwidthranges: dict[str, tuple[int, float, float, float]] = {"deltalogx": (8, 1e-8, 1.0, 1e-3)}
+    lastbinwidths: dict[str, str] = {}
+
+    def set_binwidth_box(binmode: str) -> None:
+        """Give the box of the bin width the range and the last width of a bin mode."""
+        decimals, low, high, default = binwidthranges[binmode]
+        binwidthbox.setDecimals(decimals)
+        binwidthbox.setRange(low, high)
+        binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
+
+    def show_direction_choices(directionkind: str) -> None:
+        """Fill the box of the direction bins with the bins of a kind of viewing direction."""
+        nonlocal shownkind
+        if directionkind == shownkind:
+            return
+        directionbox.clear()
+        for dirbin, label in get_direction_choices_of_kind(directionkind):
+            directionbox.addItem(f"{dirbin}: {label}", dirbin)
+        shownkind = directionkind
+
+    def get_direction_choices_of_kind(directionkind: str) -> list[tuple[int, str]]:
+        if not directionkind:
+            return []
+        if directionkind not in directionchoices:
+            directionchoices[directionkind] = get_direction_choices(viewer.runfolders[0], directionkind)
+        return directionchoices[directionkind]
 
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
@@ -1773,7 +1930,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             values.showabsorption,
             values.groupby,
             values.references,
-            bool(values.deltax),
+            bool(values.deltax or values.deltalogx),
+            values.yvariable,
+            values.directionkind,
             values.otheroptions,
         )
         if key not in rejections:
@@ -1884,12 +2043,25 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         nostackcheck.setChecked(values.nostack)
         lockbutton.setChecked(bool(values.fixedionlist))
         lockbutton.setText(f"Lock series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock series")
-        deltaxcheck.setChecked(bool(values.deltax))
-        # an empty check box keeps the last width in deltaxbox, thus that width applies when the user sets it again
-        if values.deltax:
-            deltaxbox.setValue(float(values.deltax))
-        deltaxbox.setEnabled(bool(values.deltax))
+        binmode = "deltax" if values.deltax else "deltalogx" if values.deltalogx else ""
+        binmodebox.setCurrentIndex(binmodebox.findData(binmode))
+        if binmode:
+            lastbinwidths[binmode] = getattr(values, binmode)
+        # the disabled box keeps the last -deltax, thus that width applies again when the user selects -deltax
+        set_binwidth_box(binmode or "deltax")
+        binwidthbox.setEnabled(bool(binmode))
         frompacketscheck.setChecked(values.frompackets)
+        yvariablebox.setCurrentText(values.yvariable)
+        normalisedcheck.setChecked(values.normalised)
+        hidenetcheck.setChecked(values.hidenetspectrum)
+        hideothercheck.setChecked(values.hideother)
+        thermalcheck.setChecked(values.usethermalemissiontype)
+        for widget in (hidenetcheck, hideothercheck, thermalcheck):
+            widget.setEnabled(values.showemission or values.showabsorption)
+        directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
+        show_direction_choices(values.directionkind)
+        directionbox.setCurrentIndex(directionbox.findData(values.directionbins[0]) if values.directionbins else -1)
+        directionbox.setEnabled(bool(values.directionkind))
         if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
             referencelist.clear()
             referencelist.addItems(list(values.references))
@@ -2126,7 +2298,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         values = viewer.values
         if xunitbox.currentText() != values.xunit:
             values = convert_xunit(values, xunitbox.currentText(), gamma=viewer.args.gamma)
-        values = dc.replace(values, yscale=yscalebox.currentText(), logscalex=logscalexcheck.isChecked())
+        values = dc.replace(
+            values,
+            yscale=yscalebox.currentText(),
+            logscalex=logscalexcheck.isChecked(),
+            yvariable=yvariablebox.currentText(),
+            normalised=normalisedcheck.isChecked(),
+        )
         if values != viewer.values:
             apply(values)
 
@@ -2149,12 +2327,36 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             groupby=groupby,
             maxseriescount=countbox.value(),
             nostack=nostackcheck.isChecked(),
-            deltax=format(deltaxbox.value(), ".10g") if deltaxcheck.isChecked() else "",
+            deltax=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltax" else "",
+            deltalogx=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltalogx" else "",
             frompackets=frompacketscheck.isChecked(),
+            hidenetspectrum=hidenetcheck.isChecked(),
+            hideother=hideothercheck.isChecked(),
+            usethermalemissiontype=thermalcheck.isChecked(),
         )
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
             values = remove_series_lock(values)
+        if values != viewer.values:
+            apply(values)
+
+    def on_binmode() -> None:
+        # the box holds the width of the previous mode, thus it takes the width of the new mode before the values change
+        with QtCore.QSignalBlocker(binwidthbox):
+            set_binwidth_box(binmodebox.currentData() or "deltax")
+        on_emission_options()
+
+    def on_direction() -> None:
+        directionkind: str = directionkindbox.currentData()
+        dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind)]
+        if directionkind == viewer.values.directionkind:
+            directionbins = (directionbox.currentData(),) if directionkind else ()
+        else:
+            # a new kind keeps the direction bin if that kind has the same bin
+            directionbins = tuple(dirbin for dirbin in viewer.values.directionbins[:1] if dirbin in dirbins) or tuple(
+                dirbins[:1]
+            )
+        values = dc.replace(viewer.values, directionkind=directionkind, directionbins=directionbins)
         if values != viewer.values:
             apply(values)
 
@@ -2306,9 +2508,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     countbox.valueChanged.connect(on_emission_options)
     nostackcheck.toggled.connect(on_emission_options)
     lockbutton.toggled.connect(on_lock)
-    deltaxcheck.toggled.connect(on_emission_options)
-    deltaxbox.valueChanged.connect(on_emission_options)
+    binmodebox.currentIndexChanged.connect(on_binmode)
+    binwidthbox.valueChanged.connect(on_emission_options)
     frompacketscheck.toggled.connect(on_emission_options)
+    for checkbox in (hidenetcheck, hideothercheck, thermalcheck):
+        checkbox.toggled.connect(on_emission_options)
+    yvariablebox.currentTextChanged.connect(on_axes)
+    normalisedcheck.toggled.connect(on_axes)
+    directionkindbox.currentIndexChanged.connect(on_direction)
+    directionbox.currentIndexChanged.connect(on_direction)
     addbutton.clicked.connect(on_add_reference)
     removebutton.clicked.connect(on_remove_reference)
     copybutton.clicked.connect(on_copy)
