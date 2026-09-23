@@ -80,7 +80,6 @@ dev = [
     "pytest-codspeed>=5.0.3",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "refurb>=2.3.1",
     "ruff>=0.16.4,<0.17",
     "ty>=0.0.80",
     "types-pyyaml>=6.0.12.20260408",
@@ -246,26 +245,6 @@ addopts = [
     "auto",
 ]
 testpaths = ["artistools"]
-
-[tool.refurb]
-# FURB152 rewrites numeric literals as math constants, which misfires on comparison tolerances
-# that happen to sit near pi, tau or e. FURB184 inlines single-use variables, which .sourcery.yaml
-# already turns off as inline-variable for the same readability reason.
-ignore = ["FURB120", "FURB152", "FURB184"]
-quiet = false
-enable_all = true
-python_version = "3.13"
-sort_by = "error"
-
-# `x == []` is an intentional exact-equality assertion in these tests: `not x` would also pass
-# if the function under test regressed to returning None
-[[tool.refurb.amend]]
-path = "./artistools/test_artistools.py"
-ignore = ["FURB115"]
-
-[[tool.refurb.amend]]
-path = "./artistools/misc/test_misc.py"
-ignore = ["FURB115"]
 
 [tool.ruff]
 line-length = 120

@@ -55,7 +55,6 @@ uv run -- ruff format
 uv run -- ruff check --no-fix     # --no-fix shows the same errors as CI (the config sets fix = true)
 uv run -- pyrefly check
 uv run -- ty check
-uv run -- refurb artistools --quiet -- --follow-imports=skip   # only artistools/, because refurb runs mypy internally, and mypy fails on pyvista
 uv run -- vulture                                      # informational, see below
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
 cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for a Rust change
