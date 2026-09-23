@@ -618,7 +618,8 @@ class SpectrumViewer:
         args = parse_cli_args(addargs, None, None, usertokens)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
-        # -deltax also makes plotspectra read the packets, thus the box shows only a --frompackets that the user gave
+        # -deltax and --notimeclamp also make plotspectra read the packets, thus the box shows only a --frompackets that
+        # the user gave
         givesfrompackets = bool(args.frompackets)
         # with --notimeclamp, a range of days keeps its bounds, and a single time or a timestep reads a whole timestep
         givesdaysrange = args.timemin is not None or (args.timedays is not None and "-" in args.timedays)

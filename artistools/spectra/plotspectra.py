@@ -1665,7 +1665,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--notimeclamp", action="store_true", help="When plotting from packets, don't clamp to timestep start/end"
+        "--notimeclamp",
+        action="store_true",
+        help="Do not extend the time range to the start and the end of its timesteps. This option reads the packets",
     )
 
     # no code reads this for plotspectra. It stays accepted, because a script holds the spelling,
@@ -2013,6 +2015,9 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         "a velocity range": bool(args.velocityranges_kmps),
         "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
         "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),
+        # spec.out and the emission files hold whole timesteps, thus only the packets give a time range inside one
+        # timestep
+        "--notimeclamp": args.notimeclamp,
     }
     if args.frompackets:
         return

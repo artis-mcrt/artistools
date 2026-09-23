@@ -1437,23 +1437,18 @@ def test_plotspectra_timestep_with_only_a_reference_spectrum(
     assert "-timestep names a timestep of a model" in capsys.readouterr().err
 
 
-def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path) -> None:
-    """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first."""
+def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--notimeclamp keeps the -timemin that the user gave. The range resolution of main clamped it first.
+
+    spec.out holds whole timesteps, thus --notimeclamp also makes plotspectra read the packets.
+    """
     at.spectra.plot(
-        argsraw=[
-            "--frompackets",
-            "--notimeclamp",
-            "-timemin",
-            "260",
-            "--plotinvalidpart",
-            str(modelpath),
-            "-outputfile",
-            str(tmp_path),
-        ]
+        argsraw=["--notimeclamp", "-timemin", "260", "--plotinvalidpart", str(modelpath), "-outputfile", str(tmp_path)]
     )
 
     pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
     assert pdfnames == ["plotspectra_260.00d-350.00d.pdf"]
+    assert "Enabling --frompackets, since --notimeclamp was specified" in capsys.readouterr().out
 
 
 def test_plotspectra_skips_a_folder_that_is_not_a_run(tmp_path: Path) -> None:
