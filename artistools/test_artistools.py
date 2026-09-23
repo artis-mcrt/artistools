@@ -1584,8 +1584,8 @@ def test_auto_yscale_weights_each_value_by_its_part_of_the_x_axis() -> None:
     """A spectrum keeps a linear axis, and a light curve at geometric times takes a log axis.
 
     The rule of the quartiles chose a log axis for a kilonova spectrum at 3 to 5 days. The rule of commit 1598ad51
-    chose a log axis for a hot spectrum at the first days. Each value covers its part of the x axis, thus the few late times of a light curve
-    cover most of a linear time axis.
+    chose a log axis for a hot spectrum at the first days. Each value covers its part of the x axis, thus the few late
+    times of a light curve cover most of a linear time axis.
     """
     wavelengths = np.linspace(2500.0, 19000.0, 400)
     # 30% of the wavelengths hold the blue end, where the flux rises over three decades. Thus the quartiles are far
