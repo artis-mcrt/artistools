@@ -27,6 +27,7 @@ from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_error
 from artistools.packets.core import RANKS_PER_BATCH
+from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -415,6 +416,32 @@ def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -
     return [*basetokens[:pathcount], *options, *basetokens[pathcount:]]
 
 
+def clear_axes_keep_ticks(axis: "mplax.Axes") -> None:
+    """Clear the axes, and keep the tick objects for the next plot.
+
+    When cla clears the axes, it removes each tick. matplotlib then makes each tick again when it draws the plot. The
+    plot code sets the properties of the ticks again, thus matplotlib draws the old ticks the same as new ticks.
+    """
+    ticklists = [(xyaxis, xyaxis.majorTicks, xyaxis.minorTicks) for xyaxis in (axis.xaxis, axis.yaxis)]
+    axis.cla()
+    for xyaxis, majorticks, minorticks in ticklists:
+        # the tick lists are lazy descriptors that matplotlib replaces with a list in the instance dict
+        vars(xyaxis).update(majorTicks=majorticks, minorTicks=minorticks)
+        # cla makes a new patch for the axes, and the grid lines of the ticks must clip to the new patch
+        xyaxis.set_clip_path(axis.patch)
+
+
+def fix_title_position(axis: "mplax.Axes") -> None:
+    """Keep the title at the top of the frame.
+
+    matplotlib moves the title above the offset text of the y axis. For this, it measures the y axis each time that it
+    draws the plot. ExponentLabelFormatter puts the offset in the label of the axis, thus the offset text is empty and
+    the title stays at the top of the frame.
+    """
+    if axis.get_title() and isinstance(axis.yaxis.get_major_formatter(), ExponentLabelFormatter):
+        axis.set_title(axis.get_title(), y=1.0)
+
+
 def get_first_line(errortext: str) -> str:
     """Return the first line of an error for the status line of the window, without the "error: " of print_error."""
     lines = [line.strip() for line in errortext.splitlines() if line.strip()]
@@ -773,9 +800,11 @@ class SpectrumViewer:
         else:
             for axis in (*self.axes, self.residualaxis):
                 if axis is not None:
-                    axis.cla()
+                    clear_axes_keep_ticks(axis)
 
         self.dfalldata, _ = draw_plot(plotargs, self.axes, self.residualaxis)
+        for axis in self.axes:
+            fix_title_position(axis)
         self.fig.canvas.draw_idle()
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:

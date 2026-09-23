@@ -2150,6 +2150,30 @@ def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
         assert not viewer.drewpreview
 
 
+def test_interactive_redraw_matches_a_new_plot() -> None:
+    """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
+
+    The viewer keeps the tick objects and the title position from one plot to the next.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    later = viewer.step_time(2)
+    assert later is not None
+    for values in (
+        dc.replace(viewer.values, yscale="log", logscalex=True),
+        dc.replace(viewer.values, showemission=True),
+        dc.replace(later, showemission=True, maxseriescount=4),
+    ):
+        assert viewer.change(values) is None
+    newviewer = make_headless_viewer([*shlex.split(viewer.get_command())[2:], "--interactive"])
+    canvases = [viewer.fig.canvas, newviewer.fig.canvas]
+    pixels = []
+    for canvas in canvases:
+        assert isinstance(canvas, FigureCanvasAgg)
+        canvas.draw()
+        pixels.append(np.asarray(canvas.buffer_rgba()).copy())
+    assert np.array_equal(pixels[0], pixels[1])
+
+
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()
