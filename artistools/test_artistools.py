@@ -1551,21 +1551,19 @@ def test_write_lbol_edep_ntimes_matches_rows(tmp_path: Path) -> None:
     assert len(datalines) == 4
 
 
-def get_kilonova_lightcurve() -> npt.NDArray[np.float64]:
-    """Return a light curve that rises to a peak and then decays, as a kilonova does."""
+def get_kilonova_lightcurve() -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the times and the luminosities of a light curve that rises to a peak and then decays."""
     times = np.geomspace(0.11, 76.0, 56)
-    return 1e42 * np.where(times < 0.5, (times / 0.5) ** 2.0, (times / 0.5) ** -1.3)
+    return times, 1e42 * np.where(times < 0.5, (times / 0.5) ** 2.0, (times / 0.5) ** -1.3)
 
 
 @pytest.mark.parametrize(
     ("name", "values", "wantslog"),
     [
         ("a flat series", np.linspace(1.0, 2.0, 50), False),
-        # the decay puts most of the values in the bottom tenth of a linear axis
-        ("the light curve of a kilonova", get_kilonova_lightcurve(), True),
         ("a decay over four decades", np.geomspace(1e4, 1.0, 100), True),
         ("a decay that falls away", np.exp(-np.linspace(0.0, 10.0, 100)), True),
-        # a ramp is in the bottom tenth of a linear axis for a tenth of its values only
+        # half of the values of a ramp are above half of the top
         ("a ramp over four decades", np.linspace(1.0, 1e4, 100), False),
         ("one point of noise near zero", np.concatenate([np.full(100, 1.0), [1e-30]]), False),
         ("a value of zero in every second place", np.concatenate([np.zeros(50), np.geomspace(1.0, 1e4, 50)]), False),
@@ -1583,19 +1581,27 @@ def test_wants_log_scale_reads_the_range_of_the_values(
 
 
 def test_auto_yscale_weights_each_value_by_its_part_of_the_x_axis() -> None:
-    """A spectrum that is low only at its blue end keeps a linear axis, and a decay at geometric times takes a log axis.
+    """A spectrum keeps a linear axis, and a light curve at geometric times takes a log axis.
 
-    The old rule of the quartiles chose a log axis for a kilonova spectrum at 3 to 5 days. The middle half of its flux
-    covers a ratio of 15 to 41, more than the ratio of a kilonova light curve. That spectrum is low over 0.13 to 0.21
-    of its wavelength range only.
+    The rule of the quartiles chose a log axis for a kilonova spectrum at 3 to 5 days. The rule of commit 1598ad51
+    chose a log axis for a hot spectrum at the first days. Each value covers its part of the x axis, thus the few late times of a light curve
+    cover most of a linear time axis.
     """
     wavelengths = np.linspace(2500.0, 19000.0, 400)
     # 30% of the wavelengths hold the blue end, where the flux rises over three decades. Thus the quartiles are far
     # apart
-    spectrum = np.concatenate([np.geomspace(1e-4, 0.1, 120), np.linspace(0.3, 1.0, 140), np.linspace(1.0, 0.3, 140)])
-    times = np.geomspace(0.1, 80.0, 60)
-    lightcurve = np.where(times < 1.0, times, times**-1.3)
-    for xvalues, yvalues, wantslog in ((wavelengths, spectrum, False), (times, lightcurve, True)):
+    coolspectrum = np.concatenate([
+        np.geomspace(1e-4, 0.1, 120),
+        np.linspace(0.3, 1.0, 140),
+        np.linspace(1.0, 0.3, 140),
+    ])
+    # a hot spectrum has its peak at the blue end, and the flux decreases to the red end
+    hotspectrum = (wavelengths / 2500.0) ** -2.0
+    for xvalues, yvalues, wantslog in (
+        (wavelengths, coolspectrum, False),
+        (wavelengths, hotspectrum, False),
+        (*get_kilonova_lightcurve(), True),
+    ):
         fig, axis = plt.subplots()
         axis.plot(xvalues, yvalues)
         args = argparse.Namespace(yscale="auto", logscaley=False)

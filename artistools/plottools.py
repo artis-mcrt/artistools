@@ -26,13 +26,10 @@ from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 
-# a value below this fraction of the top of the data lies in the bottom tenth of a linear axis
-LOGSCALE_LOWPART: t.Final[float] = 0.1
-
-# the part of the x axis where the data lie in the bottom tenth of a linear axis, above which the code chooses a log
-# axis. A kilonova spectrum at 3 to 5 days is that low over 0.13 to 0.21 of its wavelength range. A kilonova light
-# curve is that low over 0.91 of its time range
-LOGSCALE_MINLOWEXTENT: t.Final[float] = 0.5
+# the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
+# the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a
+# kilonova has a median of 0.004 of the top. A decay over four decades has a median of 0.011
+LOGSCALE_MAXMEDIAN: t.Final[float] = 0.015
 
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
 # still shows the data. This fraction of the values is the most that a log axis may hide.
@@ -71,10 +68,11 @@ def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDAr
 def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.float64] | None" = None) -> bool:
     """Return True when a log scale shows the values better than a linear scale.
 
-    A linear axis draws a value below LOGSCALE_LOWPART of the top in its bottom tenth, where the shape of the data is
-    not visible. A series that is that low over most of the x axis thus needs a log axis, e.g. a decay. A spectrum is
-    low only at the ends of its wavelength range, and the linear axis shows it well. xwidths gives the part of the x
-    axis that each value covers. If xwidths is None, each value has the same part, e.g. each cell of a grid.
+    A linear axis draws a value far below the top on its line of zero, where the shape of the data is not visible. A
+    series that is below LOGSCALE_MAXMEDIAN of the top over half of the x axis thus needs a log axis, e.g. a decay. A
+    spectrum stays above that fraction over most of its wavelength range, and the linear axis shows it well. xwidths
+    gives the part of the x axis that each value covers. If xwidths is None, each value has the same part, e.g. each
+    cell of a grid.
 
     A value of zero or below has no place on a log axis, thus many of them keep the linear one.
     """
@@ -90,12 +88,15 @@ def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.
 
     # the 99th percentile is the top, thus a few points of noise above the data do not set it
     top = float(np.percentile(values[ispositive], 99.0))
-    weights = np.where(isfinite, 1.0 if xwidths is None else xwidths, 0.0)
+    finitevalues = values[isfinite]
+    weights = np.ones(countfinite) if xwidths is None else xwidths[isfinite]
     if not weights.sum() > 0.0:
         # the lines cover no part of the x axis, e.g. each line has a single point
-        weights = isfinite.astype(np.float64)
-    lowextent = weights[values < LOGSCALE_LOWPART * top].sum() / weights.sum()
-    return bool(lowextent > LOGSCALE_MINLOWEXTENT)
+        weights = np.ones(countfinite)
+    order = np.argsort(finitevalues)
+    cumulativeweights = np.cumsum(weights[order])
+    median = finitevalues[order][np.searchsorted(cumulativeweights, 0.5 * cumulativeweights[-1])]
+    return bool(median < LOGSCALE_MAXMEDIAN * top)
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
