@@ -88,7 +88,7 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
     parser.add_argument(
         "--usedegrees",
         action="store_true",
-        help="Use degrees instead of radians for direction angles. Only works with -plotviewingangle",
+        help="Show the angles of the viewing directions in degrees, and not as cos θ and radians",
     )
 
     # averaging over one angle leaves one bin per index of the other, so the two cannot be combined. argparse
