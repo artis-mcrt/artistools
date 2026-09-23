@@ -2083,6 +2083,25 @@ def test_interactive_figwidthscale_fills_the_plot_area() -> None:
         assert f" -figwidthscale {figwidthscale:g}" in viewer.get_command()
 
 
+def test_maxseriescount_cuts_the_fixedionlist() -> None:
+    """A smaller -maxseriescount removes the last entries of -fixedionlist, and a list alone keeps each entry.
+
+    Before the correction, a -fixedionlist kept each entry, and -maxseriescount applied only to the names in the
+    order of the flux.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    series = viewer.get_drawn_series()
+    assert len(series) > 2
+    assert viewer.change(dc.replace(viewer.values, fixedionlist=series[::-1], maxseriescount=2)) is None
+    assert viewer.get_drawn_series() == series[::-1][:2]
+
+    for extraargs, maxseriescount in (("", 20), ("-maxseriescount 5", 5)):
+        argsraw = [str(modelpath_classic_3d), "--showemission", "-fixedionlist", *(["Fe II"] * 20), *extraargs.split()]
+        args = at.misc.parse_cli_args(plotspectra.addargs, None, None, argsraw)
+        plotspectra.resolve_plot_args(args)
+        assert args.maxseriescount == maxseriescount
+
+
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()

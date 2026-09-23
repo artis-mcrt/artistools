@@ -1644,8 +1644,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-maxseriescount",
         type=int,
-        default=14,
-        help="Maximum number of plot series (ions/processes) for emission/absorption plot",
+        default=None,
+        help=(
+            "The maximum number of series (ions or processes) in an emission or absorption plot. The plot shows only"
+            " this number of -fixedionlist entries. The default is the length of -fixedionlist, or"
+            f" {DEFAULT_MAXSERIESCOUNT} without that list"
+        ),
     )
 
     addarg_filter(parser)
@@ -1916,6 +1920,9 @@ def parse_velocity_values(
     unit: t.Literal["kmps", "c"] = "c" if any(valueunit == "c" for _, valueunit in parsedvalues) else "kmps"
     return [velocity_kmps for velocity_kmps, _ in parsedvalues], unit
 
+
+# the number of series of an emission or absorption plot without -maxseriescount or -fixedionlist
+DEFAULT_MAXSERIESCOUNT: t.Final = 14
 
 # the argument and the name in the title of the velocity range of each shell grouping
 VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
@@ -2208,6 +2215,11 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         args.xmax = defaultxmax
 
     args.xmin, args.xmax = sorted([args.xmin, args.xmax])
+
+    # -fixedionlist names each series, thus its length is the default count. A smaller -maxseriescount removes the
+    # last entries
+    if args.maxseriescount is None:
+        args.maxseriescount = len(args.fixedionlist) if args.fixedionlist else DEFAULT_MAXSERIESCOUNT
 
     assert (
         not args.plotvspecpol or not args.plotviewingangle

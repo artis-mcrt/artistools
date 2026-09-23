@@ -33,6 +33,7 @@ from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
+from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import get_artis_run_folders
 from artistools.spectra.plotspectra import get_default_xlimits
@@ -507,7 +508,6 @@ class SpectrumViewer:
             for dest, action in actions.items()
             if action.help and action.help != argparse.SUPPRESS
         }
-        self.defaultmaxseriescount: int = parser.get_default("maxseriescount")
         self.defaultyscale: str = parser.get_default("yscale")
         self.defaultxunit = "kev" if args.gamma else "angstroms"
         self.defaultgroupby = "nuc" if args.gamma else "ion"
@@ -597,7 +597,7 @@ class SpectrumViewer:
         if values.groupby is not None:
             options += ["-groupby", values.groupby]
         # the count applies to an emission plot alone, thus a different plot leaves it out
-        if (values.showemission or values.showabsorption) and values.maxseriescount != self.defaultmaxseriescount:
+        if (values.showemission or values.showabsorption) and values.maxseriescount != DEFAULT_MAXSERIESCOUNT:
             options += ["-maxseriescount", str(values.maxseriescount)]
         if (values.showemission or values.showabsorption) and values.nostack:
             options.append("--nostack")

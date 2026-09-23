@@ -2025,9 +2025,9 @@ def rank_flux_series_names(
 ) -> tuple[list[str], list[str]]:
     """Return the names that the plot draws, in the order of the series, and the names of the "Other" series.
 
-    A -fixedionlist keeps every one of its entries, in the order that the list gives, thus
-    maxseriescount does not apply to it. Without that list, the names come in the order of the flux,
-    and each name after maxseriescount joins "Other". A name that is already "Other" joins it as well.
+    A -fixedionlist gives the names in the order of the list. Without that list, the names come in the
+    order of the flux. Each name after maxseriescount joins "Other", and a name that is already "Other"
+    joins it as well.
     """
 
     def flux_of_name(name: str) -> float:
@@ -2035,10 +2035,10 @@ def rank_flux_series_names(
 
     namesbyflux = sorted(fluxofname, key=flux_of_name, reverse=True)
     if fixedionlist:
-        keptnames = [name for name in fixedionlist if name in fluxofname]
+        orderednames = [name for name in fixedionlist if name in fluxofname]
     else:
-        limit = len(namesbyflux) if maxseriescount is None else maxseriescount
-        keptnames = [name for name in namesbyflux if name != "Other"][:limit]
+        orderednames = [name for name in namesbyflux if name != "Other"]
+    keptnames = orderednames if maxseriescount is None else orderednames[:maxseriescount]
 
     keptset = set(keptnames)
 
