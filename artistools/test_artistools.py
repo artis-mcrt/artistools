@@ -1276,6 +1276,67 @@ def test_ejectaopacity() -> None:
     )
 
 
+def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
+    """The query with a gather for each cell gives the values of the earlier query.
+
+    The earlier query joined each cell with each line, and the reference sums come from it. Only the order
+    of the additions is different, thus the values agree within the rounding error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    assert dfopacities.height == 100
+    for column, expectedsum in {
+        "exopac": 1397.6901658607103,
+        "linebinned": 11675.7786539805,
+        "linebinned_maxone": 1652.4668052744682,
+    }.items():
+        assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
+
+
+def test_plotopacity_weights_the_cells_by_mass() -> None:
+    """The mean over the cells weights each cell by its mass, and it sums the cells of every batch.
+
+    Cell k holds k times the ion populations and k times the mass of the test cell. The line-binned
+    opacity is linear in the populations. Thus, for n cells, the mean is sum(k^2) / sum(k) = (2n + 1) / 3
+    times the opacity of the test cell. The first CELLSPERBATCH cells fill one batch, and the last 8 cells
+    go into a second batch.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    assert dfcell.height == 1
+
+    cellcount = at.ejectaopacity.CELLSPERBATCH + 8
+    dfcells = pl.concat([
+        dfcell.with_columns(
+            pl.lit(k - 1, dtype=dfcell.schema["modelgridindex"]).alias("modelgridindex"),
+            pl.col("mass_g") * k,
+            # a population is Float32, and k times it rounds in Float32
+            pl.col("^nnion_.*$").cast(pl.Float64) * k,
+        )
+        for k in range(1, cellcount + 1)
+    ])
+
+    def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
+        return at.plotopacity.get_massweighted_opacities(adata, time_days, dfestimators, 3000.0, 4000.0, 10.0)[
+            "linebinned"
+        ].to_numpy()
+
+    linebinned_onecell = get_linebinned(dfcell)
+    assert linebinned_onecell.max() > 0.0
+    meanfactor = (2 * cellcount + 1) / 3
+    assert np.allclose(get_linebinned(dfcells), meanfactor * linebinned_onecell, rtol=1e-10, atol=0.0)
+
+
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 

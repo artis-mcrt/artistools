@@ -31,143 +31,244 @@ from artistools.misc import parse_cli_args
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 
+# exopac is the expansion opacity. linebinned is the sum of tau_sobolev, and linebinned_maxone
+# limits each tau_sobolev to 1
+OPACITYCOLUMNS = ("exopac", "linebinned", "linebinned_maxone")
 
-def get_binned_opacities_ion(
-    dfcells: pl.LazyFrame,
-    dflevels: pl.LazyFrame,
-    dftransitions: pl.LazyFrame,
-    ionstr: str,
-    lambda_bin_edges: list[float],
-    expopac_deltalambda: float,
-    time_days: float,
-) -> pl.LazyFrame:
-    """Return one ion's Sobolev expansion opacity, summed into the given wavelength bins."""
-    time_s = time_days * day_to_s
-    dfcelllevelpops = dflevels.join(dfcells, how="cross", maintain_order="left").with_columns(
-        nnlevel=pl.col("g")
-        * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()
-        / ((pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("Te")).exp()).sum().over("modelgridindex"))
-        * pl.col(f"nnion_{ionstr}")
-    )
+# for one block and one cell, a temporary column uses 0.8 MB, thus it stays in the processor cache
+LINESPERBLOCK = 100_000
 
-    return (
-        dftransitions
-        .filter(pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
-        .with_columns(nu_trans=1e8 * C_cm_per_s / (pl.col("lambda_angstroms")))
-        .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
-        .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
-        .with_columns(
-            # give cut only the interior edges. A line at an outer edge then falls into the first or
-            # the last bin, not into an out-of-range category with the index -1
-            pl
-            .col("lambda_angstroms")
-            .cut(breaks=lambda_bin_edges[1:-1])
-            .to_physical()
-            .cast(pl.Int32)
-            .alias("lambda_angstroms_binindex")
-        )
-        .join(dfcells.select("modelgridindex", "rho"), how="cross", maintain_order="left")
-        .join(
-            dfcelllevelpops.select("modelgridindex", lower=pl.col("levelindex"), nnlevel_lower=pl.col("nnlevel")),
-            on=("modelgridindex", "lower"),
-            how="left",
-            maintain_order="left",
-        )
-        .join(
-            dfcelllevelpops.select("modelgridindex", upper=pl.col("levelindex"), nnlevel_upper=pl.col("nnlevel")),
-            on=("modelgridindex", "upper"),
-            how="left",
-            maintain_order="left",
-        )
-        .with_columns(
-            tau_sobolev=(pl.col("nnlevel_lower") * pl.col("B_lu") - pl.col("nnlevel_upper") * pl.col("B_ul"))
-            * HCLIGHTOVERFOURPI
-            * time_s
-        )
-        .group_by("modelgridindex", "lambda_angstroms_binindex")
-        .agg(
-            exopac=(
-                (1 - (-pl.col("tau_sobolev")).exp())
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / (C_cm_per_s * time_s * pl.col("rho"))
-            ).sum(),
-            linebinned_maxone=(
-                pl.min_horizontal(pl.col("tau_sobolev"), 1.0)
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / (C_cm_per_s * time_s * pl.col("rho"))
-            ).sum(),
-            linebinned=(
-                pl.col("tau_sobolev")
-                * pl.col("lambda_angstroms")
-                / expopac_deltalambda
-                / (C_cm_per_s * time_s * pl.col("rho"))
-            ).sum(),
-        )
-    )
+# one query calculates each opacity of each cell of a batch as a separate column, thus a large batch gives
+# each thread work. For 40.7 million lines, a cell took 0.16 s in a batch of 32 cells and 0.08 s in 256 or 512
+CELLSPERBATCH = 256
 
 
-def get_expansion_opacities(
-    adata: pl.DataFrame,
-    time_days: float,
-    dfestimators: pl.DataFrame,
-    lambdamin: float,
-    lambdamax: float,
-    deltalambda: float,
-) -> pl.LazyFrame:
-    """Return the binned expansion opacity of every cell, summed over all ions in the atomic data."""
+class OpacityLines(t.NamedTuple):
+    """The levels and the binned lines of the ions that the estimators hold, for all the cells of a run."""
+
+    ionstrs: list[str]
+    """The ion of each ionindex in dflevels."""
+
+    dflevels: pl.DataFrame
+    """The levels of all the ions, with the ionindex, the statistical weight, and the energy of each level."""
+
+    dflines: pl.DataFrame
+    """The lines in the wavelength range, in the order of the bins.
+
+    lower and upper give the row of each level in dflevels. The Sobolev optical depth of a line is
+    pop_lower * sobolev_lower - pop_upper * sobolev_upper.
+    """
+
+
+def get_lambda_bin_edges(lambdamin: float, lambdamax: float, deltalambda: float) -> list[float]:
+    """Return the edges of the wavelength bins in Angstroms."""
     numbins = int((lambdamax - lambdamin) / deltalambda)
+    return [lambdamin + i * deltalambda for i in range(numbins + 1)]
 
-    print("Summing opacities...")
 
-    dfbinnedopacities = (
-        pl
-        .LazyFrame({"lambda_angstroms_binindex": range(numbins)})
-        .set_sorted("lambda_angstroms_binindex")
-        .with_columns(lambda_angstroms_binlower=lambdamin + pl.col("lambda_angstroms_binindex") * deltalambda)
-        .with_columns(lambda_angstroms_bin_mid=pl.col("lambda_angstroms_binlower") + (deltalambda / 2))
-        .join(dfestimators.select("modelgridindex", "Te", "mass_g").lazy(), how="cross", maintain_order="left")
-    )
+def get_opacity_lines(
+    adata: pl.DataFrame, estimatorcolumns: Sequence[str], lambda_bin_edges: list[float], time_days: float
+) -> OpacityLines:
+    """Return the levels and the lines of each ion that the estimators give a population for.
 
-    lambda_bin_edges = [lambdamin + i * deltalambda for i in range(numbins + 1)]
-
-    estimatorcolumns = dfestimators.columns
-    ionframes = []
+    The lines do not depend on a cell, thus a run prepares them one time for all the cells.
+    """
+    sobolevfactor = HCLIGHTOVERFOURPI * time_days * day_to_s
+    ionstrs: list[str] = []
+    levelframes: list[pl.DataFrame] = []
+    lineframes: list[pl.LazyFrame] = []
+    levelcount = 0
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         ionstr = get_ionstring(Z, ion_stage, sep="_")
         if f"nnion_{ionstr}" not in estimatorcolumns:
             continue
 
-        ionframes.append(
-            get_binned_opacities_ion(
-                dfestimators.lazy(), dflevels.lazy(), dftransitions, ionstr, lambda_bin_edges, deltalambda, time_days
+        # a line reads its level populations by the position of the level
+        if not dflevels.select((pl.col("levelindex") == pl.int_range(pl.len())).all()).item():
+            msg = f"The levels of {ionstr} do not have the level indices 0 to {dflevels.height - 1} in order"
+            raise ValueError(msg)
+
+        levelframes.append(dflevels.select(pl.lit(len(ionstrs), dtype=pl.UInt32).alias("ionindex"), "g", "energy_ev"))
+        lineframes.append(
+            dftransitions
+            .lazy()
+            .filter(
+                pl.col("lambda_angstroms").is_between(lambda_bin_edges[0], lambda_bin_edges[-1]),
+                pl.col("lower").is_between(0, dflevels.height - 1),
+                pl.col("upper").is_between(0, dflevels.height - 1),
+            )
+            .with_columns(nu_trans=1e8 * C_cm_per_s / (pl.col("lambda_angstroms")))
+            .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
+            .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
+            .select(
+                # give cut only the interior edges. A line at an outer edge then falls into the first or
+                # the last bin, not into an out-of-range category with the index -1
+                pl
+                .col("lambda_angstroms")
+                .cut(breaks=lambda_bin_edges[1:-1])
+                .to_physical()
+                .cast(pl.Int32)
+                .alias("lambda_angstroms_binindex"),
+                "lambda_angstroms",
+                lower=(pl.col("lower") + levelcount).cast(pl.UInt32),
+                upper=(pl.col("upper") + levelcount).cast(pl.UInt32),
+                sobolev_lower=pl.col("B_lu") * sobolevfactor,
+                sobolev_upper=pl.col("B_ul") * sobolevfactor,
             )
         )
+        ionstrs.append(ionstr)
+        levelcount += dflevels.height
 
-    if not ionframes:
+    if not ionstrs:
         msg = "The estimators hold no ion population column for any ion of the atomic data"
         raise ValueError(msg)
 
-    # one sum over the rows of every ion, in place of one join for each ion and a sum across the columns
-    opacitycolumns = ["exopac", "linebinned", "linebinned_maxone"]
-    dfionsums = (
-        pl.concat(ionframes).group_by("modelgridindex", "lambda_angstroms_binindex").agg(pl.col(opacitycolumns).sum())
+    return OpacityLines(
+        ionstrs=ionstrs,
+        dflevels=pl.concat(levelframes),
+        dflines=pl.concat(lineframes).sort("lambda_angstroms_binindex").collect(),
     )
 
+
+def get_level_pops(opacitylines: OpacityLines, dfcells: pl.DataFrame) -> pl.DataFrame:
+    """Return the population of each level in local thermodynamic equilibrium (LTE), with one column for each cell."""
+    dfionpops = (
+        dfcells
+        .select(f"nnion_{ionstr}" for ionstr in opacitylines.ionstrs)
+        .transpose(column_names=[str(cellpos) for cellpos in range(dfcells.height)])
+        .with_columns(ionindex=pl.int_range(pl.len(), dtype=pl.UInt32))
+    )
+
+    def boltzmannfactor(te: float | None) -> pl.Expr:
+        return pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / te).exp()
+
+    return opacitylines.dflevels.join(dfionpops, on="ionindex", how="left", maintain_order="left").select(
+        (boltzmannfactor(te) / boltzmannfactor(te).sum().over("ionindex") * pl.col(str(cellpos))).alias(str(cellpos))
+        for cellpos, te in enumerate(dfcells["Te"])
+    )
+
+
+def get_expansion_opacities(
+    opacitylines: OpacityLines, dfcells: pl.DataFrame, lambda_bin_edges: list[float], time_days: float
+) -> pl.DataFrame:
+    """Return the binned expansion opacity and the line-binned opacities of each cell.
+
+    Each cell has one column of level populations, and each line reads them with a gather by position.
+    Thus the query needs no join of the lines with the cells. The sum runs over blocks of lines, because
+    the temporary columns of a small block stay in the processor cache.
+    """
+    numbins = len(lambda_bin_edges) - 1
+    deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
+    time_s = time_days * day_to_s
+    lambdaexpr = pl.col("lambda_angstroms")
+
+    sumexprs: list[pl.Expr] = []
+    for cellpos, levelpops in enumerate(get_level_pops(opacitylines, dfcells).iter_columns()):
+        tau_sobolev = pl.lit(levelpops).gather(pl.col("lower")) * pl.col("sobolev_lower") - pl.lit(levelpops).gather(
+            pl.col("upper")
+        ) * pl.col("sobolev_upper")
+        sumexprs += [
+            ((1 - (-tau_sobolev).exp()) * lambdaexpr).alias(f"exopac_{cellpos}"),
+            (tau_sobolev * lambdaexpr).alias(f"linebinned_{cellpos}"),
+            (tau_sobolev.clip(upper_bound=1.0) * lambdaexpr).alias(f"linebinned_maxone_{cellpos}"),
+        ]
+
+    blocksums = [
+        opacitylines.dflines
+        .slice(firstline, LINESPERBLOCK)
+        .lazy()
+        .select("lambda_angstroms_binindex", *sumexprs)
+        .group_by("lambda_angstroms_binindex")
+        .agg(pl.all().sum())
+        .collect()
+        for firstline in range(0, opacitylines.dflines.height, LINESPERBLOCK)
+    ]
+
+    # a bin with no lines has a sum of zero
+    dfbinsums = (
+        pl
+        .DataFrame({"lambda_angstroms_binindex": range(numbins)}, schema={"lambda_angstroms_binindex": pl.Int32})
+        .join(
+            pl.concat(blocksums).group_by("lambda_angstroms_binindex").agg(pl.all().sum()),
+            on="lambda_angstroms_binindex",
+            how="left",
+            maintain_order="left",
+        )
+        .with_columns(pl.exclude("lambda_angstroms_binindex").fill_null(0.0))
+    )
+
+    # the columns of one quantity are [bin][cell], thus the flat order of the transpose is [cell][bin]
+    opacitysums = {
+        column: dfbinsums.select(f"{column}_{cellpos}" for cellpos in range(dfcells.height)).to_numpy().ravel(order="F")
+        for column in OPACITYCOLUMNS
+    }
+
     return (
-        dfbinnedopacities
-        .join(dfionsums, on=("modelgridindex", "lambda_angstroms_binindex"), how="left", maintain_order="left")
+        dfcells
+        .select("modelgridindex", "Te", "mass_g", "rho")
+        .join(dfbinsums.select("lambda_angstroms_binindex"), how="cross", maintain_order="left_right")
+        .with_columns(
+            lambda_angstroms_bin_mid=lambda_bin_edges[0]
+            + pl.col("lambda_angstroms_binindex") * deltalambda
+            + deltalambda / 2,
+            **{
+                column: pl.Series(values) / deltalambda / (C_cm_per_s * time_s * pl.col("rho"))
+                for column, values in opacitysums.items()
+            },
+        )
         .select(
             "modelgridindex",
-            "lambda_angstroms_binindex",
+            pl.col("lambda_angstroms_binindex").cast(pl.Int64),
             "lambda_angstroms_bin_mid",
             "Te",
             "mass_g",
-            pl.col(opacitycolumns).fill_null(0.0),
+            *OPACITYCOLUMNS,
         )
-        .sort("modelgridindex", "lambda_angstroms_binindex")
     )
+
+
+def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
+    """Return the timestep that -timestep or -timedays gives, or exit with an error."""
+    if timedays is not None:
+        if timestep is not None:
+            exit_with_error("specify only one of -timestep and -timedays")
+        return get_timestep_of_timedays(modelpath, timedays)
+
+    selectedtimestep = get_single_timestep(timestep, modelpath)
+    if selectedtimestep is None:
+        exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+
+    return selectedtimestep
+
+
+def get_cell_estimators(modelpath: Path | str, timestep: int, modelgridindex: int | None) -> pl.DataFrame:
+    """Return the estimators and the mass of each cell at the timestep."""
+    dfestimators = (
+        scan_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
+        .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
+        .collect()
+    )
+    # ARTIS writes no estimators for a cell that holds no matter
+    if dfestimators.is_empty():
+        cellstr = "any cell" if modelgridindex is None else f"cell {modelgridindex}"
+        msg = f"The estimators hold no values for {cellstr} at timestep {timestep}. An empty cell has no estimators"
+        raise ValueError(msg)
+
+    return dfestimators
+
+
+def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
+    """Return the levels and the transitions of each ion, with the columns that the opacities need."""
+    # get_opacity_lines() needs the statistical weights as well as the wavelength, and
+    # add_transition_columns() drops each derived column that this call does not request
+    return get_levels(
+        modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
+    )
+
+
+def get_cell_batches(dfestimators: pl.DataFrame) -> list[pl.DataFrame]:
+    """Split the cells into batches of CELLSPERBATCH cells for get_expansion_opacities()."""
+    return [dfestimators.slice(firstcell, CELLSPERBATCH) for firstcell in range(0, dfestimators.height, CELLSPERBATCH)]
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -199,35 +300,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Compute binned expansion opacities and Planck-mean opacities in postprocessing."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    if args.timedays is not None:
-        if args.timestep is not None:
-            exit_with_error("specify only one of -timestep and -timedays")
-        timestep = get_timestep_of_timedays(args.modelpath, args.timedays)
-    else:
-        timestep = get_single_timestep(args.timestep, args.modelpath)
-        if timestep is None:
-            exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
-
-    dfestimators = (
-        scan_estimators(
-            args.modelpath,
-            timestep=timestep,
-            modelgridindex=get_single_modelgridindex(args.modelgridindex),
-            join_modeldata=True,
-        )
-        .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
-        .collect()
-    ).with_columns(batchindex=(pl.row_index() / 32).cast(pl.Int64))
+    timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
+    dfestimators = get_cell_estimators(args.modelpath, timestep, get_single_modelgridindex(args.modelgridindex))
 
     time_days = get_timestep_time(args.modelpath, timestep)
 
     print()
     print(f"timestep {timestep} T_days = {time_days:.2f}")
 
-    # get_binned_opacities_ion() needs the statistical weights as well as the wavelength, and
-    # add_transition_columns() drops every derived column that is not requested here
-    adata = get_levels(
-        args.modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
+    lambda_bin_edges = get_lambda_bin_edges(args.xmin, args.xmax, args.deltalambda)
+    opacitylines = get_opacity_lines(
+        get_opacity_atomic_data(args.modelpath), dfestimators.columns, lambda_bin_edges, time_days
     )
 
     pl.Config.set_tbl_cols(20)
@@ -237,17 +320,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_start = time.perf_counter()
     planckmeanopacity_times_mass = 0.0
     mass_g_sum = 0.0
-    for dfcellbatch in dfestimators.partition_by("batchindex", maintain_order=True, include_key=False):
-        dfbinnedopacities = get_expansion_opacities(
-            adata=adata,
-            time_days=time_days,
-            dfestimators=dfcellbatch,
-            lambdamin=args.xmin,
-            lambdamax=args.xmax,
-            deltalambda=args.deltalambda,
-        )
+    for dfcellbatch in get_cell_batches(dfestimators):
+        dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
         if args.show_binned_opacities:
-            dfbinnedopacities = dfbinnedopacities.collect()
             print(dfbinnedopacities)
 
         dfplanckmean = (
