@@ -1348,6 +1348,37 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
     assert mockaxhline.call_count == 1
 
 
+def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.CaptureFixture[str]) -> None:
+    """--averagecell takes one cell with the mass-weighted mean of n_ion / rho, of rho, and of Te, and logs Te.
+
+    A model of one cell gives the same cell. A cell with no temperature does not count in the mean temperature.
+    """
+    dfone = at.ejectaopacity.get_cell_estimators(modelpath, 40, None)
+    pltest.assert_frame_equal(
+        at.plotopacity.get_average_cell(dfone),
+        dfone.select(at.plotopacity.get_average_cell(dfone).columns),
+        check_dtypes=False,
+        rel_tol=1e-12,
+    )
+
+    dfcells = pl.DataFrame({
+        "modelgridindex": [0, 1, 2],
+        "timestep": [5, 5, 5],
+        "Te": [1000.0, 3000.0, None],
+        "rho": [1.0, 2.0, 4.0],
+        "mass_g": [1.0, 3.0, 4.0],
+        "nnion_Fe_II": [2.0, 4.0, 8.0],
+    })
+    capsys.readouterr()
+    dfmean = at.plotopacity.get_average_cell(dfcells)
+    assert np.isclose(dfmean["Te"].item(), (1000.0 + 3 * 3000.0) / 4, rtol=1e-12, atol=0.0)
+    meanrho = (1.0 + 3 * 2.0 + 4 * 4.0) / 8
+    assert np.isclose(dfmean["rho"].item(), meanrho, rtol=1e-12, atol=0.0)
+    assert np.isclose(dfmean["nnion_Fe_II"].item(), meanrho * (2.0 + 3 * 2.0 + 4 * 2.0) / 8, rtol=1e-12, atol=0.0)
+    assert "one cell of the mass-weighted mean of 3 cells: Te = 2500 K" in capsys.readouterr().out
+    assert at.plotopacity.get_cells_text(None, None, None, 2500.0) == "mean composition of all cells at 2500 K"
+
+
 def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
     """The Rust kernel gives the values of the earlier polars query.
 

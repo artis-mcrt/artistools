@@ -319,17 +319,56 @@ def select_velocity_range(
     return dfselected
 
 
+def get_average_cell(dfestimators: pl.DataFrame) -> pl.DataFrame:
+    """Return one cell with the mass-weighted mean composition, temperature, and density of the cells, and log them.
+
+    The opacity per gram depends on the ion densities per gram, thus the mean takes each n_ion / rho. The expansion
+    opacity also depends on the density, thus the cell takes the mean density. A cell with no temperature does not
+    count in the mean temperature.
+    """
+    mass = pl.col("mass_g")
+    hastemperature = pl.col("Te") > 0.0
+    meanrho = (mass * pl.col("rho")).sum() / mass.sum()
+    dfcell = dfestimators.select(
+        pl.col("modelgridindex").first(),
+        pl.col("timestep").first(),
+        (mass * pl.col("Te")).filter(hastemperature).sum().truediv(mass.filter(hastemperature).sum()).alias("Te"),
+        meanrho.alias("rho"),
+        mass.sum(),
+        *(
+            (meanrho * (mass * pl.col(column) / pl.col("rho")).sum() / mass.sum()).alias(column)
+            for column in dfestimators.columns
+            if column.startswith("nnion_")
+        ),
+    )
+    temperature = dfcell["Te"].item()
+    if temperature is None or not math.isfinite(temperature):
+        msg = "No cell has a temperature, thus the mean cell has no temperature"
+        raise ValueError(msg)
+    print(
+        f"  one cell of the mass-weighted mean of {dfestimators.height} cells: Te = {temperature:.0f} K,"
+        f" rho = {dfcell['rho'].item():.3g} g/cm^3"
+    )
+    return dfcell
+
+
 def get_cells_text(
     modelgridindex: int | None,
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
+    averagetemperature: float | None = None,
 ) -> str:
-    """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user."""
+    """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user.
+
+    averagetemperature is the temperature of the mean cell of --averagecell.
+    """
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
-    if boundstext := get_velocity_bounds_text(vmin, vmax):
-        return f"mass-weighted mean of the cells with {boundstext}"
-    return "mass-weighted mean of all cells"
+    boundstext = get_velocity_bounds_text(vmin, vmax)
+    cellstext = f"the cells with {boundstext}" if boundstext else "all cells"
+    if averagetemperature is None:
+        return f"mass-weighted mean of {cellstext}"
+    return f"mean composition of {cellstext} at {averagetemperature:.0f} K"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -383,6 +422,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--logscalex", action="store_true", help="Use a log scale for the wavelength axis")
     parser.add_argument(
+        "--averagecell",
+        action="store_true",
+        help=(
+            "Replace the cells with one cell of their mass-weighted mean composition, temperature, and density. The"
+            " calculation then takes the time of one cell"
+        ),
+    )
+    parser.add_argument(
         "--showplanckmean",
         action="store_true",
         help="Draw a line at the mass-weighted Planck mean of the expansion opacity over the wavelength range",
@@ -406,19 +453,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath, args.xmin, args.xmax, args.deltalambda, args.movingaveragewidth
     )
 
+    dfestimators = select_velocity_range(
+        get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
+    )
+    averagetemperature = None
+    if args.averagecell and modelgridindex is None:
+        dfestimators = get_average_cell(dfestimators)
+        averagetemperature = dfestimators["Te"].item()
+
     dfopacities, planckmean = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
         time_days=time_days,
-        dfestimators=select_velocity_range(
-            get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
-        ),
+        dfestimators=dfestimators,
         lambda_bin_edges=lambda_bin_edges,
         planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
     )
 
     title = (
         f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}),"
-        f" {get_cells_text(modelgridindex, args.vmin, args.vmax)}"
+        f" {get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperature)}"
     )
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None
