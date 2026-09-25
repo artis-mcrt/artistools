@@ -3378,3 +3378,19 @@ def test_interactive_converts_stale_batches_in_a_child_process() -> None:
     ):
         assert interactive.get_batch_caches(modelpath) == []
     mockchild.assert_called_once()
+
+
+def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
+    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert viewer.plotxbins is not None
+    assert viewer.plotxbins > 3
+    assert viewer.plotcolorbyion
+    assert not viewer.values.colorbyion
+    assert viewer.change(dc.replace(viewer.values, xbins="8")) is None
+    assert viewer.plotxbins == 8
+    assert not viewer.plotcolorbyion
+    assert interactive.get_xunit_text(1.0, "velocity") == " [km/s]"
+    assert interactive.get_xunit_text(1.0, "Te") == " [K]"
+    assert not interactive.get_xunit_text(1.0, "timestep")
+    assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"

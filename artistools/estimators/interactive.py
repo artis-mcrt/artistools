@@ -17,6 +17,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import get_estimator_batch_states
+from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
@@ -46,6 +47,7 @@ from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
+from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_menus
@@ -60,6 +62,7 @@ from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_line_readouts
+from artistools.viewertools import get_menu_shortcut_texts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
@@ -78,10 +81,12 @@ from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import show_window
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
+from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -148,6 +153,21 @@ class ControlValues:
     colorbyion: bool
     figwidthscale: float
     otheroptions: OptionRows
+
+
+class RenderedPlot(t.NamedTuple):
+    """A figure that the worker thread drew, with the properties of the plot that the window shows.
+
+    plotestimators chooses the bins, the markers, and the colours when the command gives no option, thus the last
+    three fields hold the values that the plot used.
+    """
+
+    fig: mplfig.Figure
+    isimage: bool
+    xlimitscale: float
+    xbins: int | None
+    markers: bool
+    colorbyion: bool
 
 
 def check_viewer_args(args: argparse.Namespace) -> None:
@@ -361,6 +381,10 @@ class EstimatorViewer:
         self.isimage = False
         # the axis of a model faster than 0.3c shows v/c for -x velocity, and -xmin then takes km/s
         self.xlimitscale = 1.0
+        # the bins, the markers, and the colours that the last plot used, which the window shows beside the controls
+        self.plotxbins: int | None = None
+        self.plotmarkers = False
+        self.plotcolorbyion = False
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -520,8 +544,7 @@ class EstimatorViewer:
         then stays. A worker thread can run this method, because it changes nothing that the window reads. The
         function that it returns must run in the thread of the window.
         """
-        # the figure, whether it is a colour image, and the scale of the x limits
-        plots: list[tuple[mplfig.Figure, bool, float]] = []
+        plots: list[RenderedPlot] = []
         # the canvas of the window draws at this resolution. A draw at the same resolution in the worker thread
         # makes the ticks and the text of the figure, and the draw of the window then took 0.05 s in place of 0.22 s
         dpi = float(self.fig.dpi)
@@ -540,14 +563,25 @@ class EstimatorViewer:
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
             fig.set_dpi(dpi)
             fig.canvas.draw()
-            plots.append((fig, isimage, xlimitscale))
+            plots.append(
+                RenderedPlot(
+                    fig=fig,
+                    isimage=isimage,
+                    xlimitscale=xlimitscale,
+                    xbins=plotargs.xbins,
+                    markers=bool(plotargs.markers),
+                    colorbyion=bool(plotargs.colorbyion),
+                )
+            )
 
         message = run_command_step(make_plot, quiet=quiet)
 
         def show_plot() -> str | None:
             if message is not None:
                 return message
-            fig, self.isimage, self.xlimitscale = plots[0]
+            plot = plots[0]
+            fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
+            self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion
             canvas = self.fig.canvas
             fig.set_canvas(canvas)
             canvas.figure = fig
@@ -577,6 +611,14 @@ class EstimatorViewer:
     def get_xlimit_text(self, xdata: float) -> str:
         """Return the -xmin or -xmax text of a position on the x axis, with 3 significant digits for a short command."""
         return format(float(f"{xdata * self.xlimitscale:.3g}"), ".10g")
+
+
+def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
+    """Return the unit of -xmin and -xmax, e.g. " [km/s]", or an empty text for a variable with no unit.
+
+    A scale of the x limits shows that the axis gives v/c and the options take km/s.
+    """
+    return plain_label(get_units_string("velocity" if xlimitscale != 1.0 else xvariable))
 
 
 def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheroptions: OptionRows) -> ControlValues:
@@ -617,7 +659,10 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
     return 0.2 + 0.6 * (1.0 - np.exp(-4.0 * xvalues)) / (1.0 - math.exp(-4.0))
 
 
-KEYBOARD_HELP: t.Final = """<table>
+def get_keyboard_help() -> str:
+    """Return the table of the keys and the mouse actions of the window, with the shortcuts of the platform."""
+    shortcuts = get_menu_shortcut_texts()
+    return f"""<table>
 <tr><td><b>Left</b>, <b>Right</b></td><td>Move the time range to the adjacent timestep</td></tr>
 <tr><td><b>Up</b>, <b>Down</b></td><td>Make the time range one timestep wider or narrower</td></tr>
 <tr><td><b>Home</b>, <b>End</b></td><td>Move the time range to the start or the end of the run</td></tr>
@@ -626,9 +671,9 @@ KEYBOARD_HELP: t.Final = """<table>
 through the cells</td></tr>
 <tr><td><b>Drag</b> across a plot</td><td>Select the x range</td></tr>
 <tr><td><b>Double-click</b> a plot</td><td>Show the x range of the data</td></tr>
-<tr><td><b>⌘S</b></td><td>Run the command to save the figure</td></tr>
-<tr><td><b>⇧⌘C</b></td><td>Copy the command</td></tr>
-<tr><td><b>⌘O</b></td><td>Open a model in a new window</td></tr>
+<tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Run the command to save the figure</td></tr>
+<tr><td><b>{shortcuts["Copy Command"]}</b></td><td>Copy the command</td></tr>
+<tr><td><b>{shortcuts["Open Model..."]}</b></td><td>Open a model in a new window</td></tr>
 <tr><td><b>?</b></td><td>Show this list</td></tr>
 </table>"""
 
@@ -720,9 +765,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
     timegrid.addWidget(playbutton, 2, 2)
 
-    cellheader, cellgrid = add_section(panellayout, "Cells")
-    cellcontent = cellgrid.parentWidget()
-    assert cellcontent is not None
+    _, cellgrid = add_section(panellayout, "Cells")
     cellslider = make_slider()
     cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
@@ -749,11 +792,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
     xbox.setToolTip(helptexts.get("x", ""))
     xminedit, xmaxedit, xbinsedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    xminlabel, xmaxlabel = QtWidgets.QLabel("-xmin"), QtWidgets.QLabel("-xmax")
     zoomtip = " Drag across a plot to select a range. Double-click a plot to show the range of the data."
-    for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
+    for edit in (xminedit, xmaxedit):
         edit.setFixedWidth(100)
         edit.setPlaceholderText("auto")
-        edit.setToolTip(helptexts.get(dest, "") + zoomtip)
     # a field takes each value of -xbins, e.g. a negative value for the automatic bins
     xbinsedit.setFixedWidth(80)
     xbinsedit.setPlaceholderText("default")
@@ -766,7 +809,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     colorbyioncheck = QtWidgets.QCheckBox("--colorbyion")
     colorbyioncheck.setToolTip(helptexts.get("colorbyion", ""))
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
-    add_row(xgrid, 1, [QtWidgets.QLabel("-xmin"), xminedit, QtWidgets.QLabel("-xmax"), xmaxedit])
+    add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
 
     _, subplotgrid = add_section(panellayout, "Subplots")
@@ -861,10 +904,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
         set_edit_text(tmaxedit, f"{viewer.tmids[values.last]:.4g}")
-        # a snapshot reads all the cells unless the command gives -cell, thus the cells need no control then
-        showcells = evolution or bool(values.cells)
-        for widget in (cellheader, cellcontent):
-            widget.setVisible(showcells)
+        # the slider selects one cell, which suits a plot against time. A snapshot of one cell has one point, and
+        # the field of a snapshot takes a list or a range of cells
+        cellslider.setVisible(evolution)
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
@@ -876,15 +918,36 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         celllabel.setText(viewer.get_cell_text())
         allcellsbutton.setEnabled(bool(values.cells))
         xbox.setCurrentText(values.x)
+        xunit = get_xunit_text(viewer.xlimitscale, values.x)
+        xminlabel.setText(f"-xmin{xunit}")
+        xmaxlabel.setText(f"-xmax{xunit}")
+        # the axis of a fast model shows v/c, and the option keeps km/s
+        unittip = " The axis shows v/c, and the option takes km/s." if viewer.xlimitscale != 1.0 else ""
+        for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
+            edit.setToolTip(helptexts.get(dest, "") + zoomtip + unittip)
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
         set_edit_text(xbinsedit, values.xbins)
+        # the window hides the output of the plot, thus the controls show the bins, the markers, and the colours
+        # that the plot chose when the command gives no option
+        if viewer.isimage:
+            xbinsedit.setPlaceholderText("default")
+        else:
+            xbinsedit.setPlaceholderText("auto: no bins" if viewer.plotxbins is None else f"auto: {viewer.plotxbins}")
         markerscheck.setChecked(values.markers)
+        markerscheck.setText(
+            "--markers (on for -xbins 0)" if viewer.plotmarkers and not values.markers else "--markers"
+        )
         colorbyioncheck.setChecked(values.colorbyion)
+        colorbyioncheck.setText(
+            "--colorbyion (on for automatic bins)"
+            if viewer.plotcolorbyion and not values.colorbyion
+            else "--colorbyion"
+        )
         show_subplots(values.subplots)
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
         set_option_rows(values.otheroptions)
-        commandtext.setPlainText(viewer.get_command())
+        set_command_text(commandtext, viewer.get_command())
 
     def after_draw(message: str | None) -> None:
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
@@ -896,7 +959,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            playtimer.start()
+            start_play_timer(playtimer, queue.plotseconds)
 
     queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, render=viewer.render)
     apply = queue.apply
@@ -1095,7 +1158,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error(message)
 
     def on_help() -> None:
-        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
+        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help())
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
         if not viewer.isimage:

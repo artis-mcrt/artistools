@@ -1086,12 +1086,39 @@ def add_command_section(
     commandtext = QtWidgets.QPlainTextEdit()
     commandtext.setReadOnly(True)
     commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    commandtext.setFixedHeight(3 * commandtext.fontMetrics().lineSpacing() + 12)
+    set_command_text(commandtext, "")
     copybutton = QtWidgets.QPushButton("Copy")
     copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
     commandgrid.addWidget(commandtext, 0, 0)
     commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
     return commandtext, copybutton
+
+
+# the command box shows between these numbers of lines, and a longer command scrolls inside the box
+MIN_COMMAND_LINES: t.Final = 3
+MAX_COMMAND_LINES: t.Final = 8
+
+
+def set_command_text(commandtext: "QtWidgets.QPlainTextEdit", command: str) -> None:
+    """Show the command in its box, and give the box the height of the lines of the command.
+
+    The box wraps a long command, thus the number of lines comes from the width of the text and of the box. A wrap
+    at a word can take one line more than this estimate, and the box then scrolls by that line.
+    """
+    commandtext.setPlainText(command)
+    metrics = commandtext.fontMetrics()
+    boxwidth = max(commandtext.viewport().width(), 1)
+    lines = sum(max(1, math.ceil(metrics.horizontalAdvance(line) / boxwidth)) for line in command.splitlines() or [""])
+    commandtext.setFixedHeight(min(max(lines, MIN_COMMAND_LINES), MAX_COMMAND_LINES) * metrics.lineSpacing() + 12)
+
+
+def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float) -> None:
+    """Start the pause before the next step of Play.
+
+    The pause lets the user see each step. The old plot stays in view while the worker draws the next one, thus a
+    plot that took longer than the pause needs no pause.
+    """
+    playtimer.start(max(0, PLAY_MILLISECONDS - round(plotseconds * 1000.0)))
 
 
 class StatusBar(t.NamedTuple):
@@ -1124,21 +1151,32 @@ def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
     return StatusBar(message=messagelabel, readout=readoutlabel, drawtime=drawtimelabel, helpbutton=helpbutton)
 
 
-def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
-    """Add the File menu and the Help menu. callbacks gives the function of each item by the text of the item."""
+def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
+    """Return the menu, the text, and the shortcut of each menu item of a viewer."""
     from PySide6 import QtGui
 
+    return [
+        ("File", "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
+        ("File", "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
+        ("File", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
+        ("File", "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
+        ("Help", "Keys and Mouse Actions", QtGui.QKeySequence("?")),
+    ]
+
+
+def get_menu_shortcut_texts() -> dict[str, str]:
+    """Return the shortcut of each menu item by its text, in the form of the platform, e.g. ⌘S or Ctrl+S."""
+    from PySide6 import QtGui
+
+    return {text: keys.toString(QtGui.QKeySequence.SequenceFormat.NativeText) for _menu, text, keys in get_menu_items()}
+
+
+def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
+    """Add the File menu and the Help menu. callbacks gives the function of each item by the text of the item."""
     menubar = window.menuBar()
-    filemenu = menubar.addMenu("File")
-    helpmenu = menubar.addMenu("Help")
-    for menu, text, keys in (
-        (filemenu, "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
-        (filemenu, "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
-        (filemenu, "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
-        (filemenu, "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
-        (helpmenu, "Keys and Mouse Actions", QtGui.QKeySequence("?")),
-    ):
-        action = menu.addAction(text)
+    menus = {name: menubar.addMenu(name) for name in ("File", "Help")}
+    for menuname, text, keys in get_menu_items():
+        action = menus[menuname].addAction(text)
         action.setShortcut(keys)
         action.triggered.connect(callbacks[text])
 
@@ -1283,6 +1321,8 @@ class DrawQueue[ValuesT]:
         self.renderedvalues: ValuesT = viewer.values
         self.rendering: Future[Callable[[], str | None]] | None = None
         self.renderstart = 0.0
+        # the time of the last plot, which sets the pause of Play
+        self.plotseconds = 0.0
         if render is not None:
             # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
             self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
@@ -1346,7 +1386,8 @@ class DrawQueue[ValuesT]:
         if self.requestedvalues is None:
             self.viewer.values = self.drawnvalues
         drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - self.renderstart:.2f} s")
+        self.plotseconds = time.perf_counter() - self.renderstart
+        self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         self.statusbar.readout.setText("")
         self.statusbar.message.setText(message or "")
         self.show_values()
@@ -1373,7 +1414,8 @@ class DrawQueue[ValuesT]:
             self.drawnvalues = self.viewer.values
             QtWidgets.QApplication.restoreOverrideCursor()
         drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
+        self.plotseconds = time.perf_counter() - starttime
+        self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
         self.statusbar.message.setText(message or "")
