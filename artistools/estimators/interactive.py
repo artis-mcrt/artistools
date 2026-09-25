@@ -67,6 +67,7 @@ from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -75,6 +76,7 @@ from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
+from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
@@ -695,8 +697,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from PySide6 import QtWidgets
 
     viewer = EstimatorViewer(tokens, mplfig.Figure())
-    window = QtWidgets.QMainWindow()
-    window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+    window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
     canvas = FigureCanvasQTAgg(viewer.fig)
     if (message := viewer.draw(quiet=False)) is not None:
@@ -715,12 +716,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         fittimer.start()
 
     plotarea = make_plot_area(canvas, on_resize)
-    central = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(central)
-    layout.addWidget(plotarea, stretch=1)
-    window.setCentralWidget(central)
     sidebar, panellayout = make_sidebar()
-    layout.addWidget(sidebar)
+    splitter = make_central_splitter(window, plotarea, sidebar)
     helptexts = viewer.helptexts
     nvalid = len(viewer.validtimesteps)
 
@@ -1248,6 +1245,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.figsize, plotarea))
+    show_window(
+        window, splitter, viewer.figsize, APPLICATION_NAME, lambda: fit_canvas(canvas, viewer.figsize, plotarea)
+    )
     show_values()
     return None

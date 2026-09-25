@@ -69,6 +69,9 @@ FIT_TOLERANCE: t.Final[float] = 0.05
 # each continuous slider of a window has this number of positions
 SLIDER_STEPS: t.Final = 1000
 
+# the first width of the sidebar. The user can drag the handle between the plot and the sidebar
+SIDEBAR_WIDTH: t.Final = 600
+
 # the Play button waits for this time after each plot, thus the user can see each step
 PLAY_MILLISECONDS: t.Final = 150
 
@@ -615,6 +618,7 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         sys.stderr = ThreadOutput(sys.stderr)
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     assert isinstance(app, QtWidgets.QApplication)
+    app.setOrganizationName("artistools")
     app.setApplicationName("artistools")
     app.setApplicationDisplayName(applicationname)
     app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512, iconcurve)))
@@ -665,6 +669,68 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
     keyownerfilter = KeyOwnerFilter(app)
     app.installEventFilter(keyownerfilter)
     return app
+
+
+def get_settings() -> "QtCore.QSettings":
+    """Return the settings of the viewers, which keep the geometry of each window and the last model folder.
+
+    The settings take the organisation and the name of the application, thus a test can send them to a folder with
+    QSettings.setPath.
+    """
+    from PySide6 import QtCore
+
+    return QtCore.QSettings()
+
+
+def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
+    """Return the window of a viewer, which keeps its geometry and the sizes of its splitter when it closes.
+
+    show_window restores them for the next window of the same viewer.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class ViewerWindow(QtWidgets.QMainWindow):
+        """A window that writes its geometry and the state of its splitter to the settings when it closes."""
+
+        def __init__(self, applicationname: str) -> None:
+            super().__init__()
+            self.applicationname = applicationname
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        @t.override
+        def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+            settings = get_settings()
+            settings.setValue(f"{self.applicationname}/geometry", self.saveGeometry())
+            splitter = self.centralWidget()
+            if isinstance(splitter, QtWidgets.QSplitter):
+                settings.setValue(f"{self.applicationname}/splitter", splitter.saveState())
+            super().closeEvent(event)
+
+    return ViewerWindow(applicationname)
+
+
+def make_central_splitter(
+    window: "QtWidgets.QMainWindow", plotarea: "QtWidgets.QWidget", sidebar: "QtWidgets.QWidget"
+) -> "QtWidgets.QSplitter":
+    """Put the plot area and the sidebar side by side at the centre of the window, with a handle between them.
+
+    A drag of the handle changes the width of the sidebar, and a drag to the edge hides it. The plot area takes the
+    extra width of the window.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+    splitter.addWidget(plotarea)
+    splitter.addWidget(sidebar)
+    splitter.setStretchFactor(0, 1)
+    splitter.setStretchFactor(1, 0)
+    splitter.setCollapsible(0, False)  # ruff:ignore[boolean-positional-value-in-call]
+    splitter.setCollapsible(1, True)  # ruff:ignore[boolean-positional-value-in-call]
+    window.setCentralWidget(splitter)
+    return splitter
 
 
 def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]":
@@ -813,7 +879,8 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     from PySide6 import QtWidgets
 
     sidebar = QtWidgets.QWidget()
-    sidebar.setFixedWidth(600)
+    # the handle of the splitter sets the width, and a narrower sidebar cuts the controls
+    sidebar.setMinimumWidth(360)
     sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
     sidebarlayout.setContentsMargins(0, 0, 0, 0)
     panel = QtWidgets.QWidget()
@@ -1239,12 +1306,18 @@ def open_model_window(
     """
     from PySide6 import QtWidgets
 
-    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(Path.cwd()))
+    # the dialog starts beside the model that the user opened last, where the other runs of a project are
+    settings = get_settings()
+    startfolder = settings.value("modelfolder", str(Path.cwd()))
+    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(startfolder))
     if not folder:
         return None
 
     message = run_command_step(lambda: open_window([folder], windows), quiet=False)
-    return None if message is None else f"The viewer cannot open {folder}: {message}"
+    if message is not None:
+        return f"The viewer cannot open {folder}: {message}"
+    settings.setValue("modelfolder", str(Path(folder).parent))
+    return None
 
 
 def get_new_figwidthscale(
@@ -1526,18 +1599,33 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 
 
 def show_window(
-    window: "QtWidgets.QMainWindow", figsize: tuple[float, float], sidebarwidth: int, on_screen: "Callable[[], None]"
+    window: "QtWidgets.QMainWindow",
+    splitter: "QtWidgets.QSplitter",
+    figsize: tuple[float, float],
+    applicationname: str,
+    on_screen: "Callable[[], None]",
 ) -> None:
-    """Give the window its first size and show it. on_screen runs after the window moves to a different screen."""
+    """Give the window the size of the last window of the viewer, or a first size, and show it.
+
+    on_screen runs after the window moves to a different screen.
+    """
     from PySide6 import QtCore
     from PySide6 import QtGui
 
-    # the first size gives the plot 100 dpi, inside the screen
-    screen = window.screen().availableGeometry()
-    figwidth, figheight = figsize
-    plotwidth = min(round(figwidth * 100) + 24, screen.width() - sidebarwidth - 80)
-    plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
-    window.resize(plotwidth + sidebarwidth + 40, max(plotheight, 700))
+    settings = get_settings()
+    geometry = settings.value(f"{applicationname}/geometry")
+    splitterstate = settings.value(f"{applicationname}/splitter")
+    if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
+        if isinstance(splitterstate, QtCore.QByteArray):
+            splitter.restoreState(splitterstate)
+    else:
+        # the first size gives the plot 100 dpi, inside the screen
+        screen = window.screen().availableGeometry()
+        figwidth, figheight = figsize
+        plotwidth = min(round(figwidth * 100) + 24, screen.width() - SIDEBAR_WIDTH - 80)
+        plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
+        window.resize(plotwidth + SIDEBAR_WIDTH + 40, max(plotheight, 700))
+        splitter.setSizes([plotwidth, SIDEBAR_WIDTH])
     window.show()
     if (windowhandle := window.windowHandle()) is not None:
 
