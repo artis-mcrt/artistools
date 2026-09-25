@@ -164,8 +164,8 @@ class ControlValues:
 class RenderedPlot(t.NamedTuple):
     """A figure that the worker thread drew, with the properties of the plot that the window shows.
 
-    plotestimators chooses the bins, the markers, and the colours when the command gives no option, thus the last
-    three fields hold the values that the plot used.
+    plotestimators chooses the bins, the markers, and the colours when the command gives no option. The last three
+    fields hold the values that the plot used.
     """
 
     fig: mplfig.Figure
@@ -289,7 +289,7 @@ def load_run(viewer: "EstimatorViewer") -> None:
     viewer.cells = dfcells["modelgridindex"].to_list()
     viewer.cellvelocities = dict(zip(viewer.cells, dfcells["vel_r_mid"].to_list(), strict=True))
 
-    # the command omits -plot while the subplots are the default subplots of plotestimators
+    # the command omits -plot if the subplots are the default subplots of plotestimators
     viewer.defaultsubplots = tuple(
         get_plotitem_tokens(plotitems)
         for plotitems in get_default_plotlist()
@@ -321,7 +321,8 @@ def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
 
     A large run has more than 10 GB of estimators. The conversion of 40 batches of a 3D kilonova run kept 5.2 GB of
     freed memory in the viewer process. A child process gives that memory back to the system when it ends. The
-    child process imports artistools again, which took 0.4 s, thus a run with no stale batch converts in this process.
+    child process imports artistools again, which took 0.4 s, thus the viewer process reads the caches itself when no
+    batch is stale.
     """
     states = get_estimator_batch_states(modelpath, None, None)
     convert = partial(convert_estimator_batch_caches, verbose=False)
@@ -590,8 +591,8 @@ class EstimatorViewer:
         function that it returns must run in the thread of the window.
         """
         plots: list[RenderedPlot] = []
-        # the canvas of the window draws at this resolution. A draw at the same resolution in the worker thread
-        # makes the ticks and the text of the figure, and the draw of the window then took 0.05 s in place of 0.22 s
+        # the canvas of the window draws at this resolution. The worker thread draws the ticks and the text at the
+        # same resolution. The draw of the window then took 0.05 s in place of 0.22 s
         dpi = float(self.fig.dpi)
 
         def make_plot() -> None:
@@ -910,7 +911,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "- an ion;\n"
         "- a type of series and its names, e.g. populations 'Fe II' 'Fe III';\n"
         f"- a directive: {', '.join(f'{name}=' for name in DIRECTIVES)}.\n"
-        "Double-click a row to change it. Right-click a subplot for the y scale, and Shift-drag it for the y range."
+        "Double-click a row to change it. Right-click a subplot to set the y scale. Shift-drag a subplot to set the"
+        " y range."
     )
     variablebox = QtWidgets.QComboBox()
     variablebox.setEditable(True)
@@ -1020,14 +1022,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
         xminlabel.setText(f"-xmin{xunit}")
         xmaxlabel.setText(f"-xmax{xunit}")
-        # the axis of a fast model shows v/c, and the option keeps km/s
+        # the axis of a fast model shows v/c, and the option takes km/s
         unittip = " The axis shows v/c, and the option takes km/s." if viewer.xlimitscale != 1.0 else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
             edit.setToolTip(helptexts.get(dest, "") + zoomtip + unittip)
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
         set_edit_text(xbinsedit, values.xbins)
-        # the window hides the output of the plot, thus the controls show the bins, the markers, and the colours
+        # the window hides the output of the plot. Thus the controls show the bins, the markers, and the colours
         # that the plot chose when the command gives no option
         if viewer.isimage:
             xbinsedit.setPlaceholderText("default")
@@ -1257,7 +1259,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error(message)
 
     def on_reload() -> None:
-        """Read the run again. A new batch of text files converts here, and the terminal shows its progress."""
+        """Read the run again. The viewer converts a new batch of text files here, and the terminal shows the progress."""
         QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
         try:
             message = run_command_step(partial(reload_run, viewer), quiet=False)

@@ -835,7 +835,7 @@ class EstimatorBatchCache(t.NamedTuple):
 
 
 class EstimatorBatchState(t.NamedTuple):
-    """The freshness of the parquet cache of one batch of MPI ranks in one run folder."""
+    """The state of the parquet cache of one batch of MPI ranks in one run folder: current or stale."""
 
     runfolder: Path
     batchindex: int
@@ -854,7 +854,7 @@ def get_estimator_batch_states(
 
     The state says whether a conversion of the text files must replace the cache. A run with no run folders has no
     batches. The check reads the metadata of each cache and the modification times of the text files, thus it takes
-    a small part of a second, and a caller can run the conversion elsewhere, e.g. in a child process.
+    less than one second. A caller can then run the conversion elsewhere, e.g. in a child process.
     """
     mpiranklist = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
     mpiranks_matched = set(
@@ -880,9 +880,8 @@ def get_estimator_batch_states(
         for batchindex, mpiranks in mpirank_groups:
             mtime, complete = get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
             cachepath = get_rankbatch_parquetpath(runfolder, mpiranks, batchindex)
-            # the identity comes from before the freshness check of its own file. A fresh cache that a rival
-            # process installs after that check then keeps its place, because a rewrite replaces only the
-            # file that the check saw
+            # get the identity of the cache before the check of its age. A rewrite replaces only the file that
+            # the check saw. Thus a new cache that a different process writes after the check stays
             outdatedparquet = get_file_identity(cachepath)
             stalereason = rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
             states.append(
@@ -894,7 +893,8 @@ def get_estimator_batch_states(
                     textsource_complete=complete,
                     stalereason=stalereason,
                     outdatedparquet=outdatedparquet,
-                    # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
+                    # a conversion cannot rebuild the cache of some batches. Such a batch keeps its cache, thus it
+                    # starts no progress bar
                     rebuild=stalereason is not None
                     and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete),
                 )

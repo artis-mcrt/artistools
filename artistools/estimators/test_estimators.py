@@ -3364,7 +3364,7 @@ def test_interactive_readout_names_each_series() -> None:
 
 
 def test_interactive_converts_stale_batches_in_a_child_process() -> None:
-    """A run with no stale batch reads its caches in the viewer process, and a stale batch converts in a child."""
+    """A run with no stale batch reads its caches in the viewer process, and a child process converts a stale batch."""
     at.estimators.scan_estimators(modelpath).head(1).collect()
     with mock.patch.object(interactive, "call_in_child_process") as mockchild:
         assert interactive.get_batch_caches(modelpath)
@@ -3426,7 +3426,7 @@ def test_interactive_directives_of_a_subplot() -> None:
 
 
 def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
-    """The menu of a snapshot names the cell at the pointer, and the menu of an evolution names the timestep."""
+    """The menu of a snapshot names the cell at the pointer, and the menu of a plot against time names the time."""
     viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert viewer.values.x == "velocity"
     assert interactive.get_snapshot_values(viewer, 1.0) is None
@@ -3447,7 +3447,10 @@ def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -
 
 
 def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
-    """A reload reads the valid timesteps again. A range of the whole run grows with the run, and another stays inside."""
+    """A reload reads the valid timesteps again.
+
+    A range of the whole run grows with the run, and a different range stays inside the valid timesteps.
+    """
     viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     validtimesteps = viewer.validtimesteps
     assert len(validtimesteps) > 8

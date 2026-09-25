@@ -1282,7 +1282,7 @@ def get_menu_shortcut_texts() -> dict[str, str]:
 def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
     """Add the File menu and the Help menu.
 
-    callbacks gives the function of each item by the text of the item. A viewer leaves out an item that it does not
+    callbacks gives the function of each item by the text of the item. A viewer omits an item that it does not
     support, e.g. Reload Data.
     """
     menubar = window.menuBar()
