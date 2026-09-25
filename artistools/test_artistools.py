@@ -1283,12 +1283,11 @@ def test_ejectaopacity() -> None:
 
 
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
-@mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
-    mockplot: mock.MagicMock, mockfill: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+def test_plotopacity_draws_ratios_and_the_planck_mean(
+    mockplot: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
 ) -> None:
-    """The plot has a band for each opacity, a dashed capped opacity, a panel of ratios, and the Planck mean.
+    """The plot has the bins and a moving average of each opacity, a dashed capped opacity, ratios, and the Planck mean.
 
     The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell. Only
     --showplanckmean draws it.
@@ -1308,10 +1307,11 @@ def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
             str(tmp_path / "opac.pdf"),
         ]
     )
-    assert mockfill.call_count == 3
-    axes = {call.args[0] for call in mockplot.call_args_list}
-    assert len(axes) == 2, "the opacities and the ratios need two frames"
-    assert [call.kwargs.get("linestyle") for call in mockplot.call_args_list[:3]] == ["-", "--", "-"]
+    axes = [call.args[0] for call in mockplot.call_args_list]
+    assert len(set(axes)) == 2, "the opacities and the ratios need two frames"
+    mainplots = [call for call in mockplot.call_args_list if call.args[0] is axes[0]]
+    assert len(mainplots) == 6, "each opacity needs its bins and its moving average"
+    assert [call.kwargs["linestyle"] for call in mainplots if call.kwargs.get("label")] == ["-", "--", "-"]
 
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]

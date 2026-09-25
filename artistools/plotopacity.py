@@ -66,8 +66,6 @@ OPACITYSERIES = (
 )
 # where two opacities are equal, their lines are at the same place. A thin line covers less of the line below it
 OPACITYLINE_WIDTH: t.Final = 0.6
-# the band of the bins of each opacity lies behind the lines, thus it must let the other bands show through
-BAND_ALPHA: t.Final = 0.2
 
 
 def get_massweighted_opacities(
@@ -177,17 +175,13 @@ def get_window_bins(width: float, deltalambda: float) -> int:
 
 
 def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int) -> pl.DataFrame:
-    """Return the centred moving average of each opacity at the middle of each bin, and the range of the window.
+    """Return the centred moving average of each opacity at the middle of each bin.
 
-    The columns with the suffixes _min and _max give the smallest and the largest bin of the window. Near each end of
-    the range, the window holds fewer bins.
+    Near each end of the range, the window holds fewer bins.
     """
-    opacities = pl.col(*OPACITYCOLUMNS)
     return dfopacities.select(
         "lambda_angstroms_bin_mid",
-        opacities.rolling_mean(window_size=windowbins, center=True, min_samples=1),
-        opacities.rolling_min(window_size=windowbins, center=True, min_samples=1).name.suffix("_min"),
-        opacities.rolling_max(window_size=windowbins, center=True, min_samples=1).name.suffix("_max"),
+        pl.col(*OPACITYCOLUMNS).rolling_mean(window_size=windowbins, center=True, min_samples=1),
     )
 
 
@@ -200,9 +194,8 @@ def plot_opacities(
 ) -> None:
     """Plot each type of binned opacity against wavelength, with a panel of ratios below, and save the figure.
 
-    With a moving average, the line of each opacity is its moving average. A band in the same colour then gives the
-    range of the bins of each window, and --showbins also draws each bin. With no moving average, each bin is a
-    horizontal line from its lower edge to its upper edge. The panel below gives the ratio of each line-binned
+    Each bin is a short horizontal line from its lower edge to its upper edge. With a moving average, a line in the
+    same colour gives the moving average of each opacity. The panel below gives the ratio of each line-binned
     opacity to the expansion opacity. A finite planckmean gives a dotted line at the Planck mean of the expansion
     opacity.
 
@@ -233,26 +226,20 @@ def plot_opacities(
 
     colors: dict[str, mplt.ColorType] = {}
     for column, label, linestyle in OPACITYSERIES:
-        (line,) = ax.plot(
-            *get_line(column),
+        # the moving average goes on top of the bins, and the legend shows the moving average when there is one
+        (binlines,) = ax.plot(
+            *get_bin_line(column),
             linewidth=OPACITYLINE_WIDTH,
-            linestyle=linestyle,
+            linestyle=linestyle if dfmovingaverages is None else "-",
             # a butt cap ends the line of a bin at the edge of the bin
             solid_capstyle="butt",
-            label=label,
+            label=label if dfmovingaverages is None else None,
         )
-        colors[column] = line.get_color()
+        colors[column] = binlines.get_color()
         if dfmovingaverages is not None:
-            ax.fill_between(
-                dfmovingaverages["lambda_angstroms_bin_mid"].to_numpy(),
-                dfmovingaverages[f"{column}_min"].to_numpy(),
-                dfmovingaverages[f"{column}_max"].to_numpy(),
-                color=colors[column],
-                alpha=BAND_ALPHA,
-                linewidth=0.0,
+            ax.plot(
+                *get_line(column), linewidth=OPACITYLINE_WIDTH, linestyle=linestyle, color=colors[column], label=label
             )
-            if args.showbins:
-                ax.plot(*get_bin_line(column), linewidth=OPACITYLINE_WIDTH, color=colors[column], solid_capstyle="butt")
 
     if math.isfinite(planckmean):
         ax.axhline(
@@ -290,15 +277,12 @@ def plot_opacities(
 
 
 def get_smoothing_text(dfopacities: pl.DataFrame, movingaveragewidth: float) -> str | None:
-    """Return the title of the legend, which gives the moving average and the band of the lines, or None."""
+    """Return the title of the legend, which gives the moving average of the lines, or None."""
     if movingaveragewidth <= 0.0 or dfopacities.is_empty():
         return None
     deltalambda = dfopacities["lambda_angstroms_upper"][0] - dfopacities["lambda_angstroms_lower"][0]
     windowbins = get_window_bins(movingaveragewidth, deltalambda)
-    return (
-        rf"Lines: moving average of {movingaveragewidth:g} $\mathrm{{\AA}}$ ({windowbins} bins)"
-        "\nBands: range of the bins of the window"
-    )
+    return rf"Lines: moving average of {movingaveragewidth:g} $\mathrm{{\AA}}$ ({windowbins} bins)"
 
 
 def get_velocity_bounds_text(
@@ -398,9 +382,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("--logscalex", action="store_true", help="Use a log scale for the wavelength axis")
-    parser.add_argument(
-        "--showbins", action="store_true", help="Draw each bin as a short line, as well as the band of the bins"
-    )
     parser.add_argument(
         "--showplanckmean",
         action="store_true",
