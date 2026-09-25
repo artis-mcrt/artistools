@@ -219,6 +219,30 @@ def get_expansion_opacities(
     )
 
 
+def get_planck_mean_opacities(dfbinnedopacities: pl.DataFrame) -> pl.DataFrame:
+    """Return the Planck mean of the expansion opacity of each cell, with the mass of the cell.
+
+    The Planck function at the temperature of the cell gives the weight of each bin. A cell with no temperature has no
+    Planck function, thus it has no row.
+    """
+    return (
+        dfbinnedopacities
+        .lazy()
+        .filter(pl.col("Te") > 0.0)
+        .with_columns(lambda_cm_bin_mid=pl.col("lambda_angstroms_bin_mid") * 1e-8)
+        .with_columns(
+            planckfactor=(
+                (pl.col("lambda_cm_bin_mid").pow(-5))
+                / ((h_erg_s * C_cm_per_s / pl.col("lambda_cm_bin_mid") / pl.col("Te") / K_B_erg_per_K).exp() - 1)
+            )
+        )
+        .group_by("modelgridindex", "mass_g")
+        .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
+        .sort("modelgridindex")
+        .collect(engine="streaming")
+    )
+
+
 def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
     """Return the timestep that -timestep or -timedays gives, or exit with an error."""
     if timedays is not None:
@@ -322,30 +346,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.show_binned_opacities:
             print(dfbinnedopacities)
 
-        dfplanckmean = (
-            (
-                dfbinnedopacities
-                .lazy()
-                .with_columns(lambda_cm_bin_mid=pl.col("lambda_angstroms_bin_mid") * 1e-8)
-                .with_columns(
-                    planckfactor=(
-                        (pl.col("lambda_cm_bin_mid").pow(-5))
-                        / (
-                            (h_erg_s * C_cm_per_s / pl.col("lambda_cm_bin_mid") / pl.col("Te") / K_B_erg_per_K).exp()
-                            - 1
-                        )
-                    )
-                )
-                .group_by("modelgridindex", "mass_g")
-                .agg(
-                    planckmean_opacity=(
-                        (pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()
-                    )
-                )
-            )
-            .sort("modelgridindex")
-            .collect(engine="streaming")
-        )
+        dfplanckmean = get_planck_mean_opacities(dfbinnedopacities)
 
         print(dfplanckmean)
         planckmeanopacity_times_mass += (dfplanckmean.select(pl.col("planckmean_opacity").dot(pl.col("mass_g")))).item()

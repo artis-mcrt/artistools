@@ -1282,6 +1282,53 @@ def test_ejectaopacity() -> None:
     )
 
 
+@mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
+@mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
+    mockplot: mock.MagicMock, mockfill: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+) -> None:
+    """The plot has a band for each opacity, a dashed capped opacity, a panel of ratios, and the Planck mean.
+
+    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell.
+    """
+    at.plotopacity.main(
+        argsraw=[
+            "-modelpath",
+            str(modelpath),
+            "-timestep",
+            "40",
+            "-xmin",
+            "3000",
+            "-xmax",
+            "4000",
+            "-o",
+            str(tmp_path / "opac.pdf"),
+        ]
+    )
+    assert mockfill.call_count == 3
+    axes = {call.args[0] for call in mockplot.call_args_list}
+    assert len(axes) == 2, "the opacities and the ratios need two frames"
+    assert [call.kwargs.get("linestyle") for call in mockplot.call_args_list[:3]] == ["-", "--", "-"]
+
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    )
+    dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcell, edges, time_days)
+    lambda_cm = dfbins["lambda_angstroms_bin_mid"].to_numpy() * 1e-8
+    temperature = dfcell["Te"].item()
+    planck = lambda_cm**-5 / np.expm1(
+        at.constants.h_erg_s * at.constants.C_cm_per_s / lambda_cm / temperature / at.constants.K_B_erg_per_K
+    )
+    expected = float(np.sum(planck * dfbins["exopac"].to_numpy()) / np.sum(planck))
+    assert mockaxhline.call_count == 1
+    assert np.isclose(mockaxhline.call_args.args[1], expected, rtol=1e-9, atol=0.0)
+
+
 def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
     """The Rust kernel gives the values of the earlier polars query.
 
@@ -1431,9 +1478,10 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     ])
 
     def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
-        return at.plotopacity.get_massweighted_opacities(
+        dfopacities, _ = at.plotopacity.get_massweighted_opacities(
             adata, time_days, dfestimators, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-        )["linebinned"].to_numpy()
+        )
+        return dfopacities["linebinned"].to_numpy()
 
     linebinned_onecell = get_linebinned(dfcell)
     assert linebinned_onecell.max() > 0.0
@@ -1461,7 +1509,7 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
     time_days = at.get_timestep_times(modelpath)[timestep]
     adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
     dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
-    dffull = at.plotopacity.get_massweighted_opacities(
+    dffull, _ = at.plotopacity.get_massweighted_opacities(
         adata, time_days, dfcell, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     )
     xmin, xmax, width = 3213.0, 3517.0, 50.0
@@ -1473,7 +1521,7 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
         f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g} Angstroms of the 100 bins"
         " of rpkt.h from 3000 to 4000 Angstroms"
     ) in capsys.readouterr().out
-    dfpart = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
+    dfpart, _ = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
 
     windowbins = at.plotopacity.get_window_bins(width, deltalambda)
     plotted = [
