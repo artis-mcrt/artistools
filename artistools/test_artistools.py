@@ -1431,14 +1431,62 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     ])
 
     def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
-        return at.plotopacity.get_massweighted_opacities(adata, time_days, dfestimators, 3000.0, 4000.0, 10.0)[
-            "linebinned"
-        ].to_numpy()
+        return at.plotopacity.get_massweighted_opacities(
+            adata, time_days, dfestimators, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+        )["linebinned"].to_numpy()
 
     linebinned_onecell = get_linebinned(dfcell)
     assert linebinned_onecell.max() > 0.0
     meanfactor = (2 * cellcount + 1) / 3
     assert np.allclose(get_linebinned(dfcells), meanfactor * linebinned_onecell, rtol=1e-10, atol=0.0)
+
+
+def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The bins of the plot range give the same plotted data as a calculation of the full grid of rpkt.h.
+
+    The range also holds one bin more than half the window of the moving average at each end. The width of a bin
+    comes from rpkt.h, and the command prints the range and the number of the bins.
+    """
+    (tmp_path / "artis").mkdir()
+    (tmp_path / "artis" / "rpkt.h").write_text(
+        "constexpr double expopac_lambdamin = 3000.;\n"
+        "constexpr double expopac_lambdamax = 4000.;\n"
+        "constexpr double expopac_deltalambda = 10.;\n",
+        encoding="utf-8",
+    )
+    assert at.ejectaopacity.get_expopac_grid(tmp_path) == (3000.0, 4000.0, 10.0)
+    assert at.ejectaopacity.get_expopac_grid(modelpath) is None
+
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dffull = at.plotopacity.get_massweighted_opacities(
+        adata, time_days, dfcell, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    )
+    xmin, xmax, width = 3213.0, 3517.0, 50.0
+    capsys.readouterr()
+    edges, deltalambda = at.plotopacity.get_computed_bin_edges(tmp_path, xmin, xmax, None, width)
+    assert deltalambda == pytest.approx(10.0, rel=1e-12, abs=0.0)
+    assert len(edges) - 1 < 50 < dffull.height
+    assert (
+        f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g}"
+        in capsys.readouterr().out
+    )
+    dfpart = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
+
+    windowbins = at.plotopacity.get_window_bins(width, deltalambda)
+    plotted = [
+        (
+            df.filter(pl.col("lambda_angstroms_upper") > xmin, pl.col("lambda_angstroms_lower") < xmax),
+            at.misc.df_filter_minmax_bracketed(
+                at.plotopacity.get_moving_averages(df, windowbins), "lambda_angstroms_bin_mid", xmin, xmax
+            ).collect(),
+        )
+        for df in (dffull, dfpart)
+    ]
+    pltest.assert_frame_equal(plotted[0][0], plotted[1][0], rel_tol=1e-9)
+    pltest.assert_frame_equal(plotted[0][1], plotted[1][1], rel_tol=1e-9)
 
 
 def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:

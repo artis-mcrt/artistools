@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import re
 import time
 import typing as t
 from collections.abc import Sequence
@@ -58,6 +59,25 @@ class OpacityLines(t.NamedTuple):
     lower and upper give the row of each level in dflevels. The Sobolev optical depth of a line is
     pop_lower * sobolev_lower - pop_upper * sobolev_upper.
     """
+
+
+def get_expopac_grid(modelpath: Path | str) -> tuple[float, float, float] | None:
+    """Return the minimum, the maximum, and the width of the expansion opacity bins of ARTIS in Angstroms.
+
+    The values come from rpkt.h in the artis folder of the run, which holds the source code of the run. A run with
+    no such file, or a file with no expopac constants, gives None.
+    """
+    rpktpath = Path(modelpath) / "artis" / "rpkt.h"
+    if not rpktpath.is_file():
+        return None
+    values = dict(
+        re.findall(
+            r"expopac_(lambdamin|lambdamax|deltalambda)\s*=\s*([-+0-9.eE]+)", rpktpath.read_text(encoding="utf-8")
+        )
+    )
+    if set(values) != {"lambdamin", "lambdamax", "deltalambda"}:
+        return None
+    return float(values["lambdamin"]), float(values["lambdamax"]), float(values["deltalambda"])
 
 
 def get_lambda_bin_edges(lambdamin: float, lambdamax: float, deltalambda: float) -> list[float]:

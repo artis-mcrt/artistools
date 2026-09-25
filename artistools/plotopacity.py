@@ -15,6 +15,7 @@ from artistools.constants import km_to_cm
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
 from artistools.ejectaopacity import get_expansion_opacities
+from artistools.ejectaopacity import get_expopac_grid
 from artistools.ejectaopacity import get_lambda_bin_edges
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_lines
@@ -32,10 +33,12 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
+from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -45,6 +48,9 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.spectra import get_velocity_label
 from artistools.spectra import parse_velocity_argument
+
+# the width of a bin in Angstroms for a run with no rpkt.h. ARTIS used this width in 2026
+DEFAULT_DELTALAMBDA: t.Final = 20.0
 
 # where two opacities are equal, their lines are at the same place. Each line is thinner than the
 # line below it, thus each colour stays visible
@@ -56,18 +62,14 @@ OPACITYSERIES = (
 
 
 def get_massweighted_opacities(
-    adata: pl.DataFrame,
-    time_days: float,
-    dfestimators: pl.DataFrame,
-    lambdamin: float,
-    lambdamax: float,
-    deltalambda: float,
+    adata: pl.DataFrame, time_days: float, dfestimators: pl.DataFrame, lambda_bin_edges: Sequence[float]
 ) -> pl.DataFrame:
     """Return the mean binned opacities over the cells, with the mass of each cell as the weight.
 
-    For one cell, the result is the opacity of that cell.
+    For one cell, the result is the opacity of that cell. The bins have one width.
     """
-    lambda_bin_edges = get_lambda_bin_edges(lambdamin, lambdamax, deltalambda)
+    lambda_bin_edges = list(lambda_bin_edges)
+    deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
 
     # the bar gives the rate and the time until the end, which a model of many cells needs
@@ -94,6 +96,46 @@ def get_massweighted_opacities(
             lambda_angstroms_upper=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 1) * deltalambda,
         )
     )
+
+
+def get_computed_bin_edges(
+    modelpath: Path | str, xmin: float, xmax: float, deltalambda: float | None, movingaveragewidth: float
+) -> tuple[list[float], float]:
+    """Return the edges of the bins that the plot needs, and the width of a bin.
+
+    The bins lie on the grid of rpkt.h of the run. The command calculates only the bins of the plot range, and one bin
+    more than half the window of the moving average at each end. Each moving average of the plot then takes the same
+    bins as a calculation of the full grid. A run with no rpkt.h takes bins from xmin, with a width of 20 Angstroms.
+    """
+    grid = get_expopac_grid(modelpath)
+    if deltalambda is None:
+        deltalambda = DEFAULT_DELTALAMBDA if grid is None else grid[2]
+        if grid is None:
+            print_warning(f"{modelpath} has no artis/rpkt.h, thus each bin takes a width of {deltalambda:g} Angstroms")
+    marginbins = get_window_bins(movingaveragewidth, deltalambda) // 2 + 1 if movingaveragewidth > 0.0 else 0
+    lower, upper = xmin - marginbins * deltalambda, xmax + marginbins * deltalambda
+    gridmin, gridmax = (lower, upper) if grid is None else grid[:2]
+    lowers = (
+        df_filter_minmax_bracketed(
+            pl.DataFrame({"lower": get_lambda_bin_edges(gridmin, gridmax, deltalambda)[:-1]}), "lower", lower, upper
+        )
+        .collect()
+        .get_column("lower")
+        .to_list()
+    )
+    if not lowers or lowers[0] >= xmax or lowers[-1] + deltalambda <= xmin:
+        msg = (
+            f"The grid of rpkt.h, {gridmin:g} to {gridmax:g} Angstroms, holds no bin from {xmin:g} to {xmax:g}"
+            " Angstroms"
+        )
+        raise ValueError(msg)
+    edges = [*lowers, lowers[-1] + deltalambda]
+    gridtext = "" if grid is None else f" of the grid of rpkt.h from {gridmin:g} to {gridmax:g} Angstroms"
+    print(
+        f"  {len(lowers)} wavelength bins of {deltalambda:g} Angstroms from {edges[0]:g} to {edges[-1]:g}"
+        f" Angstroms{gridtext}"
+    )
+    return edges, deltalambda
 
 
 def get_window_bins(width: float, deltalambda: float) -> int:
@@ -123,8 +165,17 @@ def plot_opacities(
     """Plot each type of binned opacity against wavelength, and save the figure.
 
     Each bin is a horizontal line from its lower edge to its upper edge, with no vertical line to the next bin.
-    If dfmovingaverages is not None, a line in the same colour gives the moving average of each opacity.
+    If dfmovingaverages is not None, a line in the same colour gives the moving average of each opacity. The plot
+    takes the bins of the x range, and the moving average keeps one point past each end, thus its line reaches the
+    edge of the frame. A value outside the x range then does not change the y range.
     """
+    dfopacities = dfopacities.filter(
+        pl.col("lambda_angstroms_upper") > args.xmin, pl.col("lambda_angstroms_lower") < args.xmax
+    )
+    if dfmovingaverages is not None:
+        dfmovingaverages = df_filter_minmax_bracketed(
+            dfmovingaverages, "lambda_angstroms_bin_mid", args.xmin, args.xmax
+        ).collect()
     fig, axes = make_frame_figure(args)
     ax = axes[0][0]
 
@@ -242,7 +293,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         xmaxhelp="Maximum wavelength in Angstroms",
         wavelength_aliases=True,
     )
-    parser.add_argument("-deltalambda", type=float, default=20.0, help="Wavelength bin width in Angstroms")
+    parser.add_argument(
+        "-deltalambda",
+        type=float,
+        default=None,
+        help=(
+            "Wavelength bin width in Angstroms. The default is expopac_deltalambda of artis/rpkt.h in the folder of"
+            f" the run, or {DEFAULT_DELTALAMBDA:g} if the run has no rpkt.h"
+        ),
+    )
     parser.add_argument(
         "-movingaveragewidth",
         type=float,
@@ -268,6 +327,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     time_days = get_timestep_time(args.modelpath, timestep)
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
+    lambda_bin_edges, deltalambda = get_computed_bin_edges(
+        args.modelpath, args.xmin, args.xmax, args.deltalambda, args.movingaveragewidth
+    )
 
     dfopacities = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
@@ -275,15 +337,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfestimators=select_velocity_range(
             get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
         ),
-        lambdamin=args.xmin,
-        lambdamax=args.xmax,
-        deltalambda=args.deltalambda,
+        lambda_bin_edges=lambda_bin_edges,
     )
 
     title = (
         f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}),"
         f" {get_cells_text(modelgridindex, args.vmin, args.vmax)}"
     )
-    windowbins = get_window_bins(args.movingaveragewidth, args.deltalambda)
+    windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None
     plot_opacities(dfopacities, dfmovingaverages, title, args)
