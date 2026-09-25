@@ -1486,10 +1486,11 @@ def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
         assert max(batch.height for batch in batches) * numbins <= at.ejectaopacity.ROWSPERBATCH, numbins
 
 
-def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
+def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.CaptureFixture[str]) -> None:
     """-vmin and -vmax of plotopacity select the cells with a mid-point velocity in the range, and no other cell.
 
-    Each velocity needs a unit, and the title gives each velocity in the unit of the user.
+    Each velocity needs a unit. The count of the cells in the range and the title give each velocity in the unit
+    of the user.
     """
     lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
     dfvelocities = (
@@ -1502,11 +1503,15 @@ def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
     expectedcells = set(dfvelocities.filter(pl.col("vel_r_mid_on_c").is_between(0.1, 0.2))["modelgridindex"])
     assert 0 < len(expectedcells) < dfvelocities.height
 
-    speedoflight_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
-    dfcells = at.ejectaopacity.get_cell_estimators(
-        modelpath_classic_3d, 5, None, vmin_kmps=0.1 * speedoflight_kmps, vmax_kmps=0.2 * speedoflight_kmps
-    )
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "0.2c"])
+    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None)
+    capsys.readouterr()
+    dfcells = at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
     assert set(dfcells["modelgridindex"]) == expectedcells
+    assert (
+        f"{len(expectedcells)} of {dfestimators.height} cells with estimators are in the velocity range with vmin = 0.1c and vmax = 0.2c"
+        in (capsys.readouterr().out)
+    )
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
     assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
@@ -1515,8 +1520,11 @@ def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
     with pytest.raises(SystemExit):
         at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1"])
 
-    with pytest.raises(ValueError, match=re.escape("any cell with vmin = 150000 km/s at timestep 5")):
-        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin_kmps=150000.0)
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "150000km/s"])
+    with pytest.raises(
+        ValueError, match=re.escape("No cell with estimators is in the velocity range with vmin = 150000 km/s")
+    ):
+        at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:

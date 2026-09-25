@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
 from artistools.ejectaopacity import get_expansion_opacities
@@ -18,6 +20,7 @@ from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import OPACITYCOLUMNS
+from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -162,6 +165,40 @@ def plot_opacities(
     save_figure(fig, args.outputfile, args=args)
 
 
+def get_velocity_bounds_text(
+    vmin: tuple[float, t.Literal["kmps", "c"]] | None, vmax: tuple[float, t.Literal["kmps", "c"]] | None
+) -> str:
+    """Return the bounds of the velocity range in the unit of the user, e.g. "vmin = 0.1c and vmax = 60000 km/s"."""
+    bounds = [f"{name} = {get_velocity_label(*v)}" for name, v in (("vmin", vmin), ("vmax", vmax)) if v is not None]
+    return " and ".join(bounds)
+
+
+def select_velocity_range(
+    dfestimators: pl.DataFrame,
+    vmin: tuple[float, t.Literal["kmps", "c"]] | None,
+    vmax: tuple[float, t.Literal["kmps", "c"]] | None,
+) -> pl.DataFrame:
+    """Return the cells with a mid-point velocity in the range, and print the number of cells that match."""
+    if vmin is None and vmax is None:
+        return dfestimators
+
+    speedoflight_kmps = C_cm_per_s / km_to_cm
+    dfselected = dfestimators.filter(
+        get_cell_selection(
+            vmin=None if vmin is None else vmin[0] / speedoflight_kmps,
+            vmax=None if vmax is None else vmax[0] / speedoflight_kmps,
+        )
+    )
+    boundstext = get_velocity_bounds_text(vmin, vmax)
+    print(
+        f"  {dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range with {boundstext}"
+    )
+    if dfselected.is_empty():
+        msg = f"No cell with estimators is in the velocity range with {boundstext}"
+        raise ValueError(msg)
+    return dfselected
+
+
 def get_cells_text(
     modelgridindex: int | None,
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
@@ -170,10 +207,8 @@ def get_cells_text(
     """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user."""
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
-    if bounds := [
-        f"{name} = {get_velocity_label(*v)}" for name, v in (("vmin", vmin), ("vmax", vmax)) if v is not None
-    ]:
-        return f"mass-weighted mean of the cells with {' and '.join(bounds)}"
+    if boundstext := get_velocity_bounds_text(vmin, vmax):
+        return f"mass-weighted mean of the cells with {boundstext}"
     return "mass-weighted mean of all cells"
 
 
@@ -237,12 +272,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfopacities = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
         time_days=time_days,
-        dfestimators=get_cell_estimators(
-            args.modelpath,
-            timestep,
-            modelgridindex,
-            vmin_kmps=None if args.vmin is None else args.vmin[0],
-            vmax_kmps=None if args.vmax is None else args.vmax[0],
+        dfestimators=select_velocity_range(
+            get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
         ),
         lambdamin=args.xmin,
         lambdamax=args.xmax,
