@@ -21,6 +21,7 @@ from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
+from artistools.estimators.estimators_classic import read_classic_estimators_cached
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import default_plotitem_has_data
@@ -88,6 +89,7 @@ from artistools.viewertools import run_command_step_outcome
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import show_status_message
 from artistools.viewertools import show_window
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
@@ -97,6 +99,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Mapping
     from collections.abc import Sequence
+    from concurrent.futures import Future
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
@@ -259,26 +262,34 @@ def get_single_cell(cells: str) -> int | None:
     return int(cells) if cells.isascii() and cells.isdecimal() else None
 
 
-def load_run(viewer: "EstimatorViewer") -> None:
-    """Read the caches, the columns, the valid timesteps, and the cells of the run of the viewer.
+class RunData(t.NamedTuple):
+    """The data of the run that the controls of the viewer need, which Reload Data reads again."""
+
+    batchcaches: "list[EstimatorBatchCache] | None"
+    estimatorcolumns: list[str]
+    validtimesteps: list[int]
+    cells: list[int]
+    cellvelocities: dict[int, float]
+    defaultsubplots: tuple[tuple[str, ...], ...]
+
+
+def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
+    """Read the data of the run that the controls of the viewer need.
 
     The viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches of its
-    own timesteps and cells, as the command does.
+    own timesteps and cells, as the command does. The function changes no viewer, thus a worker thread can run it.
     """
-    args = viewer.userargs
-    isartisrun = not args.classicartis and not path_is_codecomparison(viewer.modelpath)
-    viewer.batchcaches = get_batch_caches(viewer.modelpath) if isartisrun else None
+    isartisrun = not args.classicartis and not path_is_codecomparison(modelpath)
+    batchcaches = get_batch_caches(modelpath) if isartisrun else None
     estimators, modelmeta = join_cell_modeldata(
-        estimators=scan_estimators(
-            modelpath=viewer.modelpath, classicartis=args.classicartis, batchcaches=viewer.batchcaches
-        ),
-        modelpath=viewer.modelpath,
+        estimators=scan_estimators(modelpath=modelpath, classicartis=args.classicartis, batchcaches=batchcaches),
+        modelpath=modelpath,
     )
-    _, viewer.estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    _, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
-    viewer.validtimesteps = get_estimator_timesteps(viewer.modelpath, estimators) or list(range(len(viewer.tmids)))
+    validtimesteps = get_estimator_timesteps(modelpath, estimators) or list(range(ntimesteps))
     # ARTIS writes the estimators of each cell that holds matter
-    lzmodel, modelmeta = get_modeldata(viewer.modelpath)
+    lzmodel, modelmeta = get_modeldata(modelpath)
     dfcells = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .filter(pl.col("rho") > 0.0)
@@ -286,27 +297,51 @@ def load_run(viewer: "EstimatorViewer") -> None:
         .sort("modelgridindex")
         .collect()
     )
-    viewer.cells = dfcells["modelgridindex"].to_list()
-    viewer.cellvelocities = dict(zip(viewer.cells, dfcells["vel_r_mid"].to_list(), strict=True))
-
-    # the command omits -plot if the subplots are the default subplots of plotestimators
-    viewer.defaultsubplots = tuple(
-        get_plotitem_tokens(plotitems)
-        for plotitems in get_default_plotlist()
-        if default_plotitem_has_data(plotitems, viewer.estimatorcolumns, viewer.modelpath)
+    cells: list[int] = dfcells["modelgridindex"].to_list()
+    return RunData(
+        batchcaches=batchcaches,
+        estimatorcolumns=estimatorcolumns,
+        validtimesteps=validtimesteps,
+        cells=cells,
+        cellvelocities=dict(zip(cells, dfcells["vel_r_mid"].to_list(), strict=True)),
+        # the command omits -plot if the subplots are the default subplots of plotestimators
+        defaultsubplots=tuple(
+            get_plotitem_tokens(plotitems)
+            for plotitems in get_default_plotlist()
+            if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath)
+        ),
     )
 
 
-def reload_run(viewer: "EstimatorViewer") -> None:
-    """Read the run again, e.g. while ARTIS writes more timesteps, and keep the time range inside the valid timesteps.
+def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
+    """Read the run again, e.g. while ARTIS writes more timesteps.
+
+    These caches hold the files of the last read. A kept scan also holds the metadata of its file, e.g. 8 MB for a
+    cache of 5335 columns, thus the scans of the replaced caches must go.
+    """
+    scan_parquet_file.cache_clear()
+    get_runfolder_timesteps_cached.cache_clear()
+    read_classic_estimators_cached.cache_clear()
+    return read_run(modelpath, args, ntimesteps)
+
+
+def set_run(viewer: "EstimatorViewer", run: RunData) -> None:
+    """Give the viewer the data of the run."""
+    viewer.batchcaches = run.batchcaches
+    viewer.estimatorcolumns = run.estimatorcolumns
+    viewer.validtimesteps = run.validtimesteps
+    viewer.cells = run.cells
+    viewer.cellvelocities = run.cellvelocities
+    viewer.defaultsubplots = run.defaultsubplots
+
+
+def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
+    """Give the viewer the data of the run that it read again, and keep the time range inside the valid timesteps.
 
     A plot against time of the whole run then covers the new timesteps too.
     """
     oldvalidtimesteps = viewer.validtimesteps
-    # each kept scan and each list of timesteps of a run folder comes from the files of the last load
-    scan_parquet_file.cache_clear()
-    get_runfolder_timesteps_cached.cache_clear()
-    load_run(viewer)
+    set_run(viewer, run)
     values = viewer.values
     wholerun = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
     if is_evolution(values) and wholerun:
@@ -314,6 +349,14 @@ def reload_run(viewer: "EstimatorViewer") -> None:
     else:
         firstpos, lastpos = viewer.get_selection_positions()
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
+
+
+def cells_apply(otheroptions: OptionRows) -> bool:
+    """Return True if -cell applies to a plot with these rows of the option table.
+
+    -slice and -dimensionreduce 2 select the cells of the plot, thus plotestimators rejects -cell with them.
+    """
+    return not any(flag == "-slice" or (flag, values) == ("-dimensionreduce", ("2",)) for flag, values in otheroptions)
 
 
 def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
@@ -344,7 +387,7 @@ class EstimatorViewer:
     always agrees with the command.
     """
 
-    # load_run reads these from the run, and reload_run reads them again
+    # read_run reads these from the run, and set_run gives them to the viewer
     batchcaches: "list[EstimatorBatchCache] | None"
     estimatorcolumns: list[str]
     validtimesteps: list[int]
@@ -375,7 +418,7 @@ class EstimatorViewer:
         self.tmids = get_timestep_times(self.modelpath, loc="mid")
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
-        load_run(self)
+        set_run(self, read_run(self.modelpath, args, len(self.tmids)))
         givensubplots = tuple(tuple(str(item) for item in plotitems) for plotitems in args.plotlist or ())
         # plotestimators stops when no default subplot applies to the model, thus the window then shows Te
         subplots = givensubplots or self.defaultsubplots or (("Te",),)
@@ -564,7 +607,7 @@ class EstimatorViewer:
 
         A plot against time reads the whole run, and a snapshot reads the valid timestep at the middle of the old time
         range. The x limits of one variable do not apply to a different variable. A snapshot reads all the cells,
-        because the window hides the control of the cells for a snapshot.
+        because a snapshot of the one cell of a plot against time has one point.
         """
         if xvariable == values.x:
             return values
@@ -591,9 +634,6 @@ class EstimatorViewer:
         function that it returns must run in the thread of the window.
         """
         plots: list[RenderedPlot] = []
-        # the canvas of the window draws at this resolution. The worker thread draws the ticks and the text at the
-        # same resolution. The draw of the window then took 0.05 s in place of 0.22 s
-        dpi = float(self.fig.dpi)
 
         def make_plot() -> None:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
@@ -607,8 +647,6 @@ class EstimatorViewer:
             if not isimage:
                 make_room_for_title(fig)
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
-            fig.set_dpi(dpi)
-            fig.canvas.draw()
             plots.append(
                 RenderedPlot(
                     fig=fig,
@@ -663,7 +701,8 @@ class EstimatorViewer:
 def get_item_directive(item: str) -> str | None:
     """Return the name of the directive that an item of a subplot gives, e.g. "ymin" for "ymin=1e-16", or None."""
     name, equals, _ = item.partition("=")
-    return name.removeprefix("_") if equals and name.removeprefix("_") in DIRECTIVES else None
+    directive = name.removeprefix("_").lower()
+    return directive if equals and directive in DIRECTIVES else None
 
 
 def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str | None]") -> tuple[str, ...]:
@@ -705,7 +744,8 @@ def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues 
         position = min(range(len(viewer.validtimesteps)), key=lambda pos: abs(viewer.validtimesteps[pos] - xdata))
     else:
         return None
-    return viewer.select_timesteps(viewer.set_xvariable(viewer.values, "velocity"), position, 1)
+    snapshotx = viewer.get_default_xvariable(viewer.values.otheroptions, timegiven=True)
+    return viewer.select_timesteps(viewer.set_xvariable(viewer.values, snapshotx), position, 1)
 
 
 def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
@@ -766,7 +806,7 @@ def get_keyboard_help() -> str:
 through the cells</td></tr>
 <tr><td><b>Drag</b> across a plot</td><td>Select the x range</td></tr>
 <tr><td><b>Shift-drag</b> up or down a subplot</td><td>Select the y range of the subplot (ymin= and ymax=)</td></tr>
-<tr><td><b>Double-click</b> a subplot</td><td>Show the x range and the y range of the data</td></tr>
+<tr><td><b>Double-click</b> a plot</td><td>Show the x range of the data</td></tr>
 <tr><td><b>Right-click</b> a subplot</td><td>Show a menu: the y scale, the y range, a cell against time, or a
 snapshot at a time</td></tr>
 <tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Run the command to save the figure</td></tr>
@@ -856,7 +896,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
     timegrid.addWidget(playbutton, 2, 2)
 
-    _, cellgrid = add_section(panellayout, "Cells")
+    cellheader, cellgrid = add_section(panellayout, "Cells")
+    cellcontent = cellgrid.parentWidget()
+    assert cellcontent is not None
     cellslider = make_slider()
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
     celledit = QtWidgets.QLineEdit()
@@ -950,6 +992,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
     statusbar = make_status_bar(window)
+    # the first plot came before the status bar, and a user of the application sees no terminal
+    show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         timeslider,
@@ -963,12 +1007,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ]
 
     def set_ranges() -> None:
-        """Give the sliders the number of valid timesteps and the number of cells of the run."""
+        """Give the sliders the number of valid timesteps and the number of cells of the run.
+
+        A shorter range clamps the value of a slider. The handler of the slider must not change the values of the
+        viewer then, and show_values gives each slider its value.
+        """
         nvalid = len(viewer.validtimesteps)
-        timeslider.setRange(0, nvalid - 1)
-        widthslider.setRange(1, nvalid)
+        blockers = [QtCore.QSignalBlocker(slider) for slider in (timeslider, widthslider, cellslider)]
+        try:
+            timeslider.setRange(0, nvalid - 1)
+            widthslider.setRange(1, nvalid)
+            cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
+        finally:
+            for blocker in blockers:
+                blocker.unblock()
         set_trange_steps(max(nvalid - 1, 1))
-        cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
 
     set_ranges()
 
@@ -1005,6 +1058,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
         set_edit_text(tmaxedit, f"{viewer.tmids[values.last]:.4g}")
+        for widget in (cellheader, cellcontent):
+            widget.setVisible(cells_apply(values.otheroptions))
         # the slider selects one cell, which suits a plot against time. A snapshot of one cell has one point, and
         # the field of a snapshot takes a list or a range of cells
         cellslider.setVisible(evolution)
@@ -1076,7 +1131,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     fittimer.timeout.connect(fit_figwidthscale)
 
     def show_error(message: str) -> None:
-        statusbar.message.setText(message)
+        show_status_message(statusbar, message, "")
         show_values()
 
     def on_time(position: int) -> None:
@@ -1245,31 +1300,58 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        statusbar.message.setText("Copied the command")
+        show_status_message(statusbar, "Copied the command", "")
 
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
         message = save_figure_of_command(window, plotestimators_main, "plotestimators", viewer.get_plot_tokens())
         if message is not None:
-            statusbar.message.setText(message)
+            show_status_message(statusbar, message, "")
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
             show_error(message)
 
+    # the reload in progress, and the run that it read
+    reload: Future[str | None] | None = None
+    reloadedruns: list[RunData] = []
+    reloadtimer = QtCore.QTimer(window)
+    reloadtimer.setInterval(100)
+
     def on_reload() -> None:
-        """Read the run again. The viewer converts a new batch of text files here, and the terminal shows the progress."""
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        try:
-            message = run_command_step(partial(reload_run, viewer), quiet=False)
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
-        if message is not None:
+        """Read the run again in the worker thread.
+
+        A conversion of new text files can take minutes, thus the window stays responsive, and the terminal shows the
+        progress. The worker reads the run after the plot in progress, and a new plot waits for the reload. Thus a
+        plot never reads a cache that the reload replaces.
+        """
+        nonlocal reload
+        if reload is not None or queue.executor is None:
+            return
+        modelpath, args, ntimesteps = viewer.modelpath, viewer.userargs, len(viewer.tmids)
+
+        def read() -> None:
+            reloadedruns.append(read_run_again(modelpath, args, ntimesteps))
+
+        reload = queue.executor.submit(run_command_step, read, quiet=False)
+        statusbar.drawtime.setText("Reload in progress...")
+        reloadtimer.start()
+
+    def show_reloaded_run() -> None:
+        nonlocal reload
+        if reload is None or not reload.done():
+            return
+        reloadtimer.stop()
+        message, reload = reload.result(), None
+        if message is not None or not reloadedruns:
             show_error(f"The viewer cannot reload the run: {message}")
             return
+        reload_run(viewer, reloadedruns.pop())
         set_ranges()
         queue.redraw()
+
+    reloadtimer.timeout.connect(show_reloaded_run)
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help())
@@ -1287,30 +1369,34 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if float(xmin) < float(xmax):
             apply(dc.replace(viewer.values, xmin=xmin, xmax=xmax))
 
+    def plot_shows_values() -> bool:
+        """Return True if the plot on the screen has the subplots, the x variable, and the options of the controls.
+
+        DrawQueue gives the viewer the new values at once, and the old plot stays until the worker draws the new one.
+        A mouse action on an old frame then must not change a different subplot or read a different x variable.
+        """
+        drawn, values = queue.drawnvalues, viewer.values
+        return (drawn.subplots, drawn.x, drawn.otheroptions) == (values.subplots, values.x, values.otheroptions)
+
     def get_subplot_row(frameindex: int) -> int | None:
         """Return the row of the subplot of a frame of the plot, or None for a colour image."""
         return frameindex if not viewer.isimage and frameindex < len(viewer.values.subplots) else None
 
-    def set_directives(row: int, directives: "Mapping[str, str | None]", **changes: t.Any) -> None:
+    def set_directives(row: int, directives: "Mapping[str, str | None]") -> None:
         subplots = list(viewer.values.subplots)
         subplots[row] = replace_directives(subplots[row], directives)
-        apply(dc.replace(viewer.values, subplots=tuple(subplots), **changes))
+        apply(dc.replace(viewer.values, subplots=tuple(subplots)))
 
     def on_select_y(frameindex: int, low: float, high: float) -> None:
         row = get_subplot_row(frameindex)
         ymin, ymax = get_short_number(low), get_short_number(high)
-        if row is not None and float(ymin) < float(ymax):
+        if row is not None and plot_shows_values() and float(ymin) < float(ymax):
             set_directives(row, {"ymin": ymin, "ymax": ymax})
-
-    def on_reset(frameindex: int) -> None:
-        row = get_subplot_row(frameindex)
-        if row is None:
-            apply(dc.replace(viewer.values, xmin="", xmax=""))
-        else:
-            set_directives(row, {"ymin": None, "ymax": None}, xmin="", xmax="")
 
     def on_menu(frameindex: int, event: t.Any) -> None:
         """Show the menu of a subplot: the y scale, the y range, and the plot of a cell or of a snapshot."""
+        if not plot_shows_values():
+            return
         menu = QtWidgets.QMenu(window)
         row = get_subplot_row(frameindex)
         if row is not None:
@@ -1328,7 +1414,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             if snapshot is not None:
                 snapshotaction = menu.addAction(f"Plot a snapshot at {viewer.tmids[snapshot.first]:.4g} d")
                 snapshotaction.triggered.connect(lambda: apply(snapshot))
-        else:
+        # a colour image and -slice select their own cells, thus plotestimators rejects -cell with them
+        elif cells_apply(viewer.values.otheroptions):
             cell = get_nearest_cell(viewer, event.xdata)
             if cell is not None:
                 cellaction = menu.addAction(f"Plot cell {cell} against time")
@@ -1338,6 +1425,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 cellsaction.triggered.connect(lambda: apply(get_evolution_values(viewer, viewer.values.cells)))
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
+        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
+        menu.deleteLater()
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1397,7 +1486,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         get_readout=get_frame_readout,
         readoutlabel=statusbar.readout,
         on_select=on_select,
-        on_reset=on_reset,
+        on_reset=lambda: apply(dc.replace(viewer.values, xmin="", xmax="")),
         # a colour image has a velocity on each axis, and -xmin and -xmax take the velocity of the line plot
         can_select=lambda: not viewer.isimage,
         on_select_y=on_select_y,

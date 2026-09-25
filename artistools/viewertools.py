@@ -239,8 +239,13 @@ def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, ec
 
 
 def get_last_warning(errors: str) -> str:
-    """Return the last warning of the standard error of a step, without its prefix, or an empty text."""
-    warnings = [line.strip() for line in errors.splitlines() if line.strip().startswith("WARNING: ")]
+    """Return the last warning of the standard error of a step, without its prefix, or an empty text.
+
+    rich colours the text under FORCE_COLOR or TTY_COMPATIBLE also when it writes into a capture, thus the colour
+    codes go first.
+    """
+    plainerrors = re.sub(r"\x1b\[[0-9;]*m", "", errors)
+    warnings = [line.strip() for line in plainerrors.splitlines() if line.strip().startswith("WARNING: ")]
     return warnings[-1].removeprefix("WARNING: ") if warnings else ""
 
 
@@ -1571,15 +1576,15 @@ def connect_plot_mouse(
     get_readout: "Callable[[t.Any, mplax.Axes], str]",
     readoutlabel: "QtWidgets.QLabel",
     on_select: "Callable[[float, float], None]",
-    on_reset: "Callable[[int], None]",
+    on_reset: "Callable[[], None]",
     can_select: "Callable[[], bool]",
     on_select_y: "Callable[[int, float, float], None] | None" = None,
     on_menu: "Callable[[int, t.Any], None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
-    on_select receives the two x values of a drag, and on_reset receives the index of the frame of a double-click.
-    on_select_y receives the index of the frame and the two y values of a drag with the Shift key. on_menu
+    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. on_select_y
+    receives the index of the frame and the two y values of a drag with the Shift key inside one frame. on_menu
     receives the index of the frame and the matplotlib event of a click with the right button. matplotlib keeps the
     connections in the figure. Call the returned function after the canvas receives a new figure.
     """
@@ -1604,10 +1609,11 @@ def connect_plot_mouse(
         if event.button != 1:
             return
         if event.dblclick:
-            on_reset(frameindex)
+            on_reset()
             return
         dragframeindex = frameindex
-        dragvertical = event.key == "shift" and on_select_y is not None
+        # the canvas has no keyboard focus, thus matplotlib gives no key, and the modifiers hold the Shift key
+        dragvertical = "shift" in event.modifiers and on_select_y is not None
         if dragvertical:
             dragstart = (event.ydata, event.y)
             dragspan = event.inaxes.axhspan(event.ydata, event.ydata, color="0.5", alpha=0.3)
@@ -1621,6 +1627,9 @@ def connect_plot_mouse(
             get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
         )
         if dragstart is None or dragspan is None or event.xdata is None or frameindex is None:
+            return
+        # the frames share the x axis but not the y axis, thus a y value of a different frame does not apply
+        if dragvertical and frameindex != dragframeindex:
             return
         if dragvertical:
             dragspan.set_y(min(dragstart[0], event.ydata))
@@ -1643,7 +1652,7 @@ def connect_plot_mouse(
             return
         # a movement of a few pixels is a click and not a selection
         if dragvertical:
-            if on_select_y is not None and abs(event.y - start[1]) > 5:
+            if on_select_y is not None and get_frame_index(event) == dragframeindex and abs(event.y - start[1]) > 5:
                 on_select_y(dragframeindex, *sorted((start[0], event.ydata)))
         elif abs(event.x - start[1]) > 5:
             on_select(*sorted((start[0], event.xdata)))

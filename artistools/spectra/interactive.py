@@ -76,6 +76,7 @@ from artistools.viewertools import run_command_step_outcome
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import show_status_message
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
 from artistools.viewertools import split_option_rows
@@ -1099,6 +1100,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
     statusbar = make_status_bar(window)
+    # the first plot came before the status bar, and a user of the application sees no terminal
+    show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         snapbutton,
@@ -1364,7 +1367,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     fulldrawtimer.timeout.connect(draw_full)
 
     def show_error(message: str) -> None:
-        statusbar.message.setText(message)
+        show_status_message(statusbar, message, "")
         show_values()
 
     def on_time_mode() -> None:
@@ -1587,14 +1590,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        statusbar.message.setText("Copied the command")
+        show_status_message(statusbar, "Copied the command", "")
 
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
         message = save_figure_of_command(window, plotspectra_main, "plotspectra", viewer.get_plot_tokens())
         if message is not None:
-            statusbar.message.setText(message)
+            show_status_message(statusbar, message, "")
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -1663,7 +1666,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         get_readout=lambda event, _frame: viewer.get_readout(event.xdata),
         readoutlabel=statusbar.readout,
         on_select=set_xlimits,
-        on_reset=lambda _frameindex: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
+        on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
         can_select=lambda: True,
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise

@@ -21,6 +21,7 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
+from artistools import viewertools
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 
@@ -3412,6 +3413,9 @@ def test_interactive_directives_of_a_subplot() -> None:
     assert interactive.get_item_directive("_yscale=log") == "yscale"
     assert interactive.get_item_directive("Fe II") is None
     assert interactive.get_item_directive("Te") is None
+    # plotestimators reads a directive in any case
+    assert interactive.get_item_directive("YMIN=100") == "ymin"
+    assert interactive.replace_directives(("TR", "YMIN=100"), {"ymin": None}) == ("TR",)
     subplot = ("rho", "yscale=log", "ymin=1e-16")
     assert interactive.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
         "rho",
@@ -3446,6 +3450,11 @@ def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -
     assert not snapshot.cells
 
 
+def reread_run(viewer: interactive.EstimatorViewer) -> interactive.RunData:
+    """Read the run of a viewer again, as Reload Data does in the worker thread."""
+    return interactive.read_run_again(viewer.modelpath, viewer.userargs, len(viewer.tmids))
+
+
 def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
     """A reload reads the valid timesteps again.
 
@@ -3456,7 +3465,7 @@ def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
     assert len(validtimesteps) > 8
     assert viewer.change(viewer.select_timesteps(viewer.values, len(validtimesteps) - 1, 1)) is None
     with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps[:-5]):
-        interactive.reload_run(viewer)
+        interactive.reload_run(viewer, reread_run(viewer))
     assert viewer.validtimesteps == validtimesteps[:-5]
     assert (viewer.values.first, viewer.values.last) == (validtimesteps[-6], validtimesteps[-6])
     assert viewer.draw() is None
@@ -3464,6 +3473,98 @@ def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
     assert viewer.change(interactive.get_evolution_values(viewer, str(viewer.cells[0]))) is None
     assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-6])
     with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps):
-        interactive.reload_run(viewer)
+        interactive.reload_run(viewer, reread_run(viewer))
     assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-1])
     assert viewer.draw() is None
+
+
+def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
+    """An empty cell with -xbins gave a TypeError, because the bins read the minimum of no rows.
+
+    The message gives the size of a long selection of cells and not each cell.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    emptycell = next(cell for cell in range(1000) if cell not in viewer.cells)
+    for xbins in ("8", "-1"):
+        message = viewer.change(dc.replace(viewer.values, cells=str(emptycell), xbins=xbins))
+        assert message is not None
+        assert message.startswith("The estimators hold no row"), message
+        assert f"the cells {emptycell}" in message
+
+    manycells = ",".join(str(cell) for cell in range(1000) if cell not in viewer.cells)
+    message = viewer.change(dc.replace(viewer.values, cells=manycells, xmin="1e9"))
+    assert message is not None
+    assert message.startswith("The estimators hold no row"), message
+    assert len(message) < 200
+
+
+def test_interactive_shift_drag_selects_a_y_range_in_one_frame() -> None:
+    """The embedded canvas gets no key events, thus the Shift key comes from the modifiers of the mouse event.
+
+    A release in a different frame gives a y value of a different scale, thus it selects nothing.
+    """
+    from matplotlib.backend_bases import MouseButton
+    from matplotlib.backend_bases import MouseEvent
+
+    fig = mplfig.Figure()
+    canvas = FigureCanvasAgg(fig)
+    frames = fig.subplots(2, 1)
+    frames[0].set_ylim(0.0, 10.0)
+    frames[1].set_ylim(1e5, 1e9)
+    frames[1].set_yscale("log")
+    canvas.draw()
+    xselections: list[tuple[float, float]] = []
+    yselections: list[tuple[int, float, float]] = []
+    viewertools.connect_plot_mouse(
+        canvas,  # ty:ignore[invalid-argument-type]
+        get_frames=lambda: list(frames),
+        get_readout=lambda _event, _frame: "",
+        readoutlabel=mock.MagicMock(),
+        on_select=lambda low, high: xselections.append((low, high)),
+        on_reset=lambda: None,
+        can_select=lambda: True,
+        on_select_y=lambda index, low, high: yselections.append((index, low, high)),
+    )
+
+    def drag(startframe: int, starty: float, endframe: int, endy: float) -> None:
+        x0, y0 = frames[startframe].transData.transform((0.5, starty))
+        x1, y1 = frames[endframe].transData.transform((0.5, endy))
+        for name, x, y in (
+            ("button_press_event", x0, y0),
+            ("motion_notify_event", x1, y1),
+            ("button_release_event", x1, y1),
+        ):
+            canvas.callbacks.process(
+                name, MouseEvent(name, canvas, x, y, button=MouseButton.LEFT, modifiers=frozenset({"shift"}))
+            )
+
+    drag(0, 2.0, 0, 8.0)
+    assert len(yselections) == 1
+    assert yselections[0][0] == 0
+    assert np.allclose(yselections[0][1:], (2.0, 8.0), rtol=1e-6, atol=0.0)
+    drag(0, 6.0, 1, 1e7)
+    assert len(yselections) == 1
+    assert not xselections
+
+
+def test_interactive_warning_in_colour_reaches_the_status_bar() -> None:
+    """A warning that rich colours under FORCE_COLOR, also in a capture, must reach the status bar."""
+    errors = "\x1b[1;33mWARNING: every Te value is below the requested minimum\x1b[0m\n"
+    assert viewertools.get_last_warning(errors) == "every Te value is below the requested minimum"
+
+
+def test_interactive_cells_apply_only_without_a_selection_of_cells() -> None:
+    """-slice and -dimensionreduce 2 select the cells, thus the window offers no -cell with them."""
+    viewer = make_headless_viewer([
+        "Te",
+        str(modelpath_classic_3d),
+        "-t",
+        "5",
+        "-dimensionreduce",
+        "2",
+        "--interactive",
+    ])
+    assert viewer.isimage
+    assert not interactive.cells_apply(viewer.values.otheroptions)
+    assert not interactive.cells_apply((("-slice", ("z=0,y=0",)),))
+    assert interactive.cells_apply((("-dimensionreduce", ("1",)),))

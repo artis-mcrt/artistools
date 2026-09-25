@@ -1177,6 +1177,9 @@ def get_xlist(
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
+    # a selection with no rows has no minimum and no maximum, and the bins below need both
+    if xmin is None or xmax is None:
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
@@ -1260,14 +1263,23 @@ def get_xlist(
 
 
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
-    """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row."""
+    """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
+
+    The code before the plot expands a range of cells and converts -xmin and -xmax, thus the message gives the size
+    of the selection and not those values. A status line shows one line of the message.
+    """
     parts: list[str] = []
     if timestepslist:
         parts.append(f"the timesteps {min(timestepslist)} to {max(timestepslist)}")
     if args.modelgridindex is not None:
-        parts.append(f"the cells {args.modelgridindex}")
+        cells = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
+        parts.append(
+            f"the cells {', '.join(map(str, cells))}"
+            if len(cells) <= 3
+            else f"{len(cells)} cells from {min(cells)} to {max(cells)}"
+        )
     if args.xmin is not None or args.xmax is not None:
-        parts.append(f"the x range -xmin {args.xmin} -xmax {args.xmax}")
+        parts.append("the x range of -xmin and -xmax")
     return f"The estimators hold no row for {', '.join(parts)}" if parts else "The estimators hold no row"
 
 
