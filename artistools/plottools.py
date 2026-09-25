@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import re
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -902,23 +903,19 @@ def make_room_for_title(fig: mplfig.Figure) -> None:
 
     A saved file takes the tight bounding box, thus a title of two lines fits in it. A window shows the full figure.
     The divider of make_frame_figure puts the frames at the bottom edge, thus the new height goes above them. The
-    function measures the titles alone, because get_tightbbox lays out each tick label and took 60 to 130 ms.
+    draw moves a title above the offset text of the y axis, thus the function measures the titles after a draw. A
+    call of fig.draw_without_rendering() did not move such a title, thus the function calls canvas.draw().
     """
-    renderer = getattr(fig.canvas, "get_renderer", None)
-    if renderer is None:
+    # the axes of a figure with no divider grow with the figure, and the title then stays outside
+    if all(axis.get_axes_locator() is None for axis in fig.axes):
         return
-    renderer = renderer()
-    titletops = [text.get_window_extent(renderer).y1 for text in fig.texts]
-    for axis in fig.axes:
-        # the locator of a frame of make_frame_figure sets its position at the draw, thus apply it before a measure
-        if (locator := axis.get_axes_locator()) is not None:
-            axis.apply_aspect(locator(axis, renderer))
-        if axis.get_title():
-            titletops.append(axis.title.get_window_extent(renderer).y1)
-    overflow = max(titletops, default=0.0) / fig.dpi - fig.get_figheight()
+    titles = [*fig.texts, *(axis.title for axis in fig.axes if axis.get_title())]
+    fig.canvas.draw()
+    overflow = max((title.get_window_extent().y1 for title in titles), default=0.0) / fig.dpi - fig.get_figheight()
     if overflow > 0.0:
-        # a small gap keeps the top of the letters whole
-        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() + overflow + 0.05, forward=False)
+        # a gap of 0.05 inches keeps the tops of the letters whole. Without forward=True, a pyplot window keeps its
+        # old size
+        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() + overflow + 0.05, forward=True)
 
 
 def save_figure(
@@ -1123,15 +1120,15 @@ class PrunedLogLocator(mplticker.LogLocator):
 def plain_label(label: str) -> str:
     r"""Return a plot label as plain text, for a log line that a terminal shows.
 
-    A label carries LaTeX for the figure, e.g. "$\\pm$". A terminal shows those marks as they are,
-    thus this gives the symbol that they stand for.
+    A label carries LaTeX for the figure, e.g. "$\\pm$" and "T$_{\\rm e}$". A terminal shows those marks as they
+    are, thus the function replaces each mark with plain text.
     """
     # a terminal of any encoding shows these, thus the plain form stays in ASCII
     replacements = {r"$\pm$": "+/-", r"$\times$": "x", r"\odot": "sun", "$": "", "{": "", "}": ""}
     for latex, plain in replacements.items():
         label = label.replace(latex, plain)
 
-    return label
+    return re.sub(r"\\(?:mathrm|rm)\s*", "", label)
 
 
 def prune_log_ticks(axis: mplaxis.Axis) -> None:

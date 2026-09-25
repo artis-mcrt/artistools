@@ -176,12 +176,14 @@ def get_progress_class() -> "type[t.Any]":
     return tqdm.rich.tqdm
 
 
-def call_in_child_process[ResultType](fn: Callable[..., ResultType], *args: t.Any) -> ResultType:
-    """Return the result of fn(*args) from a new process, which gives its memory back to the system when it ends.
+def call_in_child_process[*ArgTypes, ResultType](fn: Callable[[*ArgTypes], ResultType], *args: *ArgTypes) -> ResultType:
+    """Return the result of fn(*args) from a child process, which gives its memory back to the system when it ends.
 
     The allocators of polars and of the system keep the freed memory of a large step, e.g. the conversion of many
     estimator files. A window stays open after such a step, thus a child process does the step. fn must be a function
-    at the top level of a module, and each argument must be picklable.
+    at the top level of a module, and each argument must be picklable. The child process imports the main script again.
+    Thus a script without an `if __name__ == "__main__":` guard fails, and a call from a daemon process also fails.
+    Only a window calls this function.
     """
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor

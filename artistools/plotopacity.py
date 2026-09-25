@@ -70,7 +70,7 @@ def get_massweighted_opacities(
         .group_by("lambda_angstroms_binindex")
         .agg((pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum())
         for dfcellbatch in get_progress_class()(
-            get_cell_batches(dfestimators), desc="Calculating the opacities", unit="batch"
+            get_cell_batches(dfestimators, len(lambda_bin_edges) - 1), desc="Calculating the opacities", unit="batch"
         )
     ]
 
@@ -93,10 +93,11 @@ def get_massweighted_opacities(
 def get_window_bins(width: float, deltalambda: float) -> int:
     """Return the odd number of bins nearest to the width of the window of the moving average.
 
-    An odd number of bins puts the centre of the window at the middle of a bin. A width of an even number of bins is
-    one bin from two odd numbers, and it takes the larger one.
+    An odd number of bins puts the centre of the window at the middle of a bin. If the width is an even number of
+    bins, two odd numbers are equally near, and the function gives the larger one. The tolerance of 1e-9 makes a
+    quotient such as 1.2 / 0.2 = 5.999999999999999 give the same result as 6.
     """
-    return 2 * math.floor(width / deltalambda / 2) + 1
+    return 2 * math.floor(width / deltalambda / 2 + 1e-9) + 1
 
 
 def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int) -> pl.DataFrame:

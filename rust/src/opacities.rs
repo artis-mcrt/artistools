@@ -131,7 +131,7 @@ fn sum_cell_group(
             .zip(&mut linebinned_maxone[bin])
         {
             *lb += celltau * lambda;
-            // f64::min would return 1 for a NaN optical depth, but NaN must reach each of the three sums
+            // f64::min returns 1 for a NaN optical depth. NaN must reach each of the three sums
             *lbmax += (if celltau > 1.0 { 1.0 } else { celltau }) * lambda;
         }
         for (&celltau, ex) in tau.iter().zip(&mut exopac[bin]) {
@@ -155,8 +155,13 @@ fn sum_cell_group(
 
 /// Return the sums of the Sobolev line opacities in each wavelength bin of each cell, times the wavelength.
 ///
-/// The caller divides each sum by the bin width, the speed of light, the time, and the density. The rows
-/// are in the order [cell][bin]. The level populations are the LTE populations at the cell temperature.
+/// The caller divides each sum by these values:
+/// - the bin width;
+/// - the speed of light;
+/// - the time;
+/// - the density.
+///
+/// The rows are in the order [cell][bin]. The level populations are the LTE populations at the cell temperature.
 /// `lower` and `upper` give the row of each level in `dflevels`.
 ///
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.

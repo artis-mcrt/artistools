@@ -37,8 +37,10 @@ HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 OPACITYCOLUMNS = ("exopac", "linebinned", "linebinned_maxone")
 
 # sum_binned_line_opacities() gives each group of 32 cells to a thread, thus a batch of 4096 cells gives each
-# core work. The sums of such a batch take 118 MB for 1200 bins
+# core work. A batch has one row for each cell and bin, and 4096 cells of 1200 bins took 0.8 GB. 4096 cells of
+# the 4998 bins of ejectaopacity took 3.6 GB, thus a batch of more bins holds fewer cells
 CELLSPERBATCH = 4096
+ROWSPERBATCH = CELLSPERBATCH * 1200
 
 
 class OpacityLines(t.NamedTuple):
@@ -236,9 +238,14 @@ def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
     )
 
 
-def get_cell_batches(dfestimators: pl.DataFrame) -> list[pl.DataFrame]:
-    """Split the cells into batches of CELLSPERBATCH cells for get_expansion_opacities()."""
-    return [dfestimators.slice(firstcell, CELLSPERBATCH) for firstcell in range(0, dfestimators.height, CELLSPERBATCH)]
+def get_cell_batches(dfestimators: pl.DataFrame, numbins: int) -> list[pl.DataFrame]:
+    """Split the cells into batches for get_expansion_opacities().
+
+    A batch holds a maximum of CELLSPERBATCH cells and ROWSPERBATCH pairs of a cell and a bin. It holds whole groups of
+    32 cells.
+    """
+    cellsperbatch = max(32, min(CELLSPERBATCH, ROWSPERBATCH // numbins) // 32 * 32)
+    return [dfestimators.slice(firstcell, cellsperbatch) for firstcell in range(0, dfestimators.height, cellsperbatch)]
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -290,7 +297,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     time_start = time.perf_counter()
     planckmeanopacity_times_mass = 0.0
     mass_g_sum = 0.0
-    for dfcellbatch in get_cell_batches(dfestimators):
+    for dfcellbatch in get_cell_batches(dfestimators, len(lambda_bin_edges) - 1):
         dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
         if args.show_binned_opacities:
             print(dfbinnedopacities)

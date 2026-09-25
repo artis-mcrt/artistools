@@ -1816,6 +1816,38 @@ def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
     assert len(list(outfolder.glob("*.png"))) == 3, "each timestep must still give a frame"
 
 
+def test_show_makes_room_for_the_title_above_the_offset_text(tmp_path: Path) -> None:
+    """The window of --show must hold all of the title.
+
+    The draw moves the title above the offset text of the y axis. The code measured the height before a draw, thus the
+    top of the title was 0.13 inches above the top of the figure.
+    """
+    titlefits: list[bool] = []
+
+    def show_window() -> None:
+        fig = plt.gcf()
+        fig.canvas.draw()
+        titletop = max(axis.title.get_window_extent().y1 for axis in fig.axes if axis.get_title()) / fig.dpi
+        titlefits.append(titletop <= fig.get_figheight())
+
+    with mock.patch.object(plt, "show", side_effect=show_window):
+        at.estimators.plotestimators.main(
+            argsraw=[
+                "W",
+                "-timestep",
+                "40",
+                "-figwidthscale",
+                "0.3",
+                "--show",
+                "-o",
+                str(tmp_path / "W.pdf"),
+                str(modelpath),
+            ]
+        )
+
+    assert titlefits == [True]
+
+
 def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     """-o names the gif that the run makes, and the frames go in the folder that holds it.
 
@@ -3056,6 +3088,9 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     """
     from artistools.estimators.core import drop_restart_duplicates
 
+    def scan_files(parquetfiles: list[Path]) -> list[pl.LazyFrame]:
+        return [pl.scan_parquet(parquetfile) for parquetfile in parquetfiles]
+
     folders = [tmp_path / "job1.slurm", tmp_path / "job2.slurm"]
     frames = [
         pl.DataFrame({"timestep": [0, 0, 1, 1], "modelgridindex": [0, 1, 0, 1], "Te": [10.0, 11.0, 20.0, 21.0]}),
@@ -3067,11 +3102,11 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
         frame.write_parquet(folder / "estimbatch00_0000_0000.out.parquet.tmp")
         parquetfiles.append(folder / "estimbatch00_0000_0000.out.parquet.tmp")
 
-    dfout = drop_restart_duplicates(parquetfiles, folders, match_timestep=None).collect()
+    dfout = drop_restart_duplicates(scan_files(parquetfiles), folders, match_timestep=None).collect()
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0]
 
     # one folder holds each timestep and cell once, thus it keeps every row
-    dfone = drop_restart_duplicates(parquetfiles[:1], folders[:1], match_timestep=None).collect()
+    dfone = drop_restart_duplicates(scan_files(parquetfiles[:1]), folders[:1], match_timestep=None).collect()
     assert dfone.height == 4
 
     # a batch of empty cells gives a cache with no columns, and a cell that the first folder does not hold at
@@ -3082,7 +3117,9 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     )
     parquetfiles += [folders[1] / "estimbatch01_0001_0001.out.parquet.tmp"]
     parquetfiles += [folders[1] / "estimbatch02_0002_0002.out.parquet.tmp"]
-    dfout = drop_restart_duplicates(parquetfiles, [*folders, folders[1], folders[1]], match_timestep=None).collect()
+    dfout = drop_restart_duplicates(
+        scan_files(parquetfiles), [*folders, folders[1], folders[1]], match_timestep=None
+    ).collect()
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 22.0]
 
 
@@ -3160,6 +3197,22 @@ def test_interactive_default_subplots_give_no_plot_option(tmp_path: Path) -> Non
     first, *others = viewer.defaultsubplots
     explicittokens = [*first, str(modelpath), "-timestep", "50", *(token for s in others for token in ("-plot", *s))]
     assert_same_lines(viewer.fig, get_command_figure(explicittokens, tmp_path / "estimators.pdf"))
+
+
+def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
+    """A -slice line in the option table changes the default x, and a command with no -x takes that default.
+
+    The viewer kept the old default as a fixed -x, thus the command plotted the line against the radial velocity.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "5", "--interactive"])
+    sliceline = interactive.replace_option_rows(viewer, viewer.values, (("-slice", ("z=0,y=0",)),))
+    assert "-x" not in viewer.get_plot_tokens(sliceline)
+    assert viewer.change(sliceline) is None
+    assert "-x" not in viewer.get_plot_tokens(interactive.replace_option_rows(viewer, viewer.values, ()))
+
+    # an x that the user chose stays
+    chosen = viewer.set_xvariable(viewer.values, "vel_r_mid")
+    assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
 
 
 def test_interactive_snapshot_and_time_evolution() -> None:
@@ -3283,5 +3336,5 @@ def test_interactive_readout_names_each_series() -> None:
     assert "T_e: " in interactive.get_readout(firstaxis, xmid)
     assert interactive.get_readout(nneaxis, xmid).count(": ") == 1
 
-    assert interactive.get_image_value(np.ma.masked_array([5.0])) == 5.0
+    assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
     assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None

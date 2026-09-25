@@ -2337,6 +2337,17 @@ def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
     assert viewer.values == oldvalues
 
 
+def test_interactive_rejected_frames_leave_a_plot_on_the_figure() -> None:
+    """An error of the new frames empties the figure, and the next plot must make new frames on it.
+
+    The viewer kept the key of the old frames, thus each later plot went to axes that the figure did not hold.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-figscale", ("-10",)),))) is not None
+    assert viewer.change(viewer.step_time(1) or viewer.values) is None
+    assert viewer.fig.axes, "the figure must hold the frames of the plot"
+
+
 def test_interactive_redraw_matches_a_new_plot() -> None:
     """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
 

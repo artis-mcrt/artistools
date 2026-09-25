@@ -24,7 +24,6 @@ from artistools.misc import separate_trailing_folders
 from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
@@ -739,6 +738,8 @@ class SpectrumViewer:
             getattr(plotargs, "labelfontsize", None),
         )
         if frameskey != self.frameskey:
+            # an error of make_plot_figure leaves an empty figure, and the next plot then needs new frames
+            self.frameskey = None
             self.fig.clear()
             _, self.axes, self.residualaxis = make_plot_figure(plotargs, fig=self.fig)
             self.frameskey = frameskey
@@ -781,7 +782,7 @@ class SpectrumViewer:
         message = self.draw(preview=preview)
         if message is not None:
             self.values = oldvalues
-            # a rejection after the frames were cleared needs a new plot of the old values
+            # a draw that fails after it clears the frames leaves no plot, thus the old values need a new plot
             if self.clearedframes:
                 self.draw(preview=preview)
         return message
@@ -799,7 +800,7 @@ class SpectrumViewer:
     def get_readout(self, x: float) -> str:
         """Return the value of each drawn spectrum at x, and the strongest emission at x for an emission plot."""
         xunit = get_xunit(self.values.xunit)
-        parts = [f"{x:.5g} {xunit.label}", *(get_line_readouts(self.axes[0], x, plain_label) if len(self.axes) else [])]
+        parts = [f"{x:.5g} {xunit.label}", *(get_line_readouts(self.axes[0], x) if len(self.axes) else [])]
         emissioncolumns = [column for column in self.dfalldata.columns if column.startswith("emission_flambda.")]
         if emissioncolumns and "lambda_angstroms" in self.dfalldata.columns:
             lambda_angstroms = convert_unit_to_angstroms(x, self.values.xunit)
@@ -847,8 +848,8 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app.exec()
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> bool:
-    """Open a window of the viewer for the plotspectra arguments in tokens, and return True if it opened."""
+def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
+    """Open a window of the viewer for the plotspectra arguments in tokens, or return the reason for no window."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -861,11 +862,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
     window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
     canvas = FigureCanvasQTAgg(viewer.fig)
-    if viewer.draw(quiet=False) is not None:
+    if (message := viewer.draw(quiet=False)) is not None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
             raise SystemExit(1)
-        return False
+        return message
     windows.append(window)
 
     fulldrawtimer = make_timer(window, FULL_DRAW_MILLISECONDS)
@@ -873,7 +874,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     fittimer = make_timer(window, FIT_MILLISECONDS)
 
     def on_resize() -> None:
-        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+        fit_canvas(canvas, viewer.figsize, plotarea)
         # a new plot takes up to 1 s, thus the plot takes the new shape only when the resize stops
         fittimer.start()
 
@@ -1162,12 +1163,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(dc.replace(viewer.values, otheroptions=rows))
 
     optiontable, set_option_rows = make_option_table(
-        window,
-        viewer.parser,
-        helptexts,
-        CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS,
-        viewer.values.otheroptions,
-        on_option_rows,
+        window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
@@ -1393,7 +1389,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_rejections()
         for blocker in blockers:
             blocker.unblock()
-        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+        fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
@@ -1494,8 +1490,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 [viewer.tmids[timestep] for timestep in viewer.validtimesteps], centre, count
             )
             newvalues = viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1])
-        if newvalues != values:
-            apply(newvalues)
+        apply(newvalues)
 
     def on_arrow(step: int) -> None:
         if (values := viewer.step_time(step)) is not None:
@@ -1549,8 +1544,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error("Give two numbers of 0 or more, with the minimum less than the maximum")
             return
         values = dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g"))
-        if values != viewer.values:
-            apply(values)
+        apply(values)
 
     def on_fixy(checked: bool) -> None:
         if not checked:
@@ -1572,8 +1566,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error("Give a -ymin that is less than -ymax")
             return
         values = dc.replace(viewer.values, ymin=format(low, ".10g"), ymax=format(high, ".10g"))
-        if values != viewer.values:
-            apply(values)
+        apply(values)
 
     def on_axes() -> None:
         values = viewer.values
@@ -1586,8 +1579,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             yvariable=yvariablebox.currentText(),
             normalised=normalisedcheck.isChecked(),
         )
-        if values != viewer.values:
-            apply(values)
+        apply(values)
 
     def on_emission_options() -> None:
         groupby = groupbybox.currentText()
@@ -1618,8 +1610,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
             values = remove_series_lock(values)
-        if values != viewer.values:
-            apply(values)
+        apply(values)
 
     def on_binmode() -> None:
         # the box holds the width of the previous mode, thus it takes the width of the new mode before the values change
@@ -1641,8 +1632,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(
             viewer.values, directionkind=directionkind, directionbins=directionbins, usedegrees=usedegrees
         )
-        if values != viewer.values:
-            apply(values)
+        apply(values)
 
     def on_lock(checked: bool) -> None:
         if not checked:
@@ -1657,14 +1647,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
         names = [get_reference_token(filename) for filename in filenames]
         references = (*viewer.values.references, *(name for name in names if name not in viewer.values.references))
-        if references != viewer.values.references:
-            apply(dc.replace(viewer.values, references=references))
+        apply(dc.replace(viewer.values, references=references))
 
     def on_remove_reference() -> None:
         selected = {item.text() for item in referencelist.selectedItems()}
         references = tuple(name for name in viewer.values.references if name not in selected)
-        if references != viewer.values.references:
-            apply(dc.replace(viewer.values, references=references))
+        apply(dc.replace(viewer.values, references=references))
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
@@ -1673,9 +1661,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        message = save_figure_of_command(
-            window, plotspectra_main, viewer.get_plot_tokens(), viewer.get_command(), "plotspectra.pdf"
-        )
+        message = save_figure_of_command(window, plotspectra_main, "plotspectra", viewer.get_plot_tokens())
         if message is not None:
             statusbar.message.setText(message)
 
@@ -1761,8 +1747,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(
-        window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
-    )
+    show_window(window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.figsize, plotarea))
     show_values()
-    return True
+    return None

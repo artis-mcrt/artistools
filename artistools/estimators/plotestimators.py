@@ -1464,7 +1464,7 @@ def draw_figure(
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
     fig: "mplfig.Figure | None" = None,
-) -> "tuple[mplfig.Figure, dict[str, t.Any]]":
+) -> "tuple[mplfig.Figure, dict[str, int | str]]":
     """Plot one subplot per entry in plotlist, and return the figure and the fields of the name of its file.
 
     A plot of one cell against time gives the field cell, and a snapshot gives the fields timestep and timedays.
@@ -1509,7 +1509,7 @@ def draw_figure(
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 
-    framefields: dict[str, t.Any]
+    framefields: dict[str, int | str]
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:
         figure_title = f"{modelname}\nCell {mgilist[0]}"
         framefields = {"cell": mgilist[0]}
@@ -1796,7 +1796,7 @@ def draw_image_figure(
     modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
     fig: "mplfig.Figure | None" = None,
-) -> "tuple[mplfig.Figure, dict[str, t.Any]]":
+) -> "tuple[mplfig.Figure, dict[str, int | str]]":
     """Plot each panel as a colour image of a snapshot, and return the figure and the fields of the name of its file.
 
     The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each
@@ -1862,7 +1862,7 @@ def draw_image_figure(
     if not args.notitle:
         fig.suptitle(figure_title)
 
-    framefields = {
+    framefields: dict[str, int | str] = {
         "kind": "slice" if isplane else "cylindrical",
         "plane": get_slice_filetag(args) if isplane else "rz",
         "timestep": strtimestep,
@@ -2179,6 +2179,15 @@ def time_is_given(args: argparse.Namespace) -> bool:
     return any(value is not None for value in (args.timedays, args.timemin, args.timemax, args.timestep))
 
 
+def get_default_x(*, timegiven: bool, makegif: bool) -> str:
+    """Return the x variable of a command with no -x.
+
+    A gif holds one snapshot for each timestep, thus its x axis shows a spatial variable. A time that the user gave
+    also selects one snapshot.
+    """
+    return "time" if not timegiven and not makegif else "velocity"
+
+
 def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int, int]:
     """Apply the default x variable and the default time range, and return the first and last timestep.
 
@@ -2193,9 +2202,7 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     if args.x is None:
-        # a gif holds one snapshot for each timestep, thus it plots against a spatial variable. A time
-        # that the user gave also selects one snapshot
-        args.x = "time" if notimegiven and not args.makegif else "velocity"
+        args.x = get_default_x(timegiven=not notimegiven, makegif=args.makegif)
         print(f"Setting x variable to {args.x}")
 
     # get_time_range returns these times, thus keep what the user gave for the message below

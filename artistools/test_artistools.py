@@ -11,6 +11,7 @@ import sys
 import tomllib
 import typing as t
 from collections.abc import Iterator
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -1326,7 +1327,7 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
         get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
     )
     dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("Te")))
-    assert dfnotemperature.select(pl.all().abs().max()).row(0) == (0.0, 0.0, 0.0)
+    assert np.allclose(dfnotemperature.select(pl.all().abs().max()).row(0), 0.0, rtol=0.0, atol=0.0)
 
 
 def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
@@ -1388,7 +1389,7 @@ def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
 def test_lambda_bin_edges_cover_the_full_range() -> None:
     """The bins cover the full wavelength range, also when the division of the range rounds down.
 
-    (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins, thus the last bin was lost.
+    (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins. Thus the last bin was missing.
     A range that does not hold a whole number of bins lost the part after the last whole bin.
     """
     edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
@@ -1445,6 +1446,44 @@ def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
     assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 220.0: 11}
     # a width of an even number of bins is one bin from two odd numbers, and it takes the larger one
     assert at.plotopacity.get_window_bins(200.0, 20.0) == 11
+    assert at.plotopacity.get_window_bins(1.2, 0.2) == 7
+
+
+def test_expansion_opacity_keeps_a_weak_line() -> None:
+    """A line of a very small optical depth adds to the expansion opacity of its bin.
+
+    1 - exp(-tau) is exactly zero below tau = 5.6e-17, thus a bin of weak lines had no expansion opacity.
+    """
+    from artistools.rustext import sum_binned_line_opacities
+
+    taus = [1e-18, 1e-6, 0.5]
+    dflevels = pl.DataFrame({"ionindex": [0], "g": [1.0], "energy_ev": [0.0]}, schema_overrides={"ionindex": pl.UInt32})
+    dflines = pl.DataFrame(
+        {
+            "lambda_angstroms_binindex": [0, 1, 2],
+            "lower": [0, 0, 0],
+            "upper": [0, 0, 0],
+            "sobolev_lower": taus,
+            "sobolev_upper": [0.0, 0.0, 0.0],
+            "lambda_angstroms": [1.0, 1.0, 1.0],
+        },
+        schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
+    )
+    dfcells = pl.DataFrame({"Te": [5000.0], "nnion_0": [1.0]})
+    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], 3, at.constants.K_B_ev_per_K)["exopac"]
+    assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
+
+
+def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
+    """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
+
+    Each batch held 4096 cells, and the 4998 bins of the ejectaopacity defaults then took 3.6 GB for one batch.
+    """
+    dfcells = pl.DataFrame({"modelgridindex": range(10000)})
+    for numbins in (100, 1200, 4998, 49980):
+        batches = at.ejectaopacity.get_cell_batches(dfcells, numbins)
+        assert sum(batch.height for batch in batches) == dfcells.height
+        assert max(batch.height for batch in batches) * numbins <= at.ejectaopacity.ROWSPERBATCH, numbins
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
@@ -2009,11 +2048,24 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
     assert "gives the wavelength" not in str(noreason.value)
 
 
+def test_room_for_title_keeps_the_axes_of_a_figure_with_no_frames() -> None:
+    """Only a frame figure takes more height for its title, because its divider keeps the frames at the bottom.
+
+    The axes of a different figure grew with the new height, and the title still went past the top.
+    """
+    fig, axis = plt.subplots(figsize=(4.0, 3.0))
+    axis.set_title("line 1\nline 2\nline 3\nline 4")
+    at.plottools.make_room_for_title(fig)
+    assert np.isclose(fig.get_figheight(), 3.0, rtol=1e-12, atol=0.0)
+    plt.close(fig)
+
+
 def test_plain_label_and_saved_path_read_well_in_a_terminal() -> None:
     """A log line must carry no LaTeX, and it must give the shorter of the two forms of a path."""
     assert at.plottools.plain_label(r"TEST MODEL +300.3d ($\pm$ 0.5d)") == "TEST MODEL +300.3d (+/- 0.5d)"
     # the subscript mark goes and the underscore stays, thus the plain form reads as M_sun
     assert at.plottools.plain_label(r"M$_{\odot}$") == "M_sun"
+    assert at.plottools.plain_label(r"T$_{\rm e}$ [K]") == "T_e [K]"
     assert at.plottools.plain_label("no mathematics here") == "no mathematics here"
 
 
@@ -3191,6 +3243,34 @@ def test_viewer_status_line_gives_the_error() -> None:
     stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
     assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
     assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
+
+
+def test_viewer_queue_moves_a_clamped_control_back() -> None:
+    """A handler that clamps a control to the values of the plot gives unchanged values, and the control must move back.
+
+    The queue returned before it showed the values, thus a slider stayed at a position that the plot did not show.
+    """
+    viewer = mock.Mock(values=5)
+    showvalues = mock.Mock()
+    queue = viewertools.DrawQueue(mock.Mock(), viewer, mock.Mock(), showvalues, mock.Mock())
+    queue.apply(5)
+    showvalues.assert_called_once_with()
+    assert queue.requestedvalues is None, "unchanged values must draw no plot"
+
+
+def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
+    """The status line of Open Model must give the error of the first plot of the new window.
+
+    open_window returned only a bool, thus the message took the first line of the traceback on stderr.
+    """
+
+    def open_window(tokens: Sequence[str], windows: Sequence[object]) -> str:
+        sys.stderr.write("Traceback (most recent call last):\n")
+        return f"ComputeError: the query failed for {tokens[0]} and {len(windows)} window"
+
+    with mock.patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value="mymodel"):
+        message = viewertools.open_model_window(mock.Mock(), open_window, [mock.Mock()])
+    assert message == "The viewer cannot open mymodel: ComputeError: the query failed for mymodel and 1 window"
 
 
 def test_viewer_typed_centre_gives_back_the_range() -> None:

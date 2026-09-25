@@ -3,9 +3,9 @@
 import argparse
 import dataclasses as dc
 import math
-import re
 import shlex
 import typing as t
+from functools import partial
 from pathlib import Path
 
 import matplotlib.figure as mplfig
@@ -17,12 +17,14 @@ from artistools.constants import km_to_cm
 from artistools.estimators.core import get_estimator_batch_caches
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
+from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import default_plotitem_has_data
 from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_plotlist
+from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
@@ -38,10 +40,10 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import separate_trailing_folders
+from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
-from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_menus
@@ -200,7 +202,7 @@ def get_default_xvariable(tokens: "Sequence[str]") -> str:
     def resolve() -> None:
         args = parse_cli_args(addargs, None, None, tokens)
         resolve_snapshot_arguments(args)
-        xvariables.append(args.x or ("time" if not time_is_given(args) and not args.makegif else "velocity"))
+        xvariables.append(args.x or get_default_x(timegiven=time_is_given(args), makegif=args.makegif))
 
     run_command_step(resolve, echo=False)
     return xvariables[0] if xvariables else "velocity"
@@ -262,10 +264,14 @@ class EstimatorViewer:
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
         # the viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches
-        # of its own timesteps and cells, as the command does. A large run has more than 10 GB of estimators
+        # of its own timesteps and cells, as the command does. A large run has more than 10 GB of estimators. The
+        # conversion of 40 batches of a 3D kilonova run kept 5.2 GB of freed memory in the viewer process. A child
+        # process gives that memory back to the system when it ends
         isartisrun = not args.classicartis and not path_is_codecomparison(self.modelpath)
         self.batchcaches: list[EstimatorBatchCache] | None = (
-            get_estimator_batch_caches(self.modelpath, None, None, verbose=False) or None if isartisrun else None
+            call_in_child_process(partial(get_estimator_batch_caches, verbose=False), self.modelpath, None, None)
+            if isartisrun
+            else None
         )
         estimators, modelmeta = join_cell_modeldata(
             estimators=scan_estimators(
@@ -522,7 +528,7 @@ class EstimatorViewer:
         message = self.draw()
         if message is not None:
             self.values = oldvalues
-            # a rejection after the figure was cleared needs a new plot of the old values
+            # a draw that fails after it clears the figure leaves it empty, thus the old values need a new plot
             if self.clearedfigure:
                 self.draw()
         return message
@@ -540,9 +546,16 @@ class EstimatorViewer:
         return format(float(f"{xdata * self.xlimitscale:.3g}"), ".10g")
 
 
-def get_plain_label(label: str) -> str:
-    r"""Return a plot label as plain text for the readout, e.g. "T_e" for "T$_{\rm e}$"."""
-    return re.sub(r"\\(?:mathrm|rm)\s*", "", plain_label(label))
+def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheroptions: OptionRows) -> ControlValues:
+    """Return the values with new rows of the option table.
+
+    An option such as -slice changes the default x of a snapshot. An x that equals the old default follows the new
+    default, because the command then gives no -x, as plotestimators does.
+    """
+    newvalues = dc.replace(values, otheroptions=otheroptions)
+    if is_evolution(values) or values.x != viewer.get_default_xvariable(values.otheroptions, timegiven=True):
+        return newvalues
+    return viewer.set_xvariable(newvalues, viewer.get_default_xvariable(otheroptions, timegiven=True))
 
 
 def get_readout(axis: "mplax.Axes", x: float) -> str:
@@ -550,7 +563,7 @@ def get_readout(axis: "mplax.Axes", x: float) -> str:
 
     plotestimators gives no label to the line of a subplot of one variable. The label of the y axis then names it.
     """
-    return "   ".join([f"x = {x:.5g}", *get_line_readouts(axis, x, get_plain_label)])
+    return "   ".join([f"x = {x:.5g}", *get_line_readouts(axis, x)])
 
 
 def get_image_value(cursordata: t.Any) -> float | None:
@@ -596,8 +609,8 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app.exec()
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> bool:
-    """Open a window of the viewer for the plotestimators arguments in tokens, and return True if it opened."""
+def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
+    """Open a window of the viewer for the plotestimators arguments in tokens, or return the reason for no window."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -608,18 +621,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
     window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
     canvas = FigureCanvasQTAgg(viewer.fig)
-    if viewer.draw(quiet=False) is not None:
+    if (message := viewer.draw(quiet=False)) is not None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
             raise SystemExit(1)
-        return False
+        return message
     windows.append(window)
 
     fittimer = make_timer(window, FIT_MILLISECONDS)
     playtimer = make_timer(window, PLAY_MILLISECONDS)
 
     def on_resize() -> None:
-        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+        fit_canvas(canvas, viewer.figsize, plotarea)
         # a new plot can take a few seconds, thus the plot takes the new shape only when the resize stops
         fittimer.start()
 
@@ -694,9 +707,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # a field takes each value of -xbins, e.g. a negative value for the automatic bins
     xbinsedit.setFixedWidth(80)
     xbinsedit.setPlaceholderText("default")
-    xbinsvalidator = QtGui.QIntValidator()
-    xbinsvalidator.setLocale(QtCore.QLocale.c())
-    xbinsedit.setValidator(xbinsvalidator)
+    # an empty field removes -xbins. QIntValidator gives the Intermediate state for an empty text, and the field
+    # then sends no editingFinished signal
+    xbinsedit.setValidator(QtGui.QRegularExpressionValidator(QtCore.QRegularExpression(r"(-?\d+)?"), xbinsedit))
     xbinsedit.setToolTip(helptexts.get("xbins", ""))
     markerscheck = QtWidgets.QCheckBox("--markers")
     markerscheck.setToolTip(helptexts.get("markers", ""))
@@ -727,7 +740,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     if (lineedit := variablebox.lineEdit()) is not None:
         lineedit.setPlaceholderText("Add a variable to the selected subplot")
     variablebox.setToolTip(
-        "Type part of a name to search, or type an ion or a directive. The name goes at the end of the selected subplot."
+        "Type part of a name to search, or type an ion or a directive."
+        " The name goes at the end of the selected subplot."
     )
     addbutton, removebutton = QtWidgets.QPushButton("Add subplot"), QtWidgets.QPushButton("Remove")
     upbutton, downbutton = QtWidgets.QPushButton("Up"), QtWidgets.QPushButton("Down")
@@ -740,12 +754,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
-        queue.apply(dc.replace(viewer.values, otheroptions=rows))
+        queue.apply(replace_option_rows(viewer, viewer.values, rows))
 
     optiontable, set_option_rows = make_option_table(
         window,
         viewer.parser,
-        helptexts,
         CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS,
         viewer.values.otheroptions,
         on_option_rows,
@@ -786,7 +799,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         finally:
             for blocker in blockers:
                 blocker.unblock()
-        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+        fit_canvas(canvas, viewer.figsize, plotarea)
 
     def show_blocked_values() -> None:
         values = viewer.values
@@ -987,9 +1000,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        message = save_figure_of_command(
-            window, plotestimators_main, viewer.get_plot_tokens(), viewer.get_command(), "plotestimators.pdf"
-        )
+        message = save_figure_of_command(window, plotestimators_main, "plotestimators", viewer.get_plot_tokens())
         if message is not None:
             statusbar.message.setText(message)
 
@@ -1015,6 +1026,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
+        # each kept scan holds the metadata of its file, e.g. 7.6 MB for 3000 columns
+        scan_parquet_file.cache_clear()
         # the list holds a reference to each open window, thus Python does not delete the window. A closed window
         # leaves the list
         windows.remove(window)
@@ -1083,8 +1096,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(
-        window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
-    )
+    show_window(window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.figsize, plotarea))
     show_values()
-    return True
+    return None

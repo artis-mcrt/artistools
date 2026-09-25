@@ -2239,8 +2239,8 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
 def test_split_multitable_dataframe_tables_collect_together() -> None:
     """A collect_all of filtered tables gives the same rows as a collect of each table.
 
-    With polars 2.0.0rc2, collect_all of filtered slices of one scan gave wrong rows. For example, the second
-    direction bin of a light curve then had other times and luminosities. A filter on the row index avoids this.
+    With polars 2.0.0rc2, collect_all of filtered slices of one scan gave incorrect rows. For example, the second
+    direction bin of a light curve then had other times and luminosities. head and tail avoid this.
     """
     times = list(range(10))
     dfres = pl.DataFrame({"time": times * 3, "value": [*times, *(t + 100 for t in times), *(t + 200 for t in times)]})

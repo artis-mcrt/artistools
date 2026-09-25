@@ -21,13 +21,9 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
     assert rowcount % nu_points == 0
     tablecount = rowcount // nu_points
 
-    # polars 2.0.0rc2 gives wrong rows for pl.collect_all of several filtered slices of one scan, and each table
-    # had a slice. A filter on the row index gives the correct rows in polars 1 and 2
-    rowindex = pl.int_range(pl.len())
-    return {
-        tableindex: res_df.filter(rowindex.is_between(tableindex * nu_points, (tableindex + 1) * nu_points - 1))
-        for tableindex in range(tablecount)
-    }
+    # polars 2.0.0rc2 gives incorrect rows for pl.collect_all of several filtered slices of one scan. head and tail give
+    # the correct rows in polars 1 and 2. A filter on the row index read the whole file for each table
+    return {tableindex: res_df.head((tableindex + 1) * nu_points).tail(nu_points) for tableindex in range(tablecount)}
 
 
 def average_direction_bins(

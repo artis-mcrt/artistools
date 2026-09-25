@@ -24,6 +24,7 @@ from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
+from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,7 +33,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
-    import matplotlib.figure as mplfig
     import numpy.typing as npt
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
@@ -512,7 +512,8 @@ def relaunch_in_macos_bundle(applicationname: str) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
     environment = os.environ | {MACOS_BUNDLE_VARIABLE: "1", "__PYVENV_LAUNCHER__": sys.executable}
-    os.execve(executable, [str(executable), *sys.orig_argv[1:]], environment)  # ruff:ignore[start-process-with-no-shell]
+    argv = [str(executable), *sys.orig_argv[1:]]
+    os.execve(executable, argv, environment)  # ruff:ignore[start-process-with-no-shell]
 
 
 def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]") -> "QtWidgets.QApplication":
@@ -663,15 +664,21 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
+    # the instance holds on_resize, and the class holds no reference to it. PySide keeps each class, thus a class that
+    # captured on_resize in a closure kept the viewer, the figure, and the canvas of each closed window
     class PlotArea(QtWidgets.QWidget):
         """The area of the plot, which scales the figure to its size."""
+
+        def __init__(self, on_resize: "Callable[[], None]") -> None:
+            super().__init__()
+            self.on_resize = on_resize
 
         @t.override
         def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
             super().resizeEvent(event)
-            on_resize()
+            self.on_resize()
 
-    plotarea = PlotArea()
+    plotarea = PlotArea(on_resize)
     plotarea.setMinimumSize(320, 240)
     plotlayout = QtWidgets.QVBoxLayout(plotarea)
     plotlayout.setContentsMargins(0, 0, 0, 0)
@@ -679,9 +686,7 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
     return plotarea
 
 
-def fit_canvas(
-    canvas: "FigureCanvasQTAgg", fig: "mplfig.Figure", figsize: tuple[float, float], plotarea: "QtWidgets.QWidget"
-) -> None:
+def fit_canvas(canvas: "FigureCanvasQTAgg", figsize: tuple[float, float], plotarea: "QtWidgets.QWidget") -> None:
     """Scale the figure to the plot area, and keep the shape of the frames.
 
     An embedded canvas has no figure manager, thus the figure cannot set the size of the widget. The resolution
@@ -689,6 +694,7 @@ def fit_canvas(
     """
     from PySide6 import QtCore
 
+    fig = canvas.figure
     figwidth, figheight = figsize
     if figwidth <= 0.0 or figheight <= 0.0:
         return
@@ -709,7 +715,6 @@ def fit_canvas(
 def make_option_table(
     window: "QtWidgets.QWidget",
     parser: argparse.ArgumentParser,
-    helptexts: "Mapping[str, str]",
     hiddendests: "Collection[str]",
     rows: OptionRows,
     on_rows: "Callable[[OptionRows], None]",
@@ -725,6 +730,7 @@ def make_option_table(
     from PySide6 import QtWidgets
 
     actionsbyflag = get_actions_by_flag(parser)
+    helptexts = get_helptexts(parser)
     tableflags = [action.option_strings[0] for action in get_table_actions(parser, hiddendests)]
     optiontable = QtWidgets.QTableWidget(0, 2)
     optiontable.setHorizontalHeaderLabels(["Option", "Value"])
@@ -976,11 +982,7 @@ def copy_command(command: str) -> None:
 
 
 def save_figure_of_command(
-    window: "QtWidgets.QWidget",
-    commandmain: "Callable[..., None]",
-    plottokens: "Sequence[str]",
-    command: str,
-    defaultname: str,
+    window: "QtWidgets.QWidget", commandmain: "Callable[..., None]", commandname: str, plottokens: "Sequence[str]"
 ) -> str | None:
     """Ask for a file name, and save the figure of the command there. Return the message for the status line.
 
@@ -992,7 +994,7 @@ def save_figure_of_command(
     from PySide6 import QtWidgets
 
     filename, selectedfilter = QtWidgets.QFileDialog.getSaveFileName(
-        window, "Save the figure", str(Path.cwd() / defaultname), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
+        window, "Save the figure", str(Path.cwd() / f"{commandname}.pdf"), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
     )
     if not filename:
         return None
@@ -1014,13 +1016,13 @@ def save_figure_of_command(
         return f"The command did not save the figure: {message}"
     if not Path(filename).is_file():
         return f"The command wrote no file at {filename}. The terminal shows its output"
-    print(f"{command} -o {shlex.quote(filename)}")
+    print(shlex.join(["artistools", commandname, *plottokens, "-o", filename]))
     return f"Saved {filename}"
 
 
 def open_model_window(
     window: "QtWidgets.QWidget",
-    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], bool]",
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
     windows: "list[QtWidgets.QMainWindow]",
 ) -> str | None:
     """Ask for the folder of a run, and open a new window for it. Return an error message if no window opened.
@@ -1033,13 +1035,7 @@ def open_model_window(
     if not folder:
         return None
 
-    def open_folder() -> str | None:
-        # open_window printed the error of the first plot, and the exit gives its first line to the message
-        if not open_window([folder], windows):
-            raise SystemExit(1)
-        return None
-
-    message = run_command_step(open_folder, quiet=False)
+    message = run_command_step(lambda: open_window([folder], windows), quiet=False)
     return None if message is None else f"The viewer cannot open {folder}: {message}"
 
 
@@ -1109,6 +1105,8 @@ class DrawQueue[ValuesT]:
         from PySide6 import QtCore
 
         if values == self.viewer.values:
+            # a handler that clamps a control to the old values must still move the control back
+            self.show_values()
             return
         if self.requestedvalues is None:
             QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
@@ -1219,17 +1217,17 @@ def connect_plot_mouse(
     canvas.mpl_connect("button_release_event", on_release)
 
 
-def get_line_readouts(axis: "mplax.Axes", x: float, get_label: "Callable[[str], str]") -> list[str]:
+def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     """Return the value at x of each labelled line of the axes, as "label: value".
 
     A line with a label that starts with "_" is not a series of the legend. If no line has a label, the first line
-    takes the label of the y axis, because a subplot of one variable gives no label to its line.
+    takes the label of the y axis. A subplot of one variable gives no label to its line.
     """
     lines = [line for line in axis.get_lines() if np.asarray(line.get_xdata()).size >= 2]
     labelledlines = [line for line in lines if not str(line.get_label()).startswith("_")]
     parts: list[str] = []
     for line in labelledlines or lines[:1]:
-        label = get_label(str(line.get_label()) if labelledlines else axis.get_ylabel())
+        label = plain_label(str(line.get_label()) if labelledlines else axis.get_ylabel())
         xdata, ydata = np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float)
         finite = np.isfinite(xdata) & np.isfinite(ydata)
         xdata, ydata = xdata[finite], ydata[finite]
