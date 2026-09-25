@@ -3444,3 +3444,23 @@ def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -
     assert not interactive.is_evolution(snapshot)
     assert (snapshot.first, snapshot.last) == (7, 7)
     assert not snapshot.cells
+
+
+def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
+    """A reload reads the valid timesteps again. A range of the whole run grows with the run, and another stays inside."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    validtimesteps = viewer.validtimesteps
+    assert len(validtimesteps) > 8
+    assert viewer.change(viewer.select_timesteps(viewer.values, len(validtimesteps) - 1, 1)) is None
+    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps[:-5]):
+        interactive.reload_run(viewer)
+    assert viewer.validtimesteps == validtimesteps[:-5]
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[-6], validtimesteps[-6])
+    assert viewer.draw() is None
+
+    assert viewer.change(interactive.get_evolution_values(viewer, str(viewer.cells[0]))) is None
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-6])
+    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps):
+        interactive.reload_run(viewer)
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-1])
+    assert viewer.draw() is None

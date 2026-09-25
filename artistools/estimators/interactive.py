@@ -45,6 +45,7 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import separate_trailing_folders
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
+from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
@@ -258,6 +259,63 @@ def get_single_cell(cells: str) -> int | None:
     return int(cells) if cells.isascii() and cells.isdecimal() else None
 
 
+def load_run(viewer: "EstimatorViewer") -> None:
+    """Read the caches, the columns, the valid timesteps, and the cells of the run of the viewer.
+
+    The viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches of its
+    own timesteps and cells, as the command does.
+    """
+    args = viewer.userargs
+    isartisrun = not args.classicartis and not path_is_codecomparison(viewer.modelpath)
+    viewer.batchcaches = get_batch_caches(viewer.modelpath) if isartisrun else None
+    estimators, modelmeta = join_cell_modeldata(
+        estimators=scan_estimators(
+            modelpath=viewer.modelpath, classicartis=args.classicartis, batchcaches=viewer.batchcaches
+        ),
+        modelpath=viewer.modelpath,
+    )
+    _, viewer.estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
+    viewer.validtimesteps = get_estimator_timesteps(viewer.modelpath, estimators) or list(range(len(viewer.tmids)))
+    # ARTIS writes the estimators of each cell that holds matter
+    lzmodel, modelmeta = get_modeldata(viewer.modelpath)
+    dfcells = (
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") > 0.0)
+        .select("modelgridindex", "vel_r_mid")
+        .sort("modelgridindex")
+        .collect()
+    )
+    viewer.cells = dfcells["modelgridindex"].to_list()
+    viewer.cellvelocities = dict(zip(viewer.cells, dfcells["vel_r_mid"].to_list(), strict=True))
+
+    # the command omits -plot while the subplots are the default subplots of plotestimators
+    viewer.defaultsubplots = tuple(
+        get_plotitem_tokens(plotitems)
+        for plotitems in get_default_plotlist()
+        if default_plotitem_has_data(plotitems, viewer.estimatorcolumns, viewer.modelpath)
+    )
+
+
+def reload_run(viewer: "EstimatorViewer") -> None:
+    """Read the run again, e.g. while ARTIS writes more timesteps, and keep the time range inside the valid timesteps.
+
+    A plot against time of the whole run then covers the new timesteps too.
+    """
+    oldvalidtimesteps = viewer.validtimesteps
+    # each kept scan and each list of timesteps of a run folder comes from the files of the last load
+    scan_parquet_file.cache_clear()
+    get_runfolder_timesteps_cached.cache_clear()
+    load_run(viewer)
+    values = viewer.values
+    wholerun = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
+    if is_evolution(values) and wholerun:
+        viewer.values = viewer.select_timesteps(values, 0, len(viewer.validtimesteps))
+    else:
+        firstpos, lastpos = viewer.get_selection_positions()
+        viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
+
+
 def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
     """Return the current parquet caches of the batches of the run, and convert the stale batches first.
 
@@ -285,6 +343,14 @@ class EstimatorViewer:
     always agrees with the command.
     """
 
+    # load_run reads these from the run, and reload_run reads them again
+    batchcaches: "list[EstimatorBatchCache] | None"
+    estimatorcolumns: list[str]
+    validtimesteps: list[int]
+    cells: list[int]
+    cellvelocities: dict[int, float]
+    defaultsubplots: tuple[tuple[str, ...], ...]
+
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
         parser = make_parser(addargs)
@@ -302,41 +368,13 @@ class EstimatorViewer:
         # the working folder needs no token in the command
         self.modeltoken = "" if self.modelpath == Path() else str(args.modelpath)
         self.helptexts = get_helptexts(parser)
+        # the arguments of the user, which give the columns of the plot and the format of the run
+        self.userargs = args
 
         self.tmids = get_timestep_times(self.modelpath, loc="mid")
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
-        # the viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches
-        # of its own timesteps and cells, as the command does
-        isartisrun = not args.classicartis and not path_is_codecomparison(self.modelpath)
-        self.batchcaches: list[EstimatorBatchCache] | None = get_batch_caches(self.modelpath) if isartisrun else None
-        estimators, modelmeta = join_cell_modeldata(
-            estimators=scan_estimators(
-                modelpath=self.modelpath, classicartis=args.classicartis, batchcaches=self.batchcaches
-            ),
-            modelpath=self.modelpath,
-        )
-        _, self.estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
-        # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
-        self.validtimesteps = get_estimator_timesteps(self.modelpath, estimators) or list(range(len(self.tmids)))
-        # ARTIS writes the estimators of each cell that holds matter
-        lzmodel, modelmeta = get_modeldata(self.modelpath)
-        dfcells = (
-            add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-            .filter(pl.col("rho") > 0.0)
-            .select("modelgridindex", "vel_r_mid")
-            .sort("modelgridindex")
-            .collect()
-        )
-        self.cells: list[int] = dfcells["modelgridindex"].to_list()
-        self.cellvelocities: dict[int, float] = dict(zip(self.cells, dfcells["vel_r_mid"].to_list(), strict=True))
-
-        # the command omits -plot while the subplots are the default subplots of plotestimators
-        self.defaultsubplots = tuple(
-            get_plotitem_tokens(plotitems)
-            for plotitems in get_default_plotlist()
-            if default_plotitem_has_data(plotitems, self.estimatorcolumns, self.modelpath)
-        )
+        load_run(self)
         givensubplots = tuple(tuple(str(item) for item in plotitems) for plotitems in args.plotlist or ())
         # plotestimators stops when no default subplot applies to the model, thus the window then shows Te
         subplots = givensubplots or self.defaultsubplots or (("Te",),)
@@ -733,6 +771,7 @@ snapshot at a time</td></tr>
 <tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Run the command to save the figure</td></tr>
 <tr><td><b>{shortcuts["Copy Command"]}</b></td><td>Copy the command</td></tr>
 <tr><td><b>{shortcuts["Open Model..."]}</b></td><td>Open a model in a new window</td></tr>
+<tr><td><b>{shortcuts["Reload Data"]}</b></td><td>Read the run again, e.g. while ARTIS writes more timesteps</td></tr>
 <tr><td><b>?</b></td><td>Show this list</td></tr>
 </table>"""
 
@@ -776,12 +815,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     sidebar, panellayout = make_sidebar()
     splitter = make_central_splitter(window, plotarea, sidebar)
     helptexts = viewer.helptexts
-    nvalid = len(viewer.validtimesteps)
 
     _, timegrid = add_section(panellayout, "Time")
     timeslider, widthslider = make_slider(), make_slider()
-    timeslider.setRange(0, nvalid - 1)
-    widthslider.setRange(1, nvalid)
     timeslider.setToolTip(
         "The middle of the time range. The Left key and the Right key move it to the adjacent timestep."
     )
@@ -801,7 +837,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     trangelayout = QtWidgets.QHBoxLayout(trangebox)
     trangelayout.setContentsMargins(0, 0, 0, 0)
     tminedit, tmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    trangeslider, set_trange_positions, connect_trange = make_range_slider(max(nvalid - 1, 1))
+    trangeslider, set_trange_positions, connect_trange, set_trange_steps = make_range_slider(1)
     trangeslider.setToolTip("The first and the last timestep of the plot against time.")
     for edit, text in ((tminedit, "first"), (tmaxedit, "last")):
         edit.setFixedWidth(80)
@@ -821,7 +857,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, cellgrid = add_section(panellayout, "Cells")
     cellslider = make_slider()
-    cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
     celledit = QtWidgets.QLineEdit()
     celledit.setFixedWidth(110)
@@ -924,6 +959,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         subplotlist,
         variablebox,
     ]
+
+    def set_ranges() -> None:
+        """Give the sliders the number of valid timesteps and the number of cells of the run."""
+        nvalid = len(viewer.validtimesteps)
+        timeslider.setRange(0, nvalid - 1)
+        widthslider.setRange(1, nvalid)
+        set_trange_steps(max(nvalid - 1, 1))
+        cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
+
+    set_ranges()
 
     def show_subplots(subplots: "Sequence[Sequence[str]]") -> None:
         """Show a row for each subplot, and keep the selected row."""
@@ -1211,6 +1256,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if (message := open_model_window(window, open_window, windows)) is not None:
             show_error(message)
 
+    def on_reload() -> None:
+        """Read the run again. A new batch of text files converts here, and the terminal shows its progress."""
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+        try:
+            message = run_command_step(partial(reload_run, viewer), quiet=False)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        if message is not None:
+            show_error(f"The viewer cannot reload the run: {message}")
+            return
+        set_ranges()
+        queue.redraw()
+
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help())
 
@@ -1291,6 +1349,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         window,
         {
             "Open Model...": on_open_model,
+            "Reload Data": on_reload,
             "Save Figure...": on_save,
             "Copy Command": on_copy,
             "Close Window": window.close,

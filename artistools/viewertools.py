@@ -800,11 +800,11 @@ def make_slider() -> "QtWidgets.QSlider":
 
 def make_range_slider(
     steps: int,
-) -> "tuple[QtWidgets.QWidget, Callable[[int, int], None], Callable[[Callable[[int, int], None]], None]]":
-    """Return a slider with two handles for a range of the positions 0 to steps, and two functions of the slider.
+) -> "tuple[QtWidgets.QWidget, Callable[[int, int], None], Callable[[Callable[[int, int], None]], None], Callable[[int], None]]":
+    """Return a slider with two handles for a range of the positions 0 to steps, and three functions of the slider.
 
     The first function moves the handles. The second function connects a handler, which receives the index of the
-    handle that the user moved and its new position.
+    handle that the user moved and its new position. The third function gives the slider a new number of steps.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -822,6 +822,7 @@ def make_range_slider(
 
         def __init__(self) -> None:
             super().__init__()
+            self.steps = steps
             self.positions = [0, steps]
             self.draghandle: int | None = None
             self.setMinimumHeight(round(3 * self.handleradius))
@@ -833,12 +834,17 @@ def make_range_slider(
             self.positions = [low, high]
             self.update()
 
+        def set_steps(self, steps: int) -> None:
+            self.steps = steps
+            self.positions = [min(position, steps) for position in self.positions]
+            self.update()
+
         def get_pixel(self, position: int) -> float:
-            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / steps
+            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / self.steps
 
         def get_position(self, pixel: float) -> int:
             fraction = (pixel - self.handleradius) / max(self.width() - 2.0 * self.handleradius, 1.0)
-            return round(min(max(fraction, 0.0), 1.0) * steps)
+            return round(min(max(fraction, 0.0), 1.0) * self.steps)
 
         @t.override
         def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -894,7 +900,7 @@ def make_range_slider(
     def connect_handler(handler: "Callable[[int, int], None]") -> None:
         slider.limitmoved.connect(handler)
 
-    return slider, slider.set_positions, connect_handler
+    return slider, slider.set_positions, connect_handler, slider.set_steps
 
 
 def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
@@ -1258,6 +1264,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
 
     return [
         ("File", "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
+        ("File", "Reload Data", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Refresh)),
         ("File", "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
         ("File", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("File", "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
@@ -1273,10 +1280,16 @@ def get_menu_shortcut_texts() -> dict[str, str]:
 
 
 def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
-    """Add the File menu and the Help menu. callbacks gives the function of each item by the text of the item."""
+    """Add the File menu and the Help menu.
+
+    callbacks gives the function of each item by the text of the item. A viewer leaves out an item that it does not
+    support, e.g. Reload Data.
+    """
     menubar = window.menuBar()
     menus = {name: menubar.addMenu(name) for name in ("File", "Help")}
     for menuname, text, keys in get_menu_items():
+        if text not in callbacks:
+            continue
         action = menus[menuname].addAction(text)
         action.setShortcut(keys)
         action.triggered.connect(callbacks[text])
@@ -1453,6 +1466,15 @@ class DrawQueue[ValuesT]:
         self.requestedvalues = values
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
+        self.show_values()
+
+    def redraw(self) -> None:
+        """Draw the plot of the current values again, e.g. after the data of the run changed."""
+        from PySide6 import QtCore
+
+        if self.requestedvalues is None:
+            QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
+        self.requestedvalues = self.viewer.values
         self.show_values()
 
     def draw_requested(self) -> None:
