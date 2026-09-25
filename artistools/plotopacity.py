@@ -115,10 +115,9 @@ def get_computed_bin_edges(
     marginbins = get_window_bins(movingaveragewidth, deltalambda) // 2 + 1 if movingaveragewidth > 0.0 else 0
     lower, upper = xmin - marginbins * deltalambda, xmax + marginbins * deltalambda
     gridmin, gridmax = (lower, upper) if grid is None else grid[:2]
+    gridlowers = get_lambda_bin_edges(gridmin, gridmax, deltalambda)[:-1]
     lowers = (
-        df_filter_minmax_bracketed(
-            pl.DataFrame({"lower": get_lambda_bin_edges(gridmin, gridmax, deltalambda)[:-1]}), "lower", lower, upper
-        )
+        df_filter_minmax_bracketed(pl.DataFrame({"lower": gridlowers}), "lower", lower, upper)
         .collect()
         .get_column("lower")
         .to_list()
@@ -130,7 +129,9 @@ def get_computed_bin_edges(
         )
         raise ValueError(msg)
     edges = [*lowers, lowers[-1] + deltalambda]
-    gridtext = "" if grid is None else f" of the grid of rpkt.h from {gridmin:g} to {gridmax:g} Angstroms"
+    gridtext = (
+        "" if grid is None else f" of the {len(gridlowers)} bins of rpkt.h from {gridmin:g} to {gridmax:g} Angstroms"
+    )
     print(
         f"  {len(lowers)} wavelength bins of {deltalambda:g} Angstroms from {edges[0]:g} to {edges[-1]:g}"
         f" Angstroms{gridtext}"

@@ -1470,9 +1470,9 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
     assert deltalambda == pytest.approx(10.0, rel=1e-12, abs=0.0)
     assert len(edges) - 1 < 50 < dffull.height
     assert (
-        f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g}"
-        in capsys.readouterr().out
-    )
+        f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g} Angstroms of the 100 bins"
+        " of rpkt.h from 3000 to 4000 Angstroms"
+    ) in capsys.readouterr().out
     dfpart = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
 
     windowbins = at.plotopacity.get_window_bins(width, deltalambda)
