@@ -201,8 +201,8 @@ def plot_opacities(
 
     With a moving average, the line of each opacity is its moving average. A band in the same colour then gives the
     range of the bins of each window, and --showbins also draws each bin. With no moving average, each bin is a
-    horizontal line from its lower edge to its upper edge. The panel below gives the ratio of each opacity to the
-    line-binned opacity. A dotted line gives the Planck mean of the expansion opacity.
+    horizontal line from its lower edge to its upper edge. The panel below gives the ratio of each line-binned
+    opacity to the expansion opacity. A dotted line gives the Planck mean of the expansion opacity.
 
     The plot takes the bins of the x range, and the moving average keeps one point past each end, thus its line
     reaches the edge of the frame. A value outside the x range then does not change the y range.
@@ -261,12 +261,12 @@ def plot_opacities(
             label=rf"Planck mean of the expansion opacity, {planckmean:.3g} cm$^2$/g",
         )
 
-    linex, linebinned = get_line("linebinned")
-    for column, _label, linestyle in OPACITYSERIES[:-1]:
+    linex, expansion = get_line("exopac")
+    for column, _label, linestyle in OPACITYSERIES[1:]:
         _, opacities = get_line(column)
         ratioaxis.plot(
             linex,
-            np.divide(opacities, linebinned, out=np.full_like(opacities, np.nan), where=linebinned != 0.0),
+            np.divide(opacities, expansion, out=np.full_like(opacities, np.nan), where=expansion != 0.0),
             linewidth=OPACITYLINE_WIDTH,
             linestyle=linestyle,
             color=colors[column],
@@ -275,7 +275,9 @@ def plot_opacities(
 
     ax.set_ylabel(r"Opacity [cm$^2$/g]")
     ratioaxis.set_xlabel(r"Wavelength ($\mathrm{\AA}$)")
-    ratioaxis.set_ylabel("Ratio to\nline-binned")
+    ratioaxis.set_ylabel("Ratio to\nexpansion")
+    # the line-binned opacity is up to 1000 times the expansion opacity, and the capped opacity is 1 to 1.58 times it
+    ratioaxis.set_yscale("log")
     set_auto_yscale(ax, args)
     set_axis_properties(ax, args)
     set_axis_properties(ratioaxis, args, setyaxis=False)
