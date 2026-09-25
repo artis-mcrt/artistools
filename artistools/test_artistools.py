@@ -1277,6 +1277,165 @@ def test_ejectaopacity() -> None:
     )
 
 
+def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
+    """The Rust kernel gives the values of the earlier polars query.
+
+    The earlier query joined each cell with each line, and the reference sums come from it. Only the order
+    of the additions is different, thus the values agree within the rounding error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    assert dfopacities.height == 100
+    for column, expectedsum in {
+        "exopac": 1397.6901658607103,
+        "linebinned": 11675.7786539805,
+        "linebinned_maxone": 1652.4668052744682,
+    }.items():
+        assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
+
+
+def test_expansion_opacities_of_a_null_population_are_zero() -> None:
+    """A null population of an ion gives no opacity from that ion, and a null temperature gives no opacity.
+
+    The kernel reads contiguous columns with no nulls, thus get_expansion_opacities() must replace each null.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+    ionstr = opacitylines.ionstrs[0]
+
+    def get_opacities(dfcells: pl.DataFrame) -> pl.DataFrame:
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
+            at.ejectaopacity.OPACITYCOLUMNS
+        )
+
+    pltest.assert_frame_equal(
+        get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+        get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+    )
+    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("Te")))
+    assert dfnotemperature.select(pl.all().abs().max()).row(0) == (0.0, 0.0, 0.0)
+
+
+def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
+    """A temperature of zero gives NaN level populations, and each of the three sums must then be NaN.
+
+    f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite linebinned_maxone
+    and a finite exopac for such a cell.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None).with_columns(
+        pl.lit(0.0, dtype=pl.Float32).alias("Te")
+    )
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    isnan = dfopacities.select(pl.col(at.ejectaopacity.OPACITYCOLUMNS).is_nan())
+    assert isnan["linebinned"].any()
+    for column in at.ejectaopacity.OPACITYCOLUMNS:
+        assert isnan[column].equals(isnan["linebinned"]), column
+
+
+def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
+    """A line with a null A value adds nothing, as a line that the atomic data does not hold.
+
+    The kernel reads columns with no nulls, thus a null constant stopped the sum with an error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    isfirstline = pl.int_range(pl.len()) == 0
+
+    def get_opacities(transitions: list[pl.LazyFrame]) -> pl.DataFrame:
+        adatachanged = adata.with_columns(pl.Series("transitions", transitions, dtype=pl.Object))
+        opacitylines = at.ejectaopacity.get_opacity_lines(adatachanged, dfcell.columns, lambda_bin_edges, time_days)
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    dfnullconstant = get_opacities([
+        dftransitions.lazy().with_columns(A=pl.when(~isfirstline).then(pl.col("A")))
+        for dftransitions in adata["transitions"]
+    ])
+    dfnoline = get_opacities([dftransitions.lazy().filter(~isfirstline) for dftransitions in adata["transitions"]])
+
+    pltest.assert_frame_equal(dfnullconstant, dfnoline)
+
+
+def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
+    """A range with no bin stops with a message, not with an IndexError in get_expansion_opacities()."""
+    with pytest.raises(ValueError, match="holds no bin"):
+        at.ejectaopacity.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
+
+
+def test_lambda_bin_edges_cover_the_full_range() -> None:
+    """The bins cover the full wavelength range, also when the division of the range rounds down.
+
+    (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins, thus the last bin was lost.
+    A range that does not hold a whole number of bins lost the part after the last whole bin.
+    """
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
+    assert len(edges) == 10001
+    assert math.isclose(edges[-1], 4000.0, rel_tol=1e-12)
+
+    edges = at.ejectaopacity.get_lambda_bin_edges(1000.0, 25010.0, 20.0)
+    assert len(edges) == 1202
+    assert math.isclose(edges[-1], 25020.0, rel_tol=1e-12)
+
+
+def test_plotopacity_weights_the_cells_by_mass() -> None:
+    """The mean over the cells weights each cell by its mass, and it sums the cells of every batch.
+
+    Cell k holds k times the ion populations and k times the mass of the test cell. The line-binned
+    opacity is linear in the populations. Thus, for n cells, the mean is sum(k^2) / sum(k) = (2n + 1) / 3
+    times the opacity of the test cell. The first CELLSPERBATCH cells fill one batch, and the last 8 cells
+    go into a second batch.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    assert dfcell.height == 1
+
+    cellcount = at.ejectaopacity.CELLSPERBATCH + 8
+    dfcells = pl.concat([
+        dfcell.with_columns(
+            pl.lit(k - 1, dtype=dfcell.schema["modelgridindex"]).alias("modelgridindex"),
+            pl.col("mass_g") * k,
+            # a population is Float32, and k times it rounds in Float32
+            pl.col("^nnion_.*$").cast(pl.Float64) * k,
+        )
+        for k in range(1, cellcount + 1)
+    ])
+
+    def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
+        return at.plotopacity.get_massweighted_opacities(adata, time_days, dfestimators, 3000.0, 4000.0, 10.0)[
+            "linebinned"
+        ].to_numpy()
+
+    linebinned_onecell = get_linebinned(dfcell)
+    assert linebinned_onecell.max() > 0.0
+    meanfactor = (2 * cellcount + 1) / 3
+    assert np.allclose(get_linebinned(dfcells), meanfactor * linebinned_onecell, rtol=1e-10, atol=0.0)
+
+
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 
