@@ -2093,6 +2093,26 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
     assert "gives the wavelength" not in str(noreason.value)
 
 
+def test_room_for_title_predicts_the_place_of_the_title_of_the_draw() -> None:
+    """The height for the title comes from a prediction with no draw, and a draw must then put the title there.
+
+    A draw took 83 ms of a plot of 250 ms. The draw moves a title that overlaps the offset text of the y axis, thus a
+    title with and without an offset text must end 0.05 inches below the top of the figure. The text of the draw
+    can end one pixel from the prediction.
+    """
+    for ymax in (2e-5, 20.0):
+        fig, axes = at.plottools.make_frame_figure(argparse.Namespace(figwidthscale=0.3, figscale=1.0))
+        axis = axes[0, 0]
+        axis.plot([0.0, 1.0], [ymax / 2, ymax])
+        axis.set_title("A model name\nTimestep 40 (10.00d-11.00d)")
+        at.plottools.make_room_for_title(fig)
+        fig.canvas.draw()
+        assert bool(axis.yaxis.offsetText.get_text()) == (ymax < 1.0)
+        gap = fig.get_figheight() - axis.title.get_window_extent().y1 / fig.dpi
+        assert np.isclose(gap, 0.05, rtol=0.0, atol=0.01), (ymax, gap)
+        plt.close(fig)
+
+
 def test_room_for_title_keeps_the_axes_of_a_figure_with_no_frames() -> None:
     """Only a frame figure takes more height for its title, because its divider keeps the frames at the bottom.
 

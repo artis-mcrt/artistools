@@ -898,20 +898,58 @@ def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str"
         print_saved(residualfile)
 
 
+def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
+    """Return the top of the title of the axes in pixels, at the place where the next draw puts it.
+
+    The draw moves a title that overlaps the offset text of the y axis, e.g. "1e-5", above that text. This function
+    applies the same rule of matplotlib to the offset text of the tick formatter, and it needs no draw.
+    """
+    titlebox = axis.title.get_window_extent(renderer)
+    formatter = axis.yaxis.get_major_formatter()
+    formatter.set_locs(axis.yaxis.get_majorticklocs().tolist())
+    offsettext = axis.yaxis.offsetText
+    if not (offsettext.get_visible() and (offset := formatter.get_offset())):
+        return titlebox.y1
+    offsettext.set_text(offset)
+    offsetx, _ = offsettext.get_position()
+    offsettext.set_position((offsetx, axis.bbox.ymax + axis.yaxis.OFFSETTEXTPAD * axis.figure.dpi / 72))
+    offsetbox = offsettext.get_window_extent(renderer)
+    if offsetbox.intersection(offsetbox, titlebox) is None:
+        return titlebox.y1
+    # the two steps of Axes._update_title_position, which put the bottom of the title near the top of the text
+    titlex, _ = axis.title.get_position()
+    top = offsetbox.y1
+    for step in range(2):
+        if titlebox.y0 >= top:
+            break
+        bottom = top if step == 0 else 2 * top - titlebox.y0
+        axis.title.set_position((titlex, axis.transAxes.inverted().transform((0.0, bottom))[1]))
+        titlebox = axis.title.get_window_extent(renderer)
+    return titlebox.y1
+
+
 def make_room_for_title(fig: mplfig.Figure) -> None:
     """Make the figure taller if a title goes past its top edge.
 
     A saved file takes the tight bounding box, thus a title of two lines fits in it. A window shows the full figure.
     The divider of make_frame_figure puts the frames at the bottom edge, thus the new height goes above them. The
-    draw moves a title above the offset text of the y axis, thus the function measures the titles after a draw. A
-    call of fig.draw_without_rendering() did not move such a title, thus the function calls canvas.draw().
+    function predicts the place of each title with no draw, because a draw took 83 ms of a plot of 250 ms.
     """
     # the axes of a figure with no divider grow with the figure, and the title then stays outside
     if all(axis.get_axes_locator() is None for axis in fig.axes):
         return
-    titles = [*fig.texts, *(axis.title for axis in fig.axes if axis.get_title())]
-    fig.canvas.draw()
-    overflow = max((title.get_window_extent().y1 for title in titles), default=0.0) / fig.dpi - fig.get_figheight()
+    renderer = getattr(fig.canvas, "get_renderer", None)
+    if renderer is None:
+        return
+    renderer = renderer()
+    titletops = [text.get_window_extent(renderer).y1 for text in fig.texts]
+    for axis in fig.axes:
+        # the locator of a frame of make_frame_figure sets its position at the draw. Apply it before a measure
+        if (locator := axis.get_axes_locator()) is not None:
+            axis.apply_aspect(locator(axis, renderer))
+        if axis.get_title():
+            titletops.append(get_axes_title_top(axis, renderer))
+    overflow = max(titletops, default=0.0) / fig.dpi - fig.get_figheight()
     if overflow > 0.0:
         # a gap of 0.05 inches keeps the tops of the letters whole. Without forward=True, a pyplot window keeps its
         # old size
