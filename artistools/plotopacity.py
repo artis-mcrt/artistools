@@ -80,13 +80,12 @@ def get_massweighted_opacities(
     """Return the mean binned opacities over the cells, and the mean Planck mean of the expansion opacity.
 
     The mass of each cell is the weight of both means. For one cell, the result is the opacity of that cell. The bins
-    have one width. The Planck mean takes the bins with a middle in planckrange, or all the bins for None. A run
-    with no cell temperature gives a Planck mean of NaN.
+    have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a run with
+    no cell temperature, gives a Planck mean of NaN.
     """
     lambda_bin_edges = list(lambda_bin_edges)
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
-    planckmin, planckmax = (lambda_bin_edges[0], lambda_bin_edges[-1]) if planckrange is None else planckrange
 
     batchsums: list[pl.DataFrame] = []
     planckmean_times_mass = 0.0
@@ -101,8 +100,10 @@ def get_massweighted_opacities(
                 (pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum()
             )
         )
+        if planckrange is None:
+            continue
         dfplanckmean = get_planck_mean_opacities(
-            dfbinnedopacities.filter(pl.col("lambda_angstroms_bin_mid").is_between(planckmin, planckmax))
+            dfbinnedopacities.filter(pl.col("lambda_angstroms_bin_mid").is_between(*planckrange))
         )
         planckmean_times_mass += dfplanckmean.select(pl.col("planckmean_opacity").dot(pl.col("mass_g"))).item()
         planckmass += dfplanckmean.select(pl.col("mass_g").sum()).item()
@@ -202,7 +203,8 @@ def plot_opacities(
     With a moving average, the line of each opacity is its moving average. A band in the same colour then gives the
     range of the bins of each window, and --showbins also draws each bin. With no moving average, each bin is a
     horizontal line from its lower edge to its upper edge. The panel below gives the ratio of each line-binned
-    opacity to the expansion opacity. A dotted line gives the Planck mean of the expansion opacity.
+    opacity to the expansion opacity. A finite planckmean gives a dotted line at the Planck mean of the expansion
+    opacity.
 
     The plot takes the bins of the x range, and the moving average keeps one point past each end, thus its line
     reaches the edge of the frame. A value outside the x range then does not change the y range.
@@ -399,6 +401,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--showbins", action="store_true", help="Draw each bin as a short line, as well as the band of the bins"
     )
+    parser.add_argument(
+        "--showplanckmean",
+        action="store_true",
+        help="Draw a line at the mass-weighted Planck mean of the expansion opacity over the wavelength range",
+    )
     addarg_yscale(parser, default="log")
     addarg_notitle(parser)
     addarg_nolegend(parser)
@@ -425,7 +432,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
         ),
         lambda_bin_edges=lambda_bin_edges,
-        planckrange=(args.xmin, args.xmax),
+        planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
     )
 
     title = (

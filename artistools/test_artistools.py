@@ -1290,7 +1290,8 @@ def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
 ) -> None:
     """The plot has a band for each opacity, a dashed capped opacity, a panel of ratios, and the Planck mean.
 
-    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell.
+    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell. Only
+    --showplanckmean draws it.
     """
     at.plotopacity.main(
         argsraw=[
@@ -1302,6 +1303,7 @@ def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
             "3000",
             "-xmax",
             "4000",
+            "--showplanckmean",
             "-o",
             str(tmp_path / "opac.pdf"),
         ]
@@ -1327,6 +1329,23 @@ def test_plotopacity_draws_bands_ratios_and_the_planck_mean(
     expected = float(np.sum(planck * dfbins["exopac"].to_numpy()) / np.sum(planck))
     assert mockaxhline.call_count == 1
     assert np.isclose(mockaxhline.call_args.args[1], expected, rtol=1e-9, atol=0.0)
+
+    # the line and its calculation need --showplanckmean
+    at.plotopacity.main(
+        argsraw=[
+            "-modelpath",
+            str(modelpath),
+            "-timestep",
+            "40",
+            "-xmin",
+            "3000",
+            "-xmax",
+            "4000",
+            "-o",
+            str(tmp_path / "noplanck.pdf"),
+        ]
+    )
+    assert mockaxhline.call_count == 1
 
 
 def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
