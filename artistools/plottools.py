@@ -906,7 +906,7 @@ def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
     """
     titlebox = axis.title.get_window_extent(renderer)
     formatter = axis.yaxis.get_major_formatter()
-    formatter.set_locs(axis.yaxis.get_majorticklocs().tolist())
+    formatter.set_locs([float(loc) for loc in axis.yaxis.get_majorticklocs()])
     offsettext = axis.yaxis.offsetText
     if not (offsettext.get_visible() and (offset := formatter.get_offset())):
         return titlebox.y1
