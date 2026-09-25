@@ -2006,7 +2006,7 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 
 def test_interactive_command_tokens() -> None:
     """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
-    parser = interactive.make_parser()
+    parser = viewertools.make_parser(plotspectra.addargs)
     tokens = [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2375,10 +2375,6 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
 
 def test_interactive_status_line_gives_the_error() -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
-    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
-    assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
-    assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
-
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
@@ -2475,18 +2471,6 @@ def test_interactive_unlock_gives_the_default_count() -> None:
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_typed_centre_gives_back_the_range() -> None:
-    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
-
-    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
-    """
-    tmids = at.get_timestep_times(modelpath, loc="mid")
-    for count in (1, 2, 3, 4):
-        for start in range(len(tmids) - count + 1):
-            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
-            assert viewertools.get_nearest_range_start(tmids, centre, count) == start, (count, start)
-
-
 def test_interactive_frompackets_box() -> None:
     """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
@@ -2547,7 +2531,7 @@ def test_interactive_direction_and_bin_controls() -> None:
 
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
-    parser = interactive.make_parser()
+    parser = viewertools.make_parser(plotspectra.addargs)
     tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
     rows, othertokens = viewertools.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (

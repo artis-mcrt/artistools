@@ -21,7 +21,6 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
-from artistools import viewertools
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 
@@ -3286,14 +3285,3 @@ def test_interactive_readout_names_each_series() -> None:
 
     assert interactive.get_image_value(np.ma.masked_array([5.0])) == 5.0
     assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None
-
-
-def test_interactive_option_rows_split_a_group_of_switches() -> None:
-    """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
-
-    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
-    """
-    parser = interactive.make_parser()
-    rows, othertokens = viewertools.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
-    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
-    assert othertokens == ["Te", "mymodel"]

@@ -1,15 +1,10 @@
 """Show the plot of plotestimators in a window with controls for the time, the cell, and the subplots."""
 
 import argparse
-import contextlib
 import dataclasses as dc
-import io
 import math
 import re
 import shlex
-import sys
-import time
-import traceback
 import typing as t
 from pathlib import Path
 
@@ -17,9 +12,9 @@ import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
 
-from artistools.commands import SuggestingArgumentParser
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
+from artistools.estimators.core import get_estimator_batch_caches
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.plotestimators import add_plot_columns
@@ -30,38 +25,44 @@ from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_plotlist
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
+from artistools.estimators.plotestimators import resolve_snapshot_arguments
 from artistools.estimators.plotestimators import SERIESTYPES
+from artistools.estimators.plotestimators import time_is_given
+from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
-from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
-from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.plottools import LABELWIDTH_INCHES
+from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_command
+from artistools.viewertools import DrawQueue
+from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
-from artistools.viewertools import get_first_line
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
+from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import make_option_table
+from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
-from artistools.viewertools import make_room_for_title
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
@@ -70,17 +71,21 @@ from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
+from artistools.viewertools import run_command_step
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import set_edit_text
 from artistools.viewertools import show_window
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
-from artistools.viewertools import USER_ERRORS
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
+    from PySide6 import QtWidgets
+
+    from artistools.estimators.core import EstimatorBatchCache
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
@@ -108,16 +113,13 @@ OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
 # these options give a different action from one plot, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({"help", "multiplot", "makegif", "listvariables", "listnuclides"})
 
-# -x with one of these variables gives a plot against time, and each other variable gives a snapshot
-EVOLUTION_XVARIABLES: t.Final = frozenset({"time", "timestep"})
-
 # the -x choices that are not an estimator column
 XVARIABLES: t.Final = ("velocity", "beta", "time", "timestep", "modelgridindex")
 
 APPLICATION_NAME: t.Final = "artistools plotestimators"
 
-# the value of the -xbins box that gives no -xbins. -1 is the automatic bin size and 0 gives the points alone
-XBINS_DEFAULT: t.Final = -2
+# matplotlib gives this label to the axes of a colour bar
+COLORBAR_LABEL: t.Final = "<colorbar>"
 
 
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
@@ -142,27 +144,17 @@ class ControlValues:
     otheroptions: OptionRows
 
 
-def make_parser() -> SuggestingArgumentParser:
-    """Return the parser of plotestimators."""
-    parser = SuggestingArgumentParser()
-    addargs(parser)
-    addarg_quiet(parser)
-    return parser
-
-
 def check_viewer_args(args: argparse.Namespace) -> None:
     """Stop when args selects an action that is not one plot of estimators. The window shows one plot only."""
-    otheractions = {
-        "--multiplot": args.multiplot,
-        "--makegif": args.makegif,
-        "--listvariables": args.listvariables,
-        "--listnuclides": args.listnuclides,
-    }
-    if given := [name for name, isgiven in otheractions.items() if isgiven]:
-        exit_with_error(
-            f"--interactive shows one plot of estimators. A different action comes from: {', '.join(given)}",
-            f"Remove {', '.join(given)}, or remove --interactive",
-        )
+    exit_for_other_actions(
+        "estimators",
+        {
+            "--multiplot": args.multiplot,
+            "--makegif": args.makegif,
+            "--listvariables": args.listvariables,
+            "--listnuclides": args.listnuclides,
+        },
+    )
 
 
 def get_plotitem_tokens(plotitems: "Sequence[t.Any]") -> tuple[str, ...]:
@@ -196,9 +188,27 @@ def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame) -> list[i
     return sorted(timesteps)
 
 
+def get_default_xvariable(tokens: "Sequence[str]") -> str:
+    """Return the x variable that plotestimators takes for command tokens with no -x.
+
+    -slice and -dimensionreduce set the x variable of a snapshot. Otherwise a command with no time plots against
+    time, and a command with a time plots a snapshot against the velocity. The plot of tokens that plotestimators
+    rejects gives the message, thus this function then returns the velocity.
+    """
+    xvariables: list[str] = []
+
+    def resolve() -> None:
+        args = parse_cli_args(addargs, None, None, tokens)
+        resolve_snapshot_arguments(args)
+        xvariables.append(args.x or ("time" if not time_is_given(args) and not args.makegif else "velocity"))
+
+    run_command_step(resolve, echo=False)
+    return xvariables[0] if xvariables else "velocity"
+
+
 def is_evolution(values: ControlValues) -> bool:
     """Return True if the plot of the values is a plot against time, and not a snapshot."""
-    return values.x in EVOLUTION_XVARIABLES
+    return values.x in TIME_XVARIABLES
 
 
 def get_time_text(tmids: "Sequence[float]", values: ControlValues) -> str:
@@ -217,6 +227,11 @@ def get_single_cell(cells: str) -> int | None:
     return int(cells) if cells.isascii() and cells.isdecimal() else None
 
 
+def get_plot_frames(fig: mplfig.Figure) -> "list[mplax.Axes]":
+    """Return the frames of the plot, which are the visible axes that are not a colour bar."""
+    return [axis for axis in fig.axes if axis.get_visible() and axis.get_label() != COLORBAR_LABEL]
+
+
 class EstimatorViewer:
     """The plot of the viewer and the values of its controls.
 
@@ -227,7 +242,7 @@ class EstimatorViewer:
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
-        parser = make_parser()
+        parser = make_parser(addargs)
         usertokens = remove_options(parser, tokens, {"interactive"})
         # parse_cli_args also puts "--" in front of the ARTIS folder at the end. Then -plot does not take the folder
         basetokens = remove_options(parser, separate_trailing_folders(usertokens), CONTROLLED_DESTS | OUTPUT_DESTS)
@@ -246,9 +261,18 @@ class EstimatorViewer:
         self.tmids = get_timestep_times(self.modelpath, loc="mid")
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
-        # the option table can add or remove --classicartis, and each value reads a different format of estimators
-        self.runqueries: dict[bool, tuple[pl.LazyFrame, dict[str, t.Any]]] = {}
-        estimators, modelmeta = self.get_run_query(classicartis=args.classicartis)
+        # the viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches
+        # of its own timesteps and cells, as the command does. A large run has more than 10 GB of estimators
+        isartisrun = not args.classicartis and not path_is_codecomparison(self.modelpath)
+        self.batchcaches: list[EstimatorBatchCache] | None = (
+            get_estimator_batch_caches(self.modelpath, None, None, verbose=False) or None if isartisrun else None
+        )
+        estimators, modelmeta = join_cell_modeldata(
+            estimators=scan_estimators(
+                modelpath=self.modelpath, classicartis=args.classicartis, batchcaches=self.batchcaches
+            ),
+            modelpath=self.modelpath,
+        )
         _, self.estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
         # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
         self.validtimesteps = get_estimator_timesteps(self.modelpath, estimators) or list(range(len(self.tmids)))
@@ -274,19 +298,18 @@ class EstimatorViewer:
         # plotestimators stops when no default subplot applies to the model, thus the window then shows Te
         subplots = givensubplots or self.defaultsubplots or (("Te",),)
 
-        notimegiven = all(value is None for value in (args.timedays, args.timemin, args.timemax, args.timestep))
+        # the default -x of a command depends on its time and its other options, thus each set has one result
+        self.defaultxvariables: dict[tuple[bool, OptionRows], str] = {}
+        timegiven = time_is_given(args)
         isimage = args.slice is not None or args.dimensionreduce == 2
         # plotestimators plots all the cells against time when the command gives no time. On a large model that plot
         # is slow, thus the window starts with a snapshot unless the command selects a cell
         xvariable: str = args.x or (
-            "time" if notimegiven and args.modelgridindex is not None and not isimage else "velocity"
+            "time"
+            if not timegiven and args.modelgridindex is not None and not isimage
+            else self.get_default_xvariable(otheroptions, timegiven=True)
         )
-        if notimegiven:
-            if xvariable in EVOLUTION_XVARIABLES:
-                first, last = self.validtimesteps[0], self.validtimesteps[-1]
-            else:
-                first = last = self.validtimesteps[len(self.validtimesteps) // 2]
-        else:
+        if timegiven:
             first, last, _, _ = get_time_range(self.modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
             if first < 0:
                 exit_with_error(
@@ -294,6 +317,10 @@ class EstimatorViewer:
                     f" {self.tends[-1]:.1f} days",
                     "Give a time inside that range",
                 )
+        elif xvariable in TIME_XVARIABLES:
+            first, last = self.validtimesteps[0], self.validtimesteps[-1]
+        else:
+            first = last = self.validtimesteps[len(self.validtimesteps) // 2]
 
         self.values = ControlValues(
             first=first,
@@ -316,19 +343,16 @@ class EstimatorViewer:
         self.isimage = False
         # the axis of a model faster than 0.3c shows v/c for -x velocity, and -xmin then takes km/s
         self.xlimitscale = 1.0
+        # a rejection before the draw keeps the old plot on the figure, thus it needs no new plot of the old values
+        self.clearedfigure = False
 
-    def get_run_query(self, *, classicartis: bool) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
-        """Return the query of the estimators of the whole run with the model data of each cell, and the metadata.
-
-        Each plot collects the rows of its own timesteps and cells from this query. A large run has estimators of
-        more than 10 GB, thus the window never collects all of them.
-        """
-        if classicartis not in self.runqueries:
-            self.runqueries[classicartis] = join_cell_modeldata(
-                estimators=scan_estimators(modelpath=self.modelpath, classicartis=classicartis),
-                modelpath=self.modelpath,
-            )
-        return self.runqueries[classicartis]
+    def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
+        """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
+        key = (timegiven, otheroptions)
+        if key not in self.defaultxvariables:
+            timetokens = ["-timestep", str(self.validtimesteps[0])] if timegiven else []
+            self.defaultxvariables[key] = get_default_xvariable([*timetokens, *get_option_row_tokens(otheroptions)])
+        return self.defaultxvariables[key]
 
     def get_time_tokens(self, values: ControlValues) -> list[str]:
         """Return the -timestep option of the values, or no option for a plot against time of the whole run."""
@@ -348,8 +372,7 @@ class EstimatorViewer:
         tokens = [*(subplots[0] if subplots else ()), *([self.modeltoken] if self.modeltoken else [])]
         timetokens = self.get_time_tokens(values)
         tokens += timetokens
-        # plotestimators plots against time when the command gives no time, and against the velocity otherwise
-        if values.x != ("velocity" if timetokens else "time"):
+        if values.x != self.get_default_xvariable(values.otheroptions, timegiven=bool(timetokens)):
             tokens += ["-x", values.x]
         if values.cells:
             tokens += get_option_tokens("-cell", values.cells)
@@ -469,37 +492,20 @@ class EstimatorViewer:
     def draw(self, *, quiet: bool = True) -> str | None:
         """Draw the plot of the command, and return the reason for the status line if plotestimators rejects it.
 
-        Each plot prints the same lines again, e.g. the items of each subplot. Thus a quiet plot discards the
-        standard output. The terminal shows the whole error, and the status line shows its first line.
+        The terminal shows the whole error, and the status line shows its first line.
         """
-        output = contextlib.redirect_stdout(io.StringIO()) if quiet else contextlib.nullcontext()
-        errors = io.StringIO()
-        try:
-            with output, contextlib.redirect_stderr(errors):
-                self.draw_command()
-        except SystemExit:
-            # exit_with_error printed a line that starts with "error: ", and a help line
-            return get_first_line(errors.getvalue())
-        except USER_ERRORS as exc:
-            print_error(str(exc) or type(exc).__name__)
-            return get_first_line(str(exc))
-        # a window stays open after a failed plot, thus each error gives a message and the old plot draws again
-        except Exception as exc:  # ruff:ignore[blind-except]
-            errors.write(traceback.format_exc())
-            return f"{type(exc).__name__}: {get_first_line(str(exc))}"
-        finally:
-            sys.stderr.write(errors.getvalue())
-        return None
+        return run_command_step(self.draw_command, quiet=quiet)
 
     def draw_command(self) -> None:
         """Parse the command and draw its plot on an empty figure."""
         plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
         check_viewer_args(plotargs)
         givenx = plotargs.x
+        self.clearedfigure = True
         self.fig.clear()
         # a colour image takes the constrained layout, and the frames of a line plot take a fixed size
         self.fig.set_layout_engine("none")
-        draw_plot(plotargs, self.fig, *self.get_run_query(classicartis=plotargs.classicartis))
+        draw_plot(plotargs, self.fig, self.batchcaches)
         self.isimage = plotargs.dimensionreduce == 2
         # the constrained layout of a colour image keeps the title inside the figure
         if not self.isimage:
@@ -512,11 +518,13 @@ class EstimatorViewer:
     def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values if plotestimators rejects the new command."""
         oldvalues, self.values = self.values, values
+        self.clearedfigure = False
         message = self.draw()
         if message is not None:
             self.values = oldvalues
-            # the old values drew a plot before, thus they draw again
-            self.draw()
+            # a rejection after the figure was cleared needs a new plot of the old values
+            if self.clearedfigure:
+                self.draw()
         return message
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
@@ -542,20 +550,7 @@ def get_readout(axis: "mplax.Axes", x: float) -> str:
 
     plotestimators gives no label to the line of a subplot of one variable. The label of the y axis then names it.
     """
-    parts = [f"x = {x:.5g}"]
-    lines = [line for line in axis.get_lines() if np.asarray(line.get_xdata()).size >= 2]
-    labelledlines = [line for line in lines if not str(line.get_label()).startswith("_")]
-    for line in labelledlines or lines[:1]:
-        label = get_plain_label(str(line.get_label()) if labelledlines else axis.get_ylabel())
-        xdata, ydata = np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float)
-        finite = np.isfinite(xdata) & np.isfinite(ydata)
-        xdata, ydata = xdata[finite], ydata[finite]
-        if xdata.size < 2:
-            continue
-        order = np.argsort(xdata)
-        if xdata[order[0]] <= x <= xdata[order[-1]]:
-            parts.append(f"{label}: {np.interp(x, xdata[order], ydata[order]):.4g}")
-    return "   ".join(parts)
+    return "   ".join([f"x = {x:.5g}", *get_line_readouts(axis, x, get_plain_label)])
 
 
 def get_image_value(cursordata: t.Any) -> float | None:
@@ -596,12 +591,12 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     """Open the window of the viewer, and print the command of the last plot when the window closes."""
     app = start_application(APPLICATION_NAME, get_icon_curve())
     # the list holds a reference to each window, thus Python keeps the window while it is open
-    windows: list[t.Any] = []
+    windows: list[QtWidgets.QMainWindow] = []
     open_window(tokens, windows)
     app.exec()
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
+def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> bool:
     """Open a window of the viewer for the plotestimators arguments in tokens, and return True if it opened."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
@@ -690,22 +685,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
         completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
     xbox.setToolTip(helptexts.get("x", ""))
-    xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    xminedit, xmaxedit, xbinsedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     zoomtip = " Drag across a plot to select a range. Double-click a plot to show the range of the data."
     for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
         edit.setFixedWidth(100)
         edit.setPlaceholderText("auto")
         edit.setToolTip(helptexts.get(dest, "") + zoomtip)
-    xbinsbox = QtWidgets.QSpinBox()
-    xbinsbox.setRange(XBINS_DEFAULT, 10000)
-    xbinsbox.setSpecialValueText("default")
-    xbinsbox.setKeyboardTracking(False)
-    xbinsbox.setToolTip(helptexts.get("xbins", ""))
+    # a field takes each value of -xbins, e.g. a negative value for the automatic bins
+    xbinsedit.setFixedWidth(80)
+    xbinsedit.setPlaceholderText("default")
+    xbinsvalidator = QtGui.QIntValidator()
+    xbinsvalidator.setLocale(QtCore.QLocale.c())
+    xbinsedit.setValidator(xbinsvalidator)
+    xbinsedit.setToolTip(helptexts.get("xbins", ""))
     markerscheck = QtWidgets.QCheckBox("--markers")
     markerscheck.setToolTip(helptexts.get("markers", ""))
     colorbyioncheck = QtWidgets.QCheckBox("--colorbyion")
     colorbyioncheck.setToolTip(helptexts.get("colorbyion", ""))
-    add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsbox])
+    add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
     add_row(xgrid, 1, [QtWidgets.QLabel("-xmin"), xminedit, QtWidgets.QLabel("-xmax"), xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
 
@@ -729,7 +726,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
     if (lineedit := variablebox.lineEdit()) is not None:
         lineedit.setPlaceholderText("Add a variable to the selected subplot")
-    variablebox.setToolTip("Type part of a name to search. The name goes at the end of the selected subplot.")
+    variablebox.setToolTip(
+        "Type part of a name to search, or type an ion or a directive. The name goes at the end of the selected subplot."
+    )
     addbutton, removebutton = QtWidgets.QPushButton("Add subplot"), QtWidgets.QPushButton("Remove")
     upbutton, downbutton = QtWidgets.QPushButton("Up"), QtWidgets.QPushButton("Down")
     defaultbutton = QtWidgets.QPushButton("Default")
@@ -741,40 +740,30 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
-        if rows != viewer.values.otheroptions:
-            apply(dc.replace(viewer.values, otheroptions=rows))
+        queue.apply(dc.replace(viewer.values, otheroptions=rows))
 
     optiontable, set_option_rows = make_option_table(
         window,
         viewer.parser,
+        helptexts,
         CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS,
         viewer.values.otheroptions,
         on_option_rows,
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
-    messagelabel, readoutlabel, drawtimelabel, helpbutton = make_status_bar(window)
+    statusbar = make_status_bar(window)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         timeslider,
         widthslider,
         cellslider,
         xbox,
-        xbinsbox,
         markerscheck,
         colorbyioncheck,
         subplotlist,
         variablebox,
     ]
-
-    def set_edit_text(edit: QtWidgets.QLineEdit, text: str) -> None:
-        """Show the text in a field, unless the user types in that field.
-
-        A plot or a Play step can end while the user types. Without this check, the text of the values replaces the
-        text that the user typed.
-        """
-        if not (edit.hasFocus() and edit.isModified()):
-            edit.setText(text)
 
     def show_subplots(subplots: "Sequence[Sequence[str]]") -> None:
         """Show a row for each subplot, and keep the selected row."""
@@ -815,7 +804,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         xbox.setCurrentText(values.x)
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
-        xbinsbox.setValue(int(values.xbins) if values.xbins else XBINS_DEFAULT)
+        set_edit_text(xbinsedit, values.xbins)
         markerscheck.setChecked(values.markers)
         colorbyioncheck.setChecked(values.colorbyion)
         show_subplots(values.subplots)
@@ -823,58 +812,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         set_option_rows(values.otheroptions)
         commandtext.setPlainText(viewer.get_command())
 
-    requestedvalues: ControlValues | None = None
-    # viewer.values holds the last values that the user gave, and drawnvalues holds the values of the plot
-    drawnvalues = viewer.values
-
-    def fit_figwidthscale() -> None:
-        """Give the plot the -figwidthscale that fills the plot area."""
-        area = plotarea.contentsRect()
-        values = viewer.values
-        if area.width() <= 0 or area.height() <= 0 or viewer.figsize[0] <= 0.0:
-            return
-        figwidthscale = viewer.get_fitted_figwidthscale(area.width(), area.height())
-        if figwidthscale != values.figwidthscale:
-            apply(dc.replace(values, figwidthscale=figwidthscale))
-
-    fittimer.timeout.connect(fit_figwidthscale)
-
-    def apply(values: ControlValues) -> None:
-        """Show the new values now, and draw them when Qt has no other events to process.
-
-        A drag gives a new value for each movement of the mouse, and a plot can take a few seconds. draw_requested
-        reads only the last values that the user gave, thus the plot follows the drag.
-        """
-        nonlocal requestedvalues
-        if requestedvalues is None:
-            QtCore.QTimer.singleShot(0, window, draw_requested)
-        requestedvalues = values
-        # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
-        viewer.values = values
-        show_values()
-
-    def draw_requested() -> None:
-        """Draw the plot of the last values. If plotestimators rejects them, show a message and keep the old values."""
-        nonlocal requestedvalues, drawnvalues
-        values, requestedvalues = requestedvalues, None
-        if values is None:
-            return
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        drawtimelabel.setText("Plot in progress...")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        starttime = time.perf_counter()
-        # change() keeps the values of the last plot when plotestimators rejects the new values
-        viewer.values = drawnvalues
-        try:
-            message = viewer.change(values)
-        finally:
-            drawnvalues = viewer.values
-            QtWidgets.QApplication.restoreOverrideCursor()
-        drawtimelabel.setText(f"Plot time: {time.perf_counter() - starttime:.2f} s")
-        # the readout holds the values of the old plot until the mouse moves again
-        readoutlabel.setText("")
-        messagelabel.setText(message or "")
-        show_values()
+    def after_draw(message: str | None) -> None:
         # a new number of subplots changes the height of the figure, thus the plot can need a new -figwidthscale
         fittimer.start()
         # a rejection occurs again at each step, thus a rejection stops the Play button
@@ -884,8 +822,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
             playtimer.start()
 
+    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw)
+    apply = queue.apply
+
+    def fit_figwidthscale() -> None:
+        """Give the plot the -figwidthscale that fills the plot area."""
+        figwidthscale = get_new_figwidthscale(
+            plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
+        )
+        if figwidthscale is not None:
+            apply(dc.replace(viewer.values, figwidthscale=figwidthscale))
+
+    fittimer.timeout.connect(fit_figwidthscale)
+
     def show_error(message: str) -> None:
-        messagelabel.setText(message)
+        statusbar.message.setText(message)
         show_values()
 
     def on_time(position: int) -> None:
@@ -905,9 +856,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         except ValueError:
             show_error("Give a number of days for the time")
             return
-        values = viewer.select_centre(days)
-        if values != viewer.values:
-            apply(values)
+        apply(viewer.select_centre(days))
 
     def on_step_time(step: int) -> None:
         if (values := viewer.step_time(step)) is not None:
@@ -938,13 +887,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     def on_celledit() -> None:
         celledit.setModified(False)
         # -cell takes one word, thus a space between two cells becomes the comma of a list
-        cells = ",".join(celledit.text().replace(",", " ").split())
-        if cells != viewer.values.cells:
-            apply(dc.replace(viewer.values, cells=cells))
+        apply(dc.replace(viewer.values, cells=",".join(celledit.text().replace(",", " ").split())))
 
     def on_xvariable() -> None:
-        xvariable = xbox.currentText().strip()
-        if xvariable and xvariable != viewer.values.x:
+        if xvariable := xbox.currentText().strip():
             apply(viewer.set_xvariable(viewer.values, xvariable))
 
     def on_xedit() -> None:
@@ -960,20 +906,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if texts[0] and texts[1] and float(texts[0]) >= float(texts[1]):
             show_error("Give a -xmin that is less than -xmax")
             return
-        values = dc.replace(viewer.values, xmin=texts[0], xmax=texts[1])
-        if values != viewer.values:
-            apply(values)
+        apply(dc.replace(viewer.values, xmin=texts[0], xmax=texts[1]))
 
     def on_style() -> None:
-        xbins = xbinsbox.value()
-        values = dc.replace(
-            viewer.values,
-            xbins="" if xbins == XBINS_DEFAULT else str(xbins),
-            markers=markerscheck.isChecked(),
-            colorbyion=colorbyioncheck.isChecked(),
+        xbinsedit.setModified(False)
+        apply(
+            dc.replace(
+                viewer.values,
+                xbins=xbinsedit.text().strip(),
+                markers=markerscheck.isChecked(),
+                colorbyion=colorbyioncheck.isChecked(),
+            )
         )
-        if values != viewer.values:
-            apply(values)
 
     def apply_subplots(subplots: "Sequence[tuple[str, ...]]") -> None:
         """Apply the subplots, or show the default subplots if the list is empty."""
@@ -1004,10 +948,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         row = subplotlist.currentRow()
         if 0 <= row < len(subplots):
             subplots[row] = (*subplots[row], name)
+            apply_subplots(subplots)
         else:
             subplots.append((name,))
-            subplotlist.setCurrentRow(len(subplots) - 1)
-        apply_subplots(subplots)
+            apply_subplots(subplots)
+            # the new subplot takes the next names, thus it becomes the selected row
+            subplotlist.setCurrentRow(subplotlist.count() - 1)
 
     def on_add_subplot() -> None:
         item = QtWidgets.QListWidgetItem("")
@@ -1036,7 +982,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        messagelabel.setText("Copied the command")
+        statusbar.message.setText("Copied the command")
 
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
@@ -1045,7 +991,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             window, plotestimators_main, viewer.get_plot_tokens(), viewer.get_command(), "plotestimators.pdf"
         )
         if message is not None:
-            messagelabel.setText(message)
+            statusbar.message.setText(message)
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -1054,61 +1000,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
 
-    # a drag across a line plot selects the x range, and a double-click gives the range of the data
-    dragstart: tuple[float, float] | None = None
-    dragspan: t.Any = None
+    def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
+        if not viewer.isimage:
+            return get_readout(frame, event.xdata)
+        meshes = [collection for collection in frame.collections if collection.get_array() is not None]
+        value = get_image_value(meshes[0].get_cursor_data(event)) if meshes else None
+        valuetext = f"   value: {value:.4g}" if value is not None else ""
+        return f"x = {event.xdata:.4g}c   y = {event.ydata:.4g}c{valuetext}"
 
-    def get_frame(event: t.Any) -> "mplax.Axes | None":
-        frames = [axis for axis in viewer.fig.axes if axis.get_visible()]
-        return next((axis for axis in frames if event.inaxes is axis), None)
-
-    def on_press(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        frame = get_frame(event)
-        if frame is None or event.button != 1 or event.xdata is None:
-            return
-        if event.dblclick:
-            if viewer.values.xmin or viewer.values.xmax:
-                apply(dc.replace(viewer.values, xmin="", xmax=""))
-            return
-        # a colour image has a velocity on each axis, and -xmin and -xmax take the velocity of the line plot
-        if viewer.isimage:
-            return
-        dragstart = (event.xdata, event.x)
-        dragspan = frame.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
-
-    def on_motion(event: t.Any) -> None:
-        frame = get_frame(event)
-        if frame is None or event.xdata is None:
-            readoutlabel.setText("")
-        elif viewer.isimage:
-            meshes = [collection for collection in frame.collections if collection.get_array() is not None]
-            value = get_image_value(meshes[0].get_cursor_data(event)) if meshes else None
-            valuetext = f"   value: {value:.4g}" if value is not None else ""
-            readoutlabel.setText(f"x = {event.xdata:.4g}c   y = {event.ydata:.4g}c{valuetext}")
-        else:
-            readoutlabel.setText(get_readout(frame, event.xdata))
-        if dragstart is None or dragspan is None or event.xdata is None or frame is None:
-            return
-        dragspan.set_x(min(dragstart[0], event.xdata))
-        dragspan.set_width(abs(event.xdata - dragstart[0]))
-        canvas.draw_idle()
-
-    def on_release(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        if dragstart is None or dragspan is None:
-            return
-        # a plot during the drag clears the figure, and the span then went with the old frames
-        if dragspan.axes in viewer.fig.axes:
-            dragspan.remove()
-        start, dragstart, dragspan = dragstart, None, None
-        canvas.draw_idle()
-        # a movement of a few pixels is a click and not a selection
-        if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
-            low, high = sorted((start[0], event.xdata))
-            xmin, xmax = viewer.get_xlimit_text(low), viewer.get_xlimit_text(high)
-            if float(xmin) < float(xmax):
-                apply(dc.replace(viewer.values, xmin=xmin, xmax=xmax))
+    def on_select(low: float, high: float) -> None:
+        xmin, xmax = viewer.get_xlimit_text(low), viewer.get_xlimit_text(high)
+        if float(xmin) < float(xmax):
+            apply(dc.replace(viewer.values, xmin=xmin, xmax=xmax))
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1140,22 +1043,32 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         xlineedit.editingFinished.connect(on_xvariable)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
-    xbinsbox.valueChanged.connect(on_style)
+    xbinsedit.editingFinished.connect(on_style)
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
     subplotlist.itemChanged.connect(on_subplot_edited)
     variablebox.activated.connect(on_add_variable)
+    # activated gives only a name of the list, and Return in the field also gives a typed ion or a directive
+    if lineedit is not None:
+        lineedit.returnPressed.connect(on_add_variable)
     addbutton.clicked.connect(on_add_subplot)
     removebutton.clicked.connect(on_remove_subplot)
     upbutton.clicked.connect(lambda: on_move_subplot(-1))
     downbutton.clicked.connect(lambda: on_move_subplot(1))
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
     copybutton.clicked.connect(on_copy)
-    helpbutton.clicked.connect(on_help)
+    statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
-    canvas.mpl_connect("button_press_event", on_press)
-    canvas.mpl_connect("motion_notify_event", on_motion)
-    canvas.mpl_connect("button_release_event", on_release)
+    connect_plot_mouse(
+        canvas,
+        get_frames=lambda: get_plot_frames(viewer.fig),
+        get_readout=get_frame_readout,
+        readoutlabel=statusbar.readout,
+        on_select=on_select,
+        on_reset=lambda: apply(dc.replace(viewer.values, xmin="", xmax="")),
+        # a colour image has a velocity on each axis, and -xmin and -xmax take the velocity of the line plot
+        can_select=lambda: not viewer.isimage,
+    )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (
         (QtCore.Qt.Key.Key_Left, lambda: on_step_time(-1)),

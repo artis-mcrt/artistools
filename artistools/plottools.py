@@ -897,6 +897,30 @@ def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str"
         print_saved(residualfile)
 
 
+def make_room_for_title(fig: mplfig.Figure) -> None:
+    """Make the figure taller if a title goes past its top edge.
+
+    A saved file takes the tight bounding box, thus a title of two lines fits in it. A window shows the full figure.
+    The divider of make_frame_figure puts the frames at the bottom edge, thus the new height goes above them. The
+    function measures the titles alone, because get_tightbbox lays out each tick label and took 60 to 130 ms.
+    """
+    renderer = getattr(fig.canvas, "get_renderer", None)
+    if renderer is None:
+        return
+    renderer = renderer()
+    titletops = [text.get_window_extent(renderer).y1 for text in fig.texts]
+    for axis in fig.axes:
+        # the locator of a frame of make_frame_figure sets its position at the draw, thus apply it before a measure
+        if (locator := axis.get_axes_locator()) is not None:
+            axis.apply_aspect(locator(axis, renderer))
+        if axis.get_title():
+            titletops.append(axis.title.get_window_extent(renderer).y1)
+    overflow = max(titletops, default=0.0) / fig.dpi - fig.get_figheight()
+    if overflow > 0.0:
+        # a small gap keeps the top of the letters whole
+        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() + overflow + 0.05, forward=False)
+
+
 def save_figure(
     fig: mplfig.Figure,
     outpath: "Path | str",
@@ -920,6 +944,8 @@ def save_figure(
     openfile = args is not None and not isframe and getattr(args, "open", False)
 
     if show:
+        # a window shows the figure with no crop, thus a title needs room inside the figure
+        make_room_for_title(fig)
         plt.show()
 
     # a crop moves no artist, thus a fixed frame keeps its size and a file that hides its x labels

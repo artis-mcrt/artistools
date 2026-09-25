@@ -102,6 +102,7 @@ from artistools.misc.fileio import write_gif as write_gif
 from artistools.misc.fileio import write_parquet_atomic as write_parquet_atomic
 from artistools.misc.fileio import zopen as zopen
 from artistools.misc.fileio import zopenpl as zopenpl
+from artistools.misc.general import call_in_child_process as call_in_child_process
 from artistools.misc.general import df_filter_minmax_bracketed as df_filter_minmax_bracketed
 from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import import_optional as import_optional

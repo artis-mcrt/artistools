@@ -3,11 +3,8 @@
 import argparse
 import contextlib
 import dataclasses as dc
-import io
 import math
 import shlex
-import sys
-import time
 import typing as t
 from pathlib import Path
 
@@ -15,8 +12,6 @@ import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
 
-from artistools.commands import SuggestingArgumentParser
-from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -25,7 +20,6 @@ from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
-from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
@@ -49,16 +43,21 @@ from artistools.viewertools import add_command_section
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_command
+from artistools.viewertools import DrawQueue
+from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
-from artistools.viewertools import get_first_line
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
+from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import make_option_table
+from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
@@ -68,18 +67,20 @@ from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
+from artistools.viewertools import run_command_step
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import set_edit_text
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
-from artistools.viewertools import USER_ERRORS
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
+    from PySide6 import QtWidgets
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
@@ -182,14 +183,6 @@ class ControlValues:
     references: tuple[str, ...]
     figwidthscale: float
     otheroptions: OptionRows
-
-
-def make_parser() -> SuggestingArgumentParser:
-    """Return the parser of plotspectra."""
-    parser = SuggestingArgumentParser()
-    addargs(parser)
-    addarg_quiet(parser)
-    return parser
 
 
 def format_days(value: float) -> str:
@@ -376,18 +369,16 @@ def remove_series_lock(values: ControlValues) -> ControlValues:
 
 def check_viewer_args(args: argparse.Namespace) -> None:
     """Stop when args selects an action that is not one plot of spectra. The window shows one plot only."""
-    otheractions = {
-        "-timedayslist": args.multispecplot,
-        "--makevspecpol": args.makevspecpol,
-        "--averagevspecpolfiles": args.averagevspecpolfiles,
-        "--output_spectra": args.output_spectra,
-        f"-stokesparam {args.stokesparam}": "/" in args.stokesparam,
-    }
-    if given := [name for name, isgiven in otheractions.items() if isgiven]:
-        exit_with_error(
-            f"--interactive shows one plot of spectra. A different action comes from: {', '.join(given)}",
-            f"Remove {', '.join(given)}, or remove --interactive",
-        )
+    exit_for_other_actions(
+        "spectra",
+        {
+            "-timedayslist": args.multispecplot,
+            "--makevspecpol": args.makevspecpol,
+            "--averagevspecpolfiles": args.averagevspecpolfiles,
+            "--output_spectra": args.output_spectra,
+            f"-stokesparam {args.stokesparam}": "/" in args.stokesparam,
+        },
+    )
 
 
 class SpectrumViewer:
@@ -400,7 +391,7 @@ class SpectrumViewer:
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
-        parser = make_parser()
+        parser = make_parser(addargs)
         usertokens = remove_options(parser, tokens, {"interactive"})
         # parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list, e.g.
         # -fixedionlist, does not take a folder. The removal of the controlled options must keep those folders
@@ -523,6 +514,8 @@ class SpectrumViewer:
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
         )
         self.drewpreview = False
+        # a rejection before the draw keeps the old plot on the frames, thus it needs no new plot of the old values
+        self.clearedframes = False
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
@@ -687,39 +680,23 @@ class SpectrumViewer:
         This parses and checks the arguments and draws no plot, thus the window can test each choice of a control.
         A missing input file stops a plot later, and this test does not find it.
         """
-        errors = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
-                plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
-                resolve_plot_args(plotargs)
-                check_viewer_args(plotargs)
-        except SystemExit:
-            return get_first_line(errors.getvalue())
-        except USER_ERRORS as exc:
-            return get_first_line(str(exc))
-        if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
-            return "A different option of the command keeps the emission plot on"
-        return None
+
+        def check() -> str | None:
+            plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
+            resolve_plot_args(plotargs)
+            check_viewer_args(plotargs)
+            if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
+                return "A different option of the command keeps the emission plot on"
+            return None
+
+        return run_command_step(check, echo=False)
 
     def draw(self, *, quiet: bool = True, preview: bool = False) -> str | None:
         """Draw the plot of the command, and return the reason for the status line if plotspectra rejects it.
 
-        Each plot prints the same lines again, e.g. the list of the ions of an emission plot. Thus a quiet plot
-        discards the standard output. The terminal shows the whole error, and the status line shows its first line.
+        The terminal shows the whole error, and the status line shows its first line.
         """
-        output = contextlib.redirect_stdout(io.StringIO()) if quiet else contextlib.nullcontext()
-        errors = io.StringIO()
-        try:
-            with output, contextlib.redirect_stderr(errors):
-                return self.draw_command(preview=preview)
-        except SystemExit:
-            # exit_with_error printed a line that starts with "error: ", and a help line
-            return get_first_line(errors.getvalue())
-        except USER_ERRORS as exc:
-            print_error(str(exc) or type(exc).__name__)
-            return get_first_line(str(exc))
-        finally:
-            sys.stderr.write(errors.getvalue())
+        return run_command_step(lambda: self.draw_command(preview=preview), quiet=quiet)
 
     def draw_command(self, *, preview: bool = False) -> str | None:
         """Parse the command and draw its plot, or return a message if the plot differs from the values.
@@ -744,6 +721,7 @@ class SpectrumViewer:
         shown = (plotargs.showemission, plotargs.showabsorption)
         if shown != (self.values.showemission, self.values.showabsorption):
             return "A different option of the command keeps the emission plot on"
+        self.clearedframes = True
         self.draw_frames(plotargs)
         return None
 
@@ -799,11 +777,13 @@ class SpectrumViewer:
     def change(self, values: ControlValues, *, preview: bool = False) -> str | None:
         """Draw the plot of the new values, and keep the old values if plotspectra rejects the new command."""
         oldvalues, self.values = self.values, self.clamp_time(values)
+        self.clearedframes = False
         message = self.draw(preview=preview)
         if message is not None:
             self.values = oldvalues
-            # the old values drew a plot before, thus they draw again
-            self.draw(preview=preview)
+            # a rejection after the frames were cleared needs a new plot of the old values
+            if self.clearedframes:
+                self.draw(preview=preview)
         return message
 
     def get_drawn_series(self) -> tuple[str, ...]:
@@ -819,15 +799,7 @@ class SpectrumViewer:
     def get_readout(self, x: float) -> str:
         """Return the value of each drawn spectrum at x, and the strongest emission at x for an emission plot."""
         xunit = get_xunit(self.values.xunit)
-        parts = [f"{x:.5g} {xunit.label}"]
-        for line in self.axes[0].get_lines() if len(self.axes) else []:
-            label = plain_label(str(line.get_label()))
-            xdata, ydata = np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float)
-            if label.startswith("_") or xdata.size < 2:
-                continue
-            order = np.argsort(xdata)
-            if xdata[order[0]] <= x <= xdata[order[-1]]:
-                parts.append(f"{label}: {np.interp(x, xdata[order], ydata[order]):.3g}")
+        parts = [f"{x:.5g} {xunit.label}", *(get_line_readouts(self.axes[0], x, plain_label) if len(self.axes) else [])]
         emissioncolumns = [column for column in self.dfalldata.columns if column.startswith("emission_flambda.")]
         if emissioncolumns and "lambda_angstroms" in self.dfalldata.columns:
             lambda_angstroms = convert_unit_to_angstroms(x, self.values.xunit)
@@ -869,13 +841,13 @@ KEYBOARD_HELP: t.Final = """<table>
 def run_viewer(tokens: "Sequence[str]") -> None:
     """Open the window of the viewer, and print the command of the last plot when the window closes."""
     app = start_application(APPLICATION_NAME, get_icon_curve())
-    # each window holds a reference here, thus Python keeps it while it is open
-    windows: list[t.Any] = []
+    # the list holds a reference to each window, thus Python keeps the window while it is open
+    windows: list[QtWidgets.QMainWindow] = []
     open_window(tokens, windows)
     app.exec()
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
+def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> bool:
     """Open a window of the viewer for the plotspectra arguments in tokens, and return True if it opened."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
@@ -897,6 +869,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     windows.append(window)
 
     fulldrawtimer = make_timer(window, FULL_DRAW_MILLISECONDS)
+    playtimer = make_timer(window, PLAY_MILLISECONDS)
     fittimer = make_timer(window, FIT_MILLISECONDS)
 
     def on_resize() -> None:
@@ -1186,15 +1159,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
-        if rows != viewer.values.otheroptions:
-            apply(dc.replace(viewer.values, otheroptions=rows))
+        apply(dc.replace(viewer.values, otheroptions=rows))
 
     optiontable, set_option_rows = make_option_table(
-        window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
+        window,
+        viewer.parser,
+        helptexts,
+        CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS,
+        viewer.values.otheroptions,
+        on_option_rows,
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
-    messagelabel, readoutlabel, drawtimelabel, helpbutton = make_status_bar(window)
+    statusbar = make_status_bar(window)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         snapbutton,
@@ -1340,15 +1317,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    def set_edit_text(edit: QtWidgets.QLineEdit, text: str) -> None:
-        """Show the text in a field, unless the user types in that field.
-
-        A plot or a Play step can end while the user types. Without this check, the text of the values replaces the
-        text that the user typed.
-        """
-        if not (edit.hasFocus() and edit.isModified()):
-            edit.setText(text)
-
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
@@ -1427,60 +1395,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             blocker.unblock()
         fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
 
-    requestedvalues: ControlValues | None = None
-    # viewer.values holds the last values that the user gave, and drawnvalues holds the values of the plot
-    drawnvalues = viewer.values
-
-    def fit_figwidthscale() -> None:
-        """Give the plot the -figwidthscale that fills the plot area."""
-        area = plotarea.contentsRect()
-        values = viewer.values
-        if area.width() <= 0 or area.height() <= 0 or viewer.figsize[0] <= 0.0:
-            return
-        figwidthscale = viewer.get_fitted_figwidthscale(area.width(), area.height())
-        if figwidthscale != values.figwidthscale:
-            apply(dc.replace(values, figwidthscale=figwidthscale))
-
-    fittimer.timeout.connect(fit_figwidthscale)
-
-    def apply(values: ControlValues) -> None:
-        """Show the new values now, and draw them when Qt has no other events to process.
-
-        A drag gives a new value for each movement of the mouse, and a plot takes a maximum of 1 s.
-        draw_requested reads only the last values that the user gave, thus the plot follows the drag.
-        """
-        nonlocal requestedvalues
-        if requestedvalues is None:
-            QtCore.QTimer.singleShot(0, window, draw_requested)
-        requestedvalues = values
-        # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
-        viewer.values = values
-        show_values()
-
-    def draw_requested() -> None:
-        """Draw the plot of the last values, or show a message and keep the old values if plotspectra rejects them."""
-        nonlocal requestedvalues, drawnvalues
-        values, requestedvalues = requestedvalues, None
-        if values is None:
-            return
-        # a plot of an emission file or of the packets is slow, thus the cursor and the status bar show the wait
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        drawtimelabel.setText("Plot in progress...")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        starttime = time.perf_counter()
-        # change() keeps the values of the last plot when plotspectra rejects the new values
-        viewer.values = drawnvalues
-        try:
-            message = viewer.change(values, preview=True)
-        finally:
-            drawnvalues = viewer.values
-            QtWidgets.QApplication.restoreOverrideCursor()
-        drawkind = "Preview" if viewer.drewpreview else "Plot"
-        drawtimelabel.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
-        # clear the readout, because it holds the values of the old plot until the mouse moves again
-        readoutlabel.setText("")
-        messagelabel.setText(message or "")
-        show_values()
+    def after_draw(message: str | None) -> None:
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
         # each change starts the timer again, thus the full plot follows after the last change
@@ -1490,32 +1405,39 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if message is not None:
             playbutton.setChecked(False)
         elif playbutton.isChecked():
-            QtCore.QTimer.singleShot(PLAY_MILLISECONDS, window, play_step)
+            # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
+            playtimer.start()
+
+    def change_with_preview(values: ControlValues) -> str | None:
+        return viewer.change(values, preview=True)
+
+    def get_drawkind() -> str:
+        return "Preview" if viewer.drewpreview else "Plot"
+
+    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, change_with_preview, get_drawkind)
+    apply = queue.apply
+
+    def fit_figwidthscale() -> None:
+        """Give the plot the -figwidthscale that fills the plot area."""
+        figwidthscale = get_new_figwidthscale(
+            plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
+        )
+        if figwidthscale is not None:
+            apply(dc.replace(viewer.values, figwidthscale=figwidthscale))
+
+    fittimer.timeout.connect(fit_figwidthscale)
 
     def draw_full() -> None:
         """Replace the preview with the plot of all the packets."""
-        nonlocal drawnvalues
         # a change in the queue, or the Play button, draws a new preview and starts this timer again
-        if requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
+        if queue.requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
             return
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        drawtimelabel.setText("Plot in progress...")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        starttime = time.perf_counter()
-        try:
-            message = viewer.change(drawnvalues)
-        finally:
-            drawnvalues = viewer.values
-            QtWidgets.QApplication.restoreOverrideCursor()
-        drawtimelabel.setText(f"Plot time: {time.perf_counter() - starttime:.2f} s")
-        readoutlabel.setText("")
-        messagelabel.setText(message or "")
-        show_values()
+        queue.draw(queue.drawnvalues, viewer.change)
 
     fulldrawtimer.timeout.connect(draw_full)
 
     def show_error(message: str) -> None:
-        messagelabel.setText(message)
+        statusbar.message.setText(message)
         show_values()
 
     def on_time_mode() -> None:
@@ -1551,6 +1473,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         apply(viewer.snap(values, viewer.validtimesteps[first], viewer.validtimesteps[last]))
 
     def on_timeedit() -> None:
+        # a later plot can show new text in the fields only when they have no edit of the user
+        timeedit.setModified(False)
+        widthedit.setModified(False)
         values = viewer.values
         try:
             centre, width = float(timeedit.text()), float(widthedit.text())
@@ -1614,6 +1539,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             apply(dc.replace(values, xmax=format(limit, ".10g")))
 
     def on_xedit() -> None:
+        xminedit.setModified(False)
+        xmaxedit.setModified(False)
         try:
             low, high = float(xminedit.text()), float(xmaxedit.text())
         except ValueError:
@@ -1634,6 +1561,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         apply(dc.replace(viewer.values, ymin=low, ymax=high))
 
     def on_yedit() -> None:
+        yminedit.setModified(False)
+        ymaxedit.setModified(False)
         try:
             low, high = float(yminedit.text()), float(ymaxedit.text())
         except ValueError:
@@ -1739,7 +1668,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        messagelabel.setText("Copied the command")
+        statusbar.message.setText("Copied the command")
 
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
@@ -1748,7 +1677,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             window, plotspectra_main, viewer.get_plot_tokens(), viewer.get_command(), "plotspectra.pdf"
         )
         if message is not None:
-            messagelabel.setText(message)
+            statusbar.message.setText(message)
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -1756,45 +1685,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
-
-    # a drag across a frame selects the x range, and a double-click gives the default range
-    dragstart: tuple[float, float] | None = None
-    dragspan: t.Any = None
-
-    def get_frame(event: t.Any) -> "mplax.Axes | None":
-        frames = [axis for axis in (*viewer.axes, viewer.residualaxis) if axis is not None]
-        return next((axis for axis in frames if event.inaxes is axis), None)
-
-    def on_press(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        frame = get_frame(event)
-        if frame is None or event.button != 1 or event.xdata is None:
-            return
-        if event.dblclick:
-            set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma))
-            return
-        dragstart = (event.xdata, event.x)
-        dragspan = frame.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
-
-    def on_motion(event: t.Any) -> None:
-        frame = get_frame(event)
-        readoutlabel.setText(viewer.get_readout(event.xdata) if frame is not None and event.xdata is not None else "")
-        if dragstart is None or dragspan is None or event.xdata is None or frame is None:
-            return
-        dragspan.set_x(min(dragstart[0], event.xdata))
-        dragspan.set_width(abs(event.xdata - dragstart[0]))
-        canvas.draw_idle()
-
-    def on_release(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        if dragstart is None or dragspan is None:
-            return
-        start, dragspan = dragstart, dragspan.remove()
-        dragstart = None
-        canvas.draw_idle()
-        # a movement of a few pixels is a click and not a selection
-        if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
-            set_xlimits(*sorted((start[0], event.xdata)))
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1819,6 +1709,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
+    playtimer.timeout.connect(play_step)
     xrangeslider.limitmoved.connect(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
@@ -1847,11 +1738,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     addbutton.clicked.connect(on_add_reference)
     removebutton.clicked.connect(on_remove_reference)
     copybutton.clicked.connect(on_copy)
-    helpbutton.clicked.connect(on_help)
+    statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
-    canvas.mpl_connect("button_press_event", on_press)
-    canvas.mpl_connect("motion_notify_event", on_motion)
-    canvas.mpl_connect("button_release_event", on_release)
+    connect_plot_mouse(
+        canvas,
+        get_frames=lambda: [axis for axis in (*viewer.axes, viewer.residualaxis) if axis is not None],
+        get_readout=lambda event, _frame: viewer.get_readout(event.xdata),
+        readoutlabel=statusbar.readout,
+        on_select=set_xlimits,
+        on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
+        can_select=lambda: True,
+    )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (
         (QtCore.Qt.Key.Key_Left, lambda: on_arrow(-1)),

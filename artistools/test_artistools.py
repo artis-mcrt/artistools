@@ -26,6 +26,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools import viewertools
 
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
@@ -2995,3 +2996,33 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
         )
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
+
+
+def test_viewer_status_line_gives_the_error() -> None:
+    """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
+    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
+    assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
+
+
+def test_viewer_typed_centre_gives_back_the_range() -> None:
+    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
+
+    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
+    """
+    tmids = at.get_timestep_times(at.get_path("testdata") / "testmodel", loc="mid")
+    for count in (1, 2, 3, 4):
+        for start in range(len(tmids) - count + 1):
+            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
+            assert viewertools.get_nearest_range_start(tmids, centre, count) == start, (count, start)
+
+
+def test_viewer_option_rows_split_a_group_of_switches() -> None:
+    """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
+
+    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
+    """
+    parser = viewertools.make_parser(at.estimators.addargs)
+    rows, othertokens = viewertools.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
+    assert othertokens == ["Te", "mymodel"]

@@ -13,13 +13,17 @@ import math
 import re
 import shlex
 import sys
+import time
+import traceback
 import typing as t
 from pathlib import Path
 
 import numpy as np
 
+from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import import_optional
+from artistools.misc import print_error
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -27,10 +31,12 @@ if t.TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
 
+    import matplotlib.axes as mplax
     import matplotlib.figure as mplfig
     import numpy.typing as npt
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
+    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     from artistools.commands import SuggestingArgumentParser
@@ -52,6 +58,10 @@ MAX_FIGWIDTHSCALE: t.Final[float] = 4.0
 
 # the time after the last resize of the window, before the plot takes the new shape
 FIT_MILLISECONDS: t.Final[int] = 200
+
+# a new -figwidthscale that differs by less than this part from the old one draws no new plot, and fit_canvas scales
+# the figure. A new plot reads the data again, thus a small change of the window does not start one
+FIT_TOLERANCE: t.Final[float] = 0.05
 
 # each continuous slider of a window has this number of positions
 SLIDER_STEPS: t.Final = 1000
@@ -91,6 +101,54 @@ def get_command_tokens(
     from artistools.commands import get_subcommand_of_script
 
     return sys.argv[1:] if get_subcommand_of_script(Path(sys.argv[0]).stem) else sys.argv[2:]
+
+
+def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "SuggestingArgumentParser":
+    """Return the parser of a command with the arguments of addargs, and --quiet, which the dispatcher adds."""
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
+    addargs(parser)
+    addarg_quiet(parser)
+    return parser
+
+
+def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") -> None:
+    """Stop when an argument selects an action that is not one plot. The window shows one plot only.
+
+    otheractions gives each such argument and whether the command gives it.
+    """
+    if given := [name for name, isgiven in otheractions.items() if isgiven]:
+        exit_with_error(
+            f"--interactive shows one plot of {plotname}. A different action comes from: {', '.join(given)}",
+            f"Remove {', '.join(given)}, or remove --interactive",
+        )
+
+
+def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
+    """Run a step of a command, and return its message or the first line of its error for the status line.
+
+    Each plot prints the same lines again, thus a quiet step discards the standard output. With echo, the terminal
+    shows the whole error. A window stays open after a failed step, thus each type of error gives a message.
+    """
+    output = contextlib.redirect_stdout(io.StringIO()) if quiet else contextlib.nullcontext()
+    errors = io.StringIO()
+    try:
+        with output, contextlib.redirect_stderr(errors):
+            return step()
+    except SystemExit:
+        # exit_with_error and argparse print a line that starts with "error: " before they raise SystemExit
+        return get_first_line(errors.getvalue())
+    except USER_ERRORS as exc:
+        if echo:
+            print_error(str(exc) or type(exc).__name__)
+        return get_first_line(str(exc))
+    except Exception as exc:  # ruff:ignore[blind-except]
+        errors.write(traceback.format_exc())
+        return f"{type(exc).__name__}: {get_first_line(str(exc))}"
+    finally:
+        if echo:
+            sys.stderr.write(errors.getvalue())
 
 
 def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple[argparse.Action | None, bool]:
@@ -357,20 +415,7 @@ def get_fitted_figwidthscale(
     return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
 
 
-def make_room_for_title(fig: "mplfig.Figure") -> None:
-    """Make the figure taller if the text above the frames goes past its top edge.
-
-    A saved file takes the tight bounding box, thus a title of two lines fits in it. A window shows the full
-    figure, without the tight bounding box. The divider of make_frame_figure puts the frames at the bottom edge,
-    thus the new height goes above them.
-    """
-    overflow = fig.get_tightbbox().y1 - fig.get_figheight()
-    if overflow > 0.0:
-        # a small gap keeps the top of the letters whole
-        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() + overflow + 0.05, forward=False)
-
-
-def make_icon_pixmap(size: int, curve: "npt.NDArray[np.float64]") -> t.Any:
+def make_icon_pixmap(size: int, curve: "npt.NDArray[np.float64]") -> "QtGui.QPixmap":
     """Return a pixmap of the icon of a viewer: a curve over a dark square.
 
     curve gives the height of the curve from the top of the icon, as a part of its size. The window gives the icon
@@ -509,6 +554,8 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         QtCore.Qt.Key.Key_Down,
         QtCore.Qt.Key.Key_Home,
         QtCore.Qt.Key.Key_End,
+        QtCore.Qt.Key.Key_PageUp,
+        QtCore.Qt.Key.Key_PageDown,
     }
 
     class KeyOwnerFilter(QtCore.QObject):
@@ -662,6 +709,7 @@ def fit_canvas(
 def make_option_table(
     window: "QtWidgets.QWidget",
     parser: argparse.ArgumentParser,
+    helptexts: "Mapping[str, str]",
     hiddendests: "Collection[str]",
     rows: OptionRows,
     on_rows: "Callable[[OptionRows], None]",
@@ -676,7 +724,6 @@ def make_option_table(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    helptexts = get_helptexts(parser)
     actionsbyflag = get_actions_by_flag(parser)
     tableflags = [action.option_strings[0] for action in get_table_actions(parser, hiddendests)]
     optiontable = QtWidgets.QTableWidget(0, 2)
@@ -871,9 +918,16 @@ def add_command_section(
     return commandtext, copybutton
 
 
-def make_status_bar(
-    window: "QtWidgets.QMainWindow",
-) -> "tuple[QtWidgets.QLabel, QtWidgets.QLabel, QtWidgets.QLabel, QtWidgets.QToolButton]":
+class StatusBar(t.NamedTuple):
+    """The labels of the status bar of a window, and its help button."""
+
+    message: "QtWidgets.QLabel"
+    readout: "QtWidgets.QLabel"
+    drawtime: "QtWidgets.QLabel"
+    helpbutton: "QtWidgets.QToolButton"
+
+
+def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
     """Return the labels of the status bar and its help button.
 
     The status bar gives the messages at the left, and the readout, the time of the plot, and the help at the right.
@@ -891,7 +945,7 @@ def make_status_bar(
     statusbar.addWidget(messagelabel, stretch=1)
     for widget in (readoutlabel, drawtimelabel, helpbutton):
         statusbar.addPermanentWidget(widget)
-    return messagelabel, readoutlabel, drawtimelabel, helpbutton
+    return StatusBar(message=messagelabel, readout=readoutlabel, drawtime=drawtimelabel, helpbutton=helpbutton)
 
 
 def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
@@ -930,49 +984,261 @@ def save_figure_of_command(
 ) -> str | None:
     """Ask for a file name, and save the figure of the command there. Return the message for the status line.
 
-    The figure comes from the command, thus the file is the same as the output of the command.
+    The figure comes from the command, thus the file is the same as the output of the command. The command reads a
+    name with no suffix as a folder, thus the name takes the suffix of the selected type.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+    filename, selectedfilter = QtWidgets.QFileDialog.getSaveFileName(
         window, "Save the figure", str(Path.cwd() / defaultname), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
     )
     if not filename:
         return None
+    if not Path(filename).suffix:
+        # a filter such as "PNG (*.png)" names the suffix
+        suffixmatch = re.search(r"\*(\.\w+)", selectedfilter)
+        filename += suffixmatch.group(1) if suffixmatch else ".pdf"
+
+    def save() -> str | None:
+        commandmain(argsraw=[*plottokens, "-o", filename])
+        return None
 
     QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
     try:
-        with contextlib.redirect_stdout(io.StringIO()):
-            commandmain(argsraw=[*plottokens, "-o", filename])
-    except (SystemExit, *USER_ERRORS) as exc:
-        return f"The command did not save the figure: {get_first_line(str(exc))}"
+        message = run_command_step(save)
     finally:
         QtWidgets.QApplication.restoreOverrideCursor()
+    if message is not None:
+        return f"The command did not save the figure: {message}"
+    if not Path(filename).is_file():
+        return f"The command wrote no file at {filename}. The terminal shows its output"
     print(f"{command} -o {shlex.quote(filename)}")
     return f"Saved {filename}"
 
 
 def open_model_window(
-    window: "QtWidgets.QWidget", open_window: "Callable[[Sequence[str], list[t.Any]], bool]", windows: "list[t.Any]"
+    window: "QtWidgets.QWidget",
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], bool]",
+    windows: "list[QtWidgets.QMainWindow]",
 ) -> str | None:
-    """Ask for the folder of a run, and open a new window for it. Return an error message if no window opened."""
+    """Ask for the folder of a run, and open a new window for it. Return an error message if no window opened.
+
+    A SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window.
+    """
     from PySide6 import QtWidgets
 
     folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(Path.cwd()))
     if not folder:
         return None
-    # a SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window
-    errors = io.StringIO()
-    try:
-        with contextlib.redirect_stderr(errors):
-            opened = open_window([folder], windows)
-    except SystemExit:
-        opened = False
-    finally:
-        sys.stderr.write(errors.getvalue())
-    return None if opened else f"The viewer cannot open {folder}: {get_first_line(errors.getvalue())}"
+
+    def open_folder() -> str | None:
+        # open_window printed the error of the first plot, and the exit gives its first line to the message
+        if not open_window([folder], windows):
+            raise SystemExit(1)
+        return None
+
+    message = run_command_step(open_folder, quiet=False)
+    return None if message is None else f"The viewer cannot open {folder}: {message}"
+
+
+def get_new_figwidthscale(
+    plotarea: "QtWidgets.QWidget",
+    figsize: tuple[float, float],
+    figwidthscale: float,
+    get_fitted: "Callable[[float, float], float]",
+) -> float | None:
+    """Return the -figwidthscale that fills the plot area, or None if the plot can keep its scale.
+
+    get_fitted gives the fitted scale for the width and the height of the area. A change of less than FIT_TOLERANCE
+    keeps the scale.
+    """
+    area = plotarea.contentsRect()
+    if area.width() <= 0 or area.height() <= 0 or figsize[0] <= 0.0:
+        return None
+    fitted = get_fitted(area.width(), area.height())
+    return fitted if abs(fitted - figwidthscale) > FIT_TOLERANCE * figwidthscale else None
+
+
+class PlotViewer[ValuesT](t.Protocol):
+    """A viewer with the values of its controls, which draws the plot of new values or keeps the old values."""
+
+    values: ValuesT
+
+    def change(self, values: ValuesT) -> str | None:
+        """Draw the plot of the values, or keep the old values and return the reason for the status line."""
+        ...
+
+
+class DrawQueue[ValuesT]:
+    """The plots of a window: a change shows its values at once, and the plot follows when Qt has no other events.
+
+    A drag gives a new value for each movement of the mouse, and a plot can take seconds. The queue draws only the
+    last values that the user gave. viewer.values holds the last values that the user gave, and drawnvalues holds the
+    values of the plot. If the command rejects new values, the viewer keeps the values of the plot.
+    """
+
+    def __init__(
+        self,
+        window: "QtWidgets.QWidget",
+        viewer: PlotViewer[ValuesT],
+        statusbar: StatusBar,
+        show_values: "Callable[[], None]",
+        after_draw: "Callable[[str | None], None]",
+        change: "Callable[[ValuesT], str | None] | None" = None,
+        get_drawkind: "Callable[[], str] | None" = None,
+    ) -> None:
+        """Make an empty queue. after_draw receives the message of each plot of the queue.
+
+        change draws the values of the queue in place of viewer.change, e.g. a preview. get_drawkind gives the name of
+        the last plot for the status bar, e.g. "Preview".
+        """
+        self.window = window
+        self.viewer = viewer
+        self.statusbar = statusbar
+        self.show_values = show_values
+        self.after_draw = after_draw
+        self.change = change or viewer.change
+        self.get_drawkind = get_drawkind
+        self.requestedvalues: ValuesT | None = None
+        self.drawnvalues: ValuesT = viewer.values
+
+    def apply(self, values: ValuesT) -> None:
+        """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot."""
+        from PySide6 import QtCore
+
+        if values == self.viewer.values:
+            return
+        if self.requestedvalues is None:
+            QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
+        self.requestedvalues = values
+        # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
+        self.viewer.values = values
+        self.show_values()
+
+    def draw_requested(self) -> None:
+        """Draw the plot of the last values that the user gave."""
+        values, self.requestedvalues = self.requestedvalues, None
+        if values is not None:
+            self.after_draw(self.draw(values, self.change))
+
+    def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
+        """Draw the plot of the values with change, and return the message of a rejection."""
+        from PySide6 import QtCore
+        from PySide6 import QtGui
+        from PySide6 import QtWidgets
+
+        # a plot can take seconds, thus the cursor and the status bar show the wait
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+        self.statusbar.drawtime.setText("Plot in progress...")
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        starttime = time.perf_counter()
+        # change() keeps the values of the last plot when the command rejects the new values
+        self.viewer.values = self.drawnvalues
+        try:
+            message = change(values)
+        finally:
+            self.drawnvalues = self.viewer.values
+            QtWidgets.QApplication.restoreOverrideCursor()
+        drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
+        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
+        # the readout holds the values of the old plot until the mouse moves again
+        self.statusbar.readout.setText("")
+        self.statusbar.message.setText(message or "")
+        self.show_values()
+        return message
+
+
+def set_edit_text(edit: "QtWidgets.QLineEdit", text: str) -> None:
+    """Show the text in a field, unless the user types in that field.
+
+    A plot or a Play step can end while the user types. Without this check, the text of the values replaces the
+    text that the user typed. The handler of a field calls setModified(False), thus a field shows new values again
+    after the user presses Return.
+    """
+    if not (edit.hasFocus() and edit.isModified()):
+        edit.setText(text)
+
+
+def connect_plot_mouse(
+    canvas: "FigureCanvasQTAgg",
+    get_frames: "Callable[[], Sequence[mplax.Axes]]",
+    get_readout: "Callable[[t.Any, mplax.Axes], str]",
+    readoutlabel: "QtWidgets.QLabel",
+    on_select: "Callable[[float, float], None]",
+    on_reset: "Callable[[], None]",
+    can_select: "Callable[[], bool]",
+) -> None:
+    """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
+
+    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame.
+    """
+    dragstart: tuple[float, float] | None = None
+    dragspan: t.Any = None
+
+    def get_frame(event: t.Any) -> "mplax.Axes | None":
+        return next((axis for axis in get_frames() if event.inaxes is axis), None)
+
+    def on_press(event: t.Any) -> None:
+        nonlocal dragstart, dragspan
+        frame = get_frame(event)
+        if frame is None or event.button != 1 or event.xdata is None:
+            return
+        if event.dblclick:
+            on_reset()
+            return
+        if can_select():
+            dragstart = (event.xdata, event.x)
+            dragspan = frame.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
+
+    def on_motion(event: t.Any) -> None:
+        frame = get_frame(event)
+        readoutlabel.setText(get_readout(event, frame) if frame is not None and event.xdata is not None else "")
+        if dragstart is None or dragspan is None or event.xdata is None or frame is None:
+            return
+        dragspan.set_x(min(dragstart[0], event.xdata))
+        dragspan.set_width(abs(event.xdata - dragstart[0]))
+        canvas.draw_idle()
+
+    def on_release(event: t.Any) -> None:
+        nonlocal dragstart, dragspan
+        if dragstart is None or dragspan is None:
+            return
+        # a plot during the drag clears the figure, and the span then went with the old frames
+        if dragspan.axes in canvas.figure.axes:
+            dragspan.remove()
+        start, dragstart, dragspan = dragstart, None, None
+        canvas.draw_idle()
+        # a movement of a few pixels is a click and not a selection
+        if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
+            on_select(*sorted((start[0], event.xdata)))
+
+    canvas.mpl_connect("button_press_event", on_press)
+    canvas.mpl_connect("motion_notify_event", on_motion)
+    canvas.mpl_connect("button_release_event", on_release)
+
+
+def get_line_readouts(axis: "mplax.Axes", x: float, get_label: "Callable[[str], str]") -> list[str]:
+    """Return the value at x of each labelled line of the axes, as "label: value".
+
+    A line with a label that starts with "_" is not a series of the legend. If no line has a label, the first line
+    takes the label of the y axis, because a subplot of one variable gives no label to its line.
+    """
+    lines = [line for line in axis.get_lines() if np.asarray(line.get_xdata()).size >= 2]
+    labelledlines = [line for line in lines if not str(line.get_label()).startswith("_")]
+    parts: list[str] = []
+    for line in labelledlines or lines[:1]:
+        label = get_label(str(line.get_label()) if labelledlines else axis.get_ylabel())
+        xdata, ydata = np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float)
+        finite = np.isfinite(xdata) & np.isfinite(ydata)
+        xdata, ydata = xdata[finite], ydata[finite]
+        if xdata.size < 2:
+            continue
+        order = np.argsort(xdata)
+        if xdata[order[0]] <= x <= xdata[order[-1]]:
+            parts.append(f"{label}: {np.interp(x, xdata[order], ydata[order]):.4g}")
+    return parts
 
 
 def show_window(
