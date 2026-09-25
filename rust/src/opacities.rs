@@ -10,8 +10,9 @@ use std::ops::Range;
 /// contiguous rows.
 const CELLSPERTASK: usize = 32;
 
-/// Below this absolute optical depth, `1 - exp(-tau)` is exactly zero in double precision, thus the sum needs no `exp`
-const TINYTAU: f64 = 1e-18;
+/// Below this absolute optical depth, `tau - tau^2 / 2` gives `1 - exp(-tau)` to double precision, and it needs
+/// no `exp`. The next term of the series is below `tau^3 / 6`, which is 1.7e-17 of `tau`.
+const SERIESTAU: f64 = 1e-8;
 
 fn f64_column<'a>(df: &'a DataFrame, name: &str) -> PolarsResult<&'a [f64]> {
     df.column(name)?
@@ -134,9 +135,14 @@ fn sum_cell_group(
             *lbmax += (if celltau > 1.0 { 1.0 } else { celltau }) * lambda;
         }
         for (&celltau, ex) in tau.iter().zip(&mut exopac[bin]) {
-            if celltau.abs() >= TINYTAU || celltau.is_nan() {
-                *ex += (1.0 - (-celltau).exp()) * lambda;
-            }
+            // 1 - exp(-tau) loses most of its digits for a small tau, and it is zero below 5.6e-17. exp_m1
+            // keeps them. A NaN optical depth takes the exp_m1 branch, thus it reaches the sum
+            let absorbedfraction = if celltau.abs() < SERIESTAU {
+                celltau * (1.0 - 0.5 * celltau)
+            } else {
+                -(-celltau).exp_m1()
+            };
+            *ex += absorbedfraction * lambda;
         }
     }
 

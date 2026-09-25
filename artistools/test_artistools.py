@@ -1384,6 +1384,21 @@ def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
         at.ejectaopacity.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
 
 
+def test_lambda_bin_edges_cover_the_full_range() -> None:
+    """The bins cover the full wavelength range, also when the division of the range rounds down.
+
+    (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins, thus the last bin was lost.
+    A range that does not hold a whole number of bins lost the part after the last whole bin.
+    """
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
+    assert len(edges) == 10001
+    assert math.isclose(edges[-1], 4000.0, rel_tol=1e-12)
+
+    edges = at.ejectaopacity.get_lambda_bin_edges(1000.0, 25010.0, 20.0)
+    assert len(edges) == 1202
+    assert math.isclose(edges[-1], 25020.0, rel_tol=1e-12)
+
+
 def test_plotopacity_weights_the_cells_by_mass() -> None:
     """The mean over the cells weights each cell by its mass, and it sums the cells of every batch.
 

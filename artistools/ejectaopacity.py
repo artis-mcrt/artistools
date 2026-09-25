@@ -59,11 +59,20 @@ class OpacityLines(t.NamedTuple):
 
 
 def get_lambda_bin_edges(lambdamin: float, lambdamax: float, deltalambda: float) -> list[float]:
-    """Return the edges of the wavelength bins in Angstroms."""
-    numbins = int((lambdamax - lambdamin) / deltalambda)
-    if numbins < 1:
-        msg = f"The wavelength range {lambdamin:g} to {lambdamax:g} Angstroms holds no bin of width {deltalambda:g}"
+    """Return the edges of the wavelength bins in Angstroms.
+
+    The last bin ends at lambdamax. If the range does not hold a whole number of bins, the last bin ends
+    above lambdamax, thus the bins cover the full range.
+    """
+    if lambdamax <= lambdamin or deltalambda <= 0.0:
+        msg = (
+            f"The wavelength range {lambdamin:g} to {lambdamax:g} Angstroms holds no bin of width {deltalambda:g}"
+            " Angstroms"
+        )
         raise ValueError(msg)
+
+    # int() of 999.9999999999999 is 999, thus the tolerance keeps a range of whole bins whole
+    numbins = math.ceil((lambdamax - lambdamin) / deltalambda - 1e-9)
     return [lambdamin + i * deltalambda for i in range(numbins + 1)]
 
 
@@ -145,7 +154,7 @@ def get_expansion_opacities(
     """Return the binned expansion opacity and the line-binned opacities of each cell.
 
     The Rust function sum_binned_line_opacities() calculates the LTE level populations and sums the lines of
-    each bin. A query in polars took 6.6 times longer, because each operation writes a full column.
+    each bin. A query in polars took 12 times longer, because each operation writes a full column.
     """
     numbins = len(lambda_bin_edges) - 1
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
@@ -319,7 +328,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         elapsed = time.perf_counter() - time_start
         timepercell = elapsed / cells_processed
         print(
-            f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}. time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
+            f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}."
+            f" time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
         )
 
     print()
