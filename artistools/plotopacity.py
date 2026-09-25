@@ -57,9 +57,8 @@ OPACITYSERIES = (
     ("linebinned_maxone", r"Line-binned, $\tau_\mathrm{S}$ capped at 1"),
     ("linebinned", "Line-binned"),
 )
-# where two opacities are equal, their lines are at the same place. A line that lets the line below it show through
-# keeps each colour visible, and the overlap of two lines has the mixed colour
-OPACITYLINE_ALPHA: t.Final = 0.6
+# where two opacities are equal, their lines are at the same place. A thin line covers less of the line below it
+OPACITYLINE_WIDTH: t.Final = 0.6
 
 
 def get_massweighted_opacities(
@@ -190,7 +189,7 @@ def plot_opacities(
         (binlines,) = ax.plot(
             xvalues.ravel(),
             np.column_stack([opacities, opacities, binbreaks]).ravel(),
-            alpha=OPACITYLINE_ALPHA,
+            linewidth=OPACITYLINE_WIDTH,
             # a butt cap ends the line at the edge of the bin
             solid_capstyle="butt",
             # the legend shows the moving average when there is one, because a short bin is hard to see there
@@ -203,7 +202,7 @@ def plot_opacities(
             ax.plot(
                 dfmovingaverages["lambda_angstroms_bin_mid"],
                 dfmovingaverages[column],
-                alpha=OPACITYLINE_ALPHA,
+                linewidth=OPACITYLINE_WIDTH,
                 color=color,
                 label=label,
             )
