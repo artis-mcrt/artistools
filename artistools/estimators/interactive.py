@@ -61,6 +61,7 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_last_warning
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_menu_shortcut_texts
 from artistools.viewertools import get_nearest_range_start
@@ -82,6 +83,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
+from artistools.viewertools import run_command_step_outcome
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
@@ -387,6 +389,8 @@ class EstimatorViewer:
         self.plotxbins: int | None = None
         self.plotmarkers = False
         self.plotcolorbyion = False
+        # the last warning of the last plot, which the status bar shows
+        self.warning = ""
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -576,11 +580,12 @@ class EstimatorViewer:
                 )
             )
 
-        message = run_command_step(make_plot, quiet=quiet)
+        outcome = run_command_step_outcome(make_plot, quiet=quiet)
 
         def show_plot() -> str | None:
-            if message is not None:
-                return message
+            self.warning = get_last_warning(outcome.errors)
+            if outcome.message is not None:
+                return outcome.message
             plot = plots[0]
             fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
             self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion

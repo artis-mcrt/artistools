@@ -50,6 +50,7 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_last_warning
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_menu_shortcut_texts
 from artistools.viewertools import get_nearest_range_start
@@ -71,6 +72,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
+from artistools.viewertools import run_command_step_outcome
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
@@ -519,6 +521,8 @@ class SpectrumViewer:
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
         )
         self.drewpreview = False
+        # the last warning of the last plot, which the status bar shows
+        self.warning = ""
         # a rejection before the draw keeps the old plot on the frames, thus it needs no new plot of the old values
         self.clearedframes = False
         # a window can change the size of the figure, thus the size of the frames stays here
@@ -701,7 +705,9 @@ class SpectrumViewer:
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        return run_command_step(lambda: self.draw_command(preview=preview), quiet=quiet)
+        outcome = run_command_step_outcome(lambda: self.draw_command(preview=preview), quiet=quiet)
+        self.warning = get_last_warning(outcome.errors)
+        return outcome.message
 
     def draw_command(self, *, preview: bool = False) -> str | None:
         """Parse the command and draw its plot, or return a message if the plot differs from the values.

@@ -3394,3 +3394,13 @@ def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
     assert interactive.get_xunit_text(1.0, "Te") == " [K]"
     assert not interactive.get_xunit_text(1.0, "timestep")
     assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"
+
+
+def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
+    """A limit outside the data gives a warning, which the status bar of the window shows after the plot."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert not viewer.warning
+    assert viewer.change(dc.replace(viewer.values, subplots=(("Te", "ymin=1e12"),))) is None
+    assert "requested minimum" in viewer.warning
+    assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
+    assert not viewer.warning

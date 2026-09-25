@@ -195,29 +195,53 @@ def send_output(stdout: t.TextIO | None, stderr: t.TextIO) -> "Generator[None]":
                 stream.local.target = oldtarget
 
 
-def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
-    """Run a step of a command, and return its message or the first line of its error for the status line.
+class StepOutcome(t.NamedTuple):
+    """The result of a step of a command: its message, its standard output, and its standard error."""
+
+    # the message of the step, or the first line of its error. None when the step succeeded with no message
+    message: str | None
+    output: str
+    # the warnings of the step, and its error
+    errors: str
+
+
+def run_command_step_outcome(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> StepOutcome:
+    """Run a step of a command, and return its message or the first line of its error, with its output.
 
     Each plot prints the same lines again, thus a quiet step discards the standard output. With echo, the terminal
     shows the whole error. A window stays open after a failed step, thus each type of error gives a message.
     """
+    output = io.StringIO()
     errors = io.StringIO()
+    message: str | None
     try:
-        with send_output(io.StringIO() if quiet else None, errors):
-            return step()
+        with send_output(output if quiet else None, errors):
+            message = step()
     except SystemExit:
         # exit_with_error and argparse print a line that starts with "error: " before they raise SystemExit
-        return get_first_line(errors.getvalue())
+        message = get_first_line(errors.getvalue())
     except USER_ERRORS as exc:
         if echo:
             print_error(str(exc) or type(exc).__name__)
-        return get_first_line(str(exc))
+        message = get_first_line(str(exc))
     except Exception as exc:  # ruff:ignore[blind-except]
         errors.write(traceback.format_exc())
-        return f"{type(exc).__name__}: {get_first_line(str(exc))}"
+        message = f"{type(exc).__name__}: {get_first_line(str(exc))}"
     finally:
         if echo:
             sys.stderr.write(errors.getvalue())
+    return StepOutcome(message=message, output=output.getvalue(), errors=errors.getvalue())
+
+
+def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
+    """Run a step of a command, and return its message or the first line of its error for the status line."""
+    return run_command_step_outcome(step, quiet=quiet, echo=echo).message
+
+
+def get_last_warning(errors: str) -> str:
+    """Return the last warning of the standard error of a step, without its prefix, or an empty text."""
+    warnings = [line.strip() for line in errors.splitlines() if line.strip().startswith("WARNING: ")]
+    return warnings[-1].removeprefix("WARNING: ") if warnings else ""
 
 
 def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple[argparse.Action | None, bool]:
@@ -1197,6 +1221,16 @@ class StatusBar(t.NamedTuple):
     helpbutton: "QtWidgets.QToolButton"
 
 
+def show_status_message(statusbar: StatusBar, message: str | None, warning: str) -> None:
+    """Show the message of a rejected plot in red, or else the last warning of the plot in amber."""
+    if message is not None:
+        statusbar.message.setStyleSheet("color: firebrick")
+        statusbar.message.setText(message)
+    else:
+        statusbar.message.setStyleSheet("color: darkorange")
+        statusbar.message.setText(warning)
+
+
 def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
     """Return the labels of the status bar and its help button.
 
@@ -1342,6 +1376,8 @@ class PlotViewer[ValuesT](t.Protocol):
     """A viewer with the values of its controls, which draws the plot of new values or keeps the old values."""
 
     values: ValuesT
+    # the last warning of the last plot, which the status bar shows. A user of the application sees no terminal
+    warning: str
 
     def change(self, values: ValuesT) -> str | None:
         """Draw the plot of the values, or keep the old values and return the reason for the status line."""
@@ -1462,7 +1498,7 @@ class DrawQueue[ValuesT]:
         self.plotseconds = time.perf_counter() - self.renderstart
         self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         self.statusbar.readout.setText("")
-        self.statusbar.message.setText(message or "")
+        show_status_message(self.statusbar, message, self.viewer.warning)
         self.show_values()
         self.after_draw(message)
         if self.requestedvalues is not None:
@@ -1491,7 +1527,7 @@ class DrawQueue[ValuesT]:
         self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
-        self.statusbar.message.setText(message or "")
+        show_status_message(self.statusbar, message, self.viewer.warning)
         self.show_values()
         return message
 
