@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
@@ -81,6 +82,7 @@ from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -349,8 +351,6 @@ class EstimatorViewer:
         self.isimage = False
         # the axis of a model faster than 0.3c shows v/c for -x velocity, and -xmin then takes km/s
         self.xlimitscale = 1.0
-        # a rejection before the draw keeps the old plot on the figure, thus it needs no new plot of the old values
-        self.clearedfigure = False
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -496,41 +496,58 @@ class EstimatorViewer:
         return values
 
     def draw(self, *, quiet: bool = True) -> str | None:
-        """Draw the plot of the command, and return the reason for the status line if plotestimators rejects it.
+        """Draw the plot of the values, and return the reason for the status line if plotestimators rejects it.
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        return run_command_step(self.draw_command, quiet=quiet)
+        return self.render(self.values, quiet=quiet)()
 
-    def draw_command(self) -> None:
-        """Parse the command and draw its plot on an empty figure."""
-        plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
-        check_viewer_args(plotargs)
-        givenx = plotargs.x
-        self.clearedfigure = True
-        self.fig.clear()
-        # a colour image takes the constrained layout, and the frames of a line plot take a fixed size
-        self.fig.set_layout_engine("none")
-        draw_plot(plotargs, self.fig, self.batchcaches)
-        self.isimage = plotargs.dimensionreduce == 2
-        # the constrained layout of a colour image keeps the title inside the figure
-        if not self.isimage:
-            make_room_for_title(self.fig)
-        self.xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
-        figwidth, figheight = self.fig.get_size_inches()
-        self.figsize = (float(figwidth), float(figheight))
-        self.fig.canvas.draw_idle()
+    def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
+        """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
+
+        The function returns the reason for the status line if plotestimators rejects the values, and the old plot
+        then stays. A worker thread can run this method, because it changes nothing that the window reads. The
+        function that it returns must run in the thread of the window.
+        """
+        # the figure, whether it is a colour image, and the scale of the x limits
+        plots: list[tuple[mplfig.Figure, bool, float]] = []
+
+        def make_plot() -> None:
+            plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
+            check_viewer_args(plotargs)
+            givenx = plotargs.x
+            fig = mplfig.Figure()
+            FigureCanvasAgg(fig)
+            draw_plot(plotargs, fig, self.batchcaches)
+            isimage = plotargs.dimensionreduce == 2
+            # the constrained layout of a colour image keeps the title inside the figure
+            if not isimage:
+                make_room_for_title(fig)
+            xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
+            plots.append((fig, isimage, xlimitscale))
+
+        message = run_command_step(make_plot, quiet=quiet)
+
+        def show_plot() -> str | None:
+            if message is not None:
+                return message
+            fig, self.isimage, self.xlimitscale = plots[0]
+            canvas = self.fig.canvas
+            fig.set_canvas(canvas)
+            canvas.figure = fig
+            self.fig = fig
+            figwidth, figheight = fig.get_size_inches()
+            self.figsize = (float(figwidth), float(figheight))
+            canvas.draw_idle()
+            return None
+
+        return show_plot
 
     def change(self, values: ControlValues) -> str | None:
-        """Draw the plot of the new values, and keep the old values if plotestimators rejects the new command."""
-        oldvalues, self.values = self.values, values
-        self.clearedfigure = False
-        message = self.draw()
-        if message is not None:
-            self.values = oldvalues
-            # a draw that fails after it clears the figure leaves it empty, thus the old values need a new plot
-            if self.clearedfigure:
-                self.draw()
+        """Draw the plot of the new values, and keep the old values and the old plot if plotestimators rejects them."""
+        message = self.render(values)()
+        if message is None:
+            self.values = values
         return message
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
@@ -826,6 +843,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         commandtext.setPlainText(viewer.get_command())
 
     def after_draw(message: str | None) -> None:
+        # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
+        connect_mouse_to_figure()
         # a new number of subplots changes the height of the figure, thus the plot can need a new -figwidthscale
         fittimer.start()
         # a rejection occurs again at each step, thus a rejection stops the Play button
@@ -835,7 +854,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
             playtimer.start()
 
-    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw)
+    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, render=viewer.render)
     apply = queue.apply
 
     def fit_figwidthscale() -> None:
@@ -1072,7 +1091,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     copybutton.clicked.connect(on_copy)
     statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
-    connect_plot_mouse(
+    connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: get_plot_frames(viewer.fig),
         get_readout=get_frame_readout,

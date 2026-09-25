@@ -13,6 +13,7 @@ import math
 import re
 import shlex
 import sys
+import threading
 import time
 import traceback
 import typing as t
@@ -29,8 +30,10 @@ from artistools.plottools import plain_label
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Collection
+    from collections.abc import Generator
     from collections.abc import Mapping
     from collections.abc import Sequence
+    from concurrent.futures import Future
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
@@ -125,16 +128,79 @@ def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") ->
         )
 
 
+class ThreadOutput(io.TextIOBase):
+    """A standard stream that sends the text of each thread to the target of that thread.
+
+    A worker thread draws a plot and hides its output, while the thread of the window still prints to the terminal.
+    contextlib.redirect_stdout changes the stream of each thread, thus it cannot do this.
+    """
+
+    def __init__(self, stream: t.TextIO) -> None:
+        """Send the text of each thread to stream, until send_output gives the thread a different target."""
+        super().__init__()
+        self.stream = stream
+        self.local = threading.local()
+
+    def get_target(self) -> t.TextIO:
+        """Return the stream of the thread that calls this method."""
+        target: t.TextIO = getattr(self.local, "target", self.stream)
+        return target
+
+    @t.override
+    def write(self, text: str) -> int:
+        return self.get_target().write(text)
+
+    @t.override
+    def flush(self) -> None:
+        self.get_target().flush()
+
+    @t.override
+    def isatty(self) -> bool:
+        return self.get_target().isatty()
+
+    @t.override
+    def fileno(self) -> int:
+        return self.get_target().fileno()
+
+
+@contextlib.contextmanager
+def send_output(stdout: t.TextIO | None, stderr: t.TextIO) -> "Generator[None]":
+    """Send the output of this thread to the streams until the block ends. A stdout of None keeps the terminal.
+
+    A window installs ThreadOutput, and then the other threads keep their output. Without it, the streams of all the
+    threads change.
+    """
+    if not (isinstance(sys.stdout, ThreadOutput) and isinstance(sys.stderr, ThreadOutput)):
+        with contextlib.ExitStack() as stack:
+            if stdout is not None:
+                stack.enter_context(contextlib.redirect_stdout(stdout))
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            yield
+        return
+
+    routes = [(stream, target) for stream, target in ((sys.stdout, stdout), (sys.stderr, stderr)) if target is not None]
+    oldtargets = [getattr(stream.local, "target", None) for stream, _ in routes]
+    for stream, target in routes:
+        stream.local.target = target
+    try:
+        yield
+    finally:
+        for (stream, _), oldtarget in zip(routes, oldtargets, strict=True):
+            if oldtarget is None:
+                del stream.local.target
+            else:
+                stream.local.target = oldtarget
+
+
 def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
     """Run a step of a command, and return its message or the first line of its error for the status line.
 
     Each plot prints the same lines again, thus a quiet step discards the standard output. With echo, the terminal
     shows the whole error. A window stays open after a failed step, thus each type of error gives a message.
     """
-    output = contextlib.redirect_stdout(io.StringIO()) if quiet else contextlib.nullcontext()
     errors = io.StringIO()
     try:
-        with output, contextlib.redirect_stderr(errors):
+        with send_output(io.StringIO() if quiet else None, errors):
             return step()
     except SystemExit:
         # exit_with_error and argparse print a line that starts with "error: " before they raise SystemExit
@@ -542,6 +608,11 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
 
     # the Save command runs the command, which makes a pyplot figure. A pyplot window must not open beside the viewer
     plt.switch_backend("agg")
+    # a worker thread draws each plot and hides its output, and the window thread still prints to the terminal
+    if not isinstance(sys.stdout, ThreadOutput):
+        sys.stdout = ThreadOutput(sys.stdout)
+    if not isinstance(sys.stderr, ThreadOutput):
+        sys.stderr = ThreadOutput(sys.stderr)
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     assert isinstance(app, QtWidgets.QApplication)
     app.setApplicationName("artistools")
@@ -1073,23 +1144,31 @@ class DrawQueue[ValuesT]:
     A drag gives a new value for each movement of the mouse, and a plot can take seconds. The queue draws only the
     last values that the user gave. viewer.values holds the last values that the user gave, and drawnvalues holds the
     values of the plot. If the command rejects new values, the viewer keeps the values of the plot.
+
+    With render, a worker thread draws each plot. The window then shows each new value of a drag at once.
     """
 
     def __init__(
         self,
-        window: "QtWidgets.QWidget",
+        window: "QtCore.QObject",
         viewer: PlotViewer[ValuesT],
         statusbar: StatusBar,
         show_values: "Callable[[], None]",
         after_draw: "Callable[[str | None], None]",
         change: "Callable[[ValuesT], str | None] | None" = None,
         get_drawkind: "Callable[[], str] | None" = None,
+        render: "Callable[[ValuesT], Callable[[], str | None]] | None" = None,
     ) -> None:
         """Make an empty queue. after_draw receives the message of each plot of the queue.
 
         change draws the values of the queue in place of viewer.change, e.g. a preview. get_drawkind gives the name of
-        the last plot for the status bar, e.g. "Preview".
+        the last plot for the status bar, e.g. "Preview". render draws the plot of the values in a worker thread. It
+        returns the function that shows that plot in the window and gives the message of a rejection.
         """
+        from concurrent.futures import ThreadPoolExecutor
+
+        from PySide6 import QtCore
+
         self.window = window
         self.viewer = viewer
         self.statusbar = statusbar
@@ -1099,6 +1178,19 @@ class DrawQueue[ValuesT]:
         self.get_drawkind = get_drawkind
         self.requestedvalues: ValuesT | None = None
         self.drawnvalues: ValuesT = viewer.values
+        self.render = render
+        self.executor: ThreadPoolExecutor | None = None
+        self.rendertimer: QtCore.QTimer | None = None
+        self.renderedvalues: ValuesT = viewer.values
+        self.rendering: Future[Callable[[], str | None]] | None = None
+        self.renderstart = 0.0
+        if render is not None:
+            # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
+            self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
+            # the window thread checks the worker at each tick, because a Qt call from the worker thread is not safe
+            self.rendertimer = QtCore.QTimer(window)
+            self.rendertimer.setInterval(10)
+            self.rendertimer.timeout.connect(self.show_rendered)
 
     def apply(self, values: ValuesT) -> None:
         """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot."""
@@ -1117,9 +1209,51 @@ class DrawQueue[ValuesT]:
 
     def draw_requested(self) -> None:
         """Draw the plot of the last values that the user gave."""
+        if self.executor is not None:
+            if self.rendering is None:
+                self.start_render()
+            return
         values, self.requestedvalues = self.requestedvalues, None
         if values is not None:
             self.after_draw(self.draw(values, self.change))
+
+    def start_render(self) -> None:
+        """Start a plot of the last values that the user gave in the worker thread."""
+        values, self.requestedvalues = self.requestedvalues, None
+        if values is None or self.executor is None or self.render is None or self.rendertimer is None:
+            return
+        self.renderedvalues = values
+        self.renderstart = time.perf_counter()
+        self.statusbar.drawtime.setText("Plot in progress...")
+        self.rendering = self.executor.submit(self.render, values)
+        self.rendertimer.start()
+
+    def show_rendered(self) -> None:
+        """Show the plot of the worker thread when it is complete, then start a plot of newer values."""
+        if self.rendering is None or not self.rendering.done():
+            return
+        if self.rendertimer is not None:
+            self.rendertimer.stop()
+        rendering, self.rendering = self.rendering, None
+        try:
+            message = rendering.result()()
+        except Exception as exc:  # ruff:ignore[blind-except]
+            # the render wraps the command in run_command_step, thus only a defect of the viewer arrives here
+            print_error(traceback.format_exc())
+            message = f"{type(exc).__name__}: {get_first_line(str(exc))}"
+        if message is None:
+            self.drawnvalues = self.renderedvalues
+        # newer values of the user stay, and the next plot draws them
+        if self.requestedvalues is None:
+            self.viewer.values = self.drawnvalues
+        drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
+        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - self.renderstart:.2f} s")
+        self.statusbar.readout.setText("")
+        self.statusbar.message.setText(message or "")
+        self.show_values()
+        self.after_draw(message)
+        if self.requestedvalues is not None:
+            self.start_render()
 
     def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
         """Draw the plot of the values with change, and return the message of a rejection."""
@@ -1167,10 +1301,11 @@ def connect_plot_mouse(
     on_select: "Callable[[float, float], None]",
     on_reset: "Callable[[], None]",
     can_select: "Callable[[], bool]",
-) -> None:
+) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
-    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame.
+    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. matplotlib keeps
+    the connections in the figure. Call the returned function after the canvas receives a new figure.
     """
     dragstart: tuple[float, float] | None = None
     dragspan: t.Any = None
@@ -1212,9 +1347,19 @@ def connect_plot_mouse(
         if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
             on_select(*sorted((start[0], event.xdata)))
 
-    canvas.mpl_connect("button_press_event", on_press)
-    canvas.mpl_connect("motion_notify_event", on_motion)
-    canvas.mpl_connect("button_release_event", on_release)
+    connectedfigure: object = None
+
+    def connect_to_figure() -> None:
+        nonlocal connectedfigure
+        if canvas.figure is connectedfigure:
+            return
+        connectedfigure = canvas.figure
+        canvas.mpl_connect("button_press_event", on_press)
+        canvas.mpl_connect("motion_notify_event", on_motion)
+        canvas.mpl_connect("button_release_event", on_release)
+
+    connect_to_figure()
+    return connect_to_figure
 
 
 def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:

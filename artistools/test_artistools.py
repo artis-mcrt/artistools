@@ -2,14 +2,18 @@ import argparse
 import hashlib
 import importlib
 import inspect
+import io
 import itertools
 import math
 import os
 import re
 import subprocess
 import sys
+import threading
+import time
 import tomllib
 import typing as t
+from collections.abc import Callable
 from collections.abc import Iterator
 from collections.abc import Sequence
 from datetime import date
@@ -3300,6 +3304,86 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     queue.apply(5)
     showvalues.assert_called_once_with()
     assert queue.requestedvalues is None, "unchanged values must draw no plot"
+
+
+def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A worker thread hides the output of its plot, and the window thread still prints to the terminal.
+
+    contextlib.redirect_stdout changed the stream of each thread, thus a print of the window went to the plot.
+    """
+    terminal = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", viewertools.ThreadOutput(terminal))
+    monkeypatch.setattr(sys, "stderr", viewertools.ThreadOutput(io.StringIO()))
+    plotoutput = io.StringIO()
+    inside, printed = threading.Event(), threading.Event()
+
+    def plot() -> None:
+        with viewertools.send_output(plotoutput, io.StringIO()):
+            print("a line of the plot")
+            inside.set()
+            printed.wait(timeout=10)
+
+    worker = threading.Thread(target=plot)
+    worker.start()
+    assert inside.wait(timeout=10)
+    print("a line of the window")
+    printed.set()
+    worker.join()
+    assert plotoutput.getvalue() == "a line of the plot\n"
+    assert terminal.getvalue() == "a line of the window\n"
+
+
+def test_viewer_queue_draws_in_a_worker_thread() -> None:
+    """The window stays free during a plot, and a drag during a plot gives a plot of the last values alone.
+
+    The window thread drew each plot, thus a drag of the time slider stopped until the plot ended.
+    """
+    # the queue needs the timers of Qt alone, and a QCoreApplication loads no plugin of a display
+    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    renderthreads: list[str] = []
+    showthreads: list[str] = []
+    rendered: list[int] = []
+
+    def render(values: int) -> Callable[[], str | None]:
+        renderthreads.append(threading.current_thread().name)
+        rendered.append(values)
+        time.sleep(0.2)
+
+        def show() -> str | None:
+            showthreads.append(threading.current_thread().name)
+            return "rejected" if values < 0 else None
+
+        return show
+
+    viewer = mock.Mock(values=0)
+    afterdraw = mock.Mock()
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    for values in (1, 2, 3):
+        starttime = time.perf_counter()
+        queue.apply(values)
+        app.processEvents()
+        assert time.perf_counter() - starttime < 0.1, "the window must not wait for the plot"
+    wait_for_plots()
+    assert rendered == [1, 3]
+    assert "MainThread" not in renderthreads
+    assert showthreads == ["MainThread", "MainThread"]
+    assert viewer.values == queue.drawnvalues == 3
+
+    # a rejection keeps the values of the last plot
+    queue.apply(-1)
+    wait_for_plots()
+    assert viewer.values == queue.drawnvalues == 3
+    afterdraw.assert_called_with("rejected")
 
 
 def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
