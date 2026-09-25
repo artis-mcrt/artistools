@@ -2234,3 +2234,19 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
     )
     assert at.misc.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
     assert "text source changed" in str(at.misc.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])
+
+
+def test_split_multitable_dataframe_tables_collect_together() -> None:
+    """A collect_all of filtered tables gives the same rows as a collect of each table.
+
+    With polars 2.0.0rc2, collect_all of filtered slices of one scan gave wrong rows. For example, the second
+    direction bin of a light curve then had other times and luminosities. A filter on the row index avoids this.
+    """
+    times = list(range(10))
+    dfres = pl.DataFrame({"time": times * 3, "value": [*times, *(t + 100 for t in times), *(t + 200 for t in times)]})
+    tables = dirbins.split_multitable_dataframe(dfres.lazy())
+    plans = [table.filter(pl.col("time").is_between(3, 6)) for table in tables.values()]
+
+    for together, table in zip(pl.collect_all(plans), plans, strict=True):
+        pltest.assert_frame_equal(together, table.collect())
+    assert pl.collect_all(plans)[1]["value"].to_list() == [103, 104, 105, 106]
