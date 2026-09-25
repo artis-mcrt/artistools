@@ -5,7 +5,6 @@ import contextlib
 import dataclasses as dc
 import io
 import math
-import re
 import shlex
 import sys
 import time
@@ -25,7 +24,6 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
-from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
@@ -47,10 +45,37 @@ from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
 from artistools.spectra.plotspectra import resolve_plot_args
+from artistools.viewertools import add_command_section
+from artistools.viewertools import add_menus
+from artistools.viewertools import add_row
+from artistools.viewertools import add_section
+from artistools.viewertools import copy_command
+from artistools.viewertools import fit_canvas
+from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import get_first_line
+from artistools.viewertools import get_fitted_figwidthscale
+from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_nearest_range_start
+from artistools.viewertools import get_option_row_tokens
+from artistools.viewertools import get_option_tokens
+from artistools.viewertools import make_option_table
+from artistools.viewertools import make_plot_area
+from artistools.viewertools import make_sidebar
+from artistools.viewertools import make_slider
+from artistools.viewertools import make_status_bar
+from artistools.viewertools import make_timer
+from artistools.viewertools import open_model_window
+from artistools.viewertools import OptionRows
+from artistools.viewertools import PLAY_MILLISECONDS
+from artistools.viewertools import remove_options
+from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import show_window
+from artistools.viewertools import SLIDER_STEPS
+from artistools.viewertools import split_option_rows
+from artistools.viewertools import start_application
+from artistools.viewertools import USER_ERRORS
 
 if t.TYPE_CHECKING:
-    from collections.abc import Collection
-    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -111,30 +136,6 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "output_spectra",
 })
 
-# each option of the table with its values, in the order of the command
-type OptionRows = tuple[tuple[str, tuple[str, ...]], ...]
-
-# the process that runs from the application bundle of the viewer has this environment variable
-MACOS_BUNDLE_VARIABLE: t.Final = "ARTISTOOLS_VIEWER_IN_BUNDLE"
-
-# the limits of the -figwidthscale that the viewer gives the plot to fill the plot area
-MIN_FIGWIDTHSCALE: t.Final[float] = 0.3
-MAX_FIGWIDTHSCALE: t.Final[float] = 4.0
-
-# the time after the last resize of the window, before the plot takes the new shape
-FIT_MILLISECONDS: t.Final[int] = 200
-
-# plotspectra raises these errors for a bad argument or input file. The dispatcher of the CLI reports the same errors
-USER_ERRORS: t.Final = (AssertionError, FileNotFoundError, ModuleNotFoundError, PermissionError, ValueError)
-
-REJECTED_MESSAGE: t.Final = "plotspectra cannot draw this plot. The terminal shows the error"
-
-# each slider of the window has this number of positions
-SLIDER_STEPS: t.Final = 1000
-
-# the Play button waits for this time after each plot, thus the user can see each timestep
-PLAY_MILLISECONDS: t.Final = 150
-
 # the time after the last change of a control, before the full plot replaces the preview
 FULL_DRAW_MILLISECONDS: t.Final = 250
 
@@ -183,202 +184,12 @@ class ControlValues:
     otheroptions: OptionRows
 
 
-def get_command_tokens(
-    argsraw: "Sequence[str] | None",
-    kwargs: "Mapping[str, t.Any]",
-    *,
-    fromdispatcher: bool,
-    dispatcherargsraw: "Sequence[str] | None",
-) -> list[str]:
-    """Return the arguments that the user gave to plotspectra, without the name of the command.
-
-    The dispatcher gives the parsed arguments alone. The tokens then come from the words of a call from Python code
-    (dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
-    plotartisspectrum, takes no word for the subcommand.
-    """
-    if kwargs:
-        exit_with_error(
-            "--interactive shows the command of the plot, and a call with keyword arguments has no command",
-            "Give the arguments as a list, e.g. main(argsraw=['mymodel', '--interactive'])",
-        )
-
-    if argsraw is not None:
-        return list(argsraw)
-
-    if dispatcherargsraw is not None:
-        return list(dispatcherargsraw[1:])
-
-    if not fromdispatcher:
-        return sys.argv[1:]
-
-    from artistools.commands import get_subcommand_of_script
-
-    return sys.argv[1:] if get_subcommand_of_script(Path(sys.argv[0]).stem) else sys.argv[2:]
-
-
 def make_parser() -> SuggestingArgumentParser:
     """Return the parser of plotspectra."""
     parser = SuggestingArgumentParser()
     addargs(parser)
     addarg_quiet(parser)
     return parser
-
-
-def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple[argparse.Action | None, bool]:
-    """Return the option that the argument names, and whether the argument also holds its value.
-
-    argparse accepts these forms of a flag:
-
-    - the full flag;
-    - a flag with "=value";
-    - a unique start of a flag;
-    - a flag of one letter with its value joined, e.g. -t300.
-    """
-    if not argstring.startswith("-") or re.match(r"-\.?\d", argstring):
-        return None, False
-
-    optionactions = parser._option_string_actions  # ruff:ignore[private-member-access]
-    name, equals, _ = argstring.partition("=")
-    if name in optionactions:
-        return optionactions[name], bool(equals)
-
-    matches = {id(action): action for flag, action in optionactions.items() if flag.startswith(name)}
-    if len(matches) == 1:
-        return next(iter(matches.values())), bool(equals)
-
-    if not argstring.startswith("--") and argstring[:2] in optionactions:
-        return optionactions[argstring[:2]], True
-
-    return None, False
-
-
-def is_flag(argstring: str) -> bool:
-    """Return True if the argument is a flag, and not a value such as a negative number."""
-    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring)
-
-
-def remove_options(parser: SuggestingArgumentParser, tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
-    """Return the tokens without the options of these dests and without the values of those options."""
-    argstrings = parser.split_joined_flags(tokens)
-    kept: list[str] = []
-    index = 0
-    while index < len(argstrings):
-        argstring = argstrings[index]
-        index += 1
-        if argstring == "--":
-            kept.extend(argstrings[index - 1 :])
-            break
-
-        action, holdsvalue = find_option_action(parser, argstring)
-        if action is None or action.dest not in dests:
-            kept.append(argstring)
-            continue
-
-        if holdsvalue or action.nargs == 0:
-            continue
-
-        if action.nargs is None:
-            index += 1
-            continue
-
-        # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the next flag
-        maxvalues = 1 if action.nargs == "?" else len(argstrings)
-        while maxvalues and index < len(argstrings) and not is_flag(argstrings[index]):
-            index += 1
-            maxvalues -= 1
-
-    return kept
-
-
-def get_table_actions(parser: argparse.ArgumentParser) -> list[argparse.Action]:
-    """Return the options that the table of the window offers, which are the options that no other control sets."""
-    return [
-        action
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        if action.option_strings
-        and action.help != argparse.SUPPRESS
-        and action.dest not in CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS
-    ]
-
-
-def get_option_kind(action: argparse.Action) -> str:
-    """Return the type of control that sets the value of an option in the table of the window.
-
-    The types are these:
-
-    - "flag": the option takes no value;
-    - "choice": one value from a list;
-    - "int": one integer that has a default, thus a spin box can show it;
-    - "values": a fixed number of values, each in a separate field;
-    - "list": a list of values that spaces separate;
-    - "text": one value, or no value for an option with nargs "?".
-    """
-    if action.nargs == 0:
-        return "flag"
-    if isinstance(action.nargs, int):
-        return "values"
-    if action.nargs in {"*", "+"}:
-        return "list"
-    if action.choices:
-        return "choice"
-    if action.type is int and isinstance(action.default, int) and not isinstance(action.default, bool):
-        return "int"
-    return "text"
-
-
-def get_default_tokens(action: argparse.Action) -> tuple[str, ...] | None:
-    """Return the values of a new row of the table, or None if the option needs a value that has no default."""
-    kind = get_option_kind(action)
-    if kind == "flag" or action.nargs == "?":
-        return ()
-    if kind == "choice":
-        choices = [str(choice) for choice in action.choices or ()]
-        return (str(action.default) if str(action.default) in choices else choices[0],)
-    if kind == "int":
-        return (str(action.default),)
-    return None
-
-
-def split_option_rows(parser: SuggestingArgumentParser, tokens: "Sequence[str]") -> tuple[OptionRows, list[str]]:
-    """Return each option of the tokens with its values, and the tokens that are not part of an option.
-
-    Each row gives the first flag of the option, thus an alias, e.g. -dx, becomes the full flag, e.g. -deltax.
-    """
-    rows: list[tuple[str, tuple[str, ...]]] = []
-    othertokens: list[str] = []
-    argstrings = parser.split_joined_flags(tokens)
-    index = 0
-    while index < len(argstrings):
-        argstring = argstrings[index]
-        index += 1
-        if argstring == "--":
-            othertokens.extend(argstrings[index - 1 :])
-            break
-
-        action, holdsvalue = find_option_action(parser, argstring)
-        if action is None:
-            othertokens.append(argstring)
-            continue
-
-        values: list[str] = []
-        if holdsvalue:
-            _, equals, value = argstring.partition("=")
-            values.append(value if equals else argstring[2:])
-        elif action.nargs is None or isinstance(action.nargs, int):
-            count = 1 if action.nargs is None else action.nargs
-            values.extend(argstrings[index : index + count])
-        else:
-            # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the
-            # next flag
-            maxvalues = 1 if action.nargs == "?" else len(argstrings)
-            while len(values) < maxvalues and index + len(values) < len(argstrings):
-                if is_flag(argstrings[index + len(values)]):
-                    break
-                values.append(argstrings[index + len(values)])
-        index += 0 if holdsvalue else len(values)
-        rows.append((action.option_strings[0], tuple(values)))
-
-    return tuple(rows), othertokens
 
 
 def format_days(value: float) -> str:
@@ -455,14 +266,6 @@ def get_snapped_timedays_argument(
     return f"{lowtext}-{hightext}"
 
 
-def get_option_tokens(flag: str, value: str) -> list[str]:
-    """Return the tokens of an option with one value.
-
-    Python 3.13 reads a value such as -1e-13 as an option, thus a value that starts with "-" joins its flag.
-    """
-    return [f"{flag}={value}"] if value.startswith("-") else [flag, value]
-
-
 def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -> list[str]:
     """Return the plotspectra arguments with the options of the controls after the paths at the start."""
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
@@ -495,17 +298,6 @@ def fix_title_position(axis: "mplax.Axes") -> None:
         axis.set_title(axis.get_title(), y=1.0)
 
 
-def get_first_line(errortext: str) -> str:
-    """Return the line of an error for the status line of the window, without the "error: " of print_error.
-
-    argparse prints its usage line before the error, and a warning can come before an error. Thus the function
-    returns the line that starts with "error: ". If no line has that start, it returns the first line.
-    """
-    lines = [line.strip() for line in errortext.splitlines() if line.strip()]
-    errorline = next((line for line in lines if line.startswith("error: ")), lines[0] if lines else None)
-    return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
-
-
 def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlValues:
     """Return the values with the x limits in a new unit of the x axis.
 
@@ -530,19 +322,6 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
         limits = [0.0, convert(xmaxold)]
     xmin, xmax = (format(float(f"{limit:.4g}"), ".10g") for limit in limits)
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
-
-
-def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int) -> int:
-    """Return the first index of the range of count timesteps that has its centre nearest to the given time.
-
-    The time field shows the centre of the range, thus a Return with no edit gives the same range. The centre of a
-    range of an even count is near the boundary of two timesteps. Thus either timestep can hold the time.
-    """
-
-    def get_centre_offset(start: int) -> float:
-        return abs((tmids[start] + tmids[start + count - 1]) / 2.0 - centre)
-
-    return min(range(len(tmids) - count + 1), key=get_centre_offset)
 
 
 def get_reference_token(filename: str) -> str:
@@ -674,12 +453,7 @@ class SpectrumViewer:
         # the order of the paths gives the -label and the style of each series, thus the paths keep their order
         self.startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
         self.modelpathtokens = [path for path in self.startpaths if not path_is_reference_spectrum(path)]
-        self.tableflags = [action.option_strings[0] for action in get_table_actions(parser)]
-        self.actionsbyflag = {
-            action.option_strings[0]: action
-            for action in parser._actions  # ruff:ignore[private-member-access]
-            if action.option_strings
-        }
+        self.parser = parser
 
         # a range of one timestep is a single time, and a plot with no time starts in the middle of the run
         if args.timemin is not None and args.timemax is not None:
@@ -694,12 +468,7 @@ class SpectrumViewer:
         self.groupbychoices = [str(choice) for choice in actions["groupby"].choices or ()]
         self.yvariablechoices = [str(choice) for choice in actions["yvariable"].choices or ()]
         self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
-        # a tooltip gives the help text of the option, thus the window and the command line agree
-        self.helptexts = {
-            dest: str(action.help).replace("%(default)s", str(action.default)).replace("%%", "%")
-            for dest, action in actions.items()
-            if action.help and action.help != argparse.SUPPRESS
-        }
+        self.helptexts = get_helptexts(parser)
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultxunit = "kev" if args.gamma else "angstroms"
         self.defaultgroupby = "nuc" if args.gamma else "ion"
@@ -849,12 +618,7 @@ class SpectrumViewer:
             *(path for path in self.startpaths if path in self.modelpathtokens or path in values.references),
             *(path for path in values.references if path not in self.startpaths),
         ]
-        othertokens = [
-            token
-            for flag, optionvalues in values.otheroptions
-            for token in (get_option_tokens(flag, *optionvalues) if len(optionvalues) == 1 else (flag, *optionvalues))
-        ]
-        return make_command_tokens([*paths, *othertokens], options)
+        return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
 
     def get_command(self) -> str:
         """Return the command that draws the plot of the values."""
@@ -1013,16 +777,9 @@ class SpectrumViewer:
         self.fig.canvas.draw_idle()
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the -figwidthscale that gives the figure the shape of the plot area.
-
-        The frame width is proportional to -figwidthscale, and the margins and the height stay the same.
-        """
-        figwidth, figheight = self.figsize
-        margins = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-        widthperscale = (figwidth - margins) / self.values.figwidthscale
-        fitted = (figheight * areawidth / areaheight - margins) / widthperscale
-        # 2 decimals give a short command, and a small change of the window then keeps the frames
-        return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
+        """Return the -figwidthscale that gives the figure the shape of the plot area."""
+        marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
+        return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
     def clamp_time(self, values: ControlValues) -> ControlValues:
         """Return the values with a continuous time that gives a plot of valid times only.
@@ -1089,32 +846,10 @@ class SpectrumViewer:
         return "   ".join(parts)
 
 
-def make_icon_pixmap(size: int) -> t.Any:
-    """Return a pixmap of the icon of the viewer: a spectrum over a dark square.
-
-    The window gives the icon to the Dock.
-    """
-    from PySide6 import QtCore
-    from PySide6 import QtGui
-
-    pixmap = QtGui.QPixmap(size, size)
-    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
-    painter = QtGui.QPainter(pixmap)
-    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QtGui.QColor("#1b2a41"))
-    painter.setPen(QtCore.Qt.PenStyle.NoPen)
-    painter.drawRoundedRect(QtCore.QRectF(0, 0, size, size), size * 0.22, size * 0.22)
-    path = QtGui.QPainterPath()
+def get_icon_curve() -> "npt.NDArray[np.float64]":
+    """Return the curve of the icon of the viewer, which is a spectrum with two absorption lines."""
     xvalues = np.linspace(0.1, 0.9, 200)
-    yvalues = 0.72 - 0.45 * np.exp(-(((xvalues - 0.42) / 0.06) ** 2)) - 0.25 * np.exp(-(((xvalues - 0.65) / 0.09) ** 2))
-    path.moveTo(float(xvalues[0]) * size, float(yvalues[0]) * size)
-    for xvalue, yvalue in zip(xvalues[1:].tolist(), yvalues[1:].tolist(), strict=True):
-        path.lineTo(xvalue * size, yvalue * size)
-    painter.setPen(QtGui.QPen(QtGui.QColor("#f5a623"), size * 0.05))
-    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-    painter.drawPath(path)
-    painter.end()
-    return pixmap
+    return 0.72 - 0.45 * np.exp(-(((xvalues - 0.42) / 0.06) ** 2)) - 0.25 * np.exp(-(((xvalues - 0.65) / 0.09) ** 2))
 
 
 KEYBOARD_HELP: t.Final = """<table>
@@ -1131,156 +866,11 @@ KEYBOARD_HELP: t.Final = """<table>
 </table>"""
 
 
-def get_macos_bundle_executable() -> Path:
-    """Return the Python executable in the application bundle of the viewer.
-
-    Make the bundle if it does not exist. The bundle holds a hard link to the Python executable, thus it uses almost
-    no disk space. On a different volume, it holds a copy. If the Python executable changes, this function replaces
-    the link.
-    """
-    import os
-    import plistlib
-    import shutil
-
-    baseexecutable = Path(sys.executable).resolve()
-    contents = Path.home() / "Library" / "Caches" / "artistools" / f"{APPLICATION_NAME}.app" / "Contents"
-    executable = contents / "MacOS" / baseexecutable.name
-    if executable.exists() and executable.samefile(baseexecutable):
-        return executable
-
-    executable.parent.mkdir(parents=True, exist_ok=True)
-    # two viewers can make the bundle at the same time, thus each file receives its final name in one step
-    tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
-    try:
-        tmpexecutable.hardlink_to(baseexecutable)
-    except OSError:
-        # a hard link must be on the same volume as its target
-        shutil.copy2(baseexecutable, tmpexecutable)
-    tmpexecutable.replace(executable)
-
-    info = {
-        "CFBundleName": APPLICATION_NAME,
-        "CFBundleDisplayName": APPLICATION_NAME,
-        "CFBundleIdentifier": "io.github.artis-mcrt.artistools.plotspectra",
-        "CFBundleExecutable": executable.name,
-        "CFBundlePackageType": "APPL",
-        "NSHighResolutionCapable": True,
-    }
-    tmpinfo = contents / f"Info.plist.{os.getpid()}.tmp"
-    tmpinfo.write_bytes(plistlib.dumps(info))
-    tmpinfo.replace(contents / "Info.plist")
-    return executable
-
-
-def relaunch_in_macos_bundle() -> None:
-    """Run the command again from an application bundle, which gives its name to the Dock and to the menu bar.
-
-    The Dock gives a process outside a bundle the file name of its executable, e.g. "python3.14". A process cannot
-    change that name after it starts. The new process finds the packages of the virtual environment through
-    __PYVENV_LAUNCHER__.
-    """
-    import os
-    import sysconfig
-
-    # the new process runs sys.orig_argv again, thus a call from Python code, e.g. in a notebook, continues here.
-    # A framework build starts Python.app, which names each process "Python", thus a bundle has no effect
-    if (
-        os.environ.get(MACOS_BUNDLE_VARIABLE)
-        or "--interactive" not in sys.orig_argv
-        or sysconfig.get_config_var("PYTHONFRAMEWORK")
-    ):
-        return
-
-    try:
-        executable = get_macos_bundle_executable()
-    except OSError:
-        # the viewer can open without the bundle, and the Dock then gives the name of the executable
-        return
-
-    sys.stdout.flush()
-    sys.stderr.flush()
-    environment = os.environ | {MACOS_BUNDLE_VARIABLE: "1", "__PYVENV_LAUNCHER__": sys.executable}
-    os.execve(executable, [str(executable), *sys.orig_argv[1:]], environment)  # ruff:ignore[start-process-with-no-shell]
-
-
 def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes.
-
-    The window is a Qt window with native controls. The Qt canvas of matplotlib draws at the pixel ratio
-    of the screen, thus the plot has the full resolution of a Retina display.
-    """
-    import os
-
-    if sys.platform == "darwin":
-        relaunch_in_macos_bundle()
-
-    import_optional("PySide6.QtWidgets")
-    import matplotlib.pyplot as plt
-    from PySide6 import QtCore
-    from PySide6 import QtGui
-    from PySide6 import QtWidgets
-
-    # Qt stops the process with no Python error when it cannot find a display
-    if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
-        exit_with_error(
-            "--interactive needs a window, and this computer has no display",
-            "Run the command on a computer with a display, e.g. with ssh -X",
-        )
-
-    # the Save command runs plotspectra, which makes a pyplot figure. A pyplot window must not open beside the viewer
-    plt.switch_backend("agg")
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    assert isinstance(app, QtWidgets.QApplication)
-    app.setApplicationName("artistools")
-    app.setApplicationDisplayName(APPLICATION_NAME)
-    app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512)))
-
-    arrowkeys = {
-        QtCore.Qt.Key.Key_Left,
-        QtCore.Qt.Key.Key_Right,
-        QtCore.Qt.Key.Key_Up,
-        QtCore.Qt.Key.Key_Down,
-        QtCore.Qt.Key.Key_Home,
-        QtCore.Qt.Key.Key_End,
-    }
-
-    class KeyOwnerFilter(QtCore.QObject):
-        """Give a key to the widget with the focus when that widget uses the key, and not to a window shortcut.
-
-        These widgets use the keys, but the shortcuts of the window took the keys from them:
-
-        - a spin box;
-        - a combo box;
-        - a slider;
-        - a list;
-        - a button, which uses only the space key.
-
-        For example, the Up key in -maxseriescount made the time range wider.
-        """
-
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if event.type() == QtCore.QEvent.Type.ShortcutOverride and isinstance(event, QtGui.QKeyEvent):
-                focuswidget = QtWidgets.QApplication.focusWidget()
-                usesarrows = isinstance(
-                    focuswidget,
-                    QtWidgets.QAbstractSpinBox
-                    | QtWidgets.QComboBox
-                    | QtWidgets.QAbstractSlider
-                    | QtWidgets.QAbstractItemView,
-                )
-                usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
-                key = event.key()
-                if (usesarrows and key in arrowkeys) or (usesspace and key == QtCore.Qt.Key.Key_Space):
-                    event.accept()
-                    return True
-            return super().eventFilter(watched, event)
-
-    keyownerfilter = KeyOwnerFilter(app)
-    app.installEventFilter(keyownerfilter)
-
+    """Open the window of the viewer, and print the command of the last plot when the window closes."""
+    app = start_application(APPLICATION_NAME, get_icon_curve())
     # each window holds a reference here, thus Python keeps it while it is open
-    windows: list[QtWidgets.QMainWindow] = []
+    windows: list[t.Any] = []
     open_window(tokens, windows)
     app.exec()
 
@@ -1306,80 +896,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         return False
     windows.append(window)
 
-    # a timer with the window as parent stops when the window closes, thus it does not act on deleted widgets
-    fulldrawtimer = QtCore.QTimer(window)
-    fulldrawtimer.setSingleShot(True)
-    fulldrawtimer.setInterval(FULL_DRAW_MILLISECONDS)
-    fittimer = QtCore.QTimer(window)
-    fittimer.setSingleShot(True)
-    fittimer.setInterval(FIT_MILLISECONDS)
+    fulldrawtimer = make_timer(window, FULL_DRAW_MILLISECONDS)
+    fittimer = make_timer(window, FIT_MILLISECONDS)
 
-    class PlotArea(QtWidgets.QWidget):
-        """The area of the plot, which scales the figure to its size."""
+    def on_resize() -> None:
+        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+        # a new plot takes up to 1 s, thus the plot takes the new shape only when the resize stops
+        fittimer.start()
 
-        @t.override
-        def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-            super().resizeEvent(event)
-            fit_canvas()
-            # a new plot takes up to 1 s, thus the plot takes the new shape only when the resize stops
-            fittimer.start()
-
-    plotarea = PlotArea()
-    plotarea.setMinimumSize(320, 240)
-    plotlayout = QtWidgets.QVBoxLayout(plotarea)
-    plotlayout.setContentsMargins(0, 0, 0, 0)
-    plotlayout.addWidget(canvas, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-
+    plotarea = make_plot_area(canvas, on_resize)
     central = QtWidgets.QWidget()
     layout = QtWidgets.QHBoxLayout(central)
     layout.addWidget(plotarea, stretch=1)
     window.setCentralWidget(central)
-
-    # the sections and the command scroll together
-    sidebar = QtWidgets.QWidget()
-    sidebar.setFixedWidth(600)
-    sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
-    sidebarlayout.setContentsMargins(0, 0, 0, 0)
-    panel = QtWidgets.QWidget()
-    panellayout = QtWidgets.QVBoxLayout(panel)
-    panellayout.setSpacing(2)
-    panelscroll = QtWidgets.QScrollArea()
-    panelscroll.setWidget(panel)
-    panelscroll.setWidgetResizable(True)
-    panelscroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-    panelscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    sidebarlayout.addWidget(panelscroll, stretch=1)
+    sidebar, panellayout = make_sidebar()
     layout.addWidget(sidebar)
-
-    def add_section(title: str) -> tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]:
-        """Add a section with a heading and a grid for its controls."""
-        header = QtWidgets.QLabel(title)
-        font = header.font()
-        font.setBold(True)
-        header.setFont(font)
-        content = QtWidgets.QWidget()
-        grid = QtWidgets.QGridLayout(content)
-        # a small space between the rows and the sections keeps more of the controls in view
-        grid.setContentsMargins(8, 2, 0, 6)
-        grid.setVerticalSpacing(4)
-        grid.setColumnStretch(1, 1)
-        panellayout.addWidget(header)
-        panellayout.addWidget(content)
-        return header, grid
-
-    def add_row(grid: QtWidgets.QGridLayout, row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
-        """Put the widgets side by side in one row of the grid, from the left."""
-        rowlayout = QtWidgets.QHBoxLayout()
-        for widget in widgets:
-            rowlayout.addWidget(widget)
-        rowlayout.addStretch(1)
-        grid.addLayout(rowlayout, row, 0, 1, -1)
-
-    def make_slider() -> QtWidgets.QSlider:
-        slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        # the arrow keys move the time and change the width, thus a slider must not take them
-        slider.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        return slider
 
     # each continuous slider maps its position from 0 to SLIDER_STEPS onto the range of its value
     def to_position(value: float, low: float, high: float) -> int:
@@ -1393,7 +924,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
     nvalid = len(viewer.validtimesteps)
 
-    _, timegrid = add_section("Time")
+    _, timegrid = add_section(panellayout, "Time")
     snapbutton = QtWidgets.QRadioButton("Snap to timesteps")
     continuousbutton = QtWidgets.QRadioButton("Continuous (--notimeclamp)")
     snapbutton.setToolTip("The time range holds whole timesteps, as plotspectra reads them by default")
@@ -1510,7 +1041,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
                 self.update()
                 self.limitmoved.emit(self.draghandle, position)
 
-    xheader, xgrid = add_section("")
+    xheader, xgrid = add_section(panellayout, "")
     xrangeslider = RangeSlider()
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
@@ -1522,7 +1053,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         xgrid.addWidget(widget, 0, column)
     xgrid.setColumnStretch(1, 1)
 
-    _, axesgrid = add_section("Axes")
+    _, axesgrid = add_section(panellayout, "Axes")
     xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
     yscalebox.addItems(viewer.yscalechoices)
@@ -1552,7 +1083,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         widget.setToolTip(helptexts.get(dest, ""))
     add_row(axesgrid, 2, [QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck])
 
-    _, emissiongrid = add_section("Emission and absorption")
+    _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
     absorptioncheck = QtWidgets.QCheckBox("--showabsorption")
     groupbybox = QtWidgets.QComboBox()
@@ -1588,7 +1119,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         widget.setToolTip(helptexts.get(dest, ""))
     add_row(emissiongrid, 2, [hidenetcheck, hideothercheck, thermalcheck])
 
-    _, bingrid = add_section("Bins of the packet spectrum")
+    _, bingrid = add_section(panellayout, "Bins of the packet spectrum")
     # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
     binmodebox = QtWidgets.QComboBox()
     for binmode, binmodetext in (("", "Default bins"), ("deltax", "-deltax"), ("deltalogx", "-deltalogx")):
@@ -1612,7 +1143,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     frompacketscheck.setToolTip(helptexts.get("frompackets", ""))
     add_row(bingrid, 0, [frompacketscheck, binmodebox, binwidthbox])
 
-    _, directiongrid = add_section("Viewing direction")
+    _, directiongrid = add_section(panellayout, "Viewing direction")
     directionkindbox, directionbox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     for directionkind, directionkindtext, dest in (
         ("", "All directions", ""),
@@ -1639,7 +1170,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
 
-    _, referencegrid = add_section("Reference spectra")
+    _, referencegrid = add_section(panellayout, "Reference spectra")
     referencelist = QtWidgets.QListWidget()
     referencelist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
     referencelist.setFixedHeight(4 * referencelist.fontMetrics().lineSpacing() + 12)
@@ -1652,198 +1183,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     referencegrid.addWidget(addbutton, 1, 0)
     referencegrid.addWidget(removebutton, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
-    _, optiongrid = add_section("Other options")
-    optiontable = QtWidgets.QTableWidget(0, 2)
-    optiontable.setHorizontalHeaderLabels(["Option", "Value"])
-    optiontable.verticalHeader().setVisible(False)
-    optiontable.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-    optiontable.setToolTip("Give each option of plotspectra that no other control sets. Type part of a name to search.")
-    optiontable.setColumnWidth(0, optiontable.fontMetrics().horizontalAdvance("-emissionlosvelocityrange") + 48)
-    optiontable.horizontalHeader().setStretchLastSection(True)
-    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    # a row that holds None needs a value from the user, and the command does not give it yet
-    optionrows: list[tuple[str, tuple[str, ...] | None]] = list(viewer.values.otheroptions)
+    _, optiongrid = add_section(panellayout, "Other options")
 
-    def get_complete_rows() -> OptionRows:
-        return tuple((flag, optionvalues) for flag, optionvalues in optionrows if optionvalues is not None)
-
-    def on_option_rows() -> None:
-        rows = get_complete_rows()
+    def on_option_rows(rows: OptionRows) -> None:
         if rows != viewer.values.otheroptions:
             apply(dc.replace(viewer.values, otheroptions=rows))
 
-    def set_option(row: int, flag: str) -> None:
-        """Put a different option in a row.
-
-        An empty option removes the row. An option in the empty last row adds a new row.
-        """
-        oldflag = optionrows[row][0] if row < len(optionrows) else ""
-        if flag == oldflag or (flag and flag not in viewer.actionsbyflag):
-            return
-        if not flag:
-            del optionrows[row]
-        elif row < len(optionrows):
-            optionrows[row] = (flag, get_default_tokens(viewer.actionsbyflag[flag]))
-        else:
-            optionrows.append((flag, get_default_tokens(viewer.actionsbyflag[flag])))
-        show_option_rows()
-        on_option_rows()
-
-    def set_option_values(row: int, flag: str, optionvalues: tuple[str, ...] | None) -> None:
-        # a field that loses the focus when the table changes can send the values of a row that is not there now
-        if row < len(optionrows) and optionrows[row][0] == flag:
-            optionrows[row] = (flag, optionvalues)
-            on_option_rows()
-
-    def make_flag_box(row: int, flag: str) -> QtWidgets.QComboBox:
-        """Return a list of the options that the user can search, with the option of the row."""
-        box = QtWidgets.QComboBox()
-        box.setEditable(True)
-        box.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-        flags = ["", *viewer.tableflags]
-        # an option that a hidden flag gave, e.g. an old spelling, stays in its row
-        if flag not in flags:
-            flags.append(flag)
-        box.addItems(flags)
-        for index, itemflag in enumerate(flags[1:], start=1):
-            helptext = helptexts.get(viewer.actionsbyflag[itemflag].dest, "")
-            box.setItemData(index, helptext, QtCore.Qt.ItemDataRole.ToolTipRole)
-        if (completer := box.completer()) is not None:
-            completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
-            completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
-        box.setCurrentText(flag)
-        if (lineedit := box.lineEdit()) is not None:
-            lineedit.setPlaceholderText("Add an option")
-
-        def on_flag() -> None:
-            # the new rows replace this box, thus the change waits until Qt finishes with the signal
-            QtCore.QTimer.singleShot(0, window, lambda: set_option(row, box.currentText()))
-
-        box.activated.connect(on_flag)
-        return box
-
-    def make_value_editor(row: int, flag: str, optionvalues: tuple[str, ...] | None) -> QtWidgets.QWidget:
-        """Return the control for the value of an option, which matches the type of the option."""
-        action = viewer.actionsbyflag[flag]
-        kind = get_option_kind(action)
-        editor = QtWidgets.QWidget()
-        layout = QtWidgets.QHBoxLayout(editor)
-        layout.setContentsMargins(2, 0, 2, 0)
-        if kind == "flag":
-            label = QtWidgets.QLabel("no value")
-            label.setEnabled(False)
-            layout.addWidget(label, 1)
-        elif kind == "choice":
-            choicebox = QtWidgets.QComboBox()
-            choicebox.addItems([str(choice) for choice in action.choices or ()])
-            choicebox.setCurrentText(optionvalues[0] if optionvalues else "")
-
-            def on_choice(text: str) -> None:
-                set_option_values(row, flag, (text,))
-
-            choicebox.currentTextChanged.connect(on_choice)
-            layout.addWidget(choicebox, 1)
-        elif kind == "int":
-            spinbox = QtWidgets.QSpinBox()
-            spinbox.setRange(-(2**31), 2**31 - 1)
-            spinbox.setValue(int(optionvalues[0]) if optionvalues else action.default)
-            spinbox.setKeyboardTracking(False)
-
-            def on_spinbox(value: int) -> None:
-                set_option_values(row, flag, (str(value),))
-
-            spinbox.valueChanged.connect(on_spinbox)
-            layout.addWidget(spinbox, 1)
-        else:
-            islist = kind == "list"
-            fieldcount = action.nargs if isinstance(action.nargs, int) else 1
-            fields = [QtWidgets.QLineEdit() for _ in range(fieldcount)]
-            texts = [shlex.join(optionvalues or ())] if islist else list(optionvalues or ())
-            for field, text in zip(fields, texts, strict=False):
-                field.setText(text)
-            for field in fields:
-                if action.type in {int, float} and not islist:
-                    validator = QtGui.QDoubleValidator() if action.type is float else QtGui.QIntValidator()
-                    validator.setLocale(QtCore.QLocale.c())
-                    field.setValidator(validator)
-                if islist:
-                    field.setPlaceholderText("values with spaces between them")
-                elif action.default is not None:
-                    field.setPlaceholderText(f"default {action.default}")
-                layout.addWidget(field, 1)
-
-            def on_fields() -> None:
-                texts = [field.text().strip() for field in fields]
-                newvalues: tuple[str, ...] | None
-                if islist:
-                    try:
-                        newvalues = tuple(shlex.split(texts[0]))
-                    except ValueError:
-                        newvalues = None
-                    # nargs "+" needs a value, and nargs "*" accepts none
-                    if not newvalues and action.nargs == "+":
-                        newvalues = None
-                elif action.nargs == "?":
-                    newvalues = (texts[0],) if texts[0] else ()
-                else:
-                    newvalues = tuple(texts) if all(texts) else None
-                set_option_values(row, flag, newvalues)
-
-            for field in fields:
-                field.editingFinished.connect(on_fields)
-
-        removebutton = QtWidgets.QToolButton()
-        removebutton.setText("✕")
-        removebutton.setAutoRaise(True)
-        removebutton.setToolTip(f"Remove {flag} from the command")
-        removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
-        layout.addWidget(removebutton)
-        editor.setToolTip(helptexts.get(action.dest, ""))
-        return editor
-
-    def show_option_rows() -> None:
-        """Make a row of the table for each option, and an empty row at the end that adds an option."""
-        optiontable.setRowCount(len(optionrows) + 1)
-        for row, (flag, optionvalues) in enumerate([*optionrows, ("", None)]):
-            optiontable.setCellWidget(row, 0, make_flag_box(row, flag))
-            if flag:
-                optiontable.setCellWidget(row, 1, make_value_editor(row, flag, optionvalues))
-            else:
-                optiontable.removeCellWidget(row, 1)
-        optiontable.resizeRowsToContents()
-        # the sidebar scrolls, thus the table shows each row and does not scroll itself
-        rowsheight = sum(optiontable.rowHeight(row) for row in range(optiontable.rowCount()))
-        headerheight = optiontable.horizontalHeader().sizeHint().height()
-        optiontable.setFixedHeight(rowsheight + headerheight + 2 * optiontable.frameWidth())
-
-    show_option_rows()
-    # the command is the last section, at the bottom of the panel
-    panellayout.addStretch(1)
-    _, commandgrid = add_section("Command")
-    # the command text takes the width, and the Copy button keeps its size at the right
-    commandgrid.setColumnStretch(0, 1)
-    commandgrid.setColumnStretch(1, 0)
-    commandtext = QtWidgets.QPlainTextEdit()
-    commandtext.setReadOnly(True)
-    commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    commandtext.setFixedHeight(3 * commandtext.fontMetrics().lineSpacing() + 12)
-    copybutton = QtWidgets.QPushButton("Copy")
-    copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
-    commandgrid.addWidget(commandtext, 0, 0)
-    commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
-
-    # the status bar gives the messages at the left, and the readout, the time of the plot, and the help at the right
-    statusbar = window.statusBar()
-    messagelabel = QtWidgets.QLabel()
-    messagelabel.setStyleSheet("color: firebrick")
-    readoutlabel = QtWidgets.QLabel()
-    drawtimelabel = QtWidgets.QLabel()
-    helpbutton = QtWidgets.QToolButton()
-    helpbutton.setText("?")
-    helpbutton.setToolTip("Show the keys and the mouse actions of the window (?)")
-    statusbar.addWidget(messagelabel, stretch=1)
-    for widget in (readoutlabel, drawtimelabel, helpbutton):
-        statusbar.addPermanentWidget(widget)
+    optiontable, set_option_rows = make_option_table(
+        window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
+    )
+    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
+    commandtext, copybutton = add_command_section(panellayout)
+    messagelabel, readoutlabel, drawtimelabel, helpbutton = make_status_bar(window)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         snapbutton,
@@ -1989,28 +1340,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    def fit_canvas() -> None:
-        """Scale the figure to the plot area, and keep the shape of the frames.
-
-        An embedded canvas has no figure manager, thus the figure cannot set the size of the widget. The resolution
-        of the figure changes, thus the frames keep their size in inches and the whole figure fits in the area.
-        """
-        figwidth, figheight = viewer.figsize
-        if figwidth <= 0.0 or figheight <= 0.0:
-            return
-        area = plotarea.contentsRect()
-        logicaldpi = max(min(area.width() / figwidth, area.height() / figheight), 20.0)
-        size = QtCore.QSize(math.ceil(figwidth * logicaldpi), math.ceil(figheight * logicaldpi))
-        dpi = logicaldpi * canvas.device_pixel_ratio
-        # matplotlib changes the size of the figure in inches when the pixel ratio of the screen changes
-        sizeinches = tuple(viewer.fig.get_size_inches())
-        if canvas.size() == size and math.isclose(viewer.fig.dpi, dpi, rel_tol=1e-6) and sizeinches == viewer.figsize:
-            return
-        viewer.fig.set_dpi(dpi)
-        viewer.fig.set_size_inches(figwidth, figheight, forward=False)
-        canvas.setFixedSize(size)
-        canvas.draw_idle()
-
     def set_edit_text(edit: QtWidgets.QLineEdit, text: str) -> None:
         """Show the text in a field, unless the user types in that field.
 
@@ -2091,15 +1420,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
             referencelist.clear()
             referencelist.addItems(list(values.references))
-        # after plotspectra rejects a command, the table shows the old options again without the rows with no value
-        if get_complete_rows() != values.otheroptions:
-            optionrows[:] = list(values.otheroptions)
-            show_option_rows()
+        set_option_rows(values.otheroptions)
         commandtext.setPlainText(viewer.get_command())
         show_rejections()
         for blocker in blockers:
             blocker.unblock()
-        fit_canvas()
+        fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
 
     requestedvalues: ControlValues | None = None
     # viewer.values holds the last values that the user gave, and drawnvalues holds the values of the plot
@@ -2412,47 +1738,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
             apply(dc.replace(viewer.values, references=references))
 
     def on_copy() -> None:
-        command = viewer.get_command()
-        print(command)
-        QtWidgets.QApplication.clipboard().setText(command)
+        copy_command(viewer.get_command())
         messagelabel.setText("Copied the command")
 
     def on_save() -> None:
-        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
-            window, "Save the figure", str(Path.cwd() / "plotspectra.pdf"), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
-        )
-        if not filename:
-            return
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        # the figure comes from the command, thus the file is the same as the output of the command
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        try:
-            with contextlib.redirect_stdout(io.StringIO()):
-                plotspectra_main(argsraw=[*viewer.get_plot_tokens(), "-o", filename])
-        except (SystemExit, FileNotFoundError, ValueError) as exc:
-            messagelabel.setText(f"plotspectra did not save the figure: {get_first_line(str(exc))}")
-            return
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
-        print(f"{viewer.get_command()} -o {shlex.quote(filename)}")
-        messagelabel.setText(f"Saved {filename}")
+        message = save_figure_of_command(
+            window, plotspectra_main, viewer.get_plot_tokens(), viewer.get_command(), "plotspectra.pdf"
+        )
+        if message is not None:
+            messagelabel.setText(message)
 
     def on_open_model() -> None:
-        folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(Path.cwd()))
-        if not folder:
-            return
-        # a SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window
-        errors = io.StringIO()
-        try:
-            with contextlib.redirect_stderr(errors):
-                opened = open_window([folder], windows)
-        except SystemExit:
-            opened = False
-        finally:
-            sys.stderr.write(errors.getvalue())
-        if not opened:
-            show_error(f"The viewer cannot open {folder}: {get_first_line(errors.getvalue())}")
+        if (message := open_model_window(window, open_window, windows)) is not None:
+            show_error(message)
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
@@ -2502,19 +1802,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
         # leaves the list
         windows.remove(window)
 
-    menubar = window.menuBar()
-    filemenu = menubar.addMenu("File")
-    helpmenu = menubar.addMenu("Help")
-    for menu, text, keys, callback in (
-        (filemenu, "Open Model...", QtGui.QKeySequence.StandardKey.Open, on_open_model),
-        (filemenu, "Save Figure...", QtGui.QKeySequence.StandardKey.Save, on_save),
-        (filemenu, "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C"), on_copy),
-        (filemenu, "Close Window", QtGui.QKeySequence.StandardKey.Close, window.close),
-        (helpmenu, "Keys and Mouse Actions", QtGui.QKeySequence("?"), on_help),
-    ):
-        action = menu.addAction(text)
-        action.setShortcut(keys)
-        action.triggered.connect(callback)
+    add_menus(
+        window,
+        {
+            "Open Model...": on_open_model,
+            "Save Figure...": on_save,
+            "Copy Command": on_copy,
+            "Close Window": window.close,
+            "Keys and Mouse Actions": on_help,
+        },
+    )
 
     modebuttons.buttonToggled.connect(on_time_mode)
     timeslider.valueChanged.connect(on_time)
@@ -2567,19 +1864,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[t.Any]") -> bool:
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    # the first size gives the plot 100 dpi, inside the screen
-    screen = window.screen().availableGeometry()
-    figwidth, figheight = viewer.figsize
-    plotwidth = min(round(figwidth * 100) + 24, screen.width() - sidebar.width() - 80)
-    plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
-    window.resize(plotwidth + sidebar.width() + 40, max(plotheight, 700))
-    window.show()
+    show_window(
+        window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.fig, viewer.figsize, plotarea)
+    )
     show_values()
-    if (windowhandle := window.windowHandle()) is not None:
-
-        def on_screen(_screen: QtGui.QScreen) -> None:
-            # matplotlib handles the new pixel ratio first, thus the fit waits until Qt has no other events
-            QtCore.QTimer.singleShot(0, window, fit_canvas)
-
-        windowhandle.screenChanged.connect(on_screen)
     return True

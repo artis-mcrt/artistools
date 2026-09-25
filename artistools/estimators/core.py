@@ -765,18 +765,34 @@ def scan_estimators(
             modelpath, match_modelgridindex=match_modelgridindex, match_timestep=match_timestep, verbose=verbose
         )
 
-    if match_modelgridindex is not None:
-        pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
-
-    if match_timestep is not None:
-        pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
-
+    pldflazy = select_timesteps_and_cells(pldflazy, timesteps=match_timestep, modelgridindices=match_modelgridindex)
     pldflazy = add_derived_estimator_columns(pldflazy)
 
     if join_modeldata:
         pldflazy, _ = join_cell_modeldata(estimators=pldflazy, modelpath=modelpath, verbose=verbose)
 
     return pldflazy
+
+
+def select_timesteps_and_cells(
+    estimators: pl.LazyFrame, timesteps: Sequence[int] | None, modelgridindices: Sequence[int] | None
+) -> pl.LazyFrame:
+    """Return the rows of the timesteps and the cells. None selects all the timesteps or all the cells.
+
+    polars casts a column for is_in with a list of integers, and the parquet statistics of a cast column cannot skip
+    a file. The integer bounds of is_between take the dtype of each column, thus a contiguous selection uses it.
+    """
+    for column, values in (("timestep", timesteps), ("modelgridindex", modelgridindices)):
+        if values is None:
+            continue
+        uniquevalues = sorted(set(values))
+        iscontiguous = bool(uniquevalues) and uniquevalues[-1] - uniquevalues[0] == len(uniquevalues) - 1
+        estimators = estimators.filter(
+            pl.col(column).is_between(uniquevalues[0], uniquevalues[-1])
+            if iscontiguous
+            else pl.col(column).is_in(uniquevalues)
+        )
+    return estimators
 
 
 def scan_artis_estimators(

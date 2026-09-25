@@ -20,6 +20,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools import viewertools
 from artistools.spectra import core as atspectra
 from artistools.spectra import interactive
 from artistools.spectra import plotspectra
@@ -2040,7 +2041,7 @@ def test_interactive_command_tokens() -> None:
         "--",
         "-folder",
     ]
-    basetokens = interactive.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    basetokens = viewertools.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
     assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2375,8 +2376,8 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
 def test_interactive_status_line_gives_the_error() -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
     stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
-    assert interactive.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
-    assert interactive.get_first_line("A file is missing\nThe second line") == "A file is missing"
+    assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
 
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
@@ -2483,7 +2484,7 @@ def test_interactive_typed_centre_gives_back_the_range() -> None:
     for count in (1, 2, 3, 4):
         for start in range(len(tmids) - count + 1):
             centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
-            assert interactive.get_nearest_range_start(tmids, centre, count) == start, (count, start)
+            assert viewertools.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
 def test_interactive_frompackets_box() -> None:
@@ -2548,7 +2549,7 @@ def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = interactive.make_parser()
     tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
-    rows, othertokens = interactive.split_option_rows(parser, [*tokens, "--", "rest"])
+    rows, othertokens = viewertools.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (
         ("-deltax", ("5",)),
         ("-label", ("a b", "c")),
@@ -2559,28 +2560,29 @@ def test_interactive_option_rows() -> None:
     )
     assert othertokens == ["--", "rest"]
 
-    actions = {action.option_strings[0]: action for action in interactive.get_table_actions(parser)}
+    actions = {
+        action.option_strings[0]: action
+        for action in viewertools.get_table_actions(
+            parser, interactive.CONTROLLED_DESTS | interactive.TABLE_EXCLUDED_DESTS
+        )
+    }
     # the other controls of the window set these options, and a list of times draws more than one plot
     assert (
         not {"-timedays", "-xmin", "-groupby", "-yvariable", "-plotviewingangle", "-timedayslist", "-h"}
         & actions.keys()
     )
     # no option of the table has choices now, but a new option with choices gets a list in the table
-    allactions = {
-        action.option_strings[0]: action
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        if action.option_strings
-    }
-    kinds = {flag: interactive.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    allactions = viewertools.get_actions_by_flag(parser)
+    kinds = {flag: viewertools.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
     assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
-    assert [interactive.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+    assert [viewertools.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
         "values",
         "list",
         "text",
     ]
     # an option with no default needs a value from the user before the command can give it
-    assert interactive.get_default_tokens(actions["-dpi"]) == ("250",)
-    assert interactive.get_default_tokens(actions["-title"]) is None
+    assert viewertools.get_default_tokens(actions["-dpi"]) == ("250",)
+    assert viewertools.get_default_tokens(actions["-title"]) is None
 
 
 def test_interactive_other_options_reach_the_command() -> None:
