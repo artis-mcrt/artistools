@@ -28,6 +28,7 @@ from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.rustext import sum_binned_line_opacities
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 
@@ -35,12 +36,9 @@ HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 # limits each tau_sobolev to 1
 OPACITYCOLUMNS = ("exopac", "linebinned", "linebinned_maxone")
 
-# for one block and one cell, a temporary column uses 0.8 MB, thus it stays in the processor cache
-LINESPERBLOCK = 100_000
-
-# one query calculates each opacity of each cell of a batch as a separate column, thus a large batch gives
-# each thread work. For 40.7 million lines, a cell took 0.16 s in a batch of 32 cells and 0.08 s in 256 or 512
-CELLSPERBATCH = 256
+# sum_binned_line_opacities() gives each group of 32 cells to a thread, thus a batch of 4096 cells gives each
+# core work. The sums of such a batch take 118 MB for 1200 bins
+CELLSPERBATCH = 4096
 
 
 class OpacityLines(t.NamedTuple):
@@ -53,7 +51,7 @@ class OpacityLines(t.NamedTuple):
     """The levels of all the ions, with the ionindex, the statistical weight, and the energy of each level."""
 
     dflines: pl.DataFrame
-    """The lines in the wavelength range, in the order of the bins.
+    """The lines in the wavelength range, in the order of the upper level and then the lower level.
 
     lower and upper give the row of each level in dflevels. The Sobolev optical depth of a line is
     pop_lower * sobolev_lower - pop_upper * sobolev_upper.
@@ -63,6 +61,9 @@ class OpacityLines(t.NamedTuple):
 def get_lambda_bin_edges(lambdamin: float, lambdamax: float, deltalambda: float) -> list[float]:
     """Return the edges of the wavelength bins in Angstroms."""
     numbins = int((lambdamax - lambdamin) / deltalambda)
+    if numbins < 1:
+        msg = f"The wavelength range {lambdamin:g} to {lambdamax:g} Angstroms holds no bin of width {deltalambda:g}"
+        raise ValueError(msg)
     return [lambdamin + i * deltalambda for i in range(numbins + 1)]
 
 
@@ -88,7 +89,11 @@ def get_opacity_lines(
             msg = f"The levels of {ionstr} do not have the level indices 0 to {dflevels.height - 1} in order"
             raise ValueError(msg)
 
-        levelframes.append(dflevels.select(pl.lit(len(ionstrs), dtype=pl.UInt32).alias("ionindex"), "g", "energy_ev"))
+        levelframes.append(
+            dflevels.select(
+                pl.lit(len(ionstrs), dtype=pl.UInt32).alias("ionindex"), pl.col("g").cast(pl.Float64), "energy_ev"
+            )
+        )
         lineframes.append(
             dftransitions
             .lazy()
@@ -107,7 +112,7 @@ def get_opacity_lines(
                 .col("lambda_angstroms")
                 .cut(breaks=lambda_bin_edges[1:-1])
                 .to_physical()
-                .cast(pl.Int32)
+                .cast(pl.UInt32)
                 .alias("lambda_angstroms_binindex"),
                 "lambda_angstroms",
                 lower=(pl.col("lower") + levelcount).cast(pl.UInt32),
@@ -115,6 +120,8 @@ def get_opacity_lines(
                 sobolev_lower=pl.col("B_lu") * sobolevfactor,
                 sobolev_upper=pl.col("B_ul") * sobolevfactor,
             )
+            # a null A value or a null statistical weight gives no optical depth, and the kernel reads no nulls
+            .drop_nulls(["sobolev_lower", "sobolev_upper"])
         )
         ionstrs.append(ionstr)
         levelcount += dflevels.height
@@ -126,25 +133,9 @@ def get_opacity_lines(
     return OpacityLines(
         ionstrs=ionstrs,
         dflevels=pl.concat(levelframes),
-        dflines=pl.concat(lineframes).sort("lambda_angstroms_binindex").collect(),
-    )
-
-
-def get_level_pops(opacitylines: OpacityLines, dfcells: pl.DataFrame) -> pl.DataFrame:
-    """Return the population of each level in local thermodynamic equilibrium (LTE), with one column for each cell."""
-    dfionpops = (
-        dfcells
-        .select(f"nnion_{ionstr}" for ionstr in opacitylines.ionstrs)
-        .transpose(column_names=[str(cellpos) for cellpos in range(dfcells.height)])
-        .with_columns(ionindex=pl.int_range(pl.len(), dtype=pl.UInt32))
-    )
-
-    def boltzmannfactor(te: float | None) -> pl.Expr:
-        return pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / te).exp()
-
-    return opacitylines.dflevels.join(dfionpops, on="ionindex", how="left", maintain_order="left").select(
-        (boltzmannfactor(te) / boltzmannfactor(te).sum().over("ionindex") * pl.col(str(cellpos))).alias(str(cellpos))
-        for cellpos, te in enumerate(dfcells["Te"])
+        # in this order, the kernel reads nearby rows of the level populations. For 40.7 million lines, this took
+        # 20 % less time than the order of the bins
+        dflines=pl.concat(lineframes).sort("upper", "lower").collect(),
     )
 
 
@@ -153,76 +144,46 @@ def get_expansion_opacities(
 ) -> pl.DataFrame:
     """Return the binned expansion opacity and the line-binned opacities of each cell.
 
-    Each cell has one column of level populations, and each line reads them with a gather by position.
-    Thus the query needs no join of the lines with the cells. The sum runs over blocks of lines, because
-    the temporary columns of a small block stay in the processor cache.
+    The Rust function sum_binned_line_opacities() calculates the LTE level populations and sums the lines of
+    each bin. A query in polars took 6.6 times longer, because each operation writes a full column.
     """
     numbins = len(lambda_bin_edges) - 1
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     time_s = time_days * day_to_s
-    lambdaexpr = pl.col("lambda_angstroms")
+    nnioncolumns = [f"nnion_{ionstr}" for ionstr in opacitylines.ionstrs]
 
-    sumexprs: list[pl.Expr] = []
-    for cellpos, levelpops in enumerate(get_level_pops(opacitylines, dfcells).iter_columns()):
-        tau_sobolev = pl.lit(levelpops).gather(pl.col("lower")) * pl.col("sobolev_lower") - pl.lit(levelpops).gather(
-            pl.col("upper")
-        ) * pl.col("sobolev_upper")
-        sumexprs += [
-            ((1 - (-tau_sobolev).exp()) * lambdaexpr).alias(f"exopac_{cellpos}"),
-            (tau_sobolev * lambdaexpr).alias(f"linebinned_{cellpos}"),
-            (tau_sobolev.clip(upper_bound=1.0) * lambdaexpr).alias(f"linebinned_maxone_{cellpos}"),
-        ]
-
-    blocksums = [
-        opacitylines.dflines
-        .slice(firstline, LINESPERBLOCK)
-        .lazy()
-        .select("lambda_angstroms_binindex", *sumexprs)
-        .group_by("lambda_angstroms_binindex")
-        .agg(pl.all().sum())
-        .collect()
-        for firstline in range(0, opacitylines.dflines.height, LINESPERBLOCK)
-    ]
-
-    # a bin with no lines has a sum of zero
-    dfbinsums = (
-        pl
-        .DataFrame({"lambda_angstroms_binindex": range(numbins)}, schema={"lambda_angstroms_binindex": pl.Int32})
-        .join(
-            pl.concat(blocksums).group_by("lambda_angstroms_binindex").agg(pl.all().sum()),
-            on="lambda_angstroms_binindex",
-            how="left",
-            maintain_order="left",
-        )
-        .with_columns(pl.exclude("lambda_angstroms_binindex").fill_null(0.0))
+    dfsums = sum_binned_line_opacities(
+        opacitylines.dflevels,
+        opacitylines.dflines,
+        dfcells.select(
+            # the kernel skips an ion with no population, thus it does not use the temperature 0 of such a cell
+            pl.col("Te").cast(pl.Float64).fill_null(0.0),
+            # a null population or a null temperature gives no opacity
+            *(
+                pl.when(pl.col("Te").is_not_null()).then(pl.col(column).cast(pl.Float64)).fill_null(0.0).alias(column)
+                for column in nnioncolumns
+            ),
+        ),
+        nnioncolumns,
+        numbins,
+        K_B_ev_per_K,
     )
-
-    # the columns of one quantity are [bin][cell], thus the flat order of the transpose is [cell][bin]
-    opacitysums = {
-        column: dfbinsums.select(f"{column}_{cellpos}" for cellpos in range(dfcells.height)).to_numpy().ravel(order="F")
-        for column in OPACITYCOLUMNS
-    }
 
     return (
         dfcells
         .select("modelgridindex", "Te", "mass_g", "rho")
-        .join(dfbinsums.select("lambda_angstroms_binindex"), how="cross", maintain_order="left_right")
+        .join(pl.DataFrame({"lambda_angstroms_binindex": range(numbins)}), how="cross", maintain_order="left_right")
         .with_columns(
             lambda_angstroms_bin_mid=lambda_bin_edges[0]
             + pl.col("lambda_angstroms_binindex") * deltalambda
             + deltalambda / 2,
             **{
-                column: pl.Series(values) / deltalambda / (C_cm_per_s * time_s * pl.col("rho"))
-                for column, values in opacitysums.items()
+                column: dfsums[column] / deltalambda / (C_cm_per_s * time_s * pl.col("rho"))
+                for column in OPACITYCOLUMNS
             },
         )
         .select(
-            "modelgridindex",
-            pl.col("lambda_angstroms_binindex").cast(pl.Int64),
-            "lambda_angstroms_bin_mid",
-            "Te",
-            "mass_g",
-            *OPACITYCOLUMNS,
+            "modelgridindex", "lambda_angstroms_binindex", "lambda_angstroms_bin_mid", "Te", "mass_g", *OPACITYCOLUMNS
         )
     )
 

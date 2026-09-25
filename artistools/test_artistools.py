@@ -1277,7 +1277,7 @@ def test_ejectaopacity() -> None:
 
 
 def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
-    """The query with a gather for each cell gives the values of the earlier query.
+    """The Rust kernel gives the values of the earlier polars query.
 
     The earlier query joined each cell with each line, and the reference sums come from it. Only the order
     of the additions is different, thus the values agree within the rounding error.
@@ -1299,6 +1299,89 @@ def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
         "linebinned_maxone": 1652.4668052744682,
     }.items():
         assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
+
+
+def test_expansion_opacities_of_a_null_population_are_zero() -> None:
+    """A null population of an ion gives no opacity from that ion, and a null temperature gives no opacity.
+
+    The kernel reads contiguous columns with no nulls, thus get_expansion_opacities() must replace each null.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+    ionstr = opacitylines.ionstrs[0]
+
+    def get_opacities(dfcells: pl.DataFrame) -> pl.DataFrame:
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
+            at.ejectaopacity.OPACITYCOLUMNS
+        )
+
+    pltest.assert_frame_equal(
+        get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+        get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+    )
+    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("Te")))
+    assert dfnotemperature.select(pl.all().abs().max()).row(0) == (0.0, 0.0, 0.0)
+
+
+def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
+    """A temperature of zero gives NaN level populations, and each of the three sums must then be NaN.
+
+    f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite linebinned_maxone
+    and a finite exopac for such a cell.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None).with_columns(
+        pl.lit(0.0, dtype=pl.Float32).alias("Te")
+    )
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    isnan = dfopacities.select(pl.col(at.ejectaopacity.OPACITYCOLUMNS).is_nan())
+    assert isnan["linebinned"].any()
+    for column in at.ejectaopacity.OPACITYCOLUMNS:
+        assert isnan[column].equals(isnan["linebinned"]), column
+
+
+def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
+    """A line with a null A value adds nothing, as a line that the atomic data does not hold.
+
+    The kernel reads columns with no nulls, thus a null constant stopped the sum with an error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    isfirstline = pl.int_range(pl.len()) == 0
+
+    def get_opacities(transitions: list[pl.LazyFrame]) -> pl.DataFrame:
+        adatachanged = adata.with_columns(pl.Series("transitions", transitions, dtype=pl.Object))
+        opacitylines = at.ejectaopacity.get_opacity_lines(adatachanged, dfcell.columns, lambda_bin_edges, time_days)
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    dfnullconstant = get_opacities([
+        dftransitions.lazy().with_columns(A=pl.when(~isfirstline).then(pl.col("A")))
+        for dftransitions in adata["transitions"]
+    ])
+    dfnoline = get_opacities([dftransitions.lazy().filter(~isfirstline) for dftransitions in adata["transitions"]])
+
+    pltest.assert_frame_equal(dfnullconstant, dfnoline)
+
+
+def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
+    """A range with no bin stops with a message, not with an IndexError in get_expansion_opacities()."""
+    with pytest.raises(ValueError, match="holds no bin"):
+        at.ejectaopacity.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
 
 
 def test_plotopacity_weights_the_cells_by_mass() -> None:

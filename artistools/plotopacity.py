@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from artistools.ejectaopacity import CELLSPERBATCH
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
 from artistools.ejectaopacity import get_expansion_opacities
@@ -65,6 +64,7 @@ def get_massweighted_opacities(
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
 
     batchsums = []
+    cellsdone = 0
     time_start = time.perf_counter()
     for dfcellbatch in get_cell_batches(dfestimators):
         batchsums.append(
@@ -72,7 +72,7 @@ def get_massweighted_opacities(
             .group_by("lambda_angstroms_binindex", "lambda_angstroms_bin_mid")
             .agg((pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum())
         )
-        cellsdone = min(len(batchsums) * CELLSPERBATCH, dfestimators.height)
+        cellsdone += dfcellbatch.height
         secondspercell = (time.perf_counter() - time_start) / cellsdone
         print(
             f"  {cellsdone} of {dfestimators.height} cells,"
