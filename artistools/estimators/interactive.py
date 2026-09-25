@@ -15,7 +15,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
-from artistools.estimators.core import get_estimator_batch_caches
+from artistools.estimators.core import convert_estimator_batch_caches
+from artistools.estimators.core import get_estimator_batch_states
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
@@ -232,6 +233,20 @@ def get_single_cell(cells: str) -> int | None:
     return int(cells) if cells.isascii() and cells.isdecimal() else None
 
 
+def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
+    """Return the current parquet caches of the batches of the run, and convert the stale batches first.
+
+    A large run has more than 10 GB of estimators. The conversion of 40 batches of a 3D kilonova run kept 5.2 GB of
+    freed memory in the viewer process. A child process gives that memory back to the system when it ends. The
+    child process imports artistools again, which took 0.4 s, thus a run with no stale batch converts in this process.
+    """
+    states = get_estimator_batch_states(modelpath, None, None)
+    convert = partial(convert_estimator_batch_caches, verbose=False)
+    if any(state.rebuild for state in states):
+        return call_in_child_process(convert, modelpath, states)
+    return convert(modelpath, states)
+
+
 def get_plot_frames(fig: mplfig.Figure) -> "list[mplax.Axes]":
     """Return the frames of the plot, which are the visible axes that are not a colour bar."""
     return [axis for axis in fig.axes if axis.get_visible() and axis.get_label() != COLORBAR_LABEL]
@@ -267,15 +282,9 @@ class EstimatorViewer:
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
         # the viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches
-        # of its own timesteps and cells, as the command does. A large run has more than 10 GB of estimators. The
-        # conversion of 40 batches of a 3D kilonova run kept 5.2 GB of freed memory in the viewer process. A child
-        # process gives that memory back to the system when it ends
+        # of its own timesteps and cells, as the command does
         isartisrun = not args.classicartis and not path_is_codecomparison(self.modelpath)
-        self.batchcaches: list[EstimatorBatchCache] | None = (
-            call_in_child_process(partial(get_estimator_batch_caches, verbose=False), self.modelpath, None, None)
-            if isartisrun
-            else None
-        )
+        self.batchcaches: list[EstimatorBatchCache] | None = get_batch_caches(self.modelpath) if isartisrun else None
         estimators, modelmeta = join_cell_modeldata(
             estimators=scan_estimators(
                 modelpath=self.modelpath, classicartis=args.classicartis, batchcaches=self.batchcaches
@@ -513,6 +522,9 @@ class EstimatorViewer:
         """
         # the figure, whether it is a colour image, and the scale of the x limits
         plots: list[tuple[mplfig.Figure, bool, float]] = []
+        # the canvas of the window draws at this resolution. A draw at the same resolution in the worker thread
+        # makes the ticks and the text of the figure, and the draw of the window then took 0.05 s in place of 0.22 s
+        dpi = float(self.fig.dpi)
 
         def make_plot() -> None:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
@@ -526,6 +538,8 @@ class EstimatorViewer:
             if not isimage:
                 make_room_for_title(fig)
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
+            fig.set_dpi(dpi)
+            fig.canvas.draw()
             plots.append((fig, isimage, xlimitscale))
 
         message = run_command_step(make_plot, quiet=quiet)

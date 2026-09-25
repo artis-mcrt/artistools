@@ -3361,3 +3361,20 @@ def test_interactive_readout_names_each_series() -> None:
 
     assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
     assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None
+
+
+def test_interactive_converts_stale_batches_in_a_child_process() -> None:
+    """A run with no stale batch reads its caches in the viewer process, and a stale batch converts in a child."""
+    at.estimators.scan_estimators(modelpath).head(1).collect()
+    with mock.patch.object(interactive, "call_in_child_process") as mockchild:
+        assert interactive.get_batch_caches(modelpath)
+    mockchild.assert_not_called()
+
+    states = interactive.get_estimator_batch_states(modelpath, None, None)
+    stalestates = [states[0]._replace(rebuild=True), *states[1:]]
+    with (
+        mock.patch.object(interactive, "get_estimator_batch_states", return_value=stalestates),
+        mock.patch.object(interactive, "call_in_child_process", return_value=[]) as mockchild,
+    ):
+        assert interactive.get_batch_caches(modelpath) == []
+    mockchild.assert_called_once()

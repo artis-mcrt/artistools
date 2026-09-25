@@ -834,12 +834,27 @@ class EstimatorBatchCache(t.NamedTuple):
     parquetfile: Path
 
 
-def get_estimator_batch_caches(
-    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
-) -> list[EstimatorBatchCache]:
-    """Return the parquet cache of each batch of MPI ranks that holds the timesteps and the cells.
+class EstimatorBatchState(t.NamedTuple):
+    """The freshness of the parquet cache of one batch of MPI ranks in one run folder."""
 
-    Convert the estimator text files of each batch that has no current cache. A run with no run folders has no caches.
+    runfolder: Path
+    batchindex: int
+    mpiranks: tuple[int, ...]
+    textsource_mtime: float | None
+    textsource_complete: bool
+    stalereason: str | None
+    outdatedparquet: tuple[int, int] | None
+    rebuild: bool
+
+
+def get_estimator_batch_states(
+    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None
+) -> list[EstimatorBatchState]:
+    """Return the state of the cache of each batch of MPI ranks that holds the timesteps and the cells.
+
+    The state says whether a conversion of the text files must replace the cache. A run with no run folders has no
+    batches. The check reads the metadata of each cache and the modification times of the text files, thus it takes
+    a small part of a second, and a caller can run the conversion elsewhere, e.g. in a child process.
     """
     mpiranklist = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
     mpiranks_matched = set(
@@ -847,7 +862,7 @@ def get_estimator_batch_caches(
         get_mpiranklist(modelpath, modelgridindex=match_modelgridindex or None, only_ranks_withgridcells=True)
     )
     mpirank_groups = [
-        (batchindex, mpiranks)
+        (batchindex, tuple(mpiranks))
         for batchindex, mpiranks in enumerate(batched(mpiranklist, 100, strict=False))
         if mpiranks_matched.intersection(mpiranks)
     ]
@@ -856,70 +871,80 @@ def get_estimator_batch_caches(
     if not runfolders:
         return []
 
-    pairs = [(runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups]
-
     # one glob of each folder gives the text file mtimes of every batch, because a glob of a folder
     # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
     # its freshness to the progress bar and to the conversion
     mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
-    batchstates = [
-        get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
-        for runfolder, _batchindex, mpiranks in pairs
-    ]
-    batchmtimes = [mtime for mtime, _complete in batchstates]
-    batchcomplete = [complete for _mtime, complete in batchstates]
-    cachepaths = [
-        get_rankbatch_parquetpath(runfolder, mpiranks, batchindex) for runfolder, batchindex, mpiranks in pairs
-    ]
-    # each identity comes from before the freshness check of its own file. A fresh cache that a rival
-    # process installs after that check then keeps its place, because a rewrite replaces only the
-    # file that the check saw
-    outdatedparquets = [get_file_identity(cachepath) for cachepath in cachepaths]
-    stalereasons = [
-        rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
-        for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
-    ]
-    # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
-    rebuilds = [
-        reason is not None and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete)
-        for reason, cachepath, complete in zip(stalereasons, cachepaths, batchcomplete, strict=True)
-    ]
+    states: list[EstimatorBatchState] = []
+    for runfolder in runfolders:
+        for batchindex, mpiranks in mpirank_groups:
+            mtime, complete = get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
+            cachepath = get_rankbatch_parquetpath(runfolder, mpiranks, batchindex)
+            # the identity comes from before the freshness check of its own file. A fresh cache that a rival
+            # process installs after that check then keeps its place, because a rewrite replaces only the
+            # file that the check saw
+            outdatedparquet = get_file_identity(cachepath)
+            stalereason = rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
+            states.append(
+                EstimatorBatchState(
+                    runfolder=runfolder,
+                    batchindex=batchindex,
+                    mpiranks=mpiranks,
+                    textsource_mtime=mtime,
+                    textsource_complete=complete,
+                    stalereason=stalereason,
+                    outdatedparquet=outdatedparquet,
+                    # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
+                    rebuild=stalereason is not None
+                    and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete),
+                )
+            )
 
+    return states
+
+
+def convert_estimator_batch_caches(
+    modelpath: Path, states: Sequence[EstimatorBatchState], verbose: bool
+) -> list[EstimatorBatchCache]:
+    """Return the parquet cache of each batch in states, and convert the text files of each stale batch."""
     # a progress bar is useful only when a batch converts text files, which takes minutes. The scan of a current
     # parquet cache is lazy and reads no text, thus a progress bar shows no progress
-    batches: Iterable[
-        tuple[tuple[Path, int, Sequence[int]], float | None, bool, str | None, tuple[int, int] | None]
-    ] = list(zip(pairs, batchmtimes, batchcomplete, stalereasons, outdatedparquets, strict=True))
-    if any(rebuilds) and len(pairs) > 1:
+    batches: Iterable[EstimatorBatchState] = states
+    if len(states) > 1 and any(state.rebuild for state in states):
         from artistools.misc.general import get_progress_class
 
-        batches = get_progress_class()(batches, desc="Converting estimator files", unit="batch")
-
-    parquetfiles = [
-        get_estimators_rankbatch_parquetfile(
-            modelpath=modelpath,
-            folderpath=runfolder,
-            batch_mpiranks=mpiranks,
-            batchindex=batchindex,
-            textsource_mtime=textsource_mtime,
-            textsource_complete=textsource_complete,
-            stalereason=stalereason,
-            outdatedparquet=outdatedparquet,
-            verbose=verbose,
-        )
-        for (
-            (runfolder, batchindex, mpiranks),
-            textsource_mtime,
-            textsource_complete,
-            stalereason,
-            outdatedparquet,
-        ) in batches
-    ]
+        batches = get_progress_class()(states, desc="Converting estimator files", unit="batch")
 
     return [
-        EstimatorBatchCache(runfolder=runfolder, mpiranks=tuple(mpiranks), parquetfile=parquetfile)
-        for (runfolder, _batchindex, mpiranks), parquetfile in zip(pairs, parquetfiles, strict=True)
+        EstimatorBatchCache(
+            runfolder=state.runfolder,
+            mpiranks=state.mpiranks,
+            parquetfile=get_estimators_rankbatch_parquetfile(
+                modelpath=modelpath,
+                folderpath=state.runfolder,
+                batch_mpiranks=state.mpiranks,
+                batchindex=state.batchindex,
+                textsource_mtime=state.textsource_mtime,
+                textsource_complete=state.textsource_complete,
+                stalereason=state.stalereason,
+                outdatedparquet=state.outdatedparquet,
+                verbose=verbose,
+            ),
+        )
+        for state in batches
     ]
+
+
+def get_estimator_batch_caches(
+    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
+) -> list[EstimatorBatchCache]:
+    """Return the parquet cache of each batch of MPI ranks that holds the timesteps and the cells.
+
+    Convert the estimator text files of each batch that has no current cache. A run with no run folders has no caches.
+    """
+    return convert_estimator_batch_caches(
+        modelpath, get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep), verbose
+    )
 
 
 def select_estimator_batch_caches(
