@@ -52,13 +52,14 @@ from artistools.spectra import parse_velocity_argument
 # the width of a bin in Angstroms for a run with no rpkt.h. ARTIS used this width in 2026
 DEFAULT_DELTALAMBDA: t.Final = 20.0
 
-# where two opacities are equal, their lines are at the same place. Each line is thinner than the
-# line below it, thus each colour stays visible
 OPACITYSERIES = (
-    ("exopac", "Expansion opacity", 2.4),
-    ("linebinned_maxone", r"Line-binned, $\tau_\mathrm{S}$ capped at 1", 1.4),
-    ("linebinned", "Line-binned", 0.6),
+    ("exopac", "Expansion opacity"),
+    ("linebinned_maxone", r"Line-binned, $\tau_\mathrm{S}$ capped at 1"),
+    ("linebinned", "Line-binned"),
 )
+# where two opacities are equal, their lines are at the same place. A line that lets the line below it show through
+# keeps each colour visible, and the overlap of two lines has the mixed colour
+OPACITYLINE_ALPHA: t.Final = 0.6
 
 
 def get_massweighted_opacities(
@@ -184,12 +185,12 @@ def plot_opacities(
     binbreaks = np.full(dfopacities.height, np.nan)
     xvalues = np.column_stack([dfopacities["lambda_angstroms_lower"], dfopacities["lambda_angstroms_upper"], binbreaks])
     colors = []
-    for column, label, linewidth in OPACITYSERIES:
+    for column, label in OPACITYSERIES:
         opacities = dfopacities[column].to_numpy()
         (binlines,) = ax.plot(
             xvalues.ravel(),
             np.column_stack([opacities, opacities, binbreaks]).ravel(),
-            linewidth=linewidth,
+            alpha=OPACITYLINE_ALPHA,
             # a butt cap ends the line at the edge of the bin
             solid_capstyle="butt",
             # the legend shows the moving average when there is one, because a short bin is hard to see there
@@ -198,11 +199,11 @@ def plot_opacities(
         colors.append(binlines.get_color())
 
     if dfmovingaverages is not None:
-        for (column, label, linewidth), color in zip(OPACITYSERIES, colors, strict=True):
+        for (column, label), color in zip(OPACITYSERIES, colors, strict=True):
             ax.plot(
                 dfmovingaverages["lambda_angstroms_bin_mid"],
                 dfmovingaverages[column],
-                linewidth=linewidth,
+                alpha=OPACITYLINE_ALPHA,
                 color=color,
                 label=label,
             )
