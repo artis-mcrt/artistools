@@ -18,6 +18,7 @@ import time
 import traceback
 import typing as t
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -195,27 +196,18 @@ def send_output(stdout: t.TextIO | None, stderr: t.TextIO) -> "Generator[None]":
                 stream.local.target = oldtarget
 
 
-class StepOutcome(t.NamedTuple):
-    """The result of a step of a command: its message, its standard output, and its standard error."""
-
-    # the message of the step, or the first line of its error. None when the step succeeded with no message
-    message: str | None
-    output: str
-    # the warnings of the step, and its error
-    errors: str
-
-
-def run_command_step_outcome(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> StepOutcome:
-    """Run a step of a command, and return its message or the first line of its error, with its output.
+def run_command_step_with_warning(
+    step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True
+) -> tuple[str | None, str]:
+    """Run a step of a command, and return its message or the first line of its error, and its last warning.
 
     Each plot prints the same lines again, thus a quiet step discards the standard output. With echo, the terminal
     shows the whole error. A window stays open after a failed step, thus each type of error gives a message.
     """
-    output = io.StringIO()
     errors = io.StringIO()
     message: str | None
     try:
-        with send_output(output if quiet else None, errors):
+        with send_output(io.StringIO() if quiet else None, errors):
             message = step()
     except SystemExit:
         # exit_with_error and argparse print a line that starts with "error: " before they raise SystemExit
@@ -230,12 +222,13 @@ def run_command_step_outcome(step: "Callable[[], str | None]", *, quiet: bool = 
     finally:
         if echo:
             sys.stderr.write(errors.getvalue())
-    return StepOutcome(message=message, output=output.getvalue(), errors=errors.getvalue())
+    return message, get_last_warning(errors.getvalue())
 
 
 def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
     """Run a step of a command, and return its message or the first line of its error for the status line."""
-    return run_command_step_outcome(step, quiet=quiet, echo=echo).message
+    message, _ = run_command_step_with_warning(step, quiet=quiet, echo=echo)
+    return message
 
 
 def get_last_warning(errors: str) -> str:
@@ -725,19 +718,26 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
 
         def __init__(self, applicationname: str) -> None:
             super().__init__()
-            self.applicationname = applicationname
+            # the name of the object gives the keys of the settings of the window
+            self.setObjectName(applicationname)
             self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
 
         @t.override
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+            geometrykey, splitterkey = get_window_setting_keys(self)
             settings = get_settings()
-            settings.setValue(f"{self.applicationname}/geometry", self.saveGeometry())
+            settings.setValue(geometrykey, self.saveGeometry())
             splitter = self.centralWidget()
             if isinstance(splitter, QtWidgets.QSplitter):
-                settings.setValue(f"{self.applicationname}/splitter", splitter.saveState())
+                settings.setValue(splitterkey, splitter.saveState())
             super().closeEvent(event)
 
     return ViewerWindow(applicationname)
+
+
+def get_window_setting_keys(window: "QtWidgets.QMainWindow") -> tuple[str, str]:
+    """Return the keys of the settings of the geometry and of the splitter of the window of a viewer."""
+    return f"{window.objectName()}/geometry", f"{window.objectName()}/splitter"
 
 
 def make_central_splitter(
@@ -754,12 +754,25 @@ def make_central_splitter(
     splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
     splitter.addWidget(plotarea)
     splitter.addWidget(sidebar)
+    # the sidebar keeps its width and a drag to the edge hides it, which are the defaults of Qt for the sidebar
     splitter.setStretchFactor(0, 1)
-    splitter.setStretchFactor(1, 0)
     splitter.setCollapsible(0, False)  # ruff:ignore[boolean-positional-value-in-call]
-    splitter.setCollapsible(1, True)  # ruff:ignore[boolean-positional-value-in-call]
     window.setCentralWidget(splitter)
     return splitter
+
+
+@contextlib.contextmanager
+def show_wait_cursor() -> "Generator[None]":
+    """Show the wait cursor until the block ends, e.g. while a step that can take seconds runs in the window thread."""
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+    try:
+        yield
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
 
 
 def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]":
@@ -805,7 +818,12 @@ def make_slider() -> "QtWidgets.QSlider":
 
 def make_range_slider(
     steps: int,
-) -> "tuple[QtWidgets.QWidget, Callable[[int, int], None], Callable[[Callable[[int, int], None]], None], Callable[[int], None]]":
+) -> tuple[
+    "QtWidgets.QWidget",
+    "Callable[[int, int], None]",
+    "Callable[[Callable[[int, int], None]], None]",
+    "Callable[[int], None]",
+]:
     """Return a slider with two handles for a range of the positions 0 to steps, and three functions of the slider.
 
     The first function moves the handles. The second function connects a handler, which receives the index of the
@@ -1185,12 +1203,23 @@ def add_command_section(
     # the command text takes the width, and the Copy button keeps its size at the right
     commandgrid.setColumnStretch(0, 1)
     commandgrid.setColumnStretch(1, 0)
-    commandtext = QtWidgets.QPlainTextEdit()
+
+    # the instance of the box holds no reference to the window. PySide keeps each class, thus the class must hold none
+    class CommandBox(QtWidgets.QPlainTextEdit):
+        """The box of the command, which fits its height to the wrapped lines when its width changes."""
+
+        @t.override
+        def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+            super().resizeEvent(event)
+            if event.size().width() != event.oldSize().width():
+                fit_command_box(self)
+
+    commandtext = CommandBox()
     commandtext.setReadOnly(True)
     commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    set_command_text(commandtext, "")
+    fit_command_box(commandtext)
     copybutton = QtWidgets.QPushButton("Copy")
-    copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
+    copybutton.setToolTip(f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})")
     commandgrid.addWidget(commandtext, 0, 0)
     commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
     return commandtext, copybutton
@@ -1202,16 +1231,27 @@ MAX_COMMAND_LINES: t.Final = 8
 
 
 def set_command_text(commandtext: "QtWidgets.QPlainTextEdit", command: str) -> None:
-    """Show the command in its box, and give the box the height of the lines of the command.
+    """Show the command in its box, and give the box the height of the lines of the command."""
+    if commandtext.toPlainText() != command:
+        commandtext.setPlainText(command)
+        fit_command_box(commandtext)
 
-    The box wraps a long command, thus the number of lines comes from the width of the text and of the box. A wrap
-    at a word can take one line more than this estimate, and the box then scrolls by that line.
+
+def fit_command_box(commandtext: "QtWidgets.QPlainTextEdit") -> None:
+    """Give the command box the height of the wrapped lines of its text, and keep that height inside the limits.
+
+    The layout of the document gives the wrapped lines at the width of the box. The rectangle of each block is a few
+    pixels taller than its lines, and the box needs those pixels, else it scrolls.
     """
-    commandtext.setPlainText(command)
-    metrics = commandtext.fontMetrics()
-    boxwidth = max(commandtext.viewport().width(), 1)
-    lines = sum(max(1, math.ceil(metrics.horizontalAdvance(line) / boxwidth)) for line in command.splitlines() or [""])
-    commandtext.setFixedHeight(min(max(lines, MIN_COMMAND_LINES), MAX_COMMAND_LINES) * metrics.lineSpacing() + 12)
+    document = commandtext.document()
+    layout = document.documentLayout()
+    textlines = math.ceil(layout.documentSize().height())
+    textheight = sum(
+        layout.blockBoundingRect(document.findBlockByNumber(i)).height() for i in range(document.blockCount())
+    )
+    shownlines = min(max(textlines, MIN_COMMAND_LINES), MAX_COMMAND_LINES)
+    boxheight = textheight + (shownlines - textlines) * commandtext.fontMetrics().lineSpacing()
+    commandtext.setFixedHeight(math.ceil(boxheight + 2 * document.documentMargin() + 2 * commandtext.frameWidth()))
 
 
 def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float) -> None:
@@ -1277,6 +1317,37 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
     ]
 
 
+# the help text of each menu item in the table of the keys
+MENU_HELPTEXTS: t.Final = MappingProxyType({
+    "Save Figure...": "Run the command to save the figure",
+    "Copy Command": "Copy the command",
+    "Open Model...": "Open a model in a new window",
+    "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
+})
+
+
+def get_keyboard_help(keyrows: "Sequence[tuple[str, str]]", menuitems: "Collection[str]") -> str:
+    """Return the table of the keys and the mouse actions of a viewer, with the shortcuts of the platform.
+
+    keyrows gives the keys or the mouse action, and its help text, of each row of the viewer as HTML. menuitems gives
+    the texts of the menu items of the viewer, as add_menus receives them, and the table gives the shortcut of each.
+    """
+    shortcuts = get_menu_shortcut_texts()
+    rows = [
+        *keyrows,
+        *((f"<b>{shortcuts[text]}</b>", helptext) for text, helptext in MENU_HELPTEXTS.items() if text in menuitems),
+        (f"<b>{shortcuts['Keys and Mouse Actions']}</b>", "Show this list"),
+    ]
+    return (
+        "<table>\n" + "".join(f"<tr><td>{keys}</td><td>{helptext}</td></tr>\n" for keys, helptext in rows) + "</table>"
+    )
+
+
+def get_short_number(value: float) -> str:
+    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
+    return format(float(f"{value:.3g}"), ".10g")
+
+
 def get_menu_shortcut_texts() -> dict[str, str]:
     """Return the shortcut of each menu item by its text, in the form of the platform, e.g. ⌘S or Ctrl+S."""
     from PySide6 import QtGui
@@ -1316,8 +1387,6 @@ def save_figure_of_command(
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
     name with no suffix as a folder, thus the name takes the suffix of the selected type.
     """
-    from PySide6 import QtCore
-    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     filename, selectedfilter = QtWidgets.QFileDialog.getSaveFileName(
@@ -1334,11 +1403,8 @@ def save_figure_of_command(
         commandmain(argsraw=[*plottokens, "-o", filename])
         return None
 
-    QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-    try:
+    with show_wait_cursor():
         message = run_command_step(save)
-    finally:
-        QtWidgets.QApplication.restoreOverrideCursor()
     if message is not None:
         return f"The command did not save the figure: {message}"
     if not Path(filename).is_file():
@@ -1460,21 +1526,16 @@ class DrawQueue[ValuesT]:
 
     def apply(self, values: ValuesT) -> None:
         """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot."""
-        from PySide6 import QtCore
-
         if values == self.viewer.values:
             # a handler that clamps a control to the old values must still move the control back
             self.show_values()
             return
-        if self.requestedvalues is None:
-            QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
-        self.requestedvalues = values
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
-        self.show_values()
+        self.redraw()
 
     def redraw(self) -> None:
-        """Draw the plot of the current values again, e.g. after the data of the run changed."""
+        """Show the values of the viewer, and draw them when Qt has no other events, e.g. after new data of the run."""
         from PySide6 import QtCore
 
         if self.requestedvalues is None:
@@ -1521,12 +1582,7 @@ class DrawQueue[ValuesT]:
         # newer values of the user stay, and the next plot draws them
         if self.requestedvalues is None:
             self.viewer.values = self.drawnvalues
-        drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.plotseconds = time.perf_counter() - self.renderstart
-        self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
-        self.statusbar.readout.setText("")
-        show_status_message(self.statusbar, message, self.viewer.warning)
-        self.show_values()
+        self.show_plot_status(message, self.renderstart)
         self.after_draw(message)
         if self.requestedvalues is not None:
             self.start_render()
@@ -1534,21 +1590,24 @@ class DrawQueue[ValuesT]:
     def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
         """Draw the plot of the values with change, and return the message of a rejection."""
         from PySide6 import QtCore
-        from PySide6 import QtGui
         from PySide6 import QtWidgets
 
         # a plot can take seconds, thus the cursor and the status bar show the wait
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        self.statusbar.drawtime.setText("Plot in progress...")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        starttime = time.perf_counter()
-        # change() keeps the values of the last plot when the command rejects the new values
-        self.viewer.values = self.drawnvalues
-        try:
-            message = change(values)
-        finally:
-            self.drawnvalues = self.viewer.values
-            QtWidgets.QApplication.restoreOverrideCursor()
+        with show_wait_cursor():
+            self.statusbar.drawtime.setText("Plot in progress...")
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            starttime = time.perf_counter()
+            # change() keeps the values of the last plot when the command rejects the new values
+            self.viewer.values = self.drawnvalues
+            try:
+                message = change(values)
+            finally:
+                self.drawnvalues = self.viewer.values
+        self.show_plot_status(message, starttime)
+        return message
+
+    def show_plot_status(self, message: str | None, starttime: float) -> None:
+        """Show the time of the plot that started at starttime, its message or its warning, and the values."""
         drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
         self.plotseconds = time.perf_counter() - starttime
         self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
@@ -1556,7 +1615,6 @@ class DrawQueue[ValuesT]:
         self.statusbar.readout.setText("")
         show_status_message(self.statusbar, message, self.viewer.warning)
         self.show_values()
-        return message
 
 
 def set_edit_text(edit: "QtWidgets.QLineEdit", text: str) -> None:
@@ -1694,23 +1752,22 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     return parts
 
 
-def show_window(
-    window: "QtWidgets.QMainWindow",
-    splitter: "QtWidgets.QSplitter",
-    figsize: tuple[float, float],
-    applicationname: str,
-    on_screen: "Callable[[], None]",
-) -> None:
+def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], on_screen: "Callable[[], None]") -> None:
     """Give the window the size of the last window of the viewer, or a first size, and show it.
 
-    on_screen runs after the window moves to a different screen.
+    make_window and make_central_splitter give the window. on_screen runs after the window moves to a different
+    screen.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
+    from PySide6 import QtWidgets
 
+    splitter = window.centralWidget()
+    assert isinstance(splitter, QtWidgets.QSplitter)
+    geometrykey, splitterkey = get_window_setting_keys(window)
     settings = get_settings()
-    geometry = settings.value(f"{applicationname}/geometry")
-    splitterstate = settings.value(f"{applicationname}/splitter")
+    geometry = settings.value(geometrykey)
+    splitterstate = settings.value(splitterkey)
     if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
         if isinstance(splitterstate, QtCore.QByteArray):
             splitter.restoreState(splitterstate)

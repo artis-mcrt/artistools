@@ -50,13 +50,13 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
-from artistools.viewertools import get_last_warning
+from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
-from artistools.viewertools import get_menu_shortcut_texts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
@@ -72,7 +72,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
-from artistools.viewertools import run_command_step_outcome
+from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
@@ -706,9 +706,8 @@ class SpectrumViewer:
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        outcome = run_command_step_outcome(lambda: self.draw_command(preview=preview), quiet=quiet)
-        self.warning = get_last_warning(outcome.errors)
-        return outcome.message
+        message, self.warning = run_command_step_with_warning(lambda: self.draw_command(preview=preview), quiet=quiet)
+        return message
 
     def draw_command(self, *, preview: bool = False) -> str | None:
         """Parse the command and draw its plot, or return a message if the plot differs from the values.
@@ -838,21 +837,15 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
     return 0.72 - 0.45 * np.exp(-(((xvalues - 0.42) / 0.06) ** 2)) - 0.25 * np.exp(-(((xvalues - 0.65) / 0.09) ** 2))
 
 
-def get_keyboard_help() -> str:
-    """Return the table of the keys and the mouse actions of the window, with the shortcuts of the platform."""
-    shortcuts = get_menu_shortcut_texts()
-    return f"""<table>
-<tr><td><b>Left</b>, <b>Right</b></td><td>Move the time to the adjacent timestep</td></tr>
-<tr><td><b>Up</b>, <b>Down</b></td><td>Make the time range one timestep wider or narrower</td></tr>
-<tr><td><b>Home</b>, <b>End</b></td><td>Move the time to the first or the last valid timestep</td></tr>
-<tr><td><b>Space</b></td><td>Play or pause</td></tr>
-<tr><td><b>Drag</b> across the plot</td><td>Select the x range</td></tr>
-<tr><td><b>Double-click</b> the plot</td><td>Get the default x range</td></tr>
-<tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Save the figure with the command</td></tr>
-<tr><td><b>{shortcuts["Copy Command"]}</b></td><td>Copy the command</td></tr>
-<tr><td><b>{shortcuts["Open Model..."]}</b></td><td>Open a model in a new window</td></tr>
-<tr><td><b>?</b></td><td>Show this list</td></tr>
-</table>"""
+# the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
+KEYBOARD_HELP_ROWS: t.Final = (
+    ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
+    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
+    ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
+    ("<b>Space</b>", "Play or pause"),
+    ("<b>Drag</b> across the plot", "Select the x range"),
+    ("<b>Double-click</b> the plot", "Get the default x range"),
+)
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
@@ -895,7 +888,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     plotarea = make_plot_area(canvas, on_resize)
     sidebar, panellayout = make_sidebar()
-    splitter = make_central_splitter(window, plotarea, sidebar)
+    make_central_splitter(window, plotarea, sidebar)
 
     # each continuous slider maps its position from 0 to SLIDER_STEPS onto the range of its value
     def to_position(value: float, low: float, high: float) -> int:
@@ -1485,7 +1478,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             apply(dc.replace(viewer.values, ymin="", ymax=""))
             return
         # the limits of the plot on the screen become the limits of the command, thus the plot does not change
-        low, high = (format(float(f"{limit:.3g}"), ".10g") for limit in viewer.axes[0].get_ylim())
+        low, high = (get_short_number(limit) for limit in viewer.axes[0].get_ylim())
         apply(dc.replace(viewer.values, ymin=low, ymax=high))
 
     def on_yedit() -> None:
@@ -1604,7 +1597,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error(message)
 
     def on_help() -> None:
-        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help())
+        QtWidgets.QMessageBox.information(
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+        )
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1612,16 +1607,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    add_menus(
-        window,
-        {
-            "Open Model...": on_open_model,
-            "Save Figure...": on_save,
-            "Copy Command": on_copy,
-            "Close Window": window.close,
-            "Keys and Mouse Actions": on_help,
-        },
-    )
+    menucallbacks = {
+        "Open Model...": on_open_model,
+        "Save Figure...": on_save,
+        "Copy Command": on_copy,
+        "Close Window": window.close,
+        "Keys and Mouse Actions": on_help,
+    }
+    add_menus(window, menucallbacks)
 
     modebuttons.buttonToggled.connect(on_time_mode)
     timeslider.valueChanged.connect(on_time)
@@ -1681,8 +1674,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(
-        window, splitter, viewer.figsize, APPLICATION_NAME, lambda: fit_canvas(canvas, viewer.figsize, plotarea)
-    )
+    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
     show_values()
     return None

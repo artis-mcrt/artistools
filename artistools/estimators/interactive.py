@@ -63,13 +63,13 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
-from artistools.viewertools import get_last_warning
+from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
-from artistools.viewertools import get_menu_shortcut_texts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
@@ -85,7 +85,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
-from artistools.viewertools import run_command_step_outcome
+from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
@@ -658,12 +658,12 @@ class EstimatorViewer:
                 )
             )
 
-        outcome = run_command_step_outcome(make_plot, quiet=quiet)
+        message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
 
         def show_plot() -> str | None:
-            self.warning = get_last_warning(outcome.errors)
-            if outcome.message is not None:
-                return outcome.message
+            self.warning = warning
+            if message is not None:
+                return message
             plot = plots[0]
             fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
             self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion
@@ -709,11 +709,6 @@ def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str |
     """Return the items of a subplot with these directives in place of their old values. None removes a directive."""
     kept = [item for item in subplot if get_item_directive(item) not in directives]
     return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
-
-
-def get_short_number(value: float) -> str:
-    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
-    return format(float(f"{value:.3g}"), ".10g")
 
 
 def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
@@ -794,27 +789,21 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
     return 0.2 + 0.6 * (1.0 - np.exp(-4.0 * xvalues)) / (1.0 - math.exp(-4.0))
 
 
-def get_keyboard_help() -> str:
-    """Return the table of the keys and the mouse actions of the window, with the shortcuts of the platform."""
-    shortcuts = get_menu_shortcut_texts()
-    return f"""<table>
-<tr><td><b>Left</b>, <b>Right</b></td><td>Move the time range to the adjacent timestep</td></tr>
-<tr><td><b>Up</b>, <b>Down</b></td><td>Make the time range one timestep wider or narrower</td></tr>
-<tr><td><b>Home</b>, <b>End</b></td><td>Move the time range to the start or the end of the run</td></tr>
-<tr><td><b>Page Up</b>, <b>Page Down</b></td><td>Select the previous or the next cell</td></tr>
-<tr><td><b>Space</b></td><td>Play or pause. A snapshot moves through the timesteps, and a plot against time moves
-through the cells</td></tr>
-<tr><td><b>Drag</b> across a plot</td><td>Select the x range</td></tr>
-<tr><td><b>Shift-drag</b> up or down a subplot</td><td>Select the y range of the subplot (ymin= and ymax=)</td></tr>
-<tr><td><b>Double-click</b> a plot</td><td>Show the x range of the data</td></tr>
-<tr><td><b>Right-click</b> a subplot</td><td>Show a menu: the y scale, the y range, a cell against time, or a
-snapshot at a time</td></tr>
-<tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Run the command to save the figure</td></tr>
-<tr><td><b>{shortcuts["Copy Command"]}</b></td><td>Copy the command</td></tr>
-<tr><td><b>{shortcuts["Open Model..."]}</b></td><td>Open a model in a new window</td></tr>
-<tr><td><b>{shortcuts["Reload Data"]}</b></td><td>Read the run again, e.g. while ARTIS writes more timesteps</td></tr>
-<tr><td><b>?</b></td><td>Show this list</td></tr>
-</table>"""
+# the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
+KEYBOARD_HELP_ROWS: t.Final = (
+    ("<b>Left</b>, <b>Right</b>", "Move the time range to the adjacent timestep"),
+    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
+    ("<b>Home</b>, <b>End</b>", "Move the time range to the start or the end of the run"),
+    ("<b>Page Up</b>, <b>Page Down</b>", "Select the previous or the next cell"),
+    (
+        "<b>Space</b>",
+        "Play or pause. A snapshot moves through the timesteps, and a plot against time moves through the cells",
+    ),
+    ("<b>Drag</b> across a plot", "Select the x range"),
+    ("<b>Shift-drag</b> up or down a subplot", "Select the y range of the subplot (ymin= and ymax=)"),
+    ("<b>Double-click</b> a plot", "Show the x range of the data"),
+    ("<b>Right-click</b> a subplot", "Show the menu of the subplot, e.g. the y scale"),
+)
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
@@ -854,7 +843,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     plotarea = make_plot_area(canvas, on_resize)
     sidebar, panellayout = make_sidebar()
-    splitter = make_central_splitter(window, plotarea, sidebar)
+    make_central_splitter(window, plotarea, sidebar)
     helptexts = viewer.helptexts
 
     _, timegrid = add_section(panellayout, "Time")
@@ -1077,8 +1066,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
         xminlabel.setText(f"-xmin{xunit}")
         xmaxlabel.setText(f"-xmax{xunit}")
-        # the axis of a fast model shows v/c, and the option takes km/s
-        unittip = " The axis shows v/c, and the option takes km/s." if viewer.xlimitscale != 1.0 else ""
+        axisisbeta = viewer.xlimitscale != 1.0
+        unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
             edit.setToolTip(helptexts.get(dest, "") + zoomtip + unittip)
         set_edit_text(xminedit, values.xmin)
@@ -1354,7 +1343,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     reloadtimer.timeout.connect(show_reloaded_run)
 
     def on_help() -> None:
-        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help())
+        QtWidgets.QMessageBox.information(
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+        )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
         if not viewer.isimage:
@@ -1436,17 +1427,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    add_menus(
-        window,
-        {
-            "Open Model...": on_open_model,
-            "Reload Data": on_reload,
-            "Save Figure...": on_save,
-            "Copy Command": on_copy,
-            "Close Window": window.close,
-            "Keys and Mouse Actions": on_help,
-        },
-    )
+    menucallbacks = {
+        "Open Model...": on_open_model,
+        "Reload Data": on_reload,
+        "Save Figure...": on_save,
+        "Copy Command": on_copy,
+        "Close Window": window.close,
+        "Keys and Mouse Actions": on_help,
+    }
+    add_menus(window, menucallbacks)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
@@ -1506,8 +1495,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(
-        window, splitter, viewer.figsize, APPLICATION_NAME, lambda: fit_canvas(canvas, viewer.figsize, plotarea)
-    )
+    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
     show_values()
     return None

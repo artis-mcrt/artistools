@@ -755,7 +755,7 @@ def scan_estimators(
     """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
     Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
-    batchcaches gives the current parquet caches of all the batches of an ARTIS run, as get_estimator_batch_caches
+    batchcaches gives the current parquet caches of all the batches of an ARTIS run, as convert_estimator_batch_caches
     gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
     """
     modelpath = Path(modelpath)
@@ -935,18 +935,6 @@ def convert_estimator_batch_caches(
     ]
 
 
-def get_estimator_batch_caches(
-    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
-) -> list[EstimatorBatchCache]:
-    """Return the parquet cache of each batch of MPI ranks that holds the timesteps and the cells.
-
-    Convert the estimator text files of each batch that has no current cache. A run with no run folders has no caches.
-    """
-    return convert_estimator_batch_caches(
-        modelpath, get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep), verbose
-    )
-
-
 def select_estimator_batch_caches(
     modelpath: Path,
     batchcaches: Sequence[EstimatorBatchCache],
@@ -955,7 +943,7 @@ def select_estimator_batch_caches(
 ) -> list[EstimatorBatchCache]:
     """Return the caches of the run folders of the timesteps and of the batches of the cells.
 
-    get_estimator_batch_caches reads the same caches for a selection, thus a scan of these caches reads the same rows.
+    get_estimator_batch_states gives the same caches for a selection, thus a scan of these caches reads the same rows.
     """
     runfolders = set(get_runfolders(modelpath, timesteps=match_timestep))
     mpiranks_matched = set(
@@ -981,7 +969,9 @@ def scan_artis_estimators(
     checks and converts no file.
     """
     selectedcaches = (
-        get_estimator_batch_caches(modelpath, match_modelgridindex, match_timestep, verbose)
+        convert_estimator_batch_caches(
+            modelpath, get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep), verbose
+        )
         if batchcaches is None
         else select_estimator_batch_caches(modelpath, batchcaches, match_modelgridindex, match_timestep)
     )
