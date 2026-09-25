@@ -1549,39 +1549,63 @@ def connect_plot_mouse(
     get_readout: "Callable[[t.Any, mplax.Axes], str]",
     readoutlabel: "QtWidgets.QLabel",
     on_select: "Callable[[float, float], None]",
-    on_reset: "Callable[[], None]",
+    on_reset: "Callable[[int], None]",
     can_select: "Callable[[], bool]",
+    on_select_y: "Callable[[int, float, float], None] | None" = None,
+    on_menu: "Callable[[int, t.Any], None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
-    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. matplotlib keeps
-    the connections in the figure. Call the returned function after the canvas receives a new figure.
+    on_select receives the two x values of a drag, and on_reset receives the index of the frame of a double-click.
+    on_select_y receives the index of the frame and the two y values of a drag with the Shift key. on_menu
+    receives the index of the frame and the matplotlib event of a click with the right button. matplotlib keeps the
+    connections in the figure. Call the returned function after the canvas receives a new figure.
     """
+    # the data value and the pixel of the start of a drag, the span that shows it, and its frame
     dragstart: tuple[float, float] | None = None
     dragspan: t.Any = None
+    dragframeindex = 0
+    dragvertical = False
 
-    def get_frame(event: t.Any) -> "mplax.Axes | None":
-        return next((axis for axis in get_frames() if event.inaxes is axis), None)
+    def get_frame_index(event: t.Any) -> int | None:
+        return next((index for index, axis in enumerate(get_frames()) if event.inaxes is axis), None)
 
     def on_press(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        frame = get_frame(event)
-        if frame is None or event.button != 1 or event.xdata is None:
+        nonlocal dragstart, dragspan, dragframeindex, dragvertical
+        frameindex = get_frame_index(event)
+        if frameindex is None or event.xdata is None:
+            return
+        if event.button == 3:
+            if on_menu is not None:
+                on_menu(frameindex, event)
+            return
+        if event.button != 1:
             return
         if event.dblclick:
-            on_reset()
+            on_reset(frameindex)
             return
-        if can_select():
+        dragframeindex = frameindex
+        dragvertical = event.key == "shift" and on_select_y is not None
+        if dragvertical:
+            dragstart = (event.ydata, event.y)
+            dragspan = event.inaxes.axhspan(event.ydata, event.ydata, color="0.5", alpha=0.3)
+        elif can_select():
             dragstart = (event.xdata, event.x)
-            dragspan = frame.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
+            dragspan = event.inaxes.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
 
     def on_motion(event: t.Any) -> None:
-        frame = get_frame(event)
-        readoutlabel.setText(get_readout(event, frame) if frame is not None and event.xdata is not None else "")
-        if dragstart is None or dragspan is None or event.xdata is None or frame is None:
+        frameindex = get_frame_index(event)
+        readoutlabel.setText(
+            get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
+        )
+        if dragstart is None or dragspan is None or event.xdata is None or frameindex is None:
             return
-        dragspan.set_x(min(dragstart[0], event.xdata))
-        dragspan.set_width(abs(event.xdata - dragstart[0]))
+        if dragvertical:
+            dragspan.set_y(min(dragstart[0], event.ydata))
+            dragspan.set_height(abs(event.ydata - dragstart[0]))
+        else:
+            dragspan.set_x(min(dragstart[0], event.xdata))
+            dragspan.set_width(abs(event.xdata - dragstart[0]))
         canvas.draw_idle()
 
     def on_release(event: t.Any) -> None:
@@ -1593,8 +1617,13 @@ def connect_plot_mouse(
             dragspan.remove()
         start, dragstart, dragspan = dragstart, None, None
         canvas.draw_idle()
+        if event.xdata is None or get_frame_index(event) is None:
+            return
         # a movement of a few pixels is a click and not a selection
-        if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
+        if dragvertical:
+            if on_select_y is not None and abs(event.y - start[1]) > 5:
+                on_select_y(dragframeindex, *sorted((start[0], event.ydata)))
+        elif abs(event.x - start[1]) > 5:
             on_select(*sorted((start[0], event.xdata)))
 
     connectedfigure: object = None

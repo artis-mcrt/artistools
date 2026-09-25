@@ -94,6 +94,7 @@ from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -617,7 +618,55 @@ class EstimatorViewer:
 
     def get_xlimit_text(self, xdata: float) -> str:
         """Return the -xmin or -xmax text of a position on the x axis, with 3 significant digits for a short command."""
-        return format(float(f"{xdata * self.xlimitscale:.3g}"), ".10g")
+        return get_short_number(xdata * self.xlimitscale)
+
+
+def get_item_directive(item: str) -> str | None:
+    """Return the name of the directive that an item of a subplot gives, e.g. "ymin" for "ymin=1e-16", or None."""
+    name, equals, _ = item.partition("=")
+    return name.removeprefix("_") if equals and name.removeprefix("_") in DIRECTIVES else None
+
+
+def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str | None]") -> tuple[str, ...]:
+    """Return the items of a subplot with these directives in place of their old values. None removes a directive."""
+    kept = [item for item in subplot if get_item_directive(item) not in directives]
+    return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
+
+
+def get_short_number(value: float) -> str:
+    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
+    return format(float(f"{value:.3g}"), ".10g")
+
+
+def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
+    """Return the cell with the radial velocity nearest to a position on a velocity axis, or None for another axis.
+
+    A 3D model has many cells at one radial velocity, and the function gives one of them.
+    """
+    if viewer.values.x not in {"velocity", "beta"} or not viewer.cellvelocities:
+        return None
+    axisisbeta = viewer.values.x == "beta" or viewer.xlimitscale != 1.0
+    velocity = xdata * (C_cm_per_s if axisisbeta else km_to_cm)
+    cells = np.fromiter(viewer.cellvelocities.keys(), dtype=np.int64, count=len(viewer.cellvelocities))
+    velocities = np.fromiter(viewer.cellvelocities.values(), dtype=np.float64, count=len(viewer.cellvelocities))
+    return int(cells[np.argmin(np.abs(velocities - velocity))])
+
+
+def get_evolution_values(viewer: EstimatorViewer, cells: str) -> ControlValues:
+    """Return the values that plot the cells against time over the whole run."""
+    return viewer.set_xvariable(dc.replace(viewer.values, cells=cells), "time")
+
+
+def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues | None:
+    """Return the values of a snapshot at a position on a time axis, or None for another axis."""
+    if viewer.values.x == "time":
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.validtimesteps]
+        position = get_nearest_range_start(validtmids, xdata, 1)
+    elif viewer.values.x == "timestep":
+        position = min(range(len(viewer.validtimesteps)), key=lambda pos: abs(viewer.validtimesteps[pos] - xdata))
+    else:
+        return None
+    return viewer.select_timesteps(viewer.set_xvariable(viewer.values, "velocity"), position, 1)
 
 
 def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
@@ -677,7 +726,10 @@ def get_keyboard_help() -> str:
 <tr><td><b>Space</b></td><td>Play or pause. A snapshot moves through the timesteps, and a plot against time moves
 through the cells</td></tr>
 <tr><td><b>Drag</b> across a plot</td><td>Select the x range</td></tr>
-<tr><td><b>Double-click</b> a plot</td><td>Show the x range of the data</td></tr>
+<tr><td><b>Shift-drag</b> up or down a subplot</td><td>Select the y range of the subplot (ymin= and ymax=)</td></tr>
+<tr><td><b>Double-click</b> a subplot</td><td>Show the x range and the y range of the data</td></tr>
+<tr><td><b>Right-click</b> a subplot</td><td>Show a menu: the y scale, the y range, a cell against time, or a
+snapshot at a time</td></tr>
 <tr><td><b>{shortcuts["Save Figure..."]}</b></td><td>Run the command to save the figure</td></tr>
 <tr><td><b>{shortcuts["Copy Command"]}</b></td><td>Copy the command</td></tr>
 <tr><td><b>{shortcuts["Open Model..."]}</b></td><td>Open a model in a new window</td></tr>
@@ -823,7 +875,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "- an ion;\n"
         "- a type of series and its names, e.g. populations 'Fe II' 'Fe III';\n"
         f"- a directive: {', '.join(f'{name}=' for name in DIRECTIVES)}.\n"
-        "Double-click a row to change it."
+        "Double-click a row to change it. Right-click a subplot for the y scale, and Shift-drag it for the y range."
     )
     variablebox = QtWidgets.QComboBox()
     variablebox.setEditable(True)
@@ -1175,6 +1227,58 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if float(xmin) < float(xmax):
             apply(dc.replace(viewer.values, xmin=xmin, xmax=xmax))
 
+    def get_subplot_row(frameindex: int) -> int | None:
+        """Return the row of the subplot of a frame of the plot, or None for a colour image."""
+        return frameindex if not viewer.isimage and frameindex < len(viewer.values.subplots) else None
+
+    def set_directives(row: int, directives: "Mapping[str, str | None]", **changes: t.Any) -> None:
+        subplots = list(viewer.values.subplots)
+        subplots[row] = replace_directives(subplots[row], directives)
+        apply(dc.replace(viewer.values, subplots=tuple(subplots), **changes))
+
+    def on_select_y(frameindex: int, low: float, high: float) -> None:
+        row = get_subplot_row(frameindex)
+        ymin, ymax = get_short_number(low), get_short_number(high)
+        if row is not None and float(ymin) < float(ymax):
+            set_directives(row, {"ymin": ymin, "ymax": ymax})
+
+    def on_reset(frameindex: int) -> None:
+        row = get_subplot_row(frameindex)
+        if row is None:
+            apply(dc.replace(viewer.values, xmin="", xmax=""))
+        else:
+            set_directives(row, {"ymin": None, "ymax": None}, xmin="", xmax="")
+
+    def on_menu(frameindex: int, event: t.Any) -> None:
+        """Show the menu of a subplot: the y scale, the y range, and the plot of a cell or of a snapshot."""
+        menu = QtWidgets.QMenu(window)
+        row = get_subplot_row(frameindex)
+        if row is not None:
+            islog = get_plot_frames(viewer.fig)[frameindex].get_yscale() == "log"
+            scaleaction = menu.addAction("Linear scale" if islog else "Log scale")
+            scaleaction.triggered.connect(lambda: set_directives(row, {"yscale": "linear" if islog else "log"}))
+            resetaction = menu.addAction("Show the y range of the data")
+            resetaction.setEnabled(
+                any(get_item_directive(item) in {"ymin", "ymax"} for item in viewer.values.subplots[row])
+            )
+            resetaction.triggered.connect(lambda: set_directives(row, {"ymin": None, "ymax": None}))
+            menu.addSeparator()
+        if is_evolution(viewer.values):
+            snapshot = get_snapshot_values(viewer, event.xdata)
+            if snapshot is not None:
+                snapshotaction = menu.addAction(f"Plot a snapshot at {viewer.tmids[snapshot.first]:.4g} d")
+                snapshotaction.triggered.connect(lambda: apply(snapshot))
+        else:
+            cell = get_nearest_cell(viewer, event.xdata)
+            if cell is not None:
+                cellaction = menu.addAction(f"Plot cell {cell} against time")
+                cellaction.triggered.connect(lambda: apply(get_evolution_values(viewer, str(cell))))
+            if viewer.values.cells:
+                cellsaction = menu.addAction(f"Plot the cells {viewer.values.cells} against time")
+                cellsaction.triggered.connect(lambda: apply(get_evolution_values(viewer, viewer.values.cells)))
+        if menu.actions():
+            menu.exec(QtGui.QCursor.pos())
+
     def on_closed() -> None:
         print(viewer.get_command())
         # each kept scan holds the metadata of its file, e.g. 7.6 MB for 3000 columns
@@ -1232,9 +1336,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         get_readout=get_frame_readout,
         readoutlabel=statusbar.readout,
         on_select=on_select,
-        on_reset=lambda: apply(dc.replace(viewer.values, xmin="", xmax="")),
+        on_reset=on_reset,
         # a colour image has a velocity on each axis, and -xmin and -xmax take the velocity of the line plot
         can_select=lambda: not viewer.isimage,
+        on_select_y=on_select_y,
+        on_menu=on_menu,
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (

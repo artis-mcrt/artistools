@@ -1663,7 +1663,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         get_readout=lambda event, _frame: viewer.get_readout(event.xdata),
         readoutlabel=statusbar.readout,
         on_select=set_xlimits,
-        on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
+        on_reset=lambda _frameindex: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
         can_select=lambda: True,
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise

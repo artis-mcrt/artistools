@@ -3404,3 +3404,43 @@ def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
     assert "requested minimum" in viewer.warning
     assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
     assert not viewer.warning
+
+
+def test_interactive_directives_of_a_subplot() -> None:
+    """A directive replaces its old value, None removes it, and an ion or a variable is not a directive."""
+    assert interactive.get_item_directive("ymin=1e-16") == "ymin"
+    assert interactive.get_item_directive("_yscale=log") == "yscale"
+    assert interactive.get_item_directive("Fe II") is None
+    assert interactive.get_item_directive("Te") is None
+    subplot = ("rho", "yscale=log", "ymin=1e-16")
+    assert interactive.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
+        "rho",
+        "yscale=log",
+        "ymin=2",
+        "ymax=3",
+    )
+    assert interactive.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
+    assert interactive.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
+    assert interactive.get_short_number(12345.678) == "12300"
+    assert interactive.get_short_number(1.23456e-5) == "1.23e-05"
+
+
+def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
+    """The menu of a snapshot names the cell at the pointer, and the menu of an evolution names the timestep."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert viewer.values.x == "velocity"
+    assert interactive.get_snapshot_values(viewer, 1.0) is None
+    cell = interactive.get_nearest_cell(viewer, 12000.0)
+    assert cell is not None
+    assert np.isclose(viewer.cellvelocities[cell] / 1e5, 12000.0, rtol=0.2)
+    evolution = interactive.get_evolution_values(viewer, str(cell))
+    assert interactive.is_evolution(evolution)
+    assert evolution.cells == str(cell)
+    assert (evolution.first, evolution.last) == (viewer.validtimesteps[0], viewer.validtimesteps[-1])
+    assert viewer.change(evolution) is None
+    assert interactive.get_nearest_cell(viewer, 12000.0) is None
+    snapshot = interactive.get_snapshot_values(viewer, viewer.tmids[7])
+    assert snapshot is not None
+    assert not interactive.is_evolution(snapshot)
+    assert (snapshot.first, snapshot.last) == (7, 7)
+    assert not snapshot.cells
