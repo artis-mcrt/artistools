@@ -1,21 +1,28 @@
 import argparse
+import dataclasses as dc
 import os
 import re
+import shlex
 import shutil
+import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
+from artistools.estimators import interactive
+from artistools.estimators import plotestimators
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -1809,6 +1816,38 @@ def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
     assert len(list(outfolder.glob("*.png"))) == 3, "each timestep must still give a frame"
 
 
+def test_show_makes_room_for_the_title_above_the_offset_text(tmp_path: Path) -> None:
+    """The window of --show must hold all of the title.
+
+    The draw moves the title above the offset text of the y axis. The code measured the height before a draw, thus the
+    top of the title was 0.13 inches above the top of the figure.
+    """
+    titlefits: list[bool] = []
+
+    def show_window() -> None:
+        fig = plt.gcf()
+        fig.canvas.draw()
+        titletop = max(axis.title.get_window_extent().y1 for axis in fig.axes if axis.get_title()) / fig.dpi
+        titlefits.append(titletop <= fig.get_figheight())
+
+    with mock.patch.object(plt, "show", side_effect=show_window):
+        at.estimators.plotestimators.main(
+            argsraw=[
+                "W",
+                "-timestep",
+                "40",
+                "-figwidthscale",
+                "0.3",
+                "--show",
+                "-o",
+                str(tmp_path / "W.pdf"),
+                str(modelpath),
+            ]
+        )
+
+    assert titlefits == [True]
+
+
 def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     """-o names the gif that the run makes, and the frames go in the folder that holds it.
 
@@ -3041,6 +3080,15 @@ def test_ionpoptype_changes_populations_alone(mockplot: mock.MagicMock, tmp_path
     assert np.allclose(gammavalues["cumulative"], gammavalues["absolute"], rtol=1e-12, atol=0.0)
 
 
+def test_an_empty_selection_of_cells_gives_no_rows() -> None:
+    """A selection of no cells, e.g. an empty -readonlymgi cone, gives no rows and no error.
+
+    The search for the caches found no rank for no cells. The scan then said that no run folder held the timestep.
+    """
+    estimators = at.scan_estimators(modelpath_classic_3d, modelgridindex=(), timestep=5).collect()
+    assert estimators.is_empty()
+
+
 def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> None:
     """A restarted run repeats the last timestep of the run before it, and the first folder's row stays.
 
@@ -3048,6 +3096,9 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     now reads the repeated timesteps alone, and it must keep the same rows in the same order.
     """
     from artistools.estimators.core import drop_restart_duplicates
+
+    def scan_files(parquetfiles: list[Path]) -> list[pl.LazyFrame]:
+        return [pl.scan_parquet(parquetfile) for parquetfile in parquetfiles]
 
     folders = [tmp_path / "job1.slurm", tmp_path / "job2.slurm"]
     frames = [
@@ -3060,11 +3111,11 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
         frame.write_parquet(folder / "estimbatch00_0000_0000.out.parquet.tmp")
         parquetfiles.append(folder / "estimbatch00_0000_0000.out.parquet.tmp")
 
-    dfout = drop_restart_duplicates(parquetfiles, folders, match_timestep=None).collect()
+    dfout = drop_restart_duplicates(scan_files(parquetfiles), folders, match_timestep=None).collect()
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0]
 
     # one folder holds each timestep and cell once, thus it keeps every row
-    dfone = drop_restart_duplicates(parquetfiles[:1], folders[:1], match_timestep=None).collect()
+    dfone = drop_restart_duplicates(scan_files(parquetfiles[:1]), folders[:1], match_timestep=None).collect()
     assert dfone.height == 4
 
     # a batch of empty cells gives a cache with no columns, and a cell that the first folder does not hold at
@@ -3075,5 +3126,238 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     )
     parquetfiles += [folders[1] / "estimbatch01_0001_0001.out.parquet.tmp"]
     parquetfiles += [folders[1] / "estimbatch02_0002_0002.out.parquet.tmp"]
-    dfout = drop_restart_duplicates(parquetfiles, [*folders, folders[1], folders[1]], match_timestep=None).collect()
+    dfout = drop_restart_duplicates(
+        scan_files(parquetfiles), [*folders, folders[1], folders[1]], match_timestep=None
+    ).collect()
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 22.0]
+
+
+def make_headless_viewer(tokens: list[str]) -> interactive.EstimatorViewer:
+    """Return a viewer that draws on a canvas with no window, after its first plot."""
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.EstimatorViewer(tokens, fig)
+    assert viewer.draw() is None
+    return viewer
+
+
+def get_drawn_lines(fig: mplfig.Figure) -> list[list[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]]:
+    """Return the x values and the y values of each line of each subplot of a figure."""
+    return [
+        [
+            (np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float))
+            for line in axis.get_lines()
+        ]
+        for axis in fig.axes
+    ]
+
+
+def assert_same_lines(fig: mplfig.Figure, otherfig: mplfig.Figure) -> None:
+    """Assert that two figures draw the same lines in the same subplots."""
+    lines, otherlines = get_drawn_lines(fig), get_drawn_lines(otherfig)
+    assert [len(axislines) for axislines in lines] == [len(axislines) for axislines in otherlines]
+    assert any(lines)
+    for axislines, otheraxislines in zip(lines, otherlines, strict=True):
+        for (xvalues, yvalues), (otherx, othery) in zip(axislines, otheraxislines, strict=True):
+            assert np.allclose(xvalues, otherx, rtol=1e-12, atol=0.0, equal_nan=True)
+            assert np.allclose(yvalues, othery, rtol=1e-12, atol=0.0, equal_nan=True)
+
+
+def get_command_figure(tokens: Sequence[str], outputfile: Path) -> mplfig.Figure:
+    """Run plotestimators for the tokens, and return the figure that it saves."""
+    savedfigures: list[mplfig.Figure] = []
+
+    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
+        savedfigures.append(fig)
+
+    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
+        at.estimators.plot(argsraw=[*tokens, "-o", str(outputfile)])
+    [savedfigure] = savedfigures
+    return savedfigure
+
+
+def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
+    """The command that the viewer shows must draw the same data as the viewer.
+
+    The first subplot goes before the folder and each other subplot follows -plot, thus a quoted ion and a directive
+    must reach plotestimators unchanged.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = (("Te", "TR", "yscale=linear"), ("populations", "Fe II", "Fe III", "Ni II"), ("nne",))
+    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
+    assert viewer.change(newvalues) is None
+    command = viewer.get_command()
+    assert command.endswith("-timestep 10-12 -xbins 8 -plot populations 'Fe II' 'Fe III' 'Ni II' -plot nne")
+
+    assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
+
+
+def test_interactive_default_subplots_give_no_plot_option(tmp_path: Path) -> None:
+    """The default subplots of plotestimators need no -plot, and the same subplots as -plot draw the same figure.
+
+    The viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16". The command with these
+    tokens must draw the figure of the command with no -plot.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    assert viewer.values.subplots == viewer.defaultsubplots
+    assert "averageexcitation" in viewer.defaultsubplots[-1]
+    assert "-plot" not in viewer.get_plot_tokens()
+
+    first, *others = viewer.defaultsubplots
+    explicittokens = [*first, str(modelpath), "-timestep", "50", *(token for s in others for token in ("-plot", *s))]
+    assert_same_lines(viewer.fig, get_command_figure(explicittokens, tmp_path / "estimators.pdf"))
+
+
+def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
+    """A -slice line in the option table changes the default x, and a command with no -x takes that default.
+
+    The viewer kept the old default as a fixed -x, thus the command plotted the line against the radial velocity.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "5", "--interactive"])
+    sliceline = interactive.replace_option_rows(viewer, viewer.values, (("-slice", ("z=0,y=0",)),))
+    assert "-x" not in viewer.get_plot_tokens(sliceline)
+    assert viewer.change(sliceline) is None
+    assert "-x" not in viewer.get_plot_tokens(interactive.replace_option_rows(viewer, viewer.values, ()))
+
+    # an x that the user chose stays
+    chosen = viewer.set_xvariable(viewer.values, "vel_r_mid")
+    assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
+
+
+def test_interactive_snapshot_reads_all_the_cells() -> None:
+    """A change from a plot against time to a snapshot removes -cell.
+
+    The window hides the control of the cells for a snapshot, thus a -cell of the plot against time stayed hidden.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--interactive"])
+    evolution = dc.replace(viewer.values, x="time", cells=str(viewer.cells[5]))
+    assert interactive.is_evolution(evolution)
+    viewer.values = evolution
+    snapshot = viewer.set_xvariable(evolution, "velocity")
+    assert not snapshot.cells
+    assert "-cell" not in viewer.get_plot_tokens(snapshot)
+
+
+def test_interactive_snapshot_and_time_evolution() -> None:
+    """A plot against time reads the whole run and names no time, and a snapshot reads one timestep of the run.
+
+    The Play button of a plot against time moves through the cells, and it stops after the last cell.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "20-22", "--interactive"])
+    evolution = viewer.set_xvariable(viewer.values, "time")
+    assert (evolution.first, evolution.last) == (viewer.validtimesteps[0], viewer.validtimesteps[-1])
+    assert viewer.change(evolution) is None
+    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d)]
+
+    viewer.values = dc.replace(viewer.values, cells=str(viewer.cells[-2]))
+    lastcell = viewer.step_cell(1)
+    assert lastcell is not None
+    assert viewer.change(lastcell) is None
+    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d), "-cell", str(viewer.cells[-1])]
+    assert viewer.step_cell(1) is None
+
+    # a time range inside the run needs -x time, because plotestimators plots a snapshot for a given time
+    shortrange = viewer.select_timesteps(viewer.values, 5, 4)
+    assert viewer.get_plot_tokens(shortrange)[2:6] == ["-timestep", "5-8", "-x", "time"]
+
+    snapshot = viewer.set_xvariable(viewer.values, "velocity")
+    # the middle of the whole run
+    assert snapshot.first == snapshot.last == viewer.validtimesteps[(len(viewer.validtimesteps) - 1) // 2]
+
+
+def test_interactive_rejection_keeps_the_old_plot() -> None:
+    """A variable that the model does not have gives the message of plotestimators, and the old command stays."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    command = viewer.get_command()
+    message = viewer.change(dc.replace(viewer.values, subplots=(("Tee",),)))
+    assert message is not None
+    assert "'Tee' is not an estimator variable" in message
+    assert viewer.get_command() == command
+    assert viewer.fig.axes[0].get_lines()
+
+
+def test_interactive_command_of_a_dispatcher_call() -> None:
+    """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
+    from artistools.__main__ import main as dispatcher_main
+
+    with (
+        mock.patch.object(interactive, "run_viewer") as mockrunviewer,
+        mock.patch.object(sys, "argv", ["myscript.py", "--flag", "x"]),
+    ):
+        dispatcher_main(argsraw=["plotestimators", "Te", str(modelpath), "--interactive"])
+    mockrunviewer.assert_called_once_with(["Te", str(modelpath), "--interactive"])
+
+
+def test_interactive_classicartis_row_reads_the_other_format() -> None:
+    """A --classicartis row in the table must read the classic format, as the command does, and not the old query.
+
+    The viewer read the run one time with the first --classicartis value. The window then drew the modern estimators
+    for a command that plotestimators rejects.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    command = viewer.get_command()
+    message = viewer.change(dc.replace(viewer.values, otheroptions=(("--classicartis", ()),)))
+    assert message is not None
+    assert "modern ARTIS run" in message
+    assert viewer.get_command() == command
+
+
+def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
+    """An error that is not a user error, e.g. of polars, gives a message, and the old plot draws again.
+
+    Such an error left draw and change, thus the figure stayed empty and the viewer kept the failed values.
+    """
+    # this model has no estimator files, thus its query holds only the model data, e.g. rho
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    viewer = make_headless_viewer(["rho", str(classic1dpath), "-ts", "5", "--interactive"])
+    command = viewer.get_command()
+    message = viewer.change(dc.replace(viewer.values, otheroptions=(("-readonlymgi", ("alongaxis",)),)))
+    assert message is not None
+    assert message.startswith("ColumnNotFoundError")
+    assert viewer.get_command() == command
+    assert viewer.fig.axes[0].get_lines()
+
+
+def test_interactive_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The viewer opens a codecomparison model, which has no run folders, as the command does."""
+    viewer = make_headless_viewer([
+        "Te",
+        make_toy_codecomparison_model(tmp_path, monkeypatch),
+        "-timestep",
+        "0",
+        "--interactive",
+    ])
+    assert viewer.validtimesteps == [0]
+    assert viewer.fig.axes[0].get_lines()
+
+
+def test_interactive_time_field_keeps_the_range() -> None:
+    """A Return in the time field with no edit keeps the time range.
+
+    The field showed the mean of the start and the end of the range, and the viewer read it as the middle of a
+    timestep. A range of an even count then moved one timestep later.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "40", "--interactive"])
+    nvalid = len(viewer.validtimesteps)
+    for count in range(1, 5):
+        for firstpos in range(nvalid - count + 1):
+            viewer.values = viewer.select_timesteps(viewer.values, firstpos, count)
+            text = interactive.get_time_text(viewer.tmids, viewer.values)
+            assert viewer.select_centre(float(text)) == viewer.values, (count, firstpos, text)
+
+
+def test_interactive_readout_names_each_series() -> None:
+    """The readout gives the value of each series, also the one line with no label of a subplot of one variable.
+
+    The readout skipped each line with a label that starts with "_", which is the only line of such a subplot. A
+    colour image gives an array of one value under the pointer, and NumPy 2.5 does not convert it with float().
+    """
+    viewer = make_headless_viewer(["Te", "TR", str(modelpath_classic_3d), "-t", "5", "-plot", "nne", "--interactive"])
+    firstaxis, nneaxis = viewer.fig.axes
+    xmid = float(np.mean(firstaxis.get_xlim()))
+    assert interactive.get_readout(firstaxis, xmid).count(": ") == 2
+    assert "T_e: " in interactive.get_readout(firstaxis, xmid)
+    assert interactive.get_readout(nneaxis, xmid).count(": ") == 1
+
+    assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
+    assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None

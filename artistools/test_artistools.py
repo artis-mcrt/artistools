@@ -2,15 +2,20 @@ import argparse
 import hashlib
 import importlib
 import inspect
+import io
 import itertools
 import math
 import os
 import re
 import subprocess
 import sys
+import threading
+import time
 import tomllib
 import typing as t
+from collections.abc import Callable
 from collections.abc import Iterator
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -26,6 +31,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools import viewertools
 
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
@@ -1276,6 +1282,419 @@ def test_ejectaopacity() -> None:
     )
 
 
+@mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotopacity_draws_ratios_and_the_planck_mean(
+    mockplot: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+) -> None:
+    """The plot has the bins and a moving average of each opacity, a dashed capped opacity, ratios, and the Planck mean.
+
+    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell. Only
+    --showplanckmean draws it.
+    """
+    at.plotopacity.main(
+        argsraw=[
+            "-modelpath",
+            str(modelpath),
+            "-timestep",
+            "40",
+            "-xmin",
+            "3000",
+            "-xmax",
+            "4000",
+            "--showplanckmean",
+            "-o",
+            str(tmp_path / "opac.pdf"),
+        ]
+    )
+    axes = [call.args[0] for call in mockplot.call_args_list]
+    assert len(set(axes)) == 2, "the opacities and the ratios need two frames"
+    mainplots = [call for call in mockplot.call_args_list if call.args[0] is axes[0]]
+    assert len(mainplots) == 6, "each opacity needs its bins and its moving average"
+    assert [call.kwargs["linestyle"] for call in mainplots if call.kwargs.get("label")] == ["-", "--", "-"]
+
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    )
+    dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcell, edges, time_days)
+    lambda_cm = dfbins["lambda_angstroms_bin_mid"].to_numpy() * 1e-8
+    temperature = dfcell["Te"].item()
+    planck = lambda_cm**-5 / np.expm1(
+        at.constants.h_erg_s * at.constants.C_cm_per_s / lambda_cm / temperature / at.constants.K_B_erg_per_K
+    )
+    expected = float(np.sum(planck * dfbins["exopac"].to_numpy()) / np.sum(planck))
+    assert mockaxhline.call_count == 1
+    assert np.isclose(mockaxhline.call_args.args[1], expected, rtol=1e-9, atol=0.0)
+
+    # the line and its calculation need --showplanckmean
+    at.plotopacity.main(
+        argsraw=[
+            "-modelpath",
+            str(modelpath),
+            "-timestep",
+            "40",
+            "-xmin",
+            "3000",
+            "-xmax",
+            "4000",
+            "-o",
+            str(tmp_path / "noplanck.pdf"),
+        ]
+    )
+    assert mockaxhline.call_count == 1
+
+
+def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.CaptureFixture[str]) -> None:
+    """--averagecell takes one cell with the mass-weighted mean of n_ion / rho, of rho, and of Te, and logs Te.
+
+    A model of one cell gives the same cell. A cell with no temperature does not count in the mean temperature.
+    """
+    dfone = at.ejectaopacity.get_cell_estimators(modelpath, 40, None)
+    pltest.assert_frame_equal(
+        at.plotopacity.get_average_cell(dfone),
+        dfone.select(at.plotopacity.get_average_cell(dfone).columns),
+        check_dtypes=False,
+        rel_tol=1e-12,
+    )
+
+    dfcells = pl.DataFrame({
+        "modelgridindex": [0, 1, 2],
+        "timestep": [5, 5, 5],
+        "Te": [1000.0, 3000.0, None],
+        "rho": [1.0, 2.0, 4.0],
+        "mass_g": [1.0, 3.0, 4.0],
+        "nnion_Fe_II": [2.0, 4.0, 8.0],
+    })
+    capsys.readouterr()
+    dfmean = at.plotopacity.get_average_cell(dfcells)
+    assert np.isclose(dfmean["Te"].item(), (1000.0 + 3 * 3000.0) / 4, rtol=1e-12, atol=0.0)
+    meanrho = (1.0 + 3 * 2.0 + 4 * 4.0) / 8
+    assert np.isclose(dfmean["rho"].item(), meanrho, rtol=1e-12, atol=0.0)
+    assert np.isclose(dfmean["nnion_Fe_II"].item(), meanrho * (2.0 + 3 * 2.0 + 4 * 2.0) / 8, rtol=1e-12, atol=0.0)
+    assert "one cell of the mass-weighted mean of 3 cells: Te = 2500 K" in capsys.readouterr().out
+    assert at.plotopacity.get_cells_text(None, None, None, 2500.0) == "mean composition of all cells at 2500 K"
+
+
+def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
+    """The Rust kernel gives the values of the earlier polars query.
+
+    The earlier query joined each cell with each line, and the reference sums come from it. Only the order
+    of the additions is different, thus the values agree within the rounding error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    assert dfopacities.height == 100
+    for column, expectedsum in {
+        "exopac": 1397.6901658607103,
+        "linebinned": 11675.7786539805,
+        "linebinned_maxone": 1652.4668052744682,
+    }.items():
+        assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
+
+
+def test_expansion_opacities_of_a_null_population_are_zero() -> None:
+    """A null population of an ion gives no opacity from that ion, and a null temperature gives no opacity.
+
+    The kernel reads contiguous columns with no nulls, thus get_expansion_opacities() must replace each null.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+    ionstr = opacitylines.ionstrs[0]
+
+    def get_opacities(dfcells: pl.DataFrame) -> pl.DataFrame:
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
+            at.ejectaopacity.OPACITYCOLUMNS
+        )
+
+    pltest.assert_frame_equal(
+        get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+        get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
+    )
+    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("Te")))
+    assert np.allclose(dfnotemperature.select(pl.all().abs().max()).row(0), 0.0, rtol=0.0, atol=0.0)
+
+
+def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
+    """A temperature of zero gives NaN level populations, and each of the three sums must then be NaN.
+
+    f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite linebinned_maxone
+    and a finite exopac for such a cell.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None).with_columns(
+        pl.lit(0.0, dtype=pl.Float32).alias("Te")
+    )
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    isnan = dfopacities.select(pl.col(at.ejectaopacity.OPACITYCOLUMNS).is_nan())
+    assert isnan["linebinned"].any()
+    for column in at.ejectaopacity.OPACITYCOLUMNS:
+        assert isnan[column].equals(isnan["linebinned"]), column
+
+
+def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
+    """A line with a null A value adds nothing, as a line that the atomic data does not hold.
+
+    The kernel reads columns with no nulls, thus a null constant stopped the sum with an error.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    isfirstline = pl.int_range(pl.len()) == 0
+
+    def get_opacities(transitions: list[pl.LazyFrame]) -> pl.DataFrame:
+        adatachanged = adata.with_columns(pl.Series("transitions", transitions, dtype=pl.Object))
+        opacitylines = at.ejectaopacity.get_opacity_lines(adatachanged, dfcell.columns, lambda_bin_edges, time_days)
+        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+
+    dfnullconstant = get_opacities([
+        dftransitions.lazy().with_columns(A=pl.when(~isfirstline).then(pl.col("A")))
+        for dftransitions in adata["transitions"]
+    ])
+    dfnoline = get_opacities([dftransitions.lazy().filter(~isfirstline) for dftransitions in adata["transitions"]])
+
+    pltest.assert_frame_equal(dfnullconstant, dfnoline)
+
+
+def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
+    """A range with no bin stops with a message, not with an IndexError in get_expansion_opacities()."""
+    with pytest.raises(ValueError, match="holds no bin"):
+        at.ejectaopacity.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
+
+
+def test_lambda_bin_edges_cover_the_full_range() -> None:
+    """The bins cover the full wavelength range, also when the division of the range rounds down.
+
+    (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins. Thus the last bin was missing.
+    A range that does not hold a whole number of bins lost the part after the last whole bin.
+    """
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
+    assert len(edges) == 10001
+    assert math.isclose(edges[-1], 4000.0, rel_tol=1e-12)
+
+    edges = at.ejectaopacity.get_lambda_bin_edges(1000.0, 25010.0, 20.0)
+    assert len(edges) == 1202
+    assert math.isclose(edges[-1], 25020.0, rel_tol=1e-12)
+
+
+def test_plotopacity_weights_the_cells_by_mass() -> None:
+    """The mean over the cells weights each cell by its mass, and it sums the cells of every batch.
+
+    Cell k holds k times the ion populations and k times the mass of the test cell. The line-binned
+    opacity is linear in the populations. Thus, for n cells, the mean is sum(k^2) / sum(k) = (2n + 1) / 3
+    times the opacity of the test cell. The first CELLSPERBATCH cells fill one batch, and the last 8 cells
+    go into a second batch.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    assert dfcell.height == 1
+
+    cellcount = at.ejectaopacity.CELLSPERBATCH + 8
+    dfcells = pl.concat([
+        dfcell.with_columns(
+            pl.lit(k - 1, dtype=dfcell.schema["modelgridindex"]).alias("modelgridindex"),
+            pl.col("mass_g") * k,
+            # a population is Float32, and k times it rounds in Float32
+            pl.col("^nnion_.*$").cast(pl.Float64) * k,
+        )
+        for k in range(1, cellcount + 1)
+    ])
+
+    def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
+        dfopacities, _ = at.plotopacity.get_massweighted_opacities(
+            adata, time_days, dfestimators, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+        )
+        return dfopacities["linebinned"].to_numpy()
+
+    linebinned_onecell = get_linebinned(dfcell)
+    assert linebinned_onecell.max() > 0.0
+    meanfactor = (2 * cellcount + 1) / 3
+    assert np.allclose(get_linebinned(dfcells), meanfactor * linebinned_onecell, rtol=1e-10, atol=0.0)
+
+
+def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The bins of the plot range give the same plotted data as a calculation of the full grid of rpkt.h.
+
+    The range also holds one bin more than half the window of the moving average at each end. The width of a bin
+    comes from rpkt.h, and the command prints the range and the number of the bins.
+    """
+    (tmp_path / "artis").mkdir()
+    (tmp_path / "artis" / "rpkt.h").write_text(
+        "constexpr double expopac_lambdamin = 3000.;\n"
+        "constexpr double expopac_lambdamax = 4000.;\n"
+        "constexpr double expopac_deltalambda = 10.;\n",
+        encoding="utf-8",
+    )
+    assert at.ejectaopacity.get_expopac_grid(tmp_path) == (3000.0, 4000.0, 10.0)
+    assert at.ejectaopacity.get_expopac_grid(modelpath) is None
+
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dffull, _ = at.plotopacity.get_massweighted_opacities(
+        adata, time_days, dfcell, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    )
+    xmin, xmax, width = 3213.0, 3517.0, 50.0
+    capsys.readouterr()
+    edges, deltalambda = at.plotopacity.get_computed_bin_edges(tmp_path, xmin, xmax, None, width)
+    assert deltalambda == pytest.approx(10.0, rel=1e-12, abs=0.0)
+    assert len(edges) - 1 < 50 < dffull.height
+    assert (
+        f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g} Angstroms of the 100 bins"
+        " of rpkt.h from 3000 to 4000 Angstroms"
+    ) in capsys.readouterr().out
+    dfpart, _ = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
+
+    windowbins = at.plotopacity.get_window_bins(width, deltalambda)
+    plotted = [
+        (
+            df.filter(pl.col("lambda_angstroms_upper") > xmin, pl.col("lambda_angstroms_lower") < xmax),
+            at.misc.df_filter_minmax_bracketed(
+                at.plotopacity.get_moving_averages(df, windowbins), "lambda_angstroms_bin_mid", xmin, xmax
+            ).collect(),
+        )
+        for df in (dffull, dfpart)
+    ]
+    pltest.assert_frame_equal(plotted[0][0], plotted[1][0], rel_tol=1e-9)
+    pltest.assert_frame_equal(plotted[0][1], plotted[1][1], rel_tol=1e-9)
+
+
+def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
+    """The window of the moving average holds the odd number of bins that is nearest to its width.
+
+    2 * round(n / 2) + 1 gave the odd number nearest to n + 1, e.g. 5 bins for a width of 3 bins.
+    """
+    windowbins = {width: at.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 220.0)}
+    assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 220.0: 11}
+    # a width of an even number of bins is one bin from two odd numbers, and it takes the larger one
+    assert at.plotopacity.get_window_bins(200.0, 20.0) == 11
+    assert at.plotopacity.get_window_bins(1.2, 0.2) == 7
+
+
+def test_expansion_opacity_keeps_a_weak_line() -> None:
+    """A line of a very small optical depth adds to the expansion opacity of its bin.
+
+    1 - exp(-tau) is exactly zero below tau = 5.6e-17, thus a bin of weak lines had no expansion opacity.
+    """
+    from artistools.rustext import sum_binned_line_opacities
+
+    taus = [1e-18, 1e-6, 0.5]
+    dflevels = pl.DataFrame({"ionindex": [0], "g": [1.0], "energy_ev": [0.0]}, schema_overrides={"ionindex": pl.UInt32})
+    dflines = pl.DataFrame(
+        {
+            "lambda_angstroms_binindex": [0, 1, 2],
+            "lower": [0, 0, 0],
+            "upper": [0, 0, 0],
+            "sobolev_lower": taus,
+            "sobolev_upper": [0.0, 0.0, 0.0],
+            "lambda_angstroms": [1.0, 1.0, 1.0],
+        },
+        schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
+    )
+    dfcells = pl.DataFrame({"Te": [5000.0], "nnion_0": [1.0]})
+    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], 3, at.constants.K_B_ev_per_K)["exopac"]
+    assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
+
+
+def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
+    """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
+
+    Each batch held 4096 cells, and the 4998 bins of the ejectaopacity defaults then took 3.6 GB for one batch.
+    """
+    dfcells = pl.DataFrame({"modelgridindex": range(10000)})
+    for numbins in (100, 1200, 4998, 49980):
+        batches = at.ejectaopacity.get_cell_batches(dfcells, numbins)
+        assert sum(batch.height for batch in batches) == dfcells.height
+        assert max(batch.height for batch in batches) * numbins <= at.ejectaopacity.ROWSPERBATCH, numbins
+
+
+def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.CaptureFixture[str]) -> None:
+    """-vmin and -vmax of plotopacity select the cells with a mid-point velocity in the range, and no other cell.
+
+    Each velocity needs a unit. The count of the cells in the range and the title give each velocity in the unit
+    of the user.
+    """
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    dfvelocities = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") > 0.0)
+        .select("modelgridindex", "vel_r_mid_on_c")
+        .collect()
+    )
+    expectedcells = set(dfvelocities.filter(pl.col("vel_r_mid_on_c").is_between(0.1, 0.2))["modelgridindex"])
+    assert 0 < len(expectedcells) < dfvelocities.height
+
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "0.2c"])
+    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None)
+    capsys.readouterr()
+    dfcells = at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
+    assert set(dfcells["modelgridindex"]) == expectedcells
+    assert (
+        f"{len(expectedcells)} of {dfestimators.height} cells with estimators are in the velocity range with vmin = 0.1c and vmax = 0.2c"
+        in (capsys.readouterr().out)
+    )
+
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
+    assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
+        "mass-weighted mean of the cells with vmin = 0.1c and vmax = 60000 km/s"
+    )
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1"])
+
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "150000km/s"])
+    with pytest.raises(
+        ValueError, match=re.escape("No cell with estimators is in the velocity range with vmin = 150000 km/s")
+    ):
+        at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
+
+
+def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
+    """A cell with no matter has no estimators, and the error names the cell.
+
+    The command stopped with "cannot concat empty list" before.
+    """
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    emptycell = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") == 0.0)
+        .select(pl.col("modelgridindex").min())
+        .collect()
+        .item()
+    )
+    with pytest.raises(ValueError, match="hold no values"):
+        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell)
+
+
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 
@@ -1820,11 +2239,44 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
     assert "gives the wavelength" not in str(noreason.value)
 
 
+def test_room_for_title_predicts_the_place_of_the_title_of_the_draw() -> None:
+    """The height for the title comes from a prediction with no draw, and a draw must then put the title there.
+
+    A draw took 83 ms of a plot of 250 ms. The draw moves a title that overlaps the offset text of the y axis, thus a
+    title with and without an offset text must end 0.05 inches below the top of the figure. The text of the draw
+    can end one pixel from the prediction.
+    """
+    for ymax in (2e-5, 20.0):
+        fig, axes = at.plottools.make_frame_figure(argparse.Namespace(figwidthscale=0.3, figscale=1.0))
+        axis = axes[0, 0]
+        axis.plot([0.0, 1.0], [ymax / 2, ymax])
+        axis.set_title("A model name\nTimestep 40 (10.00d-11.00d)")
+        at.plottools.make_room_for_title(fig)
+        fig.canvas.draw()
+        assert bool(axis.yaxis.offsetText.get_text()) == (ymax < 1.0)
+        gap = fig.get_figheight() - axis.title.get_window_extent().y1 / fig.dpi
+        assert np.isclose(gap, 0.05, rtol=0.0, atol=0.01), (ymax, gap)
+        plt.close(fig)
+
+
+def test_room_for_title_keeps_the_axes_of_a_figure_with_no_frames() -> None:
+    """Only a frame figure takes more height for its title, because its divider keeps the frames at the bottom.
+
+    The axes of a different figure grew with the new height, and the title still went past the top.
+    """
+    fig, axis = plt.subplots(figsize=(4.0, 3.0))
+    axis.set_title("line 1\nline 2\nline 3\nline 4")
+    at.plottools.make_room_for_title(fig)
+    assert np.isclose(fig.get_figheight(), 3.0, rtol=1e-12, atol=0.0)
+    plt.close(fig)
+
+
 def test_plain_label_and_saved_path_read_well_in_a_terminal() -> None:
     """A log line must carry no LaTeX, and it must give the shorter of the two forms of a path."""
     assert at.plottools.plain_label(r"TEST MODEL +300.3d ($\pm$ 0.5d)") == "TEST MODEL +300.3d (+/- 0.5d)"
     # the subscript mark goes and the underscore stays, thus the plain form reads as M_sun
     assert at.plottools.plain_label(r"M$_{\odot}$") == "M_sun"
+    assert at.plottools.plain_label(r"T$_{\rm e}$ [K]") == "T_e [K]"
     assert at.plottools.plain_label("no mathematics here") == "no mathematics here"
 
 
@@ -2995,3 +3447,145 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
         )
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
+
+
+def test_viewer_status_line_gives_the_error() -> None:
+    """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
+    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
+    assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
+
+
+def test_viewer_queue_moves_a_clamped_control_back() -> None:
+    """A handler that clamps a control to the values of the plot gives unchanged values, and the control must move back.
+
+    The queue returned before it showed the values, thus a slider stayed at a position that the plot did not show.
+    """
+    # PySide6 is an optional dependency. CI does not install it for each Python version, and a CI machine with no
+    # libEGL.so.1 raises an ImportError that is not a ModuleNotFoundError
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    viewer = mock.Mock(values=5)
+    showvalues = mock.Mock()
+    queue = viewertools.DrawQueue(mock.Mock(), viewer, mock.Mock(), showvalues, mock.Mock())
+    queue.apply(5)
+    showvalues.assert_called_once_with()
+    assert queue.requestedvalues is None, "unchanged values must draw no plot"
+
+
+def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A worker thread hides the output of its plot, and the window thread still prints to the terminal.
+
+    contextlib.redirect_stdout changed the stream of each thread, thus a print of the window went to the plot.
+    """
+    terminal = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", viewertools.ThreadOutput(terminal))
+    monkeypatch.setattr(sys, "stderr", viewertools.ThreadOutput(io.StringIO()))
+    plotoutput = io.StringIO()
+    inside, printed = threading.Event(), threading.Event()
+
+    def plot() -> None:
+        with viewertools.send_output(plotoutput, io.StringIO()):
+            print("a line of the plot")
+            inside.set()
+            printed.wait(timeout=10)
+
+    worker = threading.Thread(target=plot)
+    worker.start()
+    assert inside.wait(timeout=10)
+    print("a line of the window")
+    printed.set()
+    worker.join()
+    assert plotoutput.getvalue() == "a line of the plot\n"
+    assert terminal.getvalue() == "a line of the window\n"
+
+
+def test_viewer_queue_draws_in_a_worker_thread() -> None:
+    """The window stays free during a plot, and a drag during a plot gives a plot of the last values alone.
+
+    The window thread drew each plot, thus a drag of the time slider stopped until the plot ended.
+    """
+    # the queue needs the timers of Qt alone, and a QCoreApplication loads no plugin of a display
+    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    renderthreads: list[str] = []
+    showthreads: list[str] = []
+    rendered: list[int] = []
+
+    def render(values: int) -> Callable[[], str | None]:
+        renderthreads.append(threading.current_thread().name)
+        rendered.append(values)
+        time.sleep(0.2)
+
+        def show() -> str | None:
+            showthreads.append(threading.current_thread().name)
+            return "rejected" if values < 0 else None
+
+        return show
+
+    viewer = mock.Mock(values=0)
+    afterdraw = mock.Mock()
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    for values in (1, 2, 3):
+        starttime = time.perf_counter()
+        queue.apply(values)
+        app.processEvents()
+        assert time.perf_counter() - starttime < 0.1, "the window must not wait for the plot"
+    wait_for_plots()
+    assert rendered == [1, 3]
+    assert "MainThread" not in renderthreads
+    assert showthreads == ["MainThread", "MainThread"]
+    assert viewer.values == queue.drawnvalues == 3
+
+    # a rejection keeps the values of the last plot
+    queue.apply(-1)
+    wait_for_plots()
+    assert viewer.values == queue.drawnvalues == 3
+    afterdraw.assert_called_with("rejected")
+
+
+def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
+    """The status line of Open Model must give the error of the first plot of the new window.
+
+    open_window returned only a bool, thus the message took the first line of the traceback on stderr.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+
+    def open_window(tokens: Sequence[str], windows: Sequence[object]) -> str:
+        sys.stderr.write("Traceback (most recent call last):\n")
+        return f"ComputeError: the query failed for {tokens[0]} and {len(windows)} window"
+
+    with mock.patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value="mymodel"):
+        message = viewertools.open_model_window(mock.Mock(), open_window, [mock.Mock()])
+    assert message == "The viewer cannot open mymodel: ComputeError: the query failed for mymodel and 1 window"
+
+
+def test_viewer_typed_centre_gives_back_the_range() -> None:
+    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
+
+    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
+    """
+    tmids = at.get_timestep_times(at.get_path("testdata") / "testmodel", loc="mid")
+    for count in (1, 2, 3, 4):
+        for start in range(len(tmids) - count + 1):
+            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
+            assert viewertools.get_nearest_range_start(tmids, centre, count) == start, (count, start)
+
+
+def test_viewer_option_rows_split_a_group_of_switches() -> None:
+    """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
+
+    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
+    """
+    parser = viewertools.make_parser(at.estimators.addargs)
+    rows, othertokens = viewertools.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
+    assert othertokens == ["Te", "mymodel"]

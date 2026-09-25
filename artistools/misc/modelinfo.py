@@ -297,7 +297,8 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     return get_runfolder_timesteps_cached(resolve_modelpath(folderpath))
 
 
-@lru_cache(maxsize=16)
+# a window checks every run folder for each plot, and a run of many restarts has more than 16 of them
+@lru_cache(maxsize=1024)
 def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     """Return the timesteps of the run folder at an absolute path."""
     if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):

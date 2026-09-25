@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import re
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -897,6 +898,64 @@ def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str"
         print_saved(residualfile)
 
 
+def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
+    """Return the top of the title of the axes in pixels, at the place where the next draw puts it.
+
+    The draw moves a title that overlaps the offset text of the y axis, e.g. "1e-5", above that text. This function
+    applies the same rule of matplotlib to the offset text of the tick formatter, and it needs no draw.
+    """
+    titlebox = axis.title.get_window_extent(renderer)
+    formatter = axis.yaxis.get_major_formatter()
+    formatter.set_locs([float(loc) for loc in axis.yaxis.get_majorticklocs()])
+    offsettext = axis.yaxis.offsetText
+    if not (offsettext.get_visible() and (offset := formatter.get_offset())):
+        return titlebox.y1
+    offsettext.set_text(offset)
+    offsetx, _ = offsettext.get_position()
+    offsettext.set_position((offsetx, axis.bbox.ymax + axis.yaxis.OFFSETTEXTPAD * axis.figure.dpi / 72))
+    offsetbox = offsettext.get_window_extent(renderer)
+    if offsetbox.intersection(offsetbox, titlebox) is None:
+        return titlebox.y1
+    # the two steps of Axes._update_title_position, which put the bottom of the title near the top of the text
+    titlex, _ = axis.title.get_position()
+    top = offsetbox.y1
+    for step in range(2):
+        if titlebox.y0 >= top:
+            break
+        bottom = top if step == 0 else 2 * top - titlebox.y0
+        axis.title.set_position((titlex, axis.transAxes.inverted().transform((0.0, bottom))[1]))
+        titlebox = axis.title.get_window_extent(renderer)
+    return titlebox.y1
+
+
+def make_room_for_title(fig: mplfig.Figure) -> None:
+    """Make the figure taller if a title goes past its top edge.
+
+    A saved file takes the tight bounding box, thus a title of two lines fits in it. A window shows the full figure.
+    The divider of make_frame_figure puts the frames at the bottom edge, thus the new height goes above them. The
+    function predicts the place of each title with no draw, because a draw took 83 ms of a plot of 250 ms.
+    """
+    # the axes of a figure with no divider grow with the figure, and the title then stays outside
+    if all(axis.get_axes_locator() is None for axis in fig.axes):
+        return
+    renderer = getattr(fig.canvas, "get_renderer", None)
+    if renderer is None:
+        return
+    renderer = renderer()
+    titletops = [text.get_window_extent(renderer).y1 for text in fig.texts]
+    for axis in fig.axes:
+        # the locator of a frame of make_frame_figure sets its position at the draw. Apply it before a measure
+        if (locator := axis.get_axes_locator()) is not None:
+            axis.apply_aspect(locator(axis, renderer))
+        if axis.get_title():
+            titletops.append(get_axes_title_top(axis, renderer))
+    overflow = max(titletops, default=0.0) / fig.dpi - fig.get_figheight()
+    if overflow > 0.0:
+        # a gap of 0.05 inches keeps the tops of the letters whole. Without forward=True, a pyplot window keeps its
+        # old size
+        fig.set_size_inches(fig.get_figwidth(), fig.get_figheight() + overflow + 0.05, forward=True)
+
+
 def save_figure(
     fig: mplfig.Figure,
     outpath: "Path | str",
@@ -920,6 +979,8 @@ def save_figure(
     openfile = args is not None and not isframe and getattr(args, "open", False)
 
     if show:
+        # a window shows the figure with no crop, thus a title needs room inside the figure
+        make_room_for_title(fig)
         plt.show()
 
     # a crop moves no artist, thus a fixed frame keeps its size and a file that hides its x labels
@@ -1097,15 +1158,15 @@ class PrunedLogLocator(mplticker.LogLocator):
 def plain_label(label: str) -> str:
     r"""Return a plot label as plain text, for a log line that a terminal shows.
 
-    A label carries LaTeX for the figure, e.g. "$\\pm$". A terminal shows those marks as they are,
-    thus this gives the symbol that they stand for.
+    A label carries LaTeX for the figure, e.g. "$\\pm$" and "T$_{\\rm e}$". A terminal shows those marks as they
+    are, thus the function replaces each mark with plain text.
     """
     # a terminal of any encoding shows these, thus the plain form stays in ASCII
     replacements = {r"$\pm$": "+/-", r"$\times$": "x", r"\odot": "sun", "$": "", "{": "", "}": ""}
     for latex, plain in replacements.items():
         label = label.replace(latex, plain)
 
-    return label
+    return re.sub(r"\\(?:mathrm|rm)\s*", "", label)
 
 
 def prune_log_ticks(axis: mplaxis.Axis) -> None:

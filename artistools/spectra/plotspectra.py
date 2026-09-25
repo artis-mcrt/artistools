@@ -2124,8 +2124,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.interactive:
-        from artistools.spectra.interactive import get_command_tokens
         from artistools.spectra.interactive import run_viewer
+        from artistools.viewertools import get_command_tokens
 
         run_viewer(
             get_command_tokens(

@@ -13,6 +13,7 @@ from collections import defaultdict
 from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from itertools import batched
 from pathlib import Path
 from types import MappingProxyType
@@ -31,7 +32,6 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import get_file_identity
 from artistools.misc import get_mpiranklist
-from artistools.misc import get_mpirankofcell
 from artistools.misc import get_runfolders
 from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
@@ -44,7 +44,6 @@ from artistools.rustext import estimparse
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
-
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
@@ -657,8 +656,34 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     return pldflazy
 
 
+# the cache uses filestate only as a part of its key
+@lru_cache(maxsize=1024)
+def scan_parquet_file(
+    parquetfile: Path,
+    filestate: tuple[int, int, int, int],  # ruff:ignore[unused-function-argument]
+) -> pl.LazyFrame:
+    """Return a scan of a parquet cache, which a window keeps for all its plots.
+
+    A scan keeps the metadata that it got when it first read the file. The key thus holds these values of the file:
+
+    - the device;
+    - the inode;
+    - the modification time;
+    - the size.
+
+    A copy onto the file, or a new cache that takes a freed inode, then gets a new scan.
+    """
+    return pl.scan_parquet(parquetfile)
+
+
+def scan_kept_parquet_file(parquetfile: Path) -> pl.LazyFrame:
+    """Return the kept scan of a parquet cache, or a new scan if the file changed."""
+    filestat = parquetfile.stat()
+    return scan_parquet_file(parquetfile, (filestat.st_dev, filestat.st_ino, filestat.st_mtime_ns, filestat.st_size))
+
+
 def drop_restart_duplicates(
-    parquetfiles: "Sequence[Path]", runfolder_of_file: "Sequence[Path]", match_timestep: "Sequence[int] | None"
+    scans: "Sequence[pl.LazyFrame]", runfolder_of_file: "Sequence[Path]", match_timestep: "Sequence[int] | None"
 ) -> pl.LazyFrame:
     """Return the rows of the estimator caches, with one row for each timestep and cell of a restarted run.
 
@@ -667,7 +692,6 @@ def drop_restart_duplicates(
     those timesteps alone. Each file then drops its own repeats with a filter that needs no row index. A
     filter of the row index of every file took 0.4 to 2.9 s for each collect of 25 million rows.
     """
-    scans = [pl.scan_parquet(pfile) for pfile in parquetfiles]
     if len(set(runfolder_of_file)) < 2:
         return pl.concat(scans, how="diagonal_relaxed")
 
@@ -726,10 +750,13 @@ def scan_estimators(
     join_modeldata: bool = False,
     verbose: bool = False,
     classicartis: bool = False,
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
 ) -> pl.LazyFrame:
     """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
     Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
+    batchcaches gives the current parquet caches of all the batches of an ARTIS run, as get_estimator_batch_caches
+    gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None
@@ -762,15 +789,14 @@ def scan_estimators(
         pldflazy = lazyframe_from_estimator_dict(estimatorsdict)
     else:
         pldflazy = scan_artis_estimators(
-            modelpath, match_modelgridindex=match_modelgridindex, match_timestep=match_timestep, verbose=verbose
+            modelpath,
+            match_modelgridindex=match_modelgridindex,
+            match_timestep=match_timestep,
+            verbose=verbose,
+            batchcaches=batchcaches,
         )
 
-    if match_modelgridindex is not None:
-        pldflazy = pldflazy.filter(pl.col("modelgridindex").is_in(match_modelgridindex))
-
-    if match_timestep is not None:
-        pldflazy = pldflazy.filter(pl.col("timestep").is_in(match_timestep))
-
+    pldflazy = select_timesteps_and_cells(pldflazy, timesteps=match_timestep, modelgridindices=match_modelgridindex)
     pldflazy = add_derived_estimator_columns(pldflazy)
 
     if join_modeldata:
@@ -779,15 +805,46 @@ def scan_estimators(
     return pldflazy
 
 
-def scan_artis_estimators(
-    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
+def select_timesteps_and_cells(
+    estimators: pl.LazyFrame, timesteps: Sequence[int] | None, modelgridindices: Sequence[int] | None
 ) -> pl.LazyFrame:
-    """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none."""
+    """Return the rows of the timesteps and the cells. None selects all the timesteps or all the cells.
+
+    polars casts a column for is_in with a list of integers, and the parquet statistics of a cast column cannot skip
+    a file. The integer bounds of is_between take the dtype of each column, thus a contiguous selection uses it.
+    """
+    for column, values in (("timestep", timesteps), ("modelgridindex", modelgridindices)):
+        if values is None:
+            continue
+        uniquevalues = sorted(set(values))
+        iscontiguous = bool(uniquevalues) and uniquevalues[-1] - uniquevalues[0] == len(uniquevalues) - 1
+        estimators = estimators.filter(
+            pl.col(column).is_between(uniquevalues[0], uniquevalues[-1])
+            if iscontiguous
+            else pl.col(column).is_in(uniquevalues)
+        )
+    return estimators
+
+
+class EstimatorBatchCache(t.NamedTuple):
+    """The parquet cache of the estimators of one batch of MPI ranks in one run folder."""
+
+    runfolder: Path
+    mpiranks: tuple[int, ...]
+    parquetfile: Path
+
+
+def get_estimator_batch_caches(
+    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
+) -> list[EstimatorBatchCache]:
+    """Return the parquet cache of each batch of MPI ranks that holds the timesteps and the cells.
+
+    Convert the estimator text files of each batch that has no current cache. A run with no run folders has no caches.
+    """
     mpiranklist = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-    mpiranks_matched = (
-        {get_mpirankofcell(modelpath=modelpath, modelgridindex=mgi) for mgi in match_modelgridindex}
-        if match_modelgridindex
-        else set(mpiranklist)
+    mpiranks_matched = set(
+        # an empty selection of cells, e.g. of -readonlymgi, reads all the ranks, and the filter then gives no rows
+        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex or None, only_ranks_withgridcells=True)
     )
     mpirank_groups = [
         (batchindex, mpiranks)
@@ -796,77 +853,129 @@ def scan_artis_estimators(
     ]
 
     runfolders = get_runfolders(modelpath, timesteps=match_timestep)
-    if runfolders:
-        pairs = [
-            (runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups
-        ]
+    if not runfolders:
+        return []
 
-        # one glob of each folder gives the text file mtimes of every batch, because a glob of a folder
-        # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
-        # its freshness to the progress bar and to the conversion
-        mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
-        batchstates = [
-            get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
-            for runfolder, _batchindex, mpiranks in pairs
-        ]
-        batchmtimes = [mtime for mtime, _complete in batchstates]
-        batchcomplete = [complete for _mtime, complete in batchstates]
-        cachepaths = [
-            get_rankbatch_parquetpath(runfolder, mpiranks, batchindex) for runfolder, batchindex, mpiranks in pairs
-        ]
-        # each identity comes from before the freshness check of its own file. A fresh cache that a rival
-        # process installs after that check then keeps its place, because a rewrite replaces only the
-        # file that the check saw
-        outdatedparquets = [get_file_identity(cachepath) for cachepath in cachepaths]
-        stalereasons = [
-            rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
-            for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
-        ]
-        # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
-        rebuilds = [
-            reason is not None and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete)
-            for reason, cachepath, complete in zip(stalereasons, cachepaths, batchcomplete, strict=True)
-        ]
+    pairs = [(runfolder, batchindex, mpiranks) for runfolder in runfolders for batchindex, mpiranks in mpirank_groups]
 
-        # a bar is worth its place only when a batch converts text files, which takes minutes. Current
-        # parquet caches read no text, and their scan is lazy, thus a bar would show no work
-        batches: Iterable[
-            tuple[tuple[Path, int, Sequence[int]], float | None, bool, str | None, tuple[int, int] | None]
-        ] = list(zip(pairs, batchmtimes, batchcomplete, stalereasons, outdatedparquets, strict=True))
-        if any(rebuilds) and len(pairs) > 1:
-            from artistools.misc.general import get_progress_class
+    # one glob of each folder gives the text file mtimes of every batch, because a glob of a folder
+    # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
+    # its freshness to the progress bar and to the conversion
+    mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
+    batchstates = [
+        get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
+        for runfolder, _batchindex, mpiranks in pairs
+    ]
+    batchmtimes = [mtime for mtime, _complete in batchstates]
+    batchcomplete = [complete for _mtime, complete in batchstates]
+    cachepaths = [
+        get_rankbatch_parquetpath(runfolder, mpiranks, batchindex) for runfolder, batchindex, mpiranks in pairs
+    ]
+    # each identity comes from before the freshness check of its own file. A fresh cache that a rival
+    # process installs after that check then keeps its place, because a rewrite replaces only the
+    # file that the check saw
+    outdatedparquets = [get_file_identity(cachepath) for cachepath in cachepaths]
+    stalereasons = [
+        rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
+        for cachepath, mtime, complete in zip(cachepaths, batchmtimes, batchcomplete, strict=True)
+    ]
+    # a batch that no conversion can replace keeps its cache, thus it starts no progress bar
+    rebuilds = [
+        reason is not None and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete)
+        for reason, cachepath, complete in zip(stalereasons, cachepaths, batchcomplete, strict=True)
+    ]
 
-            batches = get_progress_class()(batches, desc="Converting estimator files", unit="batch")
+    # a progress bar is useful only when a batch converts text files, which takes minutes. The scan of a current
+    # parquet cache is lazy and reads no text, thus a progress bar shows no progress
+    batches: Iterable[
+        tuple[tuple[Path, int, Sequence[int]], float | None, bool, str | None, tuple[int, int] | None]
+    ] = list(zip(pairs, batchmtimes, batchcomplete, stalereasons, outdatedparquets, strict=True))
+    if any(rebuilds) and len(pairs) > 1:
+        from artistools.misc.general import get_progress_class
 
-        parquetfiles = [
-            get_estimators_rankbatch_parquetfile(
-                modelpath=modelpath,
-                folderpath=runfolder,
-                batch_mpiranks=mpiranks,
-                batchindex=batchindex,
-                textsource_mtime=textsource_mtime,
-                textsource_complete=textsource_complete,
-                stalereason=stalereason,
-                outdatedparquet=outdatedparquet,
-                verbose=verbose,
-            )
-            for (
-                (runfolder, batchindex, mpiranks),
-                textsource_mtime,
-                textsource_complete,
-                stalereason,
-                outdatedparquet,
-            ) in batches
-        ]
+        batches = get_progress_class()(batches, desc="Converting estimator files", unit="batch")
 
-        assert bool(parquetfiles)
+    parquetfiles = [
+        get_estimators_rankbatch_parquetfile(
+            modelpath=modelpath,
+            folderpath=runfolder,
+            batch_mpiranks=mpiranks,
+            batchindex=batchindex,
+            textsource_mtime=textsource_mtime,
+            textsource_complete=textsource_complete,
+            stalereason=stalereason,
+            outdatedparquet=outdatedparquet,
+            verbose=verbose,
+        )
+        for (
+            (runfolder, batchindex, mpiranks),
+            textsource_mtime,
+            textsource_complete,
+            stalereason,
+            outdatedparquet,
+        ) in batches
+    ]
+
+    return [
+        EstimatorBatchCache(runfolder=runfolder, mpiranks=tuple(mpiranks), parquetfile=parquetfile)
+        for (runfolder, _batchindex, mpiranks), parquetfile in zip(pairs, parquetfiles, strict=True)
+    ]
+
+
+def select_estimator_batch_caches(
+    modelpath: Path,
+    batchcaches: Sequence[EstimatorBatchCache],
+    match_modelgridindex: Sequence[int] | None,
+    match_timestep: Sequence[int] | None,
+) -> list[EstimatorBatchCache]:
+    """Return the caches of the run folders of the timesteps and of the batches of the cells.
+
+    get_estimator_batch_caches reads the same caches for a selection, thus a scan of these caches reads the same rows.
+    """
+    runfolders = set(get_runfolders(modelpath, timesteps=match_timestep))
+    mpiranks_matched = set(
+        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex or None, only_ranks_withgridcells=True)
+    )
+    return [
+        batchcache
+        for batchcache in batchcaches
+        if batchcache.runfolder in runfolders and mpiranks_matched.intersection(batchcache.mpiranks)
+    ]
+
+
+def scan_artis_estimators(
+    modelpath: Path,
+    match_modelgridindex: Sequence[int] | None,
+    match_timestep: Sequence[int] | None,
+    verbose: bool,
+    batchcaches: Sequence[EstimatorBatchCache] | None = None,
+) -> pl.LazyFrame:
+    """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none.
+
+    batchcaches gives the current caches of all the batches of the run. The scan then selects from them, and it
+    checks and converts no file.
+    """
+    selectedcaches = (
+        get_estimator_batch_caches(modelpath, match_modelgridindex, match_timestep, verbose)
+        if batchcaches is None
+        else select_estimator_batch_caches(modelpath, batchcaches, match_modelgridindex, match_timestep)
+    )
+    if selectedcaches:
+        parquetfiles = [batchcache.parquetfile for batchcache in selectedcaches]
+        runfolder_of_file = [batchcache.runfolder for batchcache in selectedcaches]
         if not verbose:
             datasize_GB = sum(pfile.stat().st_size for pfile in parquetfiles) / 1024 / 1024 / 1024
-            str_runfolders = ", ".join([Path(x).relative_to(modelpath).as_posix() for x in runfolders])
+            str_runfolders = ", ".join(
+                Path(x).relative_to(modelpath).as_posix() for x in dict.fromkeys(runfolder_of_file)
+            )
             print(
                 f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
             )
-        pldflazy = drop_restart_duplicates(parquetfiles, [runfolder for runfolder, _, _ in pairs], match_timestep)
+        # a window keeps the scans for its many plots. A command reads each file one time
+        scans = [
+            pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
+        ]
+        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep)
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached

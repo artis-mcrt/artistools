@@ -103,9 +103,11 @@ from artistools.plottools import set_plot_title
 from artistools.plottools import wants_log_scale
 
 if t.TYPE_CHECKING:
+    import matplotlib.figure as mplfig
     import matplotlib.typing as mplt
     import numpy.typing as npt
 
+    from artistools.estimators.core import EstimatorBatchCache
     from artistools.misc import FrameSet
 
 
@@ -1454,25 +1456,24 @@ def get_snapshot_timestrings(
     return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
 
-def make_figure(
+def draw_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
-    frameset: "FrameSet | None" = None,
-    **plotkwargs: t.Any,
-) -> str:
-    """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
+    fig: "mplfig.Figure | None" = None,
+) -> "tuple[mplfig.Figure, dict[str, int | str]]":
+    """Plot one subplot per entry in plotlist, and return the figure and the fields of the name of its file.
 
-    A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
-    and --open leave it alone. The caller opens the file that holds every frame.
+    A plot of one cell against time gives the field cell, and a snapshot gives the fields timestep and timedays.
+    If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
     """
     modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True)
+    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True, fig=fig)
     axes = axesgrid[:, 0]
 
     assert isinstance(axes, np.ndarray)
@@ -1503,27 +1504,48 @@ def make_figure(
             estimators=estimators,
             startfromzero=startfromzero,
             args=args,
-            **plotkwargs,
         )
 
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 
-    if len(set(mgilist)) == 1 and len(timestepslist) > 1:  # single grid cell versus time plot
+    framefields: dict[str, int | str]
+    if len(set(mgilist)) == 1 and len(timestepslist) > 1:
         figure_title = f"{modelname}\nCell {mgilist[0]}"
-
-        # a plot of one cell against time is no frame of a set, thus it names itself
-        outpath = resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
-        outfilename = format_frame_path(outpath, cell=mgilist[0], format=args.format)
-
+        framefields = {"cell": mgilist[0]}
     else:
         strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         if args.slice is not None:
             figure_title += f", {args.slicelabel}"
         print("  plotting " + figure_title.replace("\n", " "))
+        framefields = {"timestep": strtimestep, "timedays": strtimedays}
 
-        assert isinstance(timestepslist, list)
+    set_plot_title(axes[0], figure_title, args)
+
+    return fig, framefields
+
+
+def make_figure(
+    modelpath: Path | str,
+    timestepslist: Collection[int] | None,
+    estimators: pl.LazyFrame,
+    xvariable: str,
+    plotlist: list[list[t.Any]],
+    args: argparse.Namespace,
+    frameset: "FrameSet | None" = None,
+) -> str:
+    """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
+
+    A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
+    and --open leave it alone. The caller opens the file that holds every frame.
+    """
+    fig, framefields = draw_figure(modelpath, timestepslist, estimators, xvariable, plotlist, args)
+    if "cell" in framefields:
+        # a plot of one cell against time is no frame of a set, thus it names itself
+        outpath = resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
+        outfilename = format_frame_path(outpath, **framefields, format=args.format)
+    else:
         # a line of -slice has the plot of a snapshot, thus its file name must hold the line
         slicefields: dict[str, str] = (
             {"kind": "slice", "plane": get_slice_filetag(args)} if args.slice is not None else {}
@@ -1531,11 +1553,7 @@ def make_figure(
         framename = IMAGEFRAMENAME if slicefields else SNAPSHOTFRAMENAME
         # the caller of a set of frames gives the frameset, thus every frame lands beside its product
         outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, framename)
-        outfilename = format_frame_path(
-            outpath, timestep=strtimestep, timedays=strtimedays, format=args.format, **slicefields
-        )
-
-    set_plot_title(axes[0], figure_title, args)
+        outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
@@ -1770,19 +1788,20 @@ def get_colour_norm(panel: ImagePanel, grid: "npt.NDArray[np.float64]") -> mc.No
     return mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
 
 
-def make_image_figure(
+def draw_image_figure(
     modelpath: Path | str,
     timestepslist: Sequence[int],
     estimators: pl.LazyFrame,
     panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
-    frameset: "FrameSet",
-) -> str:
-    """Plot each panel as a colour image of a snapshot, save the figure, and return its name.
+    fig: "mplfig.Figure | None" = None,
+) -> "tuple[mplfig.Figure, dict[str, int | str]]":
+    """Plot each panel as a colour image of a snapshot, and return the figure and the fields of the name of its file.
 
     The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each
-    z without it.
+    z without it. If the caller gives an empty figure as fig, the function draws on it, e.g. for a window
+    that stays open.
     """
     import matplotlib.pyplot as plt
 
@@ -1794,9 +1813,13 @@ def make_image_figure(
     nrows = math.ceil(len(panels) / ncols)
     # the image at each cylindrical radius has half the width of a plane
     panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
-    fig, axesgrid = plt.subplots(
-        nrows, ncols, figsize=(panelwidth * ncols, 4.2 * nrows * args.figscale), squeeze=False, layout="constrained"
-    )
+    figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    else:
+        fig.set_size_inches(*figsize, forward=True)
+    fig.set_layout_engine("constrained")
+    axesgrid = fig.subplots(nrows, ncols, squeeze=False)
     vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
     # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
     xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
@@ -1839,14 +1862,27 @@ def make_image_figure(
     if not args.notitle:
         fig.suptitle(figure_title)
 
-    outfilename = format_frame_path(
-        frameset.frametemplate,
-        kind="slice" if isplane else "cylindrical",
-        plane=get_slice_filetag(args) if isplane else "rz",
-        timestep=strtimestep,
-        timedays=strtimedays,
-        format=args.format,
-    )
+    framefields: dict[str, int | str] = {
+        "kind": "slice" if isplane else "cylindrical",
+        "plane": get_slice_filetag(args) if isplane else "rz",
+        "timestep": strtimestep,
+        "timedays": strtimedays,
+    }
+    return fig, framefields
+
+
+def make_image_figure(
+    modelpath: Path | str,
+    timestepslist: Sequence[int],
+    estimators: pl.LazyFrame,
+    panels: Sequence[ImagePanel],
+    modelmeta: dict[str, t.Any],
+    args: argparse.Namespace,
+    frameset: "FrameSet",
+) -> str:
+    """Plot each panel as a colour image of a snapshot, save the figure, and return its name."""
+    fig, framefields = draw_image_figure(modelpath, timestepslist, estimators, panels, modelmeta, args)
+    outfilename = format_frame_path(frameset.frametemplate, **framefields, format=args.format)
     save_figure(fig, outfilename, args=args, isframe=frameset.combines, dpi=args.dpi)
     return outfilename
 
@@ -2056,6 +2092,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     addarg_show(parser)
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Open a window with controls for the time, the cell, and the subplots, and show the command",
+    )
     addarg_verbose(parser)
 
     addarg_dpi(parser, default=600)
@@ -2125,6 +2166,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+# -x with one of these variables gives a plot against time, and each other variable gives a snapshot
+TIME_XVARIABLES: t.Final = frozenset({"time", "timestep"})
+
+
+def time_is_given(args: argparse.Namespace) -> bool:
+    """Return True if the arguments select a time or a timestep.
+
+    A timestep of 0 and a time of 0 are real selections, and both are falsy. Thus this tests for absence and not for
+    truth.
+    """
+    return any(value is not None for value in (args.timedays, args.timemin, args.timemax, args.timestep))
+
+
+def get_default_x(*, timegiven: bool, makegif: bool) -> str:
+    """Return the x variable of a command with no -x.
+
+    A gif holds one snapshot for each timestep, thus its x axis shows a spatial variable. A time that the user gave
+    also selects one snapshot.
+    """
+    return "time" if not timegiven and not makegif else "velocity"
+
+
 def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int, int]:
     """Apply the default x variable and the default time range, and return the first and last timestep.
 
@@ -2133,18 +2196,13 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     axis holds. A plot of a snapshot against a spatial variable needs a time, thus it keeps the
     default time range.
     """
-    # a timestep of 0 and a time of 0 are real selections, and both are falsy. Thus this tests for
-    # absence and not for truth
-    timeargs = (args.timedays, args.timemin, args.timemax, args.timestep)
-    notimegiven = all(value is None for value in timeargs)
+    notimegiven = not time_is_given(args)
     wantswholerun = args.makegif or args.listvariables or args.listnuclides
-    if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, "time", "timestep"}):
+    if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     if args.x is None:
-        # a gif holds one snapshot for each timestep, thus it plots against a spatial variable. A time
-        # that the user gave also selects one snapshot
-        args.x = "time" if notimegiven and not args.makegif else "velocity"
+        args.x = get_default_x(timegiven=not notimegiven, makegif=args.makegif)
         print(f"Setting x variable to {args.x}")
 
     # get_time_range returns these times, thus keep what the user gave for the message below
@@ -2175,6 +2233,7 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
     """
+    from artistools.spectra import get_velocity_label
     from artistools.spectra import parse_velocity_argument
 
     text = slicetext.strip().lower()
@@ -2196,7 +2255,7 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
         except argparse.ArgumentTypeError as err:
             exit_with_error(str(err), helptext)
 
-        label = f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+        label = get_velocity_label(velocity_kmps, unit)
         if velocity_kmps == 0.0:
             label = "0"
         conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
@@ -2416,6 +2475,39 @@ def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str]
     return [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
 
 
+def prepare_snapshot(
+    args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any], plotlist: list[list[t.Any]]
+) -> tuple[pl.LazyFrame, list[ImagePanel]]:
+    """Return the estimators of the selected cells of a snapshot, and the panels of a colour image.
+
+    A model faster than 0.3c takes v/c in place of the velocity on the horizontal axis. A plot that is not an image
+    has no panels.
+    """
+    if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
+        args.x = "beta"
+        # the user gave -xmin and -xmax in km/s for -x velocity, and the axis is now v/c
+        if args.xmin is not None:
+            args.xmin *= km_to_cm / C_cm_per_s
+        if args.xmax is not None:
+            args.xmax *= km_to_cm / C_cm_per_s
+
+    if args.readonlymgi or args.slice is not None:
+        if not isinstance(args.modelgridindex, list):
+            args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+
+    panels: list[ImagePanel] = []
+    if args.dimensionreduce == 2:
+        panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
+        # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
+        panelcolumns = {name for panel in panels for name in panel.colexpr.meta.root_names()}
+        estimators = estimators.select(
+            cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
+        )
+
+    return estimators, panels
+
+
 def write_snapshot_figures(
     args: argparse.Namespace,
     modelpath: Path,
@@ -2429,28 +2521,8 @@ def write_snapshot_figures(
     With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
     one PDF file.
     """
-    if args.x == "velocity" and modelmeta["vmax_cmps"] > 0.3 * C_cm_per_s:
-        args.x = "beta"
-        # the user gave -xmin and -xmax in km/s for -x velocity, and the axis is now v/c
-        if args.xmin is not None:
-            args.xmin *= km_to_cm / C_cm_per_s
-        if args.xmax is not None:
-            args.xmax *= km_to_cm / C_cm_per_s
-
+    estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
     isimage = args.dimensionreduce == 2
-    if args.readonlymgi or args.slice is not None:
-        if not isinstance(args.modelgridindex, list):
-            args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
-        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
-
-    panels: list[ImagePanel] = []
-    if isimage:
-        panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
-        # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
-        panelcolumns = {name for panel in panels for name in panel.colexpr.meta.root_names()}
-        estimators = estimators.select(
-            cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
-        )
 
     # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
     if args.makegif:
@@ -2543,10 +2615,8 @@ def require_artis_folder(modelpath: Path) -> None:
     exit_with_error(f"'{modelpath}' is not an ARTIS folder", helptext)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot ARTIS estimators."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-
+def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
+    """Apply the defaults and the cell selection to the arguments, and return the model path and the timesteps."""
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath)
@@ -2569,15 +2639,97 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif args.readonlymgi:
         select_cells_along_axis(args)
 
-    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    return modelpath, list(range(timestepmin, timestepmax + 1))
+
+
+def get_plot_estimators(
+    args: argparse.Namespace,
+    modelpath: Path,
+    timesteps_included: Sequence[int],
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
+) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    """Return the estimators of the selected cells and timesteps with the model data of each cell, and the metadata.
+
+    batchcaches gives the current parquet caches of all the batches of the run, e.g. for a window that draws many
+    plots. The scan then checks and converts no file.
+    """
     estimators = scan_estimators(
         modelpath=modelpath,
         modelgridindex=args.modelgridindex,
         timestep=tuple(timesteps_included),
         classicartis=args.classicartis,
         verbose=args.verbose,
+        batchcaches=batchcaches,
     )
-    estimators, modelmeta = join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=args.verbose)
+    return join_cell_modeldata(estimators=estimators, modelpath=modelpath, verbose=args.verbose)
+
+
+def add_plot_columns(
+    args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any]
+) -> tuple[pl.LazyFrame, list[str]]:
+    """Return the estimators with the columns that the plot reads, and the names of all the columns."""
+    # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
+    if args.modelgridindex is None and args.dimensionreduce == 1:
+        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+
+    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
+    return estimators, estimators.collect_schema().names()
+
+
+def draw_plot(
+    args: argparse.Namespace, fig: "mplfig.Figure", batchcaches: "Sequence[EstimatorBatchCache] | None" = None
+) -> None:
+    """Draw the plot of one frame of the arguments on an empty figure, e.g. for a window that stays open.
+
+    The plot reads the estimators as the command does, thus the window draws the plot of the command. batchcaches
+    gives the current parquet caches of the run, and a window keeps them between its plots. The arguments must select
+    one plot. A list of the variables, a gif, and a set of frames each give a different action.
+    """
+    modelpath, timesteps_included = resolve_plot_args(args)
+    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
+    if estimators.select(pl.len()).collect().item() == 0:
+        msg = f"The model has no estimators for the timesteps {timesteps_included[0]} to {timesteps_included[-1]}"
+        if args.modelgridindex is not None:
+            msg += f" and the cells {args.modelgridindex}"
+        raise ValueError(msg)
+    estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
+
+    assert args.x is not None
+    if args.x in TIME_XVARIABLES:
+        draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)
+        return
+
+    estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
+    if args.dimensionreduce == 2:
+        draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
+    else:
+        draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot ARTIS estimators."""
+    # the dispatcher parses the command line and gives args alone, thus the viewer then reads sys.argv
+    fromdispatcher = args is not None
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if args.interactive:
+        from artistools.estimators.interactive import run_viewer
+        from artistools.viewertools import get_command_tokens
+
+        run_viewer(
+            get_command_tokens(
+                argsraw,
+                kwargs,
+                fromdispatcher=fromdispatcher,
+                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
+            )
+        )
+        return
+
+    modelpath, timesteps_included = resolve_plot_args(args)
+    wantslisting = args.listvariables or args.listnuclides
+    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included)
 
     # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
@@ -2585,12 +2737,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         report_data_available(modelpath, classicartis=args.classicartis)
         return
 
-    # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
-    if args.modelgridindex is None and args.dimensionreduce == 1:
-        estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-
-    estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
-    estimatorcolumns = estimators.collect_schema().names()
+    estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
 
     if wantslisting:
         print_listing(args, estimatorcolumns)
@@ -2599,7 +2746,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
     assert args.x is not None
-    if args.x in {"time", "timestep"}:
+    if args.x in TIME_XVARIABLES:
         make_figure(
             modelpath=modelpath,
             timestepslist=timesteps_included,

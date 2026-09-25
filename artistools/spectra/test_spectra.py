@@ -20,6 +20,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools import viewertools
 from artistools.spectra import core as atspectra
 from artistools.spectra import interactive
 from artistools.spectra import plotspectra
@@ -406,6 +407,10 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
     assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
+    assert atspectra.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
+    assert atspectra.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
+    with pytest.raises(argparse.ArgumentTypeError, match="has no unit"):
+        atspectra.parse_velocity_argument("5000", requireunit=True)
     velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)
@@ -2005,7 +2010,7 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 
 def test_interactive_command_tokens() -> None:
     """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
-    parser = interactive.make_parser()
+    parser = viewertools.make_parser(plotspectra.addargs)
     tokens = [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2040,7 +2045,7 @@ def test_interactive_command_tokens() -> None:
         "--",
         "-folder",
     ]
-    basetokens = interactive.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    basetokens = viewertools.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
     assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2336,6 +2341,17 @@ def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
     assert viewer.values == oldvalues
 
 
+def test_interactive_rejected_frames_leave_a_plot_on_the_figure() -> None:
+    """An error of the new frames empties the figure, and the next plot must make new frames on it.
+
+    The viewer kept the key of the old frames, thus each later plot went to axes that the figure did not hold.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-figscale", ("-10",)),))) is not None
+    assert viewer.change(viewer.step_time(1) or viewer.values) is None
+    assert viewer.fig.axes, "the figure must hold the frames of the plot"
+
+
 def test_interactive_redraw_matches_a_new_plot() -> None:
     """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
 
@@ -2374,10 +2390,6 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
 
 def test_interactive_status_line_gives_the_error() -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
-    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
-    assert interactive.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
-    assert interactive.get_first_line("A file is missing\nThe second line") == "A file is missing"
-
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
@@ -2474,18 +2486,6 @@ def test_interactive_unlock_gives_the_default_count() -> None:
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_typed_centre_gives_back_the_range() -> None:
-    """The centre that the time field shows gives back the same range of timesteps, also for an even count.
-
-    The viewer took the timestep that holds the centre as the middle, and an even range then moved one timestep.
-    """
-    tmids = at.get_timestep_times(modelpath, loc="mid")
-    for count in (1, 2, 3, 4):
-        for start in range(len(tmids) - count + 1):
-            centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
-            assert interactive.get_nearest_range_start(tmids, centre, count) == start, (count, start)
-
-
 def test_interactive_frompackets_box() -> None:
     """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
@@ -2546,9 +2546,9 @@ def test_interactive_direction_and_bin_controls() -> None:
 
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
-    parser = interactive.make_parser()
+    parser = viewertools.make_parser(plotspectra.addargs)
     tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
-    rows, othertokens = interactive.split_option_rows(parser, [*tokens, "--", "rest"])
+    rows, othertokens = viewertools.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (
         ("-deltax", ("5",)),
         ("-label", ("a b", "c")),
@@ -2559,28 +2559,29 @@ def test_interactive_option_rows() -> None:
     )
     assert othertokens == ["--", "rest"]
 
-    actions = {action.option_strings[0]: action for action in interactive.get_table_actions(parser)}
+    actions = {
+        action.option_strings[0]: action
+        for action in viewertools.get_table_actions(
+            parser, interactive.CONTROLLED_DESTS | interactive.TABLE_EXCLUDED_DESTS
+        )
+    }
     # the other controls of the window set these options, and a list of times draws more than one plot
     assert (
         not {"-timedays", "-xmin", "-groupby", "-yvariable", "-plotviewingangle", "-timedayslist", "-h"}
         & actions.keys()
     )
     # no option of the table has choices now, but a new option with choices gets a list in the table
-    allactions = {
-        action.option_strings[0]: action
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        if action.option_strings
-    }
-    kinds = {flag: interactive.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    allactions = viewertools.get_actions_by_flag(parser)
+    kinds = {flag: viewertools.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
     assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
-    assert [interactive.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+    assert [viewertools.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
         "values",
         "list",
         "text",
     ]
     # an option with no default needs a value from the user before the command can give it
-    assert interactive.get_default_tokens(actions["-dpi"]) == ("250",)
-    assert interactive.get_default_tokens(actions["-title"]) is None
+    assert viewertools.get_default_tokens(actions["-dpi"]) == ("250",)
+    assert viewertools.get_default_tokens(actions["-title"]) is None
 
 
 def test_interactive_other_options_reach_the_command() -> None:

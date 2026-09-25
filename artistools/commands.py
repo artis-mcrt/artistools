@@ -97,6 +97,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotlinefluxes",
         "plotlogfiles",
         "plotnltepops",
+        "plotopacity",
         "plotradfield",
         "plotspectra",
         "plotspherical",
@@ -259,6 +260,18 @@ subcommandtree: CommandTree = {
         note=(
             "Give a time with -timedays or -timestep. A model of more than one cell also needs a cell,"
             " which -modelgridindex or -velocity gives."
+        ),
+    ),
+    "plotopacity": CommandSpec(
+        "plotopacity",
+        helptext="Plot the binned opacities of the ejecta against wavelength.",
+        note=(
+            "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"
+            " each Sobolev optical depth limited to 1. Without -cell, it shows the mean over all cells, weighted"
+            " by mass."
+        ),
+        examples=(
+            ("-modelpath . -ts 40 -xmin 3000 -xmax 4000", "the opacities at timestep 40, from 3000 to 4000 Angstroms"),
         ),
     ),
     "plotradfield": CommandSpec("plotradfield", helptext="Plot the radiation field estimators."),
