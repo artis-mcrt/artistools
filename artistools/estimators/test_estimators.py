@@ -3080,6 +3080,15 @@ def test_ionpoptype_changes_populations_alone(mockplot: mock.MagicMock, tmp_path
     assert np.allclose(gammavalues["cumulative"], gammavalues["absolute"], rtol=1e-12, atol=0.0)
 
 
+def test_an_empty_selection_of_cells_gives_no_rows() -> None:
+    """A selection of no cells, e.g. an empty -readonlymgi cone, gives no rows and no error.
+
+    The search for the caches found no rank for no cells. The scan then said that no run folder held the timestep.
+    """
+    estimators = at.scan_estimators(modelpath_classic_3d, modelgridindex=(), timestep=5).collect()
+    assert estimators.is_empty()
+
+
 def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> None:
     """A restarted run repeats the last timestep of the run before it, and the first folder's row stays.
 

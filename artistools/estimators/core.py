@@ -843,7 +843,8 @@ def get_estimator_batch_caches(
     """
     mpiranklist = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
     mpiranks_matched = set(
-        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
+        # an empty selection of cells, e.g. of -readonlymgi, reads all the ranks, and the filter then gives no rows
+        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex or None, only_ranks_withgridcells=True)
     )
     mpirank_groups = [
         (batchindex, mpiranks)
@@ -933,7 +934,7 @@ def select_estimator_batch_caches(
     """
     runfolders = set(get_runfolders(modelpath, timesteps=match_timestep))
     mpiranks_matched = set(
-        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
+        get_mpiranklist(modelpath, modelgridindex=match_modelgridindex or None, only_ranks_withgridcells=True)
     )
     return [
         batchcache
