@@ -3250,6 +3250,8 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
 
     The queue returned before it showed the values, thus a slider stayed at a position that the plot did not show.
     """
+    # PySide6 is an optional dependency, and CI does not install it for each Python version
+    pytest.importorskip("PySide6.QtWidgets")
     viewer = mock.Mock(values=5)
     showvalues = mock.Mock()
     queue = viewertools.DrawQueue(mock.Mock(), viewer, mock.Mock(), showvalues, mock.Mock())
@@ -3263,6 +3265,7 @@ def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
 
     open_window returned only a bool, thus the message took the first line of the traceback on stderr.
     """
+    pytest.importorskip("PySide6.QtWidgets")
 
     def open_window(tokens: Sequence[str], windows: Sequence[object]) -> str:
         sys.stderr.write("Traceback (most recent call last):\n")
