@@ -3224,6 +3224,20 @@ def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
     assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
 
 
+def test_interactive_snapshot_reads_all_the_cells() -> None:
+    """A change from a plot against time to a snapshot removes -cell.
+
+    The window hides the control of the cells for a snapshot, thus a -cell of the plot against time stayed hidden.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--interactive"])
+    evolution = dc.replace(viewer.values, x="time", cells=str(viewer.cells[5]))
+    assert interactive.is_evolution(evolution)
+    viewer.values = evolution
+    snapshot = viewer.set_xvariable(evolution, "velocity")
+    assert not snapshot.cells
+    assert "-cell" not in viewer.get_plot_tokens(snapshot)
+
+
 def test_interactive_snapshot_and_time_evolution() -> None:
     """A plot against time reads the whole run and names no time, and a snapshot reads one timestep of the run.
 

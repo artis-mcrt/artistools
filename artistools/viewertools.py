@@ -708,6 +708,105 @@ def make_slider() -> "QtWidgets.QSlider":
     return slider
 
 
+def make_range_slider(
+    steps: int,
+) -> "tuple[QtWidgets.QWidget, Callable[[int, int], None], Callable[[Callable[[int, int], None]], None]]":
+    """Return a slider with two handles for a range of the positions 0 to steps, and two functions of the slider.
+
+    The first function moves the handles. The second function connects a handler, which receives the index of the
+    handle that the user moved and its new position.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class RangeSlider(QtWidgets.QWidget):
+        """A slider with two handles, which give the minimum and the maximum of a range.
+
+        Qt has no slider with two handles. A drag moves the handle that is nearer to the pointer, and the minimum
+        stays below the maximum. The signal gives the index of the handle that moved and its new position.
+        """
+
+        limitmoved = QtCore.Signal(int, int)
+        handleradius: t.Final = 8.0
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.positions = [0, steps]
+            self.draghandle: int | None = None
+            self.setMinimumHeight(round(3 * self.handleradius))
+            self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            # the arrow keys move the time and change the width, thus the slider must not take them
+            self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+
+        def set_positions(self, low: int, high: int) -> None:
+            self.positions = [low, high]
+            self.update()
+
+        def get_pixel(self, position: int) -> float:
+            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / steps
+
+        def get_position(self, pixel: float) -> int:
+            fraction = (pixel - self.handleradius) / max(self.width() - 2.0 * self.handleradius, 1.0)
+            return round(min(max(fraction, 0.0), 1.0) * steps)
+
+        @t.override
+        def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            palette = self.palette()
+            middle = self.height() / 2.0
+            lowpixel, highpixel = (self.get_pixel(position) for position in self.positions)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            for left, right, colourrole in (
+                (self.handleradius, self.width() - self.handleradius, QtGui.QPalette.ColorRole.Mid),
+                (lowpixel, highpixel, QtGui.QPalette.ColorRole.Highlight),
+            ):
+                painter.setBrush(palette.color(colourrole))
+                painter.drawRoundedRect(QtCore.QRectF(left, middle - 2.0, right - left, 4.0), 2.0, 2.0)
+            painter.setPen(QtGui.QPen(palette.color(QtGui.QPalette.ColorRole.Mid)))
+            painter.setBrush(palette.color(QtGui.QPalette.ColorRole.Light))
+            for pixel in (lowpixel, highpixel):
+                painter.drawEllipse(QtCore.QPointF(pixel, middle), self.handleradius - 1.0, self.handleradius - 1.0)
+            painter.end()
+
+        @t.override
+        def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+            pixel = event.position().x()
+            midpixel = sum(self.get_pixel(position) for position in self.positions) / 2.0
+            self.draghandle = 0 if pixel < midpixel else 1
+            self.move_handle(pixel)
+
+        @t.override
+        def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+            if self.draghandle is not None:
+                self.move_handle(event.position().x())
+
+        @t.override
+        def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+            self.draghandle = None
+
+        def move_handle(self, pixel: float) -> None:
+            if self.draghandle is None:
+                return
+            position = self.get_position(pixel)
+            if self.draghandle == 0:
+                position = min(position, self.positions[1] - 1)
+            else:
+                position = max(position, self.positions[0] + 1)
+            if position != self.positions[self.draghandle]:
+                self.positions[self.draghandle] = position
+                self.update()
+                self.limitmoved.emit(self.draghandle, position)
+
+    slider = RangeSlider()
+
+    def connect_handler(handler: "Callable[[int, int], None]") -> None:
+        slider.limitmoved.connect(handler)
+
+    return slider, slider.set_positions, connect_handler
+
+
 def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     """Return the sidebar of the window and the layout of its panel. The sections and the command scroll together."""
     from PySide6 import QtCore

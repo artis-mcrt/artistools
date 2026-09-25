@@ -66,6 +66,7 @@ from artistools.viewertools import get_option_tokens
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
+from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
@@ -483,7 +484,8 @@ class EstimatorViewer:
         """Return the values with a new -x variable.
 
         A plot against time reads the whole run, and a snapshot reads the valid timestep at the middle of the old time
-        range. The x limits of one variable do not apply to a different variable.
+        range. The x limits of one variable do not apply to a different variable. A snapshot reads all the cells,
+        because the window hides the control of the cells for a snapshot.
         """
         if xvariable == values.x:
             return values
@@ -492,7 +494,7 @@ class EstimatorViewer:
             return self.select_timesteps(values, 0, len(self.validtimesteps))
         if not is_evolution(values) and is_evolution(self.values):
             firstpos, lastpos = self.get_selection_positions(values)
-            return self.select_timesteps(values, (firstpos + lastpos) // 2, 1)
+            return self.select_timesteps(dc.replace(values, cells=""), (firstpos + lastpos) // 2, 1)
         return values
 
     def draw(self, *, quiet: bool = True) -> str | None:
@@ -681,15 +683,32 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     playbutton.setToolTip(
         "Move a snapshot through the timesteps of the run, or move a plot against time through the cells (Space)"
     )
+    # a plot against time takes a range of timesteps, as the x range of plotspectra. A snapshot takes a time and a width
+    trangebox = QtWidgets.QWidget()
+    trangelayout = QtWidgets.QHBoxLayout(trangebox)
+    trangelayout.setContentsMargins(0, 0, 0, 0)
+    tminedit, tmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    trangeslider, set_trange_positions, connect_trange = make_range_slider(max(nvalid - 1, 1))
+    trangeslider.setToolTip("The first and the last timestep of the plot against time.")
+    for edit, text in ((tminedit, "first"), (tmaxedit, "last")):
+        edit.setFixedWidth(80)
+        edit.setToolTip(
+            f"The middle time of the {text} timestep of the range in days. A new time moves to the nearest."
+        )
+    for widget in (tminedit, trangeslider, tmaxedit):
+        trangelayout.addWidget(widget)
     timegrid.addWidget(QtWidgets.QLabel("Time [d]"), 0, 0)
     timegrid.addWidget(timeslider, 0, 1)
     timegrid.addWidget(timeedit, 0, 2)
+    timegrid.addWidget(trangebox, 0, 1, 1, 2)
     timegrid.addWidget(widthlabel, 1, 0)
     timegrid.addWidget(widthslider, 1, 1, 1, 2)
     timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
     timegrid.addWidget(playbutton, 2, 2)
 
-    _, cellgrid = add_section(panellayout, "Cells")
+    cellheader, cellgrid = add_section(panellayout, "Cells")
+    cellcontent = cellgrid.parentWidget()
+    assert cellcontent is not None
     cellslider = make_slider()
     cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
@@ -821,6 +840,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def show_blocked_values() -> None:
         values = viewer.values
         firstpos, lastpos = viewer.get_selection_positions()
+        evolution = is_evolution(values)
+        for widget in (timeslider, timeedit, widthlabel, widthslider):
+            widget.setVisible(not evolution)
+        trangebox.setVisible(evolution)
+        set_trange_positions(firstpos, lastpos)
+        set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
+        set_edit_text(tmaxedit, f"{viewer.tmids[values.last]:.4g}")
+        # a snapshot reads all the cells unless the command gives -cell, thus the cells need no control then
+        showcells = evolution or bool(values.cells)
+        for widget in (cellheader, cellcontent):
+            widget.setVisible(showcells)
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
@@ -889,6 +919,29 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error("Give a number of days for the time")
             return
         apply(viewer.select_centre(days))
+
+    def on_trange(handle: int, position: int) -> None:
+        firstpos, lastpos = viewer.get_selection_positions()
+        if handle == 0:
+            firstpos = position
+        else:
+            lastpos = position
+        apply(viewer.select_timesteps(viewer.values, firstpos, lastpos - firstpos + 1))
+
+    def on_trangeedit() -> None:
+        tminedit.setModified(False)
+        tmaxedit.setModified(False)
+        try:
+            firstdays, lastdays = float(tminedit.text()), float(tmaxedit.text())
+        except ValueError:
+            show_error("Give a number of days for the first and the last time")
+            return
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.validtimesteps]
+        firstpos, lastpos = (get_nearest_range_start(validtmids, days, 1) for days in (firstdays, lastdays))
+        if firstpos > lastpos:
+            show_error("Give a first time that is before the last time")
+            return
+        apply(viewer.select_timesteps(viewer.values, firstpos, lastpos - firstpos + 1))
 
     def on_step_time(step: int) -> None:
         if (values := viewer.step_time(step)) is not None:
@@ -1065,6 +1118,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
     timeedit.editingFinished.connect(on_timeedit)
+    connect_trange(on_trange)
+    tminedit.editingFinished.connect(on_trangeedit)
+    tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
     playtimer.timeout.connect(play_step)
     cellslider.valueChanged.connect(on_cell)
