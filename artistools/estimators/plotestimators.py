@@ -1253,9 +1253,22 @@ def get_xlist(
         .row(0, named=True)
     )
 
-    assert len(uniques["xvalue"]) > 0, "No data found for x-axis variable"
+    if not uniques["xvalue"]:
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
+
+
+def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
+    """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row."""
+    parts: list[str] = []
+    if timestepslist:
+        parts.append(f"the timesteps {min(timestepslist)} to {max(timestepslist)}")
+    if args.modelgridindex is not None:
+        parts.append(f"the cells {args.modelgridindex}")
+    if args.xmin is not None or args.xmax is not None:
+        parts.append(f"the x range -xmin {args.xmin} -xmax {args.xmax}")
+    return f"The estimators hold no row for {', '.join(parts)}" if parts else "The estimators hold no row"
 
 
 def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
@@ -2687,11 +2700,6 @@ def draw_plot(
     """
     modelpath, timesteps_included = resolve_plot_args(args)
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    if estimators.select(pl.len()).collect().item() == 0:
-        msg = f"The model has no estimators for the timesteps {timesteps_included[0]} to {timesteps_included[-1]}"
-        if args.modelgridindex is not None:
-            msg += f" and the cells {args.modelgridindex}"
-        raise ValueError(msg)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
@@ -2702,6 +2710,9 @@ def draw_plot(
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
     if args.dimensionreduce == 2:
+        # get_xlist checks the rows of a line plot, and an image reads the estimators without it
+        if estimators.select(pl.len()).collect().item() == 0:
+            raise ValueError(get_no_rows_message(timesteps_included, args))
         draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
     else:
         draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)
