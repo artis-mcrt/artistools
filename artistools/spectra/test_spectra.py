@@ -407,6 +407,10 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
     assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
+    assert atspectra.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
+    assert atspectra.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
+    with pytest.raises(argparse.ArgumentTypeError, match="has no unit"):
+        atspectra.parse_velocity_argument("5000", requireunit=True)
     velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)

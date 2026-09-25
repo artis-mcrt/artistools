@@ -1463,19 +1463,37 @@ def check_edges_increase(edges: Sequence[float], description: str) -> None:
         raise ValueError(msg)
 
 
-def parse_velocity_argument(value: str) -> tuple[float, t.Literal["kmps", "c"]]:
-    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000 or 0.1c."""
+def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
+    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
+
+    A number with no unit is in km/s, unless requireunit is True. A command that takes no unit then gives an error.
+    """
     text = value.strip()
-    unit: t.Literal["kmps", "c"] = "c" if text.lower().endswith("c") else "kmps"
+    unit: t.Literal["kmps", "c"]
+    if text.lower().endswith("km/s"):
+        numbertext, unit = text[: -len("km/s")], "kmps"
+    elif text.lower().endswith("c"):
+        numbertext, unit = text[:-1], "c"
+    else:
+        numbertext, unit = text, "kmps"
+    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
+    if requireunit and numbertext == text:
+        msg = f"'{value}' has no unit. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
     try:
-        number = float(text[:-1] if unit == "c" else text)
+        number = float(numbertext)
     except ValueError:
         number = math.nan
     if not math.isfinite(number):
-        msg = f"'{value}' is not a finite velocity. Give a number in km/s, e.g. 5000, or a fraction of c, e.g. 0.1c"
+        msg = f"'{value}' is not a finite velocity. {helptext}"
         raise argparse.ArgumentTypeError(msg)
 
     return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
+
+
+def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
+    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
 
 
 def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> list[str]:

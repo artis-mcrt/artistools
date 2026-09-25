@@ -17,9 +17,9 @@ from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
+from artistools.constants import km_to_cm
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_cell_selection
-from artistools.inputmodel import get_selection_labels
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
@@ -219,10 +219,11 @@ def get_cell_estimators(
     modelpath: Path | str,
     timestep: int,
     modelgridindex: int | None,
-    vmin: float | None = None,
-    vmax: float | None = None,
+    vmin_kmps: float | None = None,
+    vmax_kmps: float | None = None,
 ) -> pl.DataFrame:
-    """Return the estimators and the mass of each cell at the timestep, for the cells in the velocity range [c]."""
+    """Return the estimators and the mass of each cell at the timestep, for the cells in the velocity range."""
+    vmin, vmax = (None if velocity is None else velocity * km_to_cm / C_cm_per_s for velocity in (vmin_kmps, vmax_kmps))
     dfestimators = (
         scan_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
         .filter(get_cell_selection(vmin=vmin, vmax=vmax))
@@ -232,8 +233,10 @@ def get_cell_estimators(
     # ARTIS writes no estimators for a cell that holds no matter
     if dfestimators.is_empty():
         cellstr = "any cell" if modelgridindex is None else f"cell {modelgridindex}"
-        if selectionlabels := get_selection_labels(vmin=vmin, vmax=vmax):
-            cellstr += f" with {', '.join(selectionlabels)}"
+        if bounds := [
+            f"{name} = {v:g} km/s" for name, v in (("vmin", vmin_kmps), ("vmax", vmax_kmps)) if v is not None
+        ]:
+            cellstr += f" with {' and '.join(bounds)}"
         msg = f"The estimators hold no values for {cellstr} at timestep {timestep}. An empty cell has no estimators"
         raise ValueError(msg)
 

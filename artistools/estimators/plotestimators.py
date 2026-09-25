@@ -2233,6 +2233,7 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
     """
+    from artistools.spectra import get_velocity_label
     from artistools.spectra import parse_velocity_argument
 
     text = slicetext.strip().lower()
@@ -2254,7 +2255,7 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
         except argparse.ArgumentTypeError as err:
             exit_with_error(str(err), helptext)
 
-        label = f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+        label = get_velocity_label(velocity_kmps, unit)
         if velocity_kmps == 0.0:
             label = "0"
         conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))

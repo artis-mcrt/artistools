@@ -18,6 +18,7 @@ from artistools.spectra.core import get_shell_labels as get_shell_labels
 from artistools.spectra.core import get_specpol_data as get_specpol_data
 from artistools.spectra.core import get_spectra as get_spectra
 from artistools.spectra.core import get_spectrum_at_time as get_spectrum_at_time
+from artistools.spectra.core import get_velocity_label as get_velocity_label
 from artistools.spectra.core import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.core import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
 from artistools.spectra.core import parse_velocity_argument as parse_velocity_argument

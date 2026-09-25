@@ -1487,7 +1487,10 @@ def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
 
 
 def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
-    """-vmin and -vmax of plotopacity select the cells with a mid-point velocity in the range, and no other cell."""
+    """-vmin and -vmax of plotopacity select the cells with a mid-point velocity in the range, and no other cell.
+
+    Each velocity needs a unit, and the title gives each velocity in the unit of the user.
+    """
     lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
     dfvelocities = (
         at.inputmodel
@@ -1499,12 +1502,21 @@ def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
     expectedcells = set(dfvelocities.filter(pl.col("vel_r_mid_on_c").is_between(0.1, 0.2))["modelgridindex"])
     assert 0 < len(expectedcells) < dfvelocities.height
 
-    dfcells = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin=0.1, vmax=0.2)
+    speedoflight_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
+    dfcells = at.ejectaopacity.get_cell_estimators(
+        modelpath_classic_3d, 5, None, vmin_kmps=0.1 * speedoflight_kmps, vmax_kmps=0.2 * speedoflight_kmps
+    )
     assert set(dfcells["modelgridindex"]) == expectedcells
-    assert at.plotopacity.get_cells_text(None, 0.1, 0.2) == "mass-weighted mean of the cells with vmin=0.1, vmax=0.2"
 
-    with pytest.raises(ValueError, match=re.escape("any cell with vmin=0.5 at timestep 5")):
-        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin=0.5)
+    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
+    assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
+        "mass-weighted mean of the cells with vmin = 0.1c and vmax = 60000 km/s"
+    )
+    with pytest.raises(SystemExit):
+        at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1"])
+
+    with pytest.raises(ValueError, match=re.escape("any cell with vmin = 150000 km/s at timestep 5")):
+        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin_kmps=150000.0)
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:

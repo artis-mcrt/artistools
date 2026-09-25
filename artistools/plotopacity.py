@@ -4,6 +4,7 @@ import argparse
 import math
 import typing as t
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,6 @@ from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import OPACITYCOLUMNS
-from artistools.inputmodel import get_selection_labels
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -40,6 +40,8 @@ from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
+from artistools.spectra import get_velocity_label
+from artistools.spectra import parse_velocity_argument
 
 # where two opacities are equal, their lines are at the same place. Each line is thinner than the
 # line below it, thus each colour stays visible
@@ -160,12 +162,18 @@ def plot_opacities(
     save_figure(fig, args.outputfile, args=args)
 
 
-def get_cells_text(modelgridindex: int | None, vmin: float | None, vmax: float | None) -> str:
-    """Return the text of the title that names the cells of the plot."""
+def get_cells_text(
+    modelgridindex: int | None,
+    vmin: tuple[float, t.Literal["kmps", "c"]] | None,
+    vmax: tuple[float, t.Literal["kmps", "c"]] | None,
+) -> str:
+    """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user."""
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
-    if selectionlabels := get_selection_labels(vmin=vmin, vmax=vmax):
-        return f"mass-weighted mean of the cells with {', '.join(selectionlabels)}"
+    if bounds := [
+        f"{name} = {get_velocity_label(*v)}" for name, v in (("vmin", vmin), ("vmax", vmax)) if v is not None
+    ]:
+        return f"mass-weighted mean of the cells with {' and '.join(bounds)}"
     return "mass-weighted mean of all cells"
 
 
@@ -178,12 +186,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         parser,
         helptext="Cell to plot. If you do not give a cell, the plot shows the mass-weighted mean over all the cells",
     )
-    parser.add_argument(
-        "-vmin", type=float, default=None, help="Minimum mid-point velocity of a cell [c] for the mass-weighted mean"
-    )
-    parser.add_argument(
-        "-vmax", type=float, default=None, help="Maximum mid-point velocity of a cell [c] for the mass-weighted mean"
-    )
+    for name, limit in (("vmin", "Minimum"), ("vmax", "Maximum")):
+        parser.add_argument(
+            f"-{name}",
+            type=partial(parse_velocity_argument, requireunit=True),
+            default=None,
+            metavar="VELOCITY",
+            help=(
+                f"{limit} mid-point velocity of a cell for the mass-weighted mean. Give a number that ends in c or"
+                " km/s, e.g. 0.1c or 5000km/s"
+            ),
+        )
 
     # the command bins the opacities over the range of the plot, thus a smaller range takes less time
     addarg_axislimits(
@@ -224,7 +237,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfopacities = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
         time_days=time_days,
-        dfestimators=get_cell_estimators(args.modelpath, timestep, modelgridindex, vmin=args.vmin, vmax=args.vmax),
+        dfestimators=get_cell_estimators(
+            args.modelpath,
+            timestep,
+            modelgridindex,
+            vmin_kmps=None if args.vmin is None else args.vmin[0],
+            vmax_kmps=None if args.vmax is None else args.vmax[0],
+        ),
         lambdamin=args.xmin,
         lambdamax=args.xmax,
         deltalambda=args.deltalambda,
