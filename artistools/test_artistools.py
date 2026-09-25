@@ -1436,6 +1436,35 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     assert np.allclose(get_linebinned(dfcells), meanfactor * linebinned_onecell, rtol=1e-10, atol=0.0)
 
 
+def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
+    """The window of the moving average holds the odd number of bins that is nearest to its width.
+
+    2 * round(n / 2) + 1 gave the odd number nearest to n + 1, e.g. 5 bins for a width of 3 bins.
+    """
+    windowbins = {width: at.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 220.0)}
+    assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 220.0: 11}
+    # a width of an even number of bins is one bin from two odd numbers, and it takes the larger one
+    assert at.plotopacity.get_window_bins(200.0, 20.0) == 11
+
+
+def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
+    """A cell with no matter has no estimators, and the error names the cell.
+
+    The command stopped with "cannot concat empty list" before.
+    """
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    emptycell = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") == 0.0)
+        .select(pl.col("modelgridindex").min())
+        .collect()
+        .item()
+    )
+    with pytest.raises(ValueError, match="hold no values"):
+        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell)
+
+
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 

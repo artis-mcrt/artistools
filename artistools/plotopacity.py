@@ -1,7 +1,7 @@
 """Plot the binned opacities of the ejecta against wavelength."""
 
 import argparse
-import time
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -32,6 +32,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.misc.general import get_progress_class
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -63,34 +64,39 @@ def get_massweighted_opacities(
     lambda_bin_edges = get_lambda_bin_edges(lambdamin, lambdamax, deltalambda)
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
 
-    batchsums = []
-    cellsdone = 0
-    time_start = time.perf_counter()
-    for dfcellbatch in get_cell_batches(dfestimators):
-        batchsums.append(
-            get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
-            .group_by("lambda_angstroms_binindex", "lambda_angstroms_bin_mid")
-            .agg((pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum())
+    # the bar gives the rate and the time until the end, which a model of many cells needs
+    batchsums = [
+        get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
+        .group_by("lambda_angstroms_binindex")
+        .agg((pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum())
+        for dfcellbatch in get_progress_class()(
+            get_cell_batches(dfestimators), desc="Calculating the opacities", unit="batch"
         )
-        cellsdone += dfcellbatch.height
-        secondspercell = (time.perf_counter() - time_start) / cellsdone
-        print(
-            f"  {cellsdone} of {dfestimators.height} cells,"
-            f" approximately {secondspercell * (dfestimators.height - cellsdone):.0f} s until the end"
-        )
+    ]
 
+    # the index of a bin gives its middle, thus the sums of the batches need no float key
     return (
         pl
         .concat(batchsums)
-        .group_by("lambda_angstroms_binindex", "lambda_angstroms_bin_mid")
+        .group_by("lambda_angstroms_binindex")
         .agg(pl.all().sum())
+        .sort("lambda_angstroms_binindex")
         .select(
             pl.col(*OPACITYCOLUMNS) / pl.col("mass_g"),
-            lambda_angstroms_lower=pl.col("lambda_angstroms_bin_mid") - deltalambda / 2,
-            lambda_angstroms_upper=pl.col("lambda_angstroms_bin_mid") + deltalambda / 2,
+            lambda_angstroms_bin_mid=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 0.5) * deltalambda,
+            lambda_angstroms_lower=lambda_bin_edges[0] + pl.col("lambda_angstroms_binindex") * deltalambda,
+            lambda_angstroms_upper=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 1) * deltalambda,
         )
-        .sort("lambda_angstroms_lower")
     )
+
+
+def get_window_bins(width: float, deltalambda: float) -> int:
+    """Return the odd number of bins nearest to the width of the window of the moving average.
+
+    An odd number of bins puts the centre of the window at the middle of a bin. A width of an even number of bins is
+    one bin from two odd numbers, and it takes the larger one.
+    """
+    return 2 * math.floor(width / deltalambda / 2) + 1
 
 
 def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int) -> pl.DataFrame:
@@ -99,7 +105,7 @@ def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int) -> pl.DataFr
     Near each end of the range, the window holds fewer bins.
     """
     return dfopacities.select(
-        pl.mean_horizontal("lambda_angstroms_lower", "lambda_angstroms_upper").alias("lambda_angstroms_bin_mid"),
+        "lambda_angstroms_bin_mid",
         pl.col(*OPACITYCOLUMNS).rolling_mean(window_size=windowbins, center=True, min_samples=1),
     )
 
@@ -209,7 +215,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     cellstr = "mass-weighted mean of all cells" if modelgridindex is None else f"cell {modelgridindex}"
     title = f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}), {cellstr}"
-    # an odd number of bins puts the centre of the window at the middle of a bin
-    windowbins = 2 * round(args.movingaveragewidth / args.deltalambda / 2) + 1
+    windowbins = get_window_bins(args.movingaveragewidth, args.deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None
     plot_opacities(dfopacities, dfmovingaverages, title, args)
