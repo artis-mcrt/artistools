@@ -11,7 +11,9 @@ import polars.selectors as cs
 
 from artistools.atomic import get_elsymbols_df
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_cell_selection
 from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import get_selection_labels
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -23,65 +25,6 @@ from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
-
-# The model columns are Float32. Float32 rounds a value, thus a cell on a bound can move to the other side of
-# the bound. The measured errors are 6e-8 in velocity and 8e-6 degrees in angle, thus these tolerances give a margin.
-VELOCITY_RTOL = 1e-6
-POLAR_ANGLE_ATOL_DEG = 1e-4
-
-
-def get_selection_labels(
-    vmin: float | None = None, vmax: float | None = None, thetamin: float | None = None, thetamax: float | None = None
-) -> list[str]:
-    """Return a label for each given bound, e.g. vmin=0.02.
-
-    The label holds the shortest text that gives the same float again. Two different bounds then give two
-    different file names.
-    """
-    bounds = {"vmin": vmin, "vmax": vmax, "thetamin": thetamin, "thetamax": thetamax}
-    return [f"{name}={value!r}" for name, value in bounds.items() if value is not None]
-
-
-def get_cell_selection(
-    vmin: float | None = None, vmax: float | None = None, thetamin: float | None = None, thetamax: float | None = None
-) -> pl.Expr:
-    """Return a selection that is true for a cell in the velocity range [c] and the polar angle range [degrees].
-
-    The selection reads the columns vel_r_mid_on_c and vel_z_mid_on_c. Call add_derived_cols_to_modeldata first.
-    The positive z axis gives a polar angle of zero. A cell at the origin has no polar angle, thus a polar angle
-    range excludes it. Both ends of a range are inside the range. A cell on a bound stays inside, because the
-    tolerances are larger than the Float32 error.
-    """
-    if vmin is not None and vmax is not None and vmin > vmax:
-        msg = f"vmin must be less than or equal to vmax, but vmin={vmin:g} and vmax={vmax:g}"
-        raise ValueError(msg)
-    if thetamin is not None and thetamax is not None and thetamin > thetamax:
-        msg = f"thetamin must be less than or equal to thetamax, but thetamin={thetamin:g} and thetamax={thetamax:g}"
-        raise ValueError(msg)
-    for name, theta in (("thetamin", thetamin), ("thetamax", thetamax)):
-        if theta is not None and not 0.0 <= theta <= 180.0:
-            msg = f"{name} must be between 0 and 180 degrees, but {name}={theta:g}"
-            raise ValueError(msg)
-
-    vel_r = pl.col("vel_r_mid_on_c")
-    conditions: list[pl.Expr] = []
-    if vmin is not None:
-        conditions.append(vel_r >= vmin * (1.0 - VELOCITY_RTOL))
-    if vmax is not None:
-        conditions.append(vel_r <= vmax * (1.0 + VELOCITY_RTOL))
-
-    if thetamin is not None or thetamax is not None:
-        # a cell at the origin has a null angle, and each comparison with a null gives false
-        theta_deg = pl.when(vel_r > 0.0).then(pl.col("vel_z_mid_on_c") / vel_r).arccos().degrees()
-        if thetamin is not None:
-            conditions.append(theta_deg >= thetamin - POLAR_ANGLE_ATOL_DEG)
-        if thetamax is not None:
-            conditions.append(theta_deg <= thetamax + POLAR_ANGLE_ATOL_DEG)
-
-    if not conditions:
-        return pl.repeat(value=True, n=pl.len())
-
-    return pl.all_horizontal(conditions).fill_null(value=False)
 
 
 def get_nuclide_massfractions(

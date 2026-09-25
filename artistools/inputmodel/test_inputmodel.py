@@ -2911,7 +2911,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     A selection with no cell raises an error. A selection of empty cells raises a different error that
     names the mass. A 1D model rejects a polar angle range.
     """
-    from artistools.inputmodel.plotinitialabundances import get_cell_selection
+    from artistools.inputmodel import get_cell_selection
     from artistools.inputmodel.plotinitialabundances import get_nuclide_massfractions
 
     def massfrac_ni56(dfcells: pl.DataFrame) -> float:
@@ -2983,7 +2983,7 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     degrees by approximately 1e-5 degrees. Polars casts a velocity bound down to Float32 for the
     comparison, thus each velocity probe below is one Float32 step off the bound.
     """
-    from artistools.inputmodel.plotinitialabundances import get_cell_selection
+    from artistools.inputmodel import get_cell_selection
 
     write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=8, vmax_cmps=1.0e9, t_model_days=1.0)
     dfcells = get_derived_modeldata(tmp_path)[0].collect()

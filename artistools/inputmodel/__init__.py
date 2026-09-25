@@ -4,9 +4,11 @@
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.inputmodel.core import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model as dimension_reduce_model
+from artistools.inputmodel.core import get_cell_selection as get_cell_selection
 from artistools.inputmodel.core import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel.core import get_modeldata as get_modeldata
+from artistools.inputmodel.core import get_selection_labels as get_selection_labels
 from artistools.inputmodel.core import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel.core import save_modeldata as save_modeldata

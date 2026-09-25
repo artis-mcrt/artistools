@@ -17,6 +17,7 @@ from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import OPACITYCOLUMNS
+from artistools.inputmodel import get_selection_labels
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelgridindex
@@ -159,6 +160,15 @@ def plot_opacities(
     save_figure(fig, args.outputfile, args=args)
 
 
+def get_cells_text(modelgridindex: int | None, vmin: float | None, vmax: float | None) -> str:
+    """Return the text of the title that names the cells of the plot."""
+    if modelgridindex is not None:
+        return f"cell {modelgridindex}"
+    if selectionlabels := get_selection_labels(vmin=vmin, vmax=vmax):
+        return f"mass-weighted mean of the cells with {', '.join(selectionlabels)}"
+    return "mass-weighted mean of all cells"
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path(), helptext="Path of the ARTIS model")
@@ -167,6 +177,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelgridindex(
         parser,
         helptext="Cell to plot. If you do not give a cell, the plot shows the mass-weighted mean over all the cells",
+    )
+    parser.add_argument(
+        "-vmin", type=float, default=None, help="Minimum mid-point velocity of a cell [c] for the mass-weighted mean"
+    )
+    parser.add_argument(
+        "-vmax", type=float, default=None, help="Maximum mid-point velocity of a cell [c] for the mass-weighted mean"
     )
 
     # the command bins the opacities over the range of the plot, thus a smaller range takes less time
@@ -208,14 +224,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfopacities = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
         time_days=time_days,
-        dfestimators=get_cell_estimators(args.modelpath, timestep, modelgridindex),
+        dfestimators=get_cell_estimators(args.modelpath, timestep, modelgridindex, vmin=args.vmin, vmax=args.vmax),
         lambdamin=args.xmin,
         lambdamax=args.xmax,
         deltalambda=args.deltalambda,
     )
 
-    cellstr = "mass-weighted mean of all cells" if modelgridindex is None else f"cell {modelgridindex}"
-    title = f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}), {cellstr}"
+    title = (
+        f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}),"
+        f" {get_cells_text(modelgridindex, args.vmin, args.vmax)}"
+    )
     windowbins = get_window_bins(args.movingaveragewidth, args.deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None
     plot_opacities(dfopacities, dfmovingaverages, title, args)

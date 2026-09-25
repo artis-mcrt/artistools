@@ -1486,6 +1486,27 @@ def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
         assert max(batch.height for batch in batches) * numbins <= at.ejectaopacity.ROWSPERBATCH, numbins
 
 
+def test_opacity_cell_estimators_take_the_cells_of_a_velocity_range() -> None:
+    """-vmin and -vmax of plotopacity select the cells with a mid-point velocity in the range, and no other cell."""
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    dfvelocities = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") > 0.0)
+        .select("modelgridindex", "vel_r_mid_on_c")
+        .collect()
+    )
+    expectedcells = set(dfvelocities.filter(pl.col("vel_r_mid_on_c").is_between(0.1, 0.2))["modelgridindex"])
+    assert 0 < len(expectedcells) < dfvelocities.height
+
+    dfcells = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin=0.1, vmax=0.2)
+    assert set(dfcells["modelgridindex"]) == expectedcells
+    assert at.plotopacity.get_cells_text(None, 0.1, 0.2) == "mass-weighted mean of the cells with vmin=0.1, vmax=0.2"
+
+    with pytest.raises(ValueError, match=re.escape("any cell with vmin=0.5 at timestep 5")):
+        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, vmin=0.5)
+
+
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
     """A cell with no matter has no estimators, and the error names the cell.
 

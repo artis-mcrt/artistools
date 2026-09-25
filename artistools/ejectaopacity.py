@@ -18,6 +18,8 @@ from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.constants import K_B_ev_per_K
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import get_cell_selection
+from artistools.inputmodel import get_selection_labels
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
@@ -213,16 +215,25 @@ def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, tim
     return selectedtimestep
 
 
-def get_cell_estimators(modelpath: Path | str, timestep: int, modelgridindex: int | None) -> pl.DataFrame:
-    """Return the estimators and the mass of each cell at the timestep."""
+def get_cell_estimators(
+    modelpath: Path | str,
+    timestep: int,
+    modelgridindex: int | None,
+    vmin: float | None = None,
+    vmax: float | None = None,
+) -> pl.DataFrame:
+    """Return the estimators and the mass of each cell at the timestep, for the cells in the velocity range [c]."""
     dfestimators = (
         scan_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex, join_modeldata=True)
+        .filter(get_cell_selection(vmin=vmin, vmax=vmax))
         .select("modelgridindex", "timestep", "Te", "rho", "mass_g", cs.starts_with("nnion_"))
         .collect()
     )
     # ARTIS writes no estimators for a cell that holds no matter
     if dfestimators.is_empty():
         cellstr = "any cell" if modelgridindex is None else f"cell {modelgridindex}"
+        if selectionlabels := get_selection_labels(vmin=vmin, vmax=vmax):
+            cellstr += f" with {', '.join(selectionlabels)}"
         msg = f"The estimators hold no values for {cellstr} at timestep {timestep}. An empty cell has no estimators"
         raise ValueError(msg)
 
