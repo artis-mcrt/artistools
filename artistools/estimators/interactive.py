@@ -1,6 +1,7 @@
 """Show the plot of plotestimators in a window with controls for the time, the cell, and the subplots."""
 
 import argparse
+import contextlib
 import dataclasses as dc
 import math
 import shlex
@@ -41,7 +42,6 @@ from artistools.estimators.plotestimators import POPTYPE_YLABELS
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
-from artistools.estimators.plotestimators import SERIESTYPES
 from artistools.estimators.plotestimators import time_is_given
 from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.inputmodel import add_derived_cols_to_modeldata
@@ -70,6 +70,7 @@ from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -79,6 +80,7 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_short_number
+from artistools.viewertools import get_table_actions
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_option_table
@@ -139,7 +141,57 @@ CONTROLLED_DESTS: t.Final = frozenset({
 })
 
 # these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
-OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
+OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open", "dpi"})
+
+# a section of the window sets these options, or they have no effect in the window, e.g. --verbose for the hidden
+# output. Their rows stay in the command, and the option table neither shows nor offers them. --classicartis sets
+# the format of the run that the window reads when it opens, thus Open Model is the way to change it
+SECTION_DESTS: t.Final = frozenset({
+    "axis",
+    "classicartis",
+    "coneangle",
+    "dimensionreduce",
+    "figscale",
+    "filtermovingavg",
+    "filtersavgol",
+    "hidexlabel",
+    "labelfontsize",
+    "legendframe",
+    "nolegend",
+    "notitle",
+    "quiet",
+    "readonlymgi",
+    "slice",
+    "verbose",
+})
+
+# the ways to select the cells of the plot, by the key of the selector of the window
+GEOMETRY_MODES: t.Final = MappingProxyType({
+    "all": "All the cells",
+    "cells": "Selected cells (-cell)",
+    "alongaxis": "Cells along an axis (-readonlymgi alongaxis)",
+    "cone": "Cells in a cone around an axis (-readonlymgi cone)",
+    "plane": "A plane of the model as an image (-slice)",
+    "line": "A line through the model (-slice)",
+    "average": "An image of the average around the z axis (-dimensionreduce 2)",
+})
+
+# the rows of the option table that a mode of the geometry sets
+GEOMETRY_FLAGS: t.Final = ("-slice", "-dimensionreduce", "-readonlymgi", "-axis", "-coneangle")
+
+# the planes of -slice through the origin, by the axis that is normal to the plane
+PLANE_OF_NORMAL: t.Final = MappingProxyType({"z": "xy", "y": "xz", "x": "yz"})
+
+# the ways to smooth each line, by the key of the selector of the window
+SMOOTHING_MODES: t.Final = MappingProxyType({
+    "none": "No smoothing",
+    "movingavg": "Moving average (-filtermovingavg)",
+    "savgol": "Savitzky-Golay filter (-filtersavgol)",
+})
+
+# the number of levels of each ion that the choices of a level population give. The NLTE populations hold the
+# lowest levels of each ion
+LEVEL_CHOICES_PER_ION: t.Final = 20
 
 # these options give a different action from one plot, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({"help", "multiplot", "makegif", "listvariables", "listnuclides"})
@@ -362,6 +414,131 @@ def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
 
 
+def get_row_values(rows: OptionRows, flag: str) -> tuple[str, ...] | None:
+    """Return the values of the row of an option, or None if the rows have no such option."""
+    return next((values for rowflag, values in rows if rowflag == flag), None)
+
+
+def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | None]") -> OptionRows:
+    """Return the rows with new values of some options, in their old places. None removes an option.
+
+    A new option goes after the other rows.
+    """
+    changed = [
+        (flag, changes.get(flag, values)) for flag, values in rows if not (flag in changes and changes[flag] is None)
+    ]
+    present = {flag for flag, _ in rows}
+    added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
+    return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
+
+
+def get_geometry_mode(values: "ControlValues") -> str:
+    """Return the key in GEOMETRY_MODES of the selection of the cells of the values."""
+    rows = values.otheroptions
+    if slicevalues := get_row_values(rows, "-slice"):
+        return "line" if "," in slicevalues[0] else "plane"
+    if get_row_values(rows, "-dimensionreduce") == ("2",):
+        return "average"
+    if readonlymgi := get_row_values(rows, "-readonlymgi"):
+        return readonlymgi[0]
+    return "cells" if values.cells else "all"
+
+
+def get_slice_parts(slicetext: str) -> tuple[str, str]:
+    """Return the plane and the offset along its normal of a -slice plane, e.g. ("xy", "-0.2c") for "z=-0.2c"."""
+    text = slicetext.strip().lower()
+    normal, equals, offset = text.partition("=")
+    if equals and normal in PLANE_OF_NORMAL:
+        return PLANE_OF_NORMAL[normal], "" if offset.strip() in {"0", "0c", "0.0"} else offset.strip()
+    return (text if text in PLANE_OF_NORMAL.values() else "xy"), ""
+
+
+def get_slice_text(plane: str, offset: str) -> str:
+    """Return the -slice text of a plane with an offset along its normal. An empty offset gives the plane."""
+    normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
+    return f"{normal}={offset.strip()}" if offset.strip() else plane
+
+
+def get_line_axis(slicetext: str) -> str:
+    """Return the axis along a -slice line, which is the axis that the line gives no condition for."""
+    conditionaxes = {condition.partition("=")[0].strip() for condition in slicetext.lower().split(",")}
+    return next((axis for axis in "xyz" if axis not in conditionaxes), "x")
+
+
+def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: str) -> "ControlValues":
+    """Return the values with a new selection of the cells.
+
+    A mode keeps the parameters that apply to it, e.g. the axis of the cells along an axis for a cone. A colour
+    image is a snapshot, thus a plot against time becomes a snapshot for a plane or for the average around z.
+    """
+    rows = values.otheroptions
+    keptaxis = get_row_values(rows, "-axis") if mode in {"alongaxis", "cone"} else None
+    keptcone = get_row_values(rows, "-coneangle") if mode == "cone" else None
+    oldslice = (get_row_values(rows, "-slice") or ("",))[0]
+    changes: dict[str, tuple[str, ...] | None] = dict.fromkeys(GEOMETRY_FLAGS)
+    changes |= {"-axis": keptaxis, "-coneangle": keptcone}
+    if mode in {"alongaxis", "cone"}:
+        changes["-readonlymgi"] = (mode,)
+    elif mode == "plane":
+        changes["-slice"] = (oldslice if oldslice and "," not in oldslice else "xy",)
+    elif mode == "line":
+        changes["-slice"] = (oldslice if "," in oldslice else "z=0,y=0",)
+    elif mode == "average":
+        changes["-dimensionreduce"] = ("2",)
+    cells = (values.cells or (str(viewer.cells[0]) if viewer.cells else "")) if mode == "cells" else ""
+    newrows = set_row_values(rows, changes)
+    newvalues = replace_option_rows(viewer, dc.replace(values, cells=cells), newrows)
+    if mode in {"plane", "average"} and is_evolution(newvalues):
+        return viewer.set_xvariable(newvalues, viewer.get_default_xvariable(newrows, timegiven=True))
+    return newvalues
+
+
+def get_smoothing(rows: OptionRows) -> tuple[str, tuple[int, ...]]:
+    """Return the key in SMOOTHING_MODES of the smoothing of the rows, and its numbers."""
+    if (savgol := get_row_values(rows, "-filtersavgol")) and all(value.lstrip("-").isdecimal() for value in savgol):
+        return "savgol", tuple(int(value) for value in savgol)
+    movingavg = get_row_values(rows, "-filtermovingavg")
+    if movingavg and movingavg[0].isdecimal() and int(movingavg[0]) > 1:
+        return "movingavg", (int(movingavg[0]),)
+    return "none", ()
+
+
+def set_smoothing(rows: OptionRows, mode: str, numbers: "Sequence[int]") -> OptionRows:
+    """Return the rows with a new smoothing, e.g. "savgol" with the window length 5 and the order 2."""
+    return set_row_values(
+        rows,
+        {
+            "-filtermovingavg": (str(numbers[0]),) if mode == "movingavg" else None,
+            "-filtersavgol": tuple(str(number) for number in numbers[:2]) if mode == "savgol" else None,
+        },
+    )
+
+
+def has_level_populations(modelpath: Path) -> bool:
+    """Return True if the run wrote NLTE populations, which a plot of level populations reads."""
+    from artistools.misc.fileio import firstexisting_or_none
+
+    return any(
+        firstexisting_or_none("nlte_0000.out", folder=folder, tryzipped=True) is not None
+        for folder in (modelpath, *get_runfolders(modelpath))
+    )
+
+
+def get_level_names(modelpath: Path, ions: "Sequence[str]") -> list[str]:
+    """Return the lowest levels of each ion as the names of a level population, e.g. "Fe II 0"."""
+    from artistools.atomic import get_levels
+
+    iontuples = [get_iontuple(ion) for ion in ions]
+    ionlist = [(atomic_number, stage) for atomic_number, stage in iontuples if isinstance(stage, int)]
+    levels = get_levels(modelpath, ionlist=ionlist, quiet=True)
+    counts = {(row["Z"], row["ion_stage"]): row["levels"].height for row in levels.iter_rows(named=True)}
+    return [
+        f"{ion} {levelindex}"
+        for ion, iontuple in zip(ions, iontuples, strict=True)
+        for levelindex in range(min(counts.get(iontuple, 0), LEVEL_CHOICES_PER_ION))
+    ]
+
+
 def cells_apply(otheroptions: OptionRows) -> bool:
     """Return True if -cell applies to a plot with these rows of the option table.
 
@@ -430,6 +607,18 @@ class EstimatorViewer:
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
         set_run(self, read_run(self.modelpath, args, len(self.tmids)))
+        # a section of the window sets the rows of these flags, and the option table does not show them
+        self.sectionflags = frozenset(
+            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in SECTION_DESTS
+        )
+        self.dimensions = int(get_modeldata(self.modelpath)[1]["dimensions"])
+        # the types of level population that the run can plot, which read its NLTE populations. Only a 1D model gives
+        # the width in velocity of each shell for the population for each unit of velocity
+        self.leveltypes: tuple[str, ...] = (
+            ()
+            if path_is_codecomparison(self.modelpath) or not has_level_populations(self.modelpath)
+            else ("levelpopulation", *(("levelpopulation_dn_on_dvel",) if self.dimensions == 1 else ()))
+        )
         givensubplots = tuple(tuple(str(item) for item in plotitems) for plotitems in args.plotlist or ())
         # plotestimators stops when no default subplot applies to the model, thus the window then shows Te
         subplots = givensubplots or self.defaultsubplots or (("Te",),)
@@ -777,11 +966,16 @@ def get_species_sortkey(species: str) -> tuple[int, int, int, str]:
     return get_iontuple_sortkey(get_iontuple(species))
 
 
-def get_species_choices(seriestype: str, estimatorcolumns: "Collection[str]") -> list[str]:
+def get_species_choices(
+    seriestype: str, estimatorcolumns: "Collection[str]", levelnames: "Sequence[str]" = ()
+) -> list[str]:
     """Return each species that a type of series can plot for this model, e.g. "Fe II" for the populations.
 
-    An ion series such as gamma_NT takes the species of its own columns, e.g. gamma_NT_Fe_II.
+    An ion series such as gamma_NT takes the species of its own columns, e.g. gamma_NT_Fe_II. A level population
+    takes levelnames, e.g. "Fe II 0", which get_level_names gives.
     """
+    if seriestype.startswith("levelpopulation"):
+        return list(levelnames)
     families = SPECIES_FAMILIES.get(seriestype, (seriestype,))
     species = {
         split[1]
@@ -806,16 +1000,23 @@ def is_suggested_variable(column: str) -> bool:
     )
 
 
-def get_series_suggestions(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]", count: int = 4) -> list[str]:
+def get_series_suggestions(
+    subplot: "Sequence[str]", estimatorcolumns: "Collection[str]", levelnames: "Sequence[str]" = (), count: int = 4
+) -> list[str]:
     """Return the items that suit a subplot next, e.g. TR beside Te, or Fe IV beside Fe II and Fe III.
 
-    A series type takes more of its species, first those of the elements that the subplot has. A variable takes the
-    other variables with the same quantity on the y axis.
+    A series type takes more of its species, first those of the elements that the subplot has. A level population
+    takes the next levels, first those of the ions that the subplot has. A variable takes the other variables with
+    the same quantity on the y axis.
     """
     names = get_subplot_names(subplot)
     if not names:
         return []
     seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
+    if seriestype is not None and seriestype.startswith("levelpopulation"):
+        ions = {name.rpartition(" ")[0] for name in names}
+        choices = [name for name in levelnames if name not in names]
+        return sorted(choices, key=lambda name: name.rpartition(" ")[0] not in ions)[:count]
     if seriestype is not None:
         elements = {get_iontuple(name)[0] for name in names if is_valid_ion(name)}
 
@@ -866,7 +1067,9 @@ def get_new_subplot_suggestions(
     return list(dict.fromkeys(suggestions))[:count]
 
 
-def make_new_subplot(text: str, estimatorcolumns: "Collection[str]") -> tuple[str, ...]:
+def make_new_subplot(
+    text: str, estimatorcolumns: "Collection[str]", levelnames: "Sequence[str]" = ()
+) -> tuple[str, ...]:
     """Return the items of a new subplot that the user typed.
 
     A series type takes the rest of the text as one name, e.g. "populations Fe II", or its first species when the
@@ -878,7 +1081,7 @@ def make_new_subplot(text: str, estimatorcolumns: "Collection[str]") -> tuple[st
     rest = rest.strip()
     if not text:
         return ()
-    choices: list[str] = [] if first in estimatorcolumns else get_species_choices(first, estimatorcolumns)
+    choices: list[str] = [] if first in estimatorcolumns else get_species_choices(first, estimatorcolumns, levelnames)
     if choices or is_seriestype(first, estimatorcolumns):
         return (first, rest) if rest else (first, *get_first_choice(choices))
     if is_valid_ion(text) and text not in estimatorcolumns:
@@ -900,17 +1103,20 @@ SUBPLOT_TYPE_HELPTEXTS: t.Final = MappingProxyType({
     "averageexcitation": "The mean excitation energy of each ion",
     "initabundances": "The initial mass fraction of each element or isotope",
     "initmasses": "The initial mass of each element or isotope",
+    "levelpopulation": "The NLTE population of each level, e.g. Fe II 0",
+    "levelpopulation_dn_on_dvel": "The NLTE population of each level for each unit of velocity",
 })
 
 # the directives that a control of the subplot sets, thus they show no chip
-SELECTOR_DIRECTIVES: t.Final = frozenset({"yscale", "ionpoptype"})
+SELECTOR_DIRECTIVES: t.Final = frozenset({"yscale", "ionpoptype", "ymin", "ymax"})
 
 
-def get_subplot_types(estimatorcolumns: "Collection[str]") -> list[str]:
+def get_subplot_types(estimatorcolumns: "Collection[str]", leveltypes: "Sequence[str]" = ()) -> list[str]:
     """Return the types of subplot that the model can plot: the variables, the series types, and the ion series.
 
     An ion series is a family of columns with one column for each ion, e.g. gamma_NT_Fe_II. The families of the
-    other series types, e.g. nnion for the populations, are not a type of their own.
+    other series types, e.g. nnion for the populations, are not a type of their own. leveltypes gives the types of
+    the level populations that the run can plot, which need its NLTE populations.
     """
     seriestypes = [seriestype for seriestype in SPECIES_FAMILIES if get_species_choices(seriestype, estimatorcolumns)]
     otherfamilies = {family for families in SPECIES_FAMILIES.values() for family in families}
@@ -919,11 +1125,11 @@ def get_subplot_types(estimatorcolumns: "Collection[str]") -> list[str]:
         for column in estimatorcolumns
         if (split := split_species_suffix(column)) is not None and split[0] not in otherfamilies
     }
-    return [VARIABLES_TYPE, *seriestypes, *sorted(ionfamilies, key=str.lower)]
+    return [VARIABLES_TYPE, *seriestypes, *leveltypes, *sorted(ionfamilies, key=str.lower)]
 
 
 def change_subplot_type(
-    subplot: "Sequence[str]", seriestype: str, estimatorcolumns: "Collection[str]"
+    subplot: "Sequence[str]", seriestype: str, estimatorcolumns: "Collection[str]", levelnames: "Sequence[str]" = ()
 ) -> tuple[str, ...]:
     """Return the subplot with a new type, and keep the names and the directives that still apply.
 
@@ -941,7 +1147,7 @@ def change_subplot_type(
         variables = [name for name in names if oldtype is None and name in estimatorcolumns]
         common = [name for name in COMMON_VARIABLES if name in estimatorcolumns]
         return (*(variables or common[:1] or ["Te"]), *directives)
-    choices = get_species_choices(seriestype, estimatorcolumns)
+    choices = get_species_choices(seriestype, estimatorcolumns, levelnames)
     kept = [name for name in names if name in choices]
     return (seriestype, *(kept or get_first_choice(choices)), *directives)
 
@@ -1003,7 +1209,7 @@ def remove_subplot_item(
     seriestypeonly = (
         len(names) == 1
         and names[0] not in estimatorcolumns
-        and (names[0] in SERIESTYPES or bool(get_species_choices(names[0], estimatorcolumns)))
+        and (is_seriestype(names[0], estimatorcolumns) or bool(get_species_choices(names[0], estimatorcolumns)))
     )
     keep = bool(names) and not seriestypeonly
     return (
@@ -1080,7 +1286,7 @@ def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWi
     return completer
 
 
-def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]", *, isdirective: bool) -> "QtWidgets.QFrame":
+def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWidgets.QFrame":
     """Return a chip that shows one item of a subplot, with a button that removes the item."""
     from PySide6 import QtWidgets
 
@@ -1093,10 +1299,6 @@ def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]", *, isdir
     layout.setContentsMargins(8, 0, 0, 0)
     layout.setSpacing(0)
     label = QtWidgets.QLabel(text)
-    if isdirective:
-        font = label.font()
-        font.setItalic(True)
-        label.setFont(font)
     label.setToolTip(tooltip)
     removebutton = QtWidgets.QToolButton()
     removebutton.setText("✕")
@@ -1230,23 +1432,65 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
     timegrid.addWidget(playbutton, 2, 2)
 
-    cellheader, cellgrid = add_section(panellayout, "Cells")
-    cellcontent = cellgrid.parentWidget()
-    assert cellcontent is not None
+    _, cellgrid = add_section(panellayout, "Cells")
+    # a 1D model has no axes, planes, or lines
+    geometrybox = QtWidgets.QComboBox()
+    for mode, modetext in GEOMETRY_MODES.items():
+        if viewer.dimensions == 3 or mode in {"all", "cells"}:
+            geometrybox.addItem(modetext, mode)
+    geometrybox.setToolTip(
+        "The cells that the plot reads. A plane and the average around the z axis give a colour image of a snapshot."
+    )
     cellslider = make_slider()
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
     celledit = QtWidgets.QLineEdit()
     celledit.setFixedWidth(110)
-    celledit.setPlaceholderText("all cells")
+    celledit.setPlaceholderText("e.g. 3 or 3-7")
     celledit.setToolTip(helptexts.get("modelgridindex", ""))
-    allcellsbutton = QtWidgets.QPushButton("All cells")
-    allcellsbutton.setToolTip("Remove -cell, thus the plot reads all the cells")
     celllabel = QtWidgets.QLabel()
-    cellgrid.addWidget(QtWidgets.QLabel("-cell"), 0, 0)
-    cellgrid.addWidget(cellslider, 0, 1)
-    cellgrid.addWidget(celledit, 0, 2)
-    cellgrid.addWidget(celllabel, 1, 0, 1, 2)
-    cellgrid.addWidget(allcellsbutton, 1, 2)
+    cellnamelabel = QtWidgets.QLabel("-cell")
+    axisbox = QtWidgets.QComboBox()
+    axisbox.addItems(["+x", "-x", "+y", "-y", "+z", "-z"])
+    axisbox.setToolTip(helptexts.get("axis", ""))
+    coneanglelabel = QtWidgets.QLabel("Angle")
+    coneanglebox = QtWidgets.QDoubleSpinBox()
+    coneanglebox.setRange(1.0, 180.0)
+    coneanglebox.setSuffix("°")
+    coneanglebox.setDecimals(1)
+    coneanglebox.setKeyboardTracking(False)
+    coneanglebox.setToolTip(helptexts.get("coneangle", ""))
+    planebox = QtWidgets.QComboBox()
+    planebox.addItems(list(PLANE_OF_NORMAL.values()))
+    planebox.setToolTip("The plane of the image")
+    offsetedit = QtWidgets.QLineEdit()
+    offsetedit.setFixedWidth(110)
+    offsetedit.setPlaceholderText("0")
+    offsetedit.setToolTip(
+        "The velocity of the plane along the axis that is normal to it, e.g. -0.2c, or 5000km/s. Empty gives 0."
+    )
+    lineaxisbox = QtWidgets.QComboBox()
+    lineaxisbox.addItems(["x", "y", "z"])
+    lineaxisbox.setToolTip("The axis of the line through the origin")
+
+    def make_parameter_row(widgets: "Sequence[QtWidgets.QWidget]") -> QtWidgets.QWidget:
+        row = QtWidgets.QWidget()
+        rowlayout = QtWidgets.QHBoxLayout(row)
+        rowlayout.setContentsMargins(0, 0, 0, 0)
+        for widget in widgets:
+            rowlayout.addWidget(widget)
+        rowlayout.addStretch(1)
+        return row
+
+    axisparameters = make_parameter_row([QtWidgets.QLabel("-axis"), axisbox, coneanglelabel, coneanglebox])
+    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, QtWidgets.QLabel("at"), offsetedit])
+    lineparameters = make_parameter_row([QtWidgets.QLabel("Line along"), lineaxisbox])
+    add_row(cellgrid, 0, [geometrybox])
+    cellgrid.addWidget(cellnamelabel, 1, 0)
+    cellgrid.addWidget(cellslider, 1, 1)
+    cellgrid.addWidget(celledit, 1, 2)
+    cellgrid.addWidget(celllabel, 2, 0, 1, -1)
+    for row, widget in enumerate((axisparameters, planeparameters, lineparameters), start=3):
+        cellgrid.addWidget(widget, row, 0, 1, -1)
 
     _, xgrid = add_section(panellayout, "Horizontal axis")
     xbox = QtWidgets.QComboBox()
@@ -1277,6 +1521,30 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
+    smoothingbox = QtWidgets.QComboBox()
+    for mode, modetext in SMOOTHING_MODES.items():
+        smoothingbox.addItem(modetext, mode)
+    smoothingbox.setToolTip("Smooth the line of each series")
+    smoothinglengthlabel, smoothingorderlabel = QtWidgets.QLabel("Length"), QtWidgets.QLabel("Order")
+    smoothinglengthbox, smoothingorderbox = QtWidgets.QSpinBox(), QtWidgets.QSpinBox()
+    smoothinglengthbox.setRange(2, 999)
+    smoothingorderbox.setRange(0, 20)
+    for box in (smoothinglengthbox, smoothingorderbox):
+        box.setKeyboardTracking(False)
+    smoothinglengthbox.setToolTip("The number of points of the moving average, or the window length of the filter")
+    smoothingorderbox.setToolTip("The order of the polynomial of the Savitzky-Golay filter, less than the length")
+    add_row(
+        xgrid,
+        3,
+        [
+            QtWidgets.QLabel("Smoothing"),
+            smoothingbox,
+            smoothinglengthlabel,
+            smoothinglengthbox,
+            smoothingorderlabel,
+            smoothingorderbox,
+        ],
+    )
 
     _, subplotgrid = add_section(panellayout, "Subplots")
     # show_subplots makes a card for each subplot again when the subplots change
@@ -1304,16 +1572,55 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     subplotgrid.addLayout(newsubplotrow, 1, 0, 1, -1)
     subplotgrid.addWidget(newsuggestionsbox, 2, 0, 1, -1)
 
-    _, optiongrid = add_section(panellayout, "Other options")
+    _, appearancegrid = add_section(panellayout, "Appearance")
+    actionsbyflag = get_actions_by_flag(viewer.parser)
+    # a flag that this version of plotestimators does not have gives no control
+    appearancechecks = {
+        flag: QtWidgets.QCheckBox(flag)
+        for flag in ("--notitle", "--nolegend", "--legendframe", "--hidexlabel")
+        if flag in actionsbyflag
+    }
+    for flag, check in appearancechecks.items():
+        check.setToolTip(helptexts.get(actionsbyflag[flag].dest, ""))
+    fontsizebox = QtWidgets.QDoubleSpinBox()
+    fontsizebox.setRange(0.0, 40.0)
+    fontsizebox.setDecimals(1)
+    fontsizebox.setSpecialValueText("default")
+    fontsizebox.setToolTip(helptexts.get("labelfontsize", ""))
+    figscalebox = QtWidgets.QDoubleSpinBox()
+    figscalebox.setRange(0.3, 3.0)
+    figscalebox.setSingleStep(0.1)
+    figscalebox.setDecimals(2)
+    figscalebox.setToolTip(helptexts.get("figscale", ""))
+    for box in (fontsizebox, figscalebox):
+        box.setKeyboardTracking(False)
+    add_row(appearancegrid, 0, list(appearancechecks.values()))
+    add_row(
+        appearancegrid, 1, [QtWidgets.QLabel("-labelfontsize"), fontsizebox, QtWidgets.QLabel("-figscale"), figscalebox]
+    )
+
+    optionheader, optiongrid = add_section(panellayout, "Other options")
+    optioncontent = optiongrid.parentWidget()
+    assert optioncontent is not None
+    # the sections of the window set each option that the table offered, thus the table shows only the rows of
+    # an option that the command gives and no section sets, e.g. of a new option of plotestimators
+    tableoffers = bool(
+        get_table_actions(viewer.parser, CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS)
+    )
+
+    def get_table_rows(rows: OptionRows) -> OptionRows:
+        """Return the rows that the option table shows, which are the rows that no section sets."""
+        return tuple(row for row in rows if row[0] not in viewer.sectionflags)
 
     def on_option_rows(rows: OptionRows) -> None:
-        queue.apply(replace_option_rows(viewer, viewer.values, rows))
+        sectionrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.sectionflags)
+        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *sectionrows)))
 
     optiontable, set_option_rows = make_option_table(
         window,
         viewer.parser,
-        CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS,
-        viewer.values.otheroptions,
+        CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS,
+        get_table_rows(viewer.values.otheroptions),
         on_option_rows,
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
@@ -1322,7 +1629,25 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the first plot came before the status bar, and a user of the application sees no terminal
     show_status_message(statusbar, None, viewer.warning)
 
-    signalwidgets: list[QtWidgets.QWidget] = [timeslider, widthslider, cellslider, xbox, markerscheck, colorbyioncheck]
+    signalwidgets: list[QtWidgets.QWidget] = [
+        timeslider,
+        widthslider,
+        cellslider,
+        xbox,
+        markerscheck,
+        colorbyioncheck,
+        geometrybox,
+        axisbox,
+        coneanglebox,
+        planebox,
+        lineaxisbox,
+        smoothingbox,
+        smoothinglengthbox,
+        smoothingorderbox,
+        fontsizebox,
+        figscalebox,
+        *appearancechecks.values(),
+    ]
 
     def set_ranges() -> None:
         """Give the sliders the number of valid timesteps and the number of cells of the run.
@@ -1417,32 +1742,30 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         chipslayout = make_flow_layout()
         chipsbox.setLayout(chipslayout)
         for position, item in get_chip_items(subplot, columns):
-            isdirective = get_item_directive(item) is not None
-            if isdirective:
-                tooltip = "A directive of the subplot. A Shift-drag on the subplot sets ymin= and ymax="
-            elif seriestype is None:
+            if seriestype is None:
                 tooltip = plain_label(get_ylabel(item)).strip() or item
             else:
                 tooltip = f"The {currenttype} of {item}"
-            chipslayout.addWidget(
-                make_chip(item, tooltip, partial(on_remove_item, row, position), isdirective=isdirective)
-            )
+            chipslayout.addWidget(make_chip(item, tooltip, partial(on_remove_item, row, position)))
         cardlayout.addWidget(chipsbox)
 
+        levelnames = get_levelnames(currenttype)
         choices = (
-            get_species_choices(currenttype, columns)
+            get_species_choices(currenttype, columns, levelnames)
             if seriestype is not None
             else sorted(columns, key=lambda column: not is_suggested_variable(column))
         )
-        suggestions = get_series_suggestions(subplot, columns)
+        suggestions = get_series_suggestions(subplot, columns, levelnames)
         example = f", e.g. {suggestions[0]}" if suggestions else ""
         addedit = QtWidgets.QLineEdit()
-        addcompleter = make_completer([*choices, "ymin=", "ymax="], addedit)
+        addcompleter = make_completer(choices, addedit)
         addedit.setCompleter(addcompleter)
         # the popup takes the Return key, thus a name that the user picks there gives no returnPressed
         addcompleter.activated.connect(partial(on_complete_item, row, addedit))
         if currenttype == VARIABLES_TYPE:
             addedit.setPlaceholderText(f"Add a variable{example}")
+        elif currenttype.startswith("levelpopulation"):
+            addedit.setPlaceholderText(f"Add a level: an ion and the index of its level{example}")
         elif currenttype == "populations":
             addedit.setPlaceholderText(f"Add an ion, an element, or an isotope{example}")
         else:
@@ -1488,12 +1811,43 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 f"The quantity of each ion of this subplot (ionpoptype=). {DEFAULT_POPTYPE} needs no directive.",
                 partial(on_directive_selector, row, "ionpoptype", DEFAULT_POPTYPE),
             )
-        add_row_layout = QtWidgets.QHBoxLayout()
+        selectorrow = QtWidgets.QHBoxLayout()
         for widget in selectors:
-            add_row_layout.addWidget(widget)
-        add_row_layout.addStretch(1)
-        cardlayout.addLayout(add_row_layout)
+            selectorrow.addWidget(widget)
+        selectorrow.addStretch(1)
+        cardlayout.addLayout(selectorrow)
+
+        # a Shift-drag on the subplot also sets these fields
+        yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+        for edit, directive in ((yminedit, "ymin"), (ymaxedit, "ymax")):
+            edit.setFixedWidth(90)
+            edit.setPlaceholderText("auto")
+            edit.setText(get_directive_value(subplot, directive) or "")
+            edit.setToolTip(f"The {directive[1:]}imum of the y axis ({directive}=). Shift-drag on the subplot sets it.")
+        for edit in (yminedit, ymaxedit):
+            edit.editingFinished.connect(partial(on_yrange, row, yminedit, ymaxedit))
+        yrangerow = QtWidgets.QHBoxLayout()
+        for widget in (QtWidgets.QLabel("y min"), yminedit, QtWidgets.QLabel("y max"), ymaxedit):
+            yrangerow.addWidget(widget)
+        yrangerow.addStretch(1)
+        cardlayout.addLayout(yrangerow)
         return card, addedit
+
+    # the names of the levels of the model, which get_levelnames reads when a card first needs them
+    levelnamescache: list[list[str]] = []
+
+    def get_levelnames(seriestype: str) -> list[str]:
+        """Return the names of the levels for a level population, or no names for another type of series."""
+        if not seriestype.startswith("levelpopulation"):
+            return []
+        if not levelnamescache:
+            ions = [
+                species
+                for species in get_species_choices("populations", viewer.estimatorcolumns)
+                if isinstance(get_iontuple(species)[1], int)
+            ]
+            levelnamescache.append(get_level_names(viewer.modelpath, ions))
+        return levelnamescache[0]
 
     def show_all_choices(edit: QtWidgets.QLineEdit) -> None:
         if (completer := edit.completer()) is not None:
@@ -1509,7 +1863,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         if shownsubplots[2:] != key[2:] or newsubplotedit.completer() is None:
             # the model can hold new columns after Reload Data
-            subplottypes = get_subplot_types(viewer.estimatorcolumns)
+            subplottypes = get_subplot_types(viewer.estimatorcolumns, viewer.leveltypes)
             newsubplotedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], newsubplotedit))
         shownsubplots = key
         for layout in (subplotslayout, newsuggestionslayout):
@@ -1517,7 +1871,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 if (widget := item.widget()) is not None:
                     widget.hide()
                     widget.deleteLater()
-        subplottypes = get_subplot_types(viewer.estimatorcolumns)
+        subplottypes = get_subplot_types(viewer.estimatorcolumns, viewer.leveltypes)
         addedits: list[QtWidgets.QLineEdit] = []
         for row, subplot in enumerate(viewer.values.subplots):
             card, addedit = make_subplot_card(row, subplot, subplottypes)
@@ -1558,11 +1912,42 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
         set_edit_text(tmaxedit, f"{viewer.tmids[values.last]:.4g}")
-        for widget in (cellheader, cellcontent):
-            widget.setVisible(cells_apply(values.otheroptions))
+        rows = values.otheroptions
+        geometrymode = get_geometry_mode(values)
+        geometrybox.setCurrentIndex(max(geometrybox.findData(geometrymode), 0))
+        for widget in (cellnamelabel, celledit):
+            widget.setVisible(geometrymode == "cells")
         # the slider selects one cell, which suits a plot against time. A snapshot of one cell has one point, and
         # the field of a snapshot takes a list or a range of cells
-        cellslider.setVisible(evolution)
+        cellslider.setVisible(geometrymode == "cells" and evolution)
+        celllabel.setVisible(geometrymode in {"all", "cells"})
+        axisparameters.setVisible(geometrymode in {"alongaxis", "cone"})
+        for widget in (coneanglelabel, coneanglebox):
+            widget.setVisible(geometrymode == "cone")
+        axisbox.setCurrentText((get_row_values(rows, "-axis") or (viewer.parser.get_default("axis"),))[0])
+        with contextlib.suppress(ValueError):
+            coneangle = get_row_values(rows, "-coneangle") or (str(viewer.parser.get_default("coneangle")),)
+            coneanglebox.setValue(float(coneangle[0]))
+        slicetext = (get_row_values(rows, "-slice") or ("",))[0]
+        planeparameters.setVisible(geometrymode == "plane")
+        lineparameters.setVisible(geometrymode == "line")
+        plane, offset = get_slice_parts(slicetext)
+        planebox.setCurrentText(plane)
+        set_edit_text(offsetedit, offset)
+        lineaxisbox.setCurrentText(get_line_axis(slicetext))
+        smoothingmode, smoothingnumbers = get_smoothing(rows)
+        smoothingbox.setCurrentIndex(max(smoothingbox.findData(smoothingmode), 0))
+        for widget in (smoothinglengthlabel, smoothinglengthbox):
+            widget.setVisible(smoothingmode != "none")
+        for widget in (smoothingorderlabel, smoothingorderbox):
+            widget.setVisible(smoothingmode == "savgol")
+        smoothinglengthbox.setValue(smoothingnumbers[0] if smoothingnumbers else 5)
+        smoothingorderbox.setValue(smoothingnumbers[1] if len(smoothingnumbers) > 1 else 2)
+        for flag, check in appearancechecks.items():
+            check.setChecked(get_row_values(rows, flag) is not None)
+        with contextlib.suppress(ValueError):
+            fontsizebox.setValue(float((get_row_values(rows, "-labelfontsize") or ("0",))[0]))
+            figscalebox.setValue(float((get_row_values(rows, "-figscale") or ("1",))[0]))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
@@ -1572,7 +1957,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if (cell := get_single_cell(values.cells)) is not None and cell in viewer.cells:
             cellslider.setValue(viewer.cells.index(cell))
         celllabel.setText(viewer.get_cell_text())
-        allcellsbutton.setEnabled(bool(values.cells))
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
         xminlabel.setText(f"-xmin{xunit}")
@@ -1602,7 +1986,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
-        set_option_rows(values.otheroptions)
+        set_option_rows(get_table_rows(values.otheroptions))
+        for widget in (optionheader, optioncontent):
+            widget.setVisible(tableoffers or bool(get_table_rows(values.otheroptions)))
         set_command_text(commandtext, viewer.get_command())
 
     def after_draw(message: str | None) -> None:
@@ -1707,6 +2093,43 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # -cell takes one word, thus a space between two cells becomes the comma of a list
         apply(dc.replace(viewer.values, cells=",".join(celledit.text().replace(",", " ").split())))
 
+    def apply_rows(changes: "Mapping[str, tuple[str, ...] | None]") -> None:
+        """Apply new values of some rows of the option table, e.g. of a section of the window."""
+        apply(replace_option_rows(viewer, viewer.values, set_row_values(viewer.values.otheroptions, changes)))
+
+    def on_geometry(index: int) -> None:
+        apply(set_geometry_mode(viewer, viewer.values, str(geometrybox.itemData(index))))
+
+    def on_axis(axis: str) -> None:
+        apply_rows({"-axis": None if axis == viewer.parser.get_default("axis") else (axis,)})
+
+    def on_coneangle(angle: float) -> None:
+        isdefault = math.isclose(angle, viewer.parser.get_default("coneangle"))
+        apply_rows({"-coneangle": None if isdefault else (format(angle, "g"),)})
+
+    def on_plane() -> None:
+        offsetedit.setModified(False)
+        apply_rows({"-slice": (get_slice_text(planebox.currentText(), offsetedit.text()),)})
+
+    def on_lineaxis(axis: str) -> None:
+        apply_rows({"-slice": (",".join(f"{other}=0" for other in "zyx" if other != axis),)})
+
+    def on_smoothing() -> None:
+        mode = str(smoothingbox.currentData())
+        length = smoothinglengthbox.value()
+        # the order of the Savitzky-Golay filter must be less than its window length
+        order = min(smoothingorderbox.value(), length - 1)
+        apply(dc.replace(viewer.values, otheroptions=set_smoothing(viewer.values.otheroptions, mode, (length, order))))
+
+    def on_appearance() -> None:
+        changes: dict[str, tuple[str, ...] | None] = {
+            flag: () if check.isChecked() else None for flag, check in appearancechecks.items()
+        }
+        fontsize, figscale = fontsizebox.value(), figscalebox.value()
+        changes["-labelfontsize"] = (format(fontsize, "g"),) if fontsize > 0.0 else None
+        changes["-figscale"] = None if math.isclose(figscale, 1.0) else (format(figscale, "g"),)
+        apply_rows(changes)
+
     def on_xvariable() -> None:
         if xvariable := xbox.currentText().strip():
             apply(viewer.set_xvariable(viewer.values, xvariable))
@@ -1757,7 +2180,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply_subplots(subplots)
 
     def on_subplot_type(row: int, seriestype: str) -> None:
-        change_subplot(row, change_subplot_type(viewer.values.subplots[row], seriestype, viewer.estimatorcolumns))
+        subplot = viewer.values.subplots[row]
+        levelnames = get_levelnames(seriestype)
+        change_subplot(row, change_subplot_type(subplot, seriestype, viewer.estimatorcolumns, levelnames))
+
+    def on_yrange(row: int, yminedit: QtWidgets.QLineEdit, ymaxedit: QtWidgets.QLineEdit) -> None:
+        texts = [edit.text().strip() for edit in (yminedit, ymaxedit)]
+        try:
+            limits = [float(text) if text else None for text in texts]
+        except ValueError:
+            show_error("Give a number for y min and y max, or leave a field empty for the range of the data")
+            return
+        if limits[0] is not None and limits[1] is not None and limits[0] >= limits[1]:
+            show_error("Give a y min that is less than y max")
+            return
+        subplot = viewer.values.subplots[row]
+        newsubplot = replace_directives(subplot, {"ymin": texts[0] or None, "ymax": texts[1] or None})
+        if newsubplot != subplot:
+            change_subplot(row, newsubplot)
 
     def add_item(row: int, item: str) -> None:
         subplot = viewer.values.subplots[row]
@@ -1817,7 +2257,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_new_subplot() -> None:
         text = newsubplotedit.text()
         newsubplotedit.clear()
-        add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns))
+        add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(text.partition(" ")[0])))
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
@@ -1826,7 +2266,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        message = save_figure_of_command(window, plotestimators_main, "plotestimators", viewer.get_plot_tokens())
+        message = save_figure_of_command(
+            window, plotestimators_main, "plotestimators", viewer.get_plot_tokens(), viewer.parser.get_default("dpi")
+        )
         if message is not None:
             show_status_message(statusbar, message, "")
 
@@ -1979,7 +2421,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     playtimer.timeout.connect(play_step)
     cellslider.valueChanged.connect(on_cell)
     celledit.editingFinished.connect(on_celledit)
-    allcellsbutton.clicked.connect(lambda: apply(dc.replace(viewer.values, cells="")))
+    geometrybox.activated.connect(on_geometry)
+    axisbox.textActivated.connect(on_axis)
+    coneanglebox.valueChanged.connect(on_coneangle)
+    planebox.textActivated.connect(on_plane)
+    offsetedit.editingFinished.connect(on_plane)
+    lineaxisbox.textActivated.connect(on_lineaxis)
+    smoothingbox.activated.connect(on_smoothing)
+    smoothinglengthbox.valueChanged.connect(on_smoothing)
+    smoothingorderbox.valueChanged.connect(on_smoothing)
+    for check in appearancechecks.values():
+        check.toggled.connect(on_appearance)
+    fontsizebox.valueChanged.connect(on_appearance)
+    figscalebox.valueChanged.connect(on_appearance)
     xbox.activated.connect(on_xvariable)
     if (xlineedit := xbox.lineEdit()) is not None:
         xlineedit.editingFinished.connect(on_xvariable)

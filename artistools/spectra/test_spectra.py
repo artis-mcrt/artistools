@@ -2579,8 +2579,10 @@ def test_interactive_option_rows() -> None:
         "list",
         "text",
     ]
-    # an option with no default needs a value from the user before the command can give it
-    assert viewertools.get_default_tokens(actions["-dpi"]) == ("250",)
+    # an option with no default needs a value from the user before the command can give it. Save Figure asks for
+    # -dpi, thus the table does not offer it
+    assert "-dpi" not in actions
+    assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
     assert viewertools.get_default_tokens(actions["-title"]) is None
 
 

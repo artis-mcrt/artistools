@@ -3585,10 +3585,8 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
     # the other ions of the element come first, and the total of the element after its ions
     assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
-    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [
-        (1, "Fe II"),
-        (3, "ymin=1"),
-    ]
+    # a control of the card sets each directive, thus only the names show as chips
+    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
 
     assert interactive.make_new_subplot("populations", columns) == ("populations", "Fe I")
     assert interactive.make_new_subplot("gamma_NT Fe II", columns) == ("gamma_NT", "Fe II")
@@ -3641,3 +3639,57 @@ def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
         (("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")),
         (),
     )
+
+
+def test_interactive_geometry_modes_draw() -> None:
+    """Each way to select the cells of a 3D model gives a command that plotestimators draws."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    for mode in interactive.GEOMETRY_MODES:
+        values = interactive.set_geometry_mode(viewer, viewer.values, mode)
+        assert interactive.get_geometry_mode(values) == mode
+        assert viewer.change(values) is None, (mode, viewer.get_command())
+    # a colour image is a snapshot, thus a plot against time becomes one
+    assert viewer.change(interactive.set_geometry_mode(viewer, viewer.values, "cells")) is None
+    evolution = interactive.get_evolution_values(viewer, str(viewer.cells[0]))
+    assert viewer.change(evolution) is None
+    image = interactive.set_geometry_mode(viewer, viewer.values, "plane")
+    assert not interactive.is_evolution(image)
+    assert not image.cells
+    assert viewer.change(image) is None
+
+    assert interactive.get_slice_parts("z=-0.2c") == ("xy", "-0.2c")
+    assert interactive.get_slice_parts("xz") == ("xz", "")
+    assert interactive.get_slice_text("xz", "5000km/s") == "y=5000km/s"
+    assert interactive.get_line_axis("z=0,y=0") == "x"
+    rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
+    assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
+        ("-coneangle", ("40",)),
+        ("-axis", ("-x",)),
+    )
+
+
+def test_interactive_smoothing_and_section_rows() -> None:
+    """A smoothing draws, the section rows stay in the command, and Save Figure gives -dpi."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "-dpi", "300", "--interactive"])
+    assert "-dpi" not in viewer.get_plot_tokens()
+    for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
+        rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))
+        assert interactive.get_smoothing(rows) == (mode, numbers)
+        assert viewer.change(dc.replace(viewer.values, otheroptions=(*rows, ("--notitle", ())))) is None
+    assert "--notitle" in viewer.get_plot_tokens()
+    assert "--notitle" in viewer.sectionflags
+
+
+def test_interactive_level_populations() -> None:
+    """A run with NLTE populations offers the level populations, with the lowest levels of each ion."""
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    assert viewer.leveltypes == ("levelpopulation", "levelpopulation_dn_on_dvel")
+    columns = viewer.estimatorcolumns
+    assert "levelpopulation" in interactive.get_subplot_types(columns, viewer.leveltypes)
+    levelnames = interactive.get_level_names(viewer.modelpath, ["Fe II", "Fe III"])
+    assert levelnames[:2] == ["Fe II 0", "Fe II 1"]
+    assert len(levelnames) == 2 * interactive.LEVEL_CHOICES_PER_ION
+    subplot = interactive.change_subplot_type(("Te",), "levelpopulation", columns, levelnames)
+    assert subplot == ("levelpopulation", "Fe II 0")
+    assert interactive.get_series_suggestions(subplot, columns, levelnames)[:2] == ["Fe II 1", "Fe II 2"]
+    assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None

@@ -138,6 +138,8 @@ DAYS_DECIMALS: t.Final = 6
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
+    # Save Figure asks for the resolution of a PNG file
+    "dpi",
     "timedayslist",
     "multispecplot",
     "makevspecpol",
@@ -1588,7 +1590,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        message = save_figure_of_command(window, plotspectra_main, "plotspectra", viewer.get_plot_tokens())
+        message = save_figure_of_command(
+            window, plotspectra_main, "plotspectra", viewer.get_plot_tokens(), viewer.parser.get_default("dpi")
+        )
         if message is not None:
             show_status_message(statusbar, message, "")
 

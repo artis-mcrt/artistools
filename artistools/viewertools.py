@@ -1457,12 +1457,17 @@ def copy_command(command: str) -> None:
 
 
 def save_figure_of_command(
-    window: "QtWidgets.QWidget", commandmain: "Callable[..., None]", commandname: str, plottokens: "Sequence[str]"
+    window: "QtWidgets.QWidget",
+    commandmain: "Callable[..., None]",
+    commandname: str,
+    plottokens: "Sequence[str]",
+    defaultdpi: int,
 ) -> str | None:
     """Ask for a file name, and save the figure of the command there. Return the message for the status line.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected type.
+    name with no suffix as a folder, thus the name takes the suffix of the selected type. A PNG file also needs a
+    resolution (-dpi), and defaultdpi is the default of the command.
     """
     from PySide6 import QtWidgets
 
@@ -1475,9 +1480,18 @@ def save_figure_of_command(
         # a filter such as "PNG (*.png)" names the suffix
         suffixmatch = re.search(r"\*(\.\w+)", selectedfilter)
         filename += suffixmatch.group(1) if suffixmatch else ".pdf"
+    dpitokens: list[str] = []
+    if Path(filename).suffix.lower() == ".png":
+        dpi, accepted = QtWidgets.QInputDialog.getInt(
+            window, "Save the figure", "Resolution of the PNG file [dots per inch]:", defaultdpi, 50, 2400, 50
+        )
+        if not accepted:
+            return None
+        dpitokens = [] if dpi == defaultdpi else ["-dpi", str(dpi)]
+    savetokens = [*plottokens, *dpitokens, "-o", filename]
 
     def save() -> str | None:
-        commandmain(argsraw=[*plottokens, "-o", filename])
+        commandmain(argsraw=savetokens)
         return None
 
     with show_wait_cursor():
@@ -1486,7 +1500,7 @@ def save_figure_of_command(
         return f"The command did not save the figure: {message}"
     if not Path(filename).is_file():
         return f"The command wrote no file at {filename}. The terminal shows its output"
-    print(shlex.join(["artistools", commandname, *plottokens, "-o", filename]))
+    print(shlex.join(["artistools", commandname, *savetokens]))
     return f"Saved {filename}"
 
 
