@@ -298,6 +298,20 @@ def test_colour_evolution_plot_ylabel(mockylabel: mock.MagicMock, tmp_path: Path
     assert r"$\Delta$m" in ylabels, ylabels
 
 
+@pytest.mark.parametrize("flag", ["--legendframe", "--legendframeon"])
+@mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
+def test_legend_frame_takes_both_spellings(mocklegend: mock.MagicMock, flag: str, tmp_path: Path) -> None:
+    """The command plotlightcurves had its own --legendframeon, and each command now takes --legendframe.
+
+    A script can hold the old spelling, thus it gives the same white frame.
+    """
+    at.lightcurve.plot(argsraw=[str(modelpath), flag, "-o", str(tmp_path / "lightcurve.pdf")])
+
+    legendkwargs = mocklegend.call_args.kwargs
+    assert legendkwargs["frameon"]
+    assert legendkwargs["facecolor"] == "white"
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_linelabel_falls_back_to_the_model_name(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A series with no -label is named after its model, not after the None that pads the -label list."""
