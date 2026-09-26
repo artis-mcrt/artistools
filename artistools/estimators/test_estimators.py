@@ -3568,3 +3568,50 @@ def test_interactive_cells_apply_only_without_a_selection_of_cells() -> None:
     assert not interactive.cells_apply(viewer.values.otheroptions)
     assert not interactive.cells_apply((("-slice", ("z=0,y=0",)),))
     assert interactive.cells_apply((("-dimensionreduce", ("1",)),))
+
+
+def test_interactive_subplot_types_and_suggestions() -> None:
+    """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    columns = viewer.estimatorcolumns
+    types = interactive.get_subplot_types(columns)
+    assert types[:2] == [interactive.VARIABLES_TYPE, "populations"]
+    assert "gamma_NT" in types
+    # the families of the populations and of the initial abundances are no type of their own
+    assert not {"nnion", "nnelement", "init_X"} & set(types)
+
+    assert interactive.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
+    assert interactive.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
+    assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
+    # the other ions of the element come first, and the total of the element after its ions
+    assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
+    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [
+        (1, "Fe II"),
+        (3, "ymin=1"),
+    ]
+
+    assert interactive.make_new_subplot("populations", columns) == ("populations", "Fe I")
+    assert interactive.make_new_subplot("gamma_NT Fe II", columns) == ("gamma_NT", "Fe II")
+    assert interactive.make_new_subplot("Te TR", columns) == ("Te", "TR")
+    newsubplots = interactive.get_new_subplot_suggestions(viewer.values.subplots, viewer.defaultsubplots, columns)
+    assert ("populations", "Fe I", "Fe II") in newsubplots
+
+    populations = ("populations", "Fe II", "Fe III", "ionpoptype=elpop", "yscale=log", "ymin=1e-5")
+    # only a plot of the populations takes ionpoptype=, and the names that apply to the new type stay
+    assert interactive.change_subplot_type(populations, "gamma_NT", columns) == (
+        "gamma_NT",
+        "Fe II",
+        "Fe III",
+        "yscale=log",
+    )
+    assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
+    # a subplot with only its type left has nothing to plot, thus it goes
+    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1, columns) == (("Te",),)
+    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0, columns) == (("TR",),)
+
+    for subplot in (
+        interactive.change_subplot_type(populations, "gamma_NT", columns),
+        interactive.change_subplot_type(("Te",), "averageionisation", columns),
+        *newsubplots,
+    ):
+        assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None, subplot

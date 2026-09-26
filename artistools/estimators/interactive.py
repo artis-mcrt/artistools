@@ -7,6 +7,7 @@ import shlex
 import typing as t
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.figure as mplfig
 import numpy as np
@@ -21,6 +22,7 @@ from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
+from artistools.estimators.core import split_species_suffix
 from artistools.estimators.estimators_classic import read_classic_estimators_cached
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
@@ -29,6 +31,13 @@ from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_plotlist
 from artistools.estimators.plotestimators import get_default_x
+from artistools.estimators.plotestimators import get_iontuple
+from artistools.estimators.plotestimators import get_iontuple_sortkey
+from artistools.estimators.plotestimators import get_ylabel
+from artistools.estimators.plotestimators import is_ionseriestype
+from artistools.estimators.plotestimators import is_seriestype
+from artistools.estimators.plotestimators import is_valid_ion
+from artistools.estimators.plotestimators import POPTYPE_YLABELS
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
@@ -71,6 +80,7 @@ from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
+from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -97,6 +107,7 @@ from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Collection
     from collections.abc import Mapping
     from collections.abc import Sequence
     from concurrent.futures import Future
@@ -711,6 +722,271 @@ def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str |
     return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
 
 
+# the variables that suit a new subplot, in the order of the suggestions
+COMMON_VARIABLES: t.Final = ("Te", "TR", "nne", "rho", "heating_dep", "total_dep", "TJ", "W")
+
+# the columns that give the grid, the time, or the size of a cell, and not the physics of the cell
+BOOKKEEPING_COLUMNS: t.Final = frozenset({
+    "deltavol_deltat",
+    "inputcellid",
+    "mass_g",
+    "modelgridindex",
+    "tdays",
+    "thick",
+    "timestep",
+    "titeration",
+    "tmid_days",
+    "tmid_days_prevtimestep",
+    "twidth_days",
+    "volume_prevtimestep",
+})
+
+# the families of the estimator columns that give the species of each type of series
+SPECIES_FAMILIES: t.Final = MappingProxyType({
+    "populations": ("nnelement", "nnion", "nniso"),
+    "averageionisation": ("nnelement",),
+    "averageexcitation": ("nnion",),
+    "initabundances": ("init_X",),
+    "initmasses": ("init_X",),
+})
+
+
+def get_subplot_names(subplot: "Sequence[str]") -> list[str]:
+    """Return the items of a subplot that are not a directive, e.g. the variables or the series type and its names."""
+    return [item for item in subplot if get_item_directive(item) is None]
+
+
+def get_subplot_seriestype(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str | None:
+    """Return the type of series of a subplot, e.g. "populations", or None for a subplot of variables.
+
+    plotestimators reads a list of ions with no type as a plot of populations, thus this function does the same.
+    """
+    names = get_subplot_names(subplot)
+    if not names:
+        return None
+    if is_seriestype(names[0], estimatorcolumns) or is_ionseriestype(names[0], estimatorcolumns, names[1:]):
+        return names[0]
+    if names[0] not in estimatorcolumns and all(is_valid_ion(name) for name in names):
+        return "populations"
+    return None
+
+
+def get_species_sortkey(species: str) -> tuple[int, int, int, str]:
+    """Return the key that sorts species by element, then the element before its ions, then the ions by stage."""
+    return get_iontuple_sortkey(get_iontuple(species))
+
+
+def get_species_choices(seriestype: str, estimatorcolumns: "Collection[str]") -> list[str]:
+    """Return each species that a type of series can plot for this model, e.g. "Fe II" for the populations.
+
+    An ion series such as gamma_NT takes the species of its own columns, e.g. gamma_NT_Fe_II.
+    """
+    families = SPECIES_FAMILIES.get(seriestype, (seriestype,))
+    species = {
+        split[1]
+        for column in estimatorcolumns
+        if (split := split_species_suffix(column)) is not None and split[0] in families
+    }
+    return sorted(species, key=get_species_sortkey)
+
+
+def get_first_choice(choices: "Sequence[str]") -> list[str]:
+    """Return the first ion of the choices, or the first choice if no choice is an ion, e.g. Fe I before Fe."""
+    ions = [choice for choice in choices if isinstance(get_iontuple(choice)[1], int)]
+    return (ions or list(choices))[:1]
+
+
+def is_suggested_variable(column: str) -> bool:
+    """Return True if a column can be a series of its own, and not the grid, the time, or one species."""
+    return (
+        column not in BOOKKEEPING_COLUMNS
+        and not column.startswith(("vel_", "init_pos_", "init_kinetic_"))
+        and split_species_suffix(column) is None
+    )
+
+
+def get_series_suggestions(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]", count: int = 4) -> list[str]:
+    """Return the items that suit a subplot next, e.g. TR beside Te, or Fe IV beside Fe II and Fe III.
+
+    A series type takes more of its species, first those of the elements that the subplot has. A variable takes the
+    other variables with the same quantity on the y axis.
+    """
+    names = get_subplot_names(subplot)
+    if not names:
+        return []
+    seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
+    if seriestype is not None:
+        elements = {get_iontuple(name)[0] for name in names if is_valid_ion(name)}
+
+        # the ions of the elements of the subplot come first, and the total of an element comes after its ions
+        def get_choice_sortkey(species: str) -> tuple[bool, bool, tuple[int, int, int, str]]:
+            atomic_number, ion_stage = get_iontuple(species)
+            return atomic_number not in elements, not isinstance(ion_stage, int), get_species_sortkey(species)
+
+        choices = [name for name in get_species_choices(seriestype, estimatorcolumns) if name not in names]
+        suggestions = sorted(choices, key=get_choice_sortkey)
+    else:
+        ylabel = get_ylabel(names[0]).strip()
+        suggestions = [
+            column
+            for column in estimatorcolumns
+            if ylabel and column not in names and is_suggested_variable(column) and get_ylabel(column).strip() == ylabel
+        ]
+    return suggestions[:count]
+
+
+def get_new_subplot_suggestions(
+    subplots: "Sequence[Sequence[str]]",
+    defaultsubplots: "Sequence[tuple[str, ...]]",
+    estimatorcolumns: "Collection[str]",
+    count: int = 5,
+) -> list[tuple[str, ...]]:
+    """Return the subplots that suit the plot next.
+
+    The default subplots that the plot has not come first. Then come the first common variables that no subplot
+    shows, a plot of the populations and of the average ionisation if the plot has none, and the other variables.
+    """
+    plotted = {name for subplot in subplots for name in get_subplot_names(subplot)}
+    seriestypes = {get_subplot_seriestype(subplot, estimatorcolumns) for subplot in subplots}
+    variables = [(name,) for name in COMMON_VARIABLES if name in estimatorcolumns and name not in plotted]
+    series: list[tuple[str, ...]] = []
+    for seriestype in ("populations", "averageionisation"):
+        if seriestype not in seriestypes and (choices := get_species_choices(seriestype, estimatorcolumns)):
+            # the ions of the first element, e.g. Fe II and Fe III, and not the element with its first ion
+            firstelement = get_iontuple(choices[0])[0]
+            names = [name for name in choices if get_iontuple(name)[0] == firstelement and name != choices[0]]
+            series.append((seriestype, *(names or choices)[:2]))
+    suggestions = [
+        *(subplot for subplot in defaultsubplots if subplot not in subplots),
+        *variables[:2],
+        *series,
+        *variables[2:],
+    ]
+    return list(dict.fromkeys(suggestions))[:count]
+
+
+def make_new_subplot(text: str, estimatorcolumns: "Collection[str]") -> tuple[str, ...]:
+    """Return the items of a new subplot that the user typed.
+
+    A series type takes the rest of the text as one name, e.g. "populations Fe II", or its first species when the
+    user gives no name, because plotestimators needs at least one. An ion stays one name, e.g. "Fe II". Other text
+    gives one variable for each word, e.g. "Te TR".
+    """
+    text = text.strip()
+    first, _, rest = text.partition(" ")
+    rest = rest.strip()
+    if not text:
+        return ()
+    choices: list[str] = [] if first in estimatorcolumns else get_species_choices(first, estimatorcolumns)
+    if choices or is_seriestype(first, estimatorcolumns):
+        return (first, rest) if rest else (first, *get_first_choice(choices))
+    if is_valid_ion(text) and text not in estimatorcolumns:
+        return (text,)
+    try:
+        return tuple(shlex.split(text))
+    except ValueError:
+        return (text,)
+
+
+# the name of the type of a subplot of variables in the type selector of a subplot, which gives no -plot token
+VARIABLES_TYPE: t.Final = "variables"
+
+# the help text of each type of subplot that the selector names
+SUBPLOT_TYPE_HELPTEXTS: t.Final = MappingProxyType({
+    VARIABLES_TYPE: "Estimator variables with the same quantity, e.g. Te and TR",
+    "populations": "The population of each ion, element, or isotope",
+    "averageionisation": "The mean ion charge of each element",
+    "averageexcitation": "The mean excitation energy of each ion",
+    "initabundances": "The initial mass fraction of each element or isotope",
+    "initmasses": "The initial mass of each element or isotope",
+})
+
+# the directives that a control of the subplot sets, thus they show no chip
+SELECTOR_DIRECTIVES: t.Final = frozenset({"yscale", "ionpoptype"})
+
+
+def get_subplot_types(estimatorcolumns: "Collection[str]") -> list[str]:
+    """Return the types of subplot that the model can plot: the variables, the series types, and the ion series.
+
+    An ion series is a family of columns with one column for each ion, e.g. gamma_NT_Fe_II. The families of the
+    other series types, e.g. nnion for the populations, are not a type of their own.
+    """
+    seriestypes = [seriestype for seriestype in SPECIES_FAMILIES if get_species_choices(seriestype, estimatorcolumns)]
+    otherfamilies = {family for families in SPECIES_FAMILIES.values() for family in families}
+    ionfamilies = {
+        split[0]
+        for column in estimatorcolumns
+        if (split := split_species_suffix(column)) is not None and split[0] not in otherfamilies
+    }
+    return [VARIABLES_TYPE, *seriestypes, *sorted(ionfamilies, key=str.lower)]
+
+
+def change_subplot_type(
+    subplot: "Sequence[str]", seriestype: str, estimatorcolumns: "Collection[str]"
+) -> tuple[str, ...]:
+    """Return the subplot with a new type, and keep the names and the directives that still apply.
+
+    A new type with no name that applies takes its first choice, e.g. the first ion of the populations, because
+    plotestimators needs at least one name. The new type can plot a different quantity, thus ymin= and ymax= go.
+    Only a plot of populations takes ionpoptype=.
+    """
+    keptdirectives = {"yscale", "ionpoptype"} if seriestype == "populations" else {"yscale"}
+    directives = [item for item in subplot if get_item_directive(item) in keptdirectives]
+    oldtype = get_subplot_seriestype(subplot, estimatorcolumns)
+    names = get_subplot_names(subplot)
+    if oldtype is not None and names and names[0] == oldtype:
+        names = names[1:]
+    if seriestype == VARIABLES_TYPE:
+        variables = [name for name in names if oldtype is None and name in estimatorcolumns]
+        common = [name for name in COMMON_VARIABLES if name in estimatorcolumns]
+        return (*(variables or common[:1] or ["Te"]), *directives)
+    choices = get_species_choices(seriestype, estimatorcolumns)
+    kept = [name for name in names if name in choices]
+    return (seriestype, *(kept or get_first_choice(choices)), *directives)
+
+
+def get_chip_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[tuple[int, str]]:
+    """Return the position and the text of each item of a subplot that shows as a chip.
+
+    The type selector shows the series type, and a selector sets each of SELECTOR_DIRECTIVES, thus they show no chip.
+    """
+    seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
+    typeposition = next((position for position, item in enumerate(subplot) if item == seriestype), None)
+    return [
+        (position, item)
+        for position, item in enumerate(subplot)
+        if position != typeposition and get_item_directive(item) not in SELECTOR_DIRECTIVES
+    ]
+
+
+def get_directive_value(subplot: "Sequence[str]", directive: str) -> str | None:
+    """Return the value of a directive of a subplot, e.g. "log" for yscale=log, or None if the subplot has none."""
+    return next((item.partition("=")[2] for item in reversed(subplot) if get_item_directive(item) == directive), None)
+
+
+def remove_subplot_item(
+    subplots: "Sequence[tuple[str, ...]]", row: int, index: int, estimatorcolumns: "Collection[str]"
+) -> tuple[tuple[str, ...], ...]:
+    """Return the subplots without one item of a subplot.
+
+    A subplot with no name left, or with its series type alone, has nothing to plot, thus it goes with its
+    directives.
+    """
+    subplot = subplots[row][:index] + subplots[row][index + 1 :]
+    names = get_subplot_names(subplot)
+    seriestypeonly = (
+        len(names) == 1
+        and names[0] not in estimatorcolumns
+        and (names[0] in SERIESTYPES or bool(get_species_choices(names[0], estimatorcolumns)))
+    )
+    keep = bool(names) and not seriestypeonly
+    return (
+        tuple(item for position, item in enumerate(subplots) if position != row)
+        if not keep
+        else (*subplots[:row], subplot, *subplots[row + 1 :])
+    )
+
+
 def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
     """Return the cell with the radial velocity nearest to a position on a velocity axis, or None for another axis.
 
@@ -761,6 +1037,47 @@ def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheropt
     if is_evolution(values) or values.x != viewer.get_default_xvariable(values.otheroptions, timegiven=True):
         return newvalues
     return viewer.set_xvariable(newvalues, viewer.get_default_xvariable(otheroptions, timegiven=True))
+
+
+def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWidgets.QCompleter":
+    """Return a completer that finds each name that holds the typed text, e.g. "ion" finds averageionisation."""
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    completer = QtWidgets.QCompleter(list(names), parent)
+    completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+    completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+    completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+    completer.setMaxVisibleItems(15)
+    return completer
+
+
+def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]", *, isdirective: bool) -> "QtWidgets.QFrame":
+    """Return a chip that shows one item of a subplot, with a button that removes the item."""
+    from PySide6 import QtWidgets
+
+    chip = QtWidgets.QFrame()
+    chip.setObjectName("chip")
+    chip.setStyleSheet(
+        "QFrame#chip { border: 1px solid palette(mid); border-radius: 10px; background: palette(base); }"
+    )
+    layout = QtWidgets.QHBoxLayout(chip)
+    layout.setContentsMargins(8, 0, 0, 0)
+    layout.setSpacing(0)
+    label = QtWidgets.QLabel(text)
+    if isdirective:
+        font = label.font()
+        font.setItalic(True)
+        label.setFont(font)
+    label.setToolTip(tooltip)
+    removebutton = QtWidgets.QToolButton()
+    removebutton.setText("✕")
+    removebutton.setAutoRaise(True)
+    removebutton.setToolTip(f"Remove {text} from the subplot")
+    removebutton.clicked.connect(on_remove)
+    layout.addWidget(label)
+    layout.addWidget(removebutton)
+    return chip
 
 
 def get_readout(axis: "mplax.Axes", x: float) -> str:
@@ -934,37 +1251,30 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
 
     _, subplotgrid = add_section(panellayout, "Subplots")
-    subplotlist = QtWidgets.QListWidget()
-    subplotlist.setFixedHeight(6 * subplotlist.fontMetrics().lineSpacing() + 12)
-    subplotlist.setToolTip(
-        "Each row gives the items of one subplot:\n"
-        "- an estimator variable;\n"
-        "- an ion;\n"
-        "- a type of series and its names, e.g. populations 'Fe II' 'Fe III';\n"
-        f"- a directive: {', '.join(f'{name}=' for name in DIRECTIVES)}.\n"
-        "Double-click a row to change it. Right-click a subplot to set the y scale. Shift-drag a subplot to set the"
-        " y range."
+    # show_subplots makes a card for each subplot again when the subplots change
+    subplotsbox = QtWidgets.QWidget()
+    subplotslayout = QtWidgets.QVBoxLayout(subplotsbox)
+    subplotslayout.setContentsMargins(0, 0, 0, 0)
+    subplotslayout.setSpacing(6)
+    newsubplotedit = QtWidgets.QLineEdit()
+    newsubplotedit.setPlaceholderText("New subplot, e.g. nne, or populations Fe II")
+    newsubplotedit.setToolTip(
+        "Type a variable, a type of series and a name, or an ion, then press Return. Type part of a name to search."
     )
-    variablebox = QtWidgets.QComboBox()
-    variablebox.setEditable(True)
-    variablebox.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-    variablebox.addItems(["", *SERIESTYPES, *viewer.estimatorcolumns])
-    if (completer := variablebox.completer()) is not None:
-        completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
-        completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
-    if (lineedit := variablebox.lineEdit()) is not None:
-        lineedit.setPlaceholderText("Add a variable to the selected subplot")
-    variablebox.setToolTip(
-        "Type part of a name to search, or type an ion or a directive."
-        " The name goes at the end of the selected subplot."
-    )
-    addbutton, removebutton = QtWidgets.QPushButton("Add subplot"), QtWidgets.QPushButton("Remove")
-    upbutton, downbutton = QtWidgets.QPushButton("Up"), QtWidgets.QPushButton("Down")
+    addsubplotbutton = QtWidgets.QPushButton("Add subplot")
+    addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
     defaultbutton.setToolTip("Show the default subplots of plotestimators, which the command gives with no -plot")
-    subplotgrid.addWidget(subplotlist, 0, 0, 1, -1)
-    subplotgrid.addWidget(variablebox, 1, 0, 1, -1)
-    add_row(subplotgrid, 2, [addbutton, removebutton, upbutton, downbutton, defaultbutton])
+    newsubplotrow = QtWidgets.QHBoxLayout()
+    newsubplotrow.addWidget(newsubplotedit, 1)
+    newsubplotrow.addWidget(addsubplotbutton)
+    newsubplotrow.addWidget(defaultbutton)
+    newsuggestionsbox = QtWidgets.QWidget()
+    newsuggestionslayout = make_flow_layout()
+    newsuggestionsbox.setLayout(newsuggestionslayout)
+    subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
+    subplotgrid.addLayout(newsubplotrow, 1, 0, 1, -1)
+    subplotgrid.addWidget(newsuggestionsbox, 2, 0, 1, -1)
 
     _, optiongrid = add_section(panellayout, "Other options")
 
@@ -984,16 +1294,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the first plot came before the status bar, and a user of the application sees no terminal
     show_status_message(statusbar, None, viewer.warning)
 
-    signalwidgets: list[QtWidgets.QWidget] = [
-        timeslider,
-        widthslider,
-        cellslider,
-        xbox,
-        markerscheck,
-        colorbyioncheck,
-        subplotlist,
-        variablebox,
-    ]
+    signalwidgets: list[QtWidgets.QWidget] = [timeslider, widthslider, cellslider, xbox, markerscheck, colorbyioncheck]
 
     def set_ranges() -> None:
         """Give the sliders the number of valid timesteps and the number of cells of the run.
@@ -1014,18 +1315,200 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     set_ranges()
 
-    def show_subplots(subplots: "Sequence[Sequence[str]]") -> None:
-        """Show a row for each subplot, and keep the selected row."""
-        texts = [shlex.join(subplot) for subplot in subplots]
-        if [subplotlist.item(row).text() for row in range(subplotlist.count())] == texts:
+    # the subplots, the default subplots, and the columns of the cards on the screen
+    shownsubplots: tuple[object, ...] = ()
+    # the card whose field takes the focus after the next show, e.g. the card of the name that the user added
+    focusrow: int | None = None
+
+    def make_suggestion_button(text: str, tooltip: str, callback: "Callable[[], None]") -> QtWidgets.QToolButton:
+        button = QtWidgets.QToolButton()
+        button.setText(f"+ {text}")
+        button.setToolTip(tooltip)
+        button.setStyleSheet(
+            "QToolButton { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
+            " QToolButton:hover { border-style: solid; }"
+        )
+        button.clicked.connect(callback)
+        return button
+
+    def make_selector(
+        label: str, choices: "Sequence[str]", current: str, tooltip: str, callback: "Callable[[str], None]"
+    ) -> list[QtWidgets.QWidget]:
+        box = QtWidgets.QComboBox()
+        box.addItems([*choices, *([] if current in choices else [current])])
+        box.setCurrentText(current)
+        box.setToolTip(tooltip)
+        box.textActivated.connect(callback)
+        return [QtWidgets.QLabel(label), box]
+
+    def make_subplot_card(
+        row: int, subplot: tuple[str, ...], subplottypes: "Sequence[str]"
+    ) -> tuple[QtWidgets.QFrame, QtWidgets.QLineEdit]:
+        """Return the card of a subplot and its field that adds a name. The controls of the card follow its type."""
+        columns = viewer.estimatorcolumns
+        seriestype = get_subplot_seriestype(subplot, columns)
+        currenttype = seriestype or VARIABLES_TYPE
+        names = get_subplot_names(subplot)
+        card = QtWidgets.QFrame()
+        card.setObjectName("subplotcard")
+        card.setStyleSheet("QFrame#subplotcard { border: 1px solid palette(mid); border-radius: 6px; }")
+        cardlayout = QtWidgets.QVBoxLayout(card)
+        cardlayout.setContentsMargins(6, 4, 4, 6)
+        cardlayout.setSpacing(4)
+
+        typebox = QtWidgets.QComboBox()
+        types = [*subplottypes, *([] if currenttype in subplottypes else [currenttype])]
+        typebox.addItems(types)
+        for index, name in enumerate(types):
+            helptext = SUBPLOT_TYPE_HELPTEXTS.get(name, f"The {name} columns of each ion")
+            typebox.setItemData(index, helptext, QtCore.Qt.ItemDataRole.ToolTipRole)
+        typebox.setCurrentText(currenttype)
+        typebox.setToolTip("The type of the subplot. A new type keeps the names that still apply.")
+        typebox.textActivated.connect(partial(on_subplot_type, row))
+        quantity = QtWidgets.QLabel(plain_label(get_ylabel(names[0])).strip() if seriestype is None and names else "")
+        quantity.setEnabled(False)
+        header = QtWidgets.QHBoxLayout()
+        header.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
+        header.addWidget(typebox)
+        header.addWidget(quantity, 1)
+        for text, tooltip, callback, enabled in (
+            ("▲", "Move the subplot up", partial(on_move_subplot, row, -1), row > 0),
+            ("▼", "Move the subplot down", partial(on_move_subplot, row, 1), row < len(viewer.values.subplots) - 1),
+            ("✕", "Delete the subplot", partial(on_delete_subplot, row), True),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setText(text)
+            button.setAutoRaise(True)
+            button.setToolTip(tooltip)
+            button.setEnabled(enabled)
+            button.clicked.connect(callback)
+            header.addWidget(button)
+        cardlayout.addLayout(header)
+
+        chipsbox = QtWidgets.QWidget()
+        chipslayout = make_flow_layout()
+        chipsbox.setLayout(chipslayout)
+        for position, item in get_chip_items(subplot, columns):
+            isdirective = get_item_directive(item) is not None
+            if isdirective:
+                tooltip = "A directive of the subplot. A Shift-drag on the subplot sets ymin= and ymax="
+            elif seriestype is None:
+                tooltip = plain_label(get_ylabel(item)).strip() or item
+            else:
+                tooltip = f"The {currenttype} of {item}"
+            chipslayout.addWidget(
+                make_chip(item, tooltip, partial(on_remove_item, row, position), isdirective=isdirective)
+            )
+        cardlayout.addWidget(chipsbox)
+
+        choices = (
+            get_species_choices(currenttype, columns)
+            if seriestype is not None
+            else sorted(columns, key=lambda column: not is_suggested_variable(column))
+        )
+        suggestions = get_series_suggestions(subplot, columns)
+        example = f", e.g. {suggestions[0]}" if suggestions else ""
+        addedit = QtWidgets.QLineEdit()
+        addcompleter = make_completer([*choices, "ymin=", "ymax="], addedit)
+        addedit.setCompleter(addcompleter)
+        # the popup takes the Return key, thus a name that the user picks there gives no returnPressed
+        addcompleter.activated.connect(partial(on_complete_item, row, addedit))
+        if currenttype == VARIABLES_TYPE:
+            addedit.setPlaceholderText(f"Add a variable{example}")
+        elif currenttype == "populations":
+            addedit.setPlaceholderText(f"Add an ion, an element, or an isotope{example}")
+        else:
+            addedit.setPlaceholderText(f"Add a species{example}")
+        addedit.setToolTip(
+            "Type part of a name to search, then press Return. A directive such as ymin=1e-16 also goes here."
+        )
+        addedit.returnPressed.connect(partial(on_add_item, row, addedit))
+        listbutton = QtWidgets.QToolButton()
+        listbutton.setText("▾")
+        listbutton.setToolTip("Show each name that the subplot can take")
+        listbutton.clicked.connect(partial(show_all_choices, addedit))
+        addrow = QtWidgets.QHBoxLayout()
+        addrow.addWidget(addedit, 1)
+        addrow.addWidget(listbutton)
+        cardlayout.addLayout(addrow)
+
+        if suggestions:
+            suggestionsbox = QtWidgets.QWidget()
+            suggestionslayout = make_flow_layout()
+            suggestionsbox.setLayout(suggestionslayout)
+            for suggestion in suggestions:
+                suggestionslayout.addWidget(
+                    make_suggestion_button(
+                        suggestion, f"Add {suggestion} to the subplot", partial(add_item, row, suggestion)
+                    )
+                )
+            cardlayout.addWidget(suggestionsbox)
+
+        yscale = {"lin": "linear"}.get(value := get_directive_value(subplot, "yscale") or "auto", value)
+        selectors = make_selector(
+            "y scale",
+            ("auto", "linear", "log"),
+            yscale,
+            "The scale of the y axis (yscale=). Auto takes log for ions and linear for the other series.",
+            partial(on_directive_selector, row, "yscale", "auto"),
+        )
+        if currenttype == "populations":
+            selectors += make_selector(
+                "Quantity",
+                ("default", *POPTYPE_YLABELS),
+                get_directive_value(subplot, "ionpoptype") or "default",
+                "The quantity of each ion (ionpoptype=). Default takes -ionpoptype of the command.",
+                partial(on_directive_selector, row, "ionpoptype", "default"),
+            )
+        add_row_layout = QtWidgets.QHBoxLayout()
+        for widget in selectors:
+            add_row_layout.addWidget(widget)
+        add_row_layout.addStretch(1)
+        cardlayout.addLayout(add_row_layout)
+        return card, addedit
+
+    def show_all_choices(edit: QtWidgets.QLineEdit) -> None:
+        if (completer := edit.completer()) is not None:
+            edit.setFocus()
+            completer.setCompletionPrefix(edit.text())
+            completer.complete()
+
+    def show_subplots() -> None:
+        """Make the cards of the subplots and the suggestions of a new subplot again if the subplots changed."""
+        nonlocal shownsubplots, focusrow
+        key = (viewer.values.subplots, viewer.defaultsubplots, id(viewer.estimatorcolumns))
+        if key == shownsubplots:
             return
-        selectedrow = subplotlist.currentRow()
-        subplotlist.clear()
-        for text in texts:
-            item = QtWidgets.QListWidgetItem(text)
-            item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-            subplotlist.addItem(item)
-        subplotlist.setCurrentRow(min(selectedrow, subplotlist.count() - 1))
+        if shownsubplots[2:] != key[2:] or newsubplotedit.completer() is None:
+            # the model can hold new columns after Reload Data
+            subplottypes = get_subplot_types(viewer.estimatorcolumns)
+            newsubplotedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], newsubplotedit))
+        shownsubplots = key
+        for layout in (subplotslayout, newsuggestionslayout):
+            while (item := layout.takeAt(0)) is not None:
+                if (widget := item.widget()) is not None:
+                    widget.hide()
+                    widget.deleteLater()
+        subplottypes = get_subplot_types(viewer.estimatorcolumns)
+        addedits: list[QtWidgets.QLineEdit] = []
+        for row, subplot in enumerate(viewer.values.subplots):
+            card, addedit = make_subplot_card(row, subplot, subplottypes)
+            subplotslayout.addWidget(card)
+            addedits.append(addedit)
+        suggestions = get_new_subplot_suggestions(
+            viewer.values.subplots, viewer.defaultsubplots, viewer.estimatorcolumns
+        )
+        for subplot in suggestions:
+            text = shlex.join(subplot)
+            newsuggestionslayout.addWidget(
+                make_suggestion_button(text, f"Add a subplot of {text}", partial(add_new_subplot, subplot))
+            )
+        newsuggestionsbox.setVisible(bool(suggestions))
+        if focusrow is not None and focusrow < len(addedits):
+            # a popup of a completer gives the focus back when it hides, thus the field takes it after the popup
+            focusedit = addedits[focusrow]
+            QtCore.QTimer.singleShot(0, focusedit, focusedit.setFocus)
+        focusrow = None
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1089,7 +1572,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             if viewer.plotcolorbyion and not values.colorbyion
             else "--colorbyion"
         )
-        show_subplots(values.subplots)
+        show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
         set_option_rows(values.otheroptions)
         set_command_text(commandtext, viewer.get_command())
@@ -1237,55 +1720,76 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         apply(dc.replace(viewer.values, subplots=newsubplots))
 
-    def on_subplot_edited() -> None:
-        try:
-            subplots = [tuple(shlex.split(subplotlist.item(row).text())) for row in range(subplotlist.count())]
-        except ValueError:
-            show_error("A subplot has a quote with no end")
-            return
+    def change_subplot(row: int, subplot: tuple[str, ...]) -> None:
+        """Apply the subplot at the row, and give the focus to its card after the next show."""
+        nonlocal focusrow
+        focusrow = row
+        subplots = list(viewer.values.subplots)
+        subplots[row] = subplot
         apply_subplots(subplots)
 
-    def on_add_variable() -> None:
-        name = variablebox.currentText().strip()
-        if not name:
-            return
-        with QtCore.QSignalBlocker(variablebox):
-            variablebox.setCurrentText("")
-        subplots = list(viewer.values.subplots)
-        row = subplotlist.currentRow()
-        if 0 <= row < len(subplots):
-            subplots[row] = (*subplots[row], name)
-            apply_subplots(subplots)
+    def on_subplot_type(row: int, seriestype: str) -> None:
+        change_subplot(row, change_subplot_type(viewer.values.subplots[row], seriestype, viewer.estimatorcolumns))
+
+    def add_item(row: int, item: str) -> None:
+        subplot = viewer.values.subplots[row]
+        directive = get_item_directive(item)
+        if directive is not None:
+            value = item.partition("=")[2].strip()
+            if not value:
+                show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
+                return
+            change_subplot(row, replace_directives(subplot, {directive: value}))
+        elif item in subplot:
+            show_error(f"The subplot already shows {item}")
         else:
-            subplots.append((name,))
-            apply_subplots(subplots)
-            # the new subplot takes the next names, thus it becomes the selected row
-            subplotlist.setCurrentRow(subplotlist.count() - 1)
+            names = get_subplot_names(subplot)
+            # a name goes after the other names, thus the directives stay at the end
+            change_subplot(
+                row,
+                (*names, item, *subplot[len(names) :]) if subplot[: len(names)] == tuple(names) else (*subplot, item),
+            )
 
-    def on_add_subplot() -> None:
-        item = QtWidgets.QListWidgetItem("")
-        item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-        with QtCore.QSignalBlocker(subplotlist):
-            subplotlist.addItem(item)
-            subplotlist.setCurrentItem(item)
-        # the empty row takes no place in the command, thus the command changes when the user gives its items
-        subplotlist.editItem(item)
+    def on_add_item(row: int, edit: QtWidgets.QLineEdit) -> None:
+        item = edit.text().strip()
+        edit.clear()
+        if item:
+            add_item(row, item)
 
-    def on_remove_subplot() -> None:
-        row = subplotlist.currentRow()
+    def on_complete_item(row: int, edit: QtWidgets.QLineEdit, item: str) -> None:
+        edit.clear()
+        if item.strip() and get_item_directive(item) is None:
+            add_item(row, item.strip())
+        else:
+            # a directive needs its value, thus the field keeps the directive for the user to complete
+            edit.setText(item)
+
+    def on_remove_item(row: int, position: int) -> None:
+        apply_subplots(remove_subplot_item(viewer.values.subplots, row, position, viewer.estimatorcolumns))
+
+    def on_delete_subplot(row: int) -> None:
+        apply_subplots([subplot for position, subplot in enumerate(viewer.values.subplots) if position != row])
+
+    def on_move_subplot(row: int, step: int) -> None:
         subplots = list(viewer.values.subplots)
-        if 0 <= row < len(subplots):
-            del subplots[row]
-            apply_subplots(subplots)
-
-    def on_move_subplot(step: int) -> None:
-        row = subplotlist.currentRow()
-        subplots = list(viewer.values.subplots)
-        if 0 <= row < len(subplots) and 0 <= row + step < len(subplots):
+        if 0 <= row + step < len(subplots):
             subplots[row], subplots[row + step] = subplots[row + step], subplots[row]
-            with QtCore.QSignalBlocker(subplotlist):
-                subplotlist.setCurrentRow(row + step)
             apply_subplots(subplots)
+
+    def on_directive_selector(row: int, directive: str, defaulttext: str, text: str) -> None:
+        subplot = viewer.values.subplots[row]
+        change_subplot(row, replace_directives(subplot, {directive: None if text == defaulttext else text}))
+
+    def add_new_subplot(subplot: tuple[str, ...]) -> None:
+        nonlocal focusrow
+        if subplot:
+            focusrow = len(viewer.values.subplots)
+            apply_subplots([*viewer.values.subplots, subplot])
+
+    def on_new_subplot() -> None:
+        text = newsubplotedit.text()
+        newsubplotedit.clear()
+        add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns))
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
@@ -1456,15 +1960,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xbinsedit.editingFinished.connect(on_style)
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
-    subplotlist.itemChanged.connect(on_subplot_edited)
-    variablebox.activated.connect(on_add_variable)
-    # activated gives only a name of the list, and Return in the field also gives a typed ion or a directive
-    if lineedit is not None:
-        lineedit.returnPressed.connect(on_add_variable)
-    addbutton.clicked.connect(on_add_subplot)
-    removebutton.clicked.connect(on_remove_subplot)
-    upbutton.clicked.connect(lambda: on_move_subplot(-1))
-    downbutton.clicked.connect(lambda: on_move_subplot(1))
+    newsubplotedit.returnPressed.connect(on_new_subplot)
+    addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
     copybutton.clicked.connect(on_copy)
     statusbar.helpbutton.clicked.connect(on_help)

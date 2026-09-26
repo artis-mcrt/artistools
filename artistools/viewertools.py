@@ -805,6 +805,83 @@ def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidget
     grid.addLayout(rowlayout, row, 0, 1, -1)
 
 
+def make_flow_layout() -> "QtWidgets.QLayout":
+    """Return a layout that puts its widgets side by side from the left, and starts a new row when a row is full.
+
+    Qt has no such layout. A row of chips, e.g. the series of a subplot, then wraps to the width of the sidebar.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    class FlowLayout(QtWidgets.QLayout):
+        """A layout that fills rows from the left, and gives each widget the size that it asks for."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.layoutitems: list[QtWidgets.QLayoutItem] = []
+            self.setSpacing(4)
+            self.setContentsMargins(0, 0, 0, 0)
+
+        @t.override
+        def addItem(self, arg__1: QtWidgets.QLayoutItem, /) -> None:
+            self.layoutitems.append(arg__1)
+
+        @t.override
+        def count(self, /) -> int:
+            return len(self.layoutitems)
+
+        @t.override
+        def itemAt(self, index: int, /) -> QtWidgets.QLayoutItem | None:
+            return self.layoutitems[index] if 0 <= index < len(self.layoutitems) else None
+
+        @t.override
+        def takeAt(self, index: int, /) -> QtWidgets.QLayoutItem | None:
+            return self.layoutitems.pop(index) if 0 <= index < len(self.layoutitems) else None
+
+        @t.override
+        def expandingDirections(self, /) -> QtCore.Qt.Orientation:
+            return QtCore.Qt.Orientation(0)
+
+        @t.override
+        def hasHeightForWidth(self, /) -> bool:
+            return True
+
+        @t.override
+        def heightForWidth(self, arg__1: int, /) -> int:
+            return self.arrange(QtCore.QRect(0, 0, arg__1, 0), move=False)
+
+        @t.override
+        def setGeometry(self, arg__1: QtCore.QRect, /) -> None:
+            super().setGeometry(arg__1)
+            self.arrange(arg__1, move=True)
+
+        @t.override
+        def sizeHint(self, /) -> QtCore.QSize:
+            return self.minimumSize()
+
+        @t.override
+        def minimumSize(self, /) -> QtCore.QSize:
+            size = QtCore.QSize()
+            for item in self.layoutitems:
+                size = size.expandedTo(item.minimumSize())
+            return size
+
+        def arrange(self, rect: QtCore.QRect, *, move: bool) -> int:
+            """Put each item in its place inside rect if move is True, and return the height that the rows take."""
+            x, y, rowheight = rect.x(), rect.y(), 0
+            for item in self.layoutitems:
+                hint = item.sizeHint()
+                if x + hint.width() > rect.right() + 1 and rowheight > 0:
+                    x, y, rowheight = rect.x(), y + rowheight + self.spacing(), 0
+                if move:
+                    item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
+                x += hint.width() + self.spacing()
+                rowheight = max(rowheight, hint.height())
+            return y + rowheight - rect.y()
+
+    return FlowLayout()
+
+
 def make_slider() -> "QtWidgets.QSlider":
     """Return a horizontal slider that does not take the keyboard focus."""
     from PySide6 import QtCore
