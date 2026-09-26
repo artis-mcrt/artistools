@@ -589,6 +589,10 @@ def set_legend(
 
     legendkwargs.setdefault("labelcolor", "linecolor")
 
+    if getattr(args, "legendframe", False):
+        # a caller such as plotspectra passes frameon=False. --legendframe overrides it
+        legendkwargs.update(frameon=True, framealpha=0.85, facecolor="white", edgecolor="none")
+
     if "handles" not in legendkwargs:
         legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(
             ax, legendkwargs.get("handler_map")
