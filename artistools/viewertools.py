@@ -478,8 +478,8 @@ def get_first_line(errortext: str) -> str:
     """Return the line of an error for the status line of the window, without the "error: " of print_error.
 
     argparse prints its usage line before the error, and a warning can come before an error. Thus the function
-    returns the line that starts with "error: ". If no line has that start, it returns the first line. The colour
-    codes of the terminal go first, because a code in front of "error: " hides that start.
+    returns the line that starts with "error: ". If no line has that start, it returns the first line. The function
+    removes the colour codes of the terminal first, because a code in front of "error: " hides that start.
     """
     lines = [line.strip() for line in remove_colour_codes(errortext).splitlines() if line.strip()]
     errorline = next((line for line in lines if line.startswith("error: ")), lines[0] if lines else None)
@@ -839,7 +839,7 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
     from PySide6 import QtWidgets
 
     def delete_items(items: "list[QtWidgets.QLayoutItem]") -> None:
-        # each layout of Qt deletes its items when it goes, and a layout of Python must do the same
+        # a layout of Qt deletes its items when Qt deletes the layout, and a layout of Python must do the same
         for item in items:
             shiboken6.delete(item)
         items.clear()
@@ -1522,12 +1522,14 @@ def save_figure_of_command(
     dpi: int,
     defaultdpi: int,
 ) -> None:
-    """Ask for a file name, save the figure of the command there, and show the result in the status bar.
+    """Save the figure of the command in a file that the user selects.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected type. plottokens holds no -dpi.
-    dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or an SVG file takes dpi
-    for its raster parts, e.g. a colour image. defaultdpi is the default of the command.
+    name with no suffix as a folder, thus the name takes the suffix of the selected type. The status bar shows the
+    result.
+
+    plottokens holds no -dpi. dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or
+    an SVG file takes dpi for its raster parts, e.g. a colour image. defaultdpi is the default of the command.
     """
     from PySide6 import QtWidgets
 
@@ -1666,7 +1668,7 @@ class DrawQueue[ValuesT]:
         self.renderstart = 0.0
         # the time of the last plot, which sets the pause of Play
         self.plotseconds = 0.0
-        # a task of the worker thread that is not a plot, e.g. a new read of the run, from run_task to its end.
+        # a task of the worker thread that is not a plot, e.g. Reload Data, from run_task to its end.
         # taskfuture is None until the plot in progress ends
         self.task: Callable[[], str | None] | None = None
         self.taskstatus = ""
@@ -1721,7 +1723,10 @@ class DrawQueue[ValuesT]:
         self.rendertimer.start()
 
     def show_rendered(self) -> None:
-        """Show the plot or the end of the task of the worker thread, then start the task or the plot that waits."""
+        """Show the plot or the result of the task of the worker thread when it is complete.
+
+        The task or the plot that waits then starts.
+        """
         if self.rendering is not None:
             if not self.rendering.done():
                 return
@@ -1758,7 +1763,7 @@ class DrawQueue[ValuesT]:
     def run_task(
         self, task: "Callable[[], str | None]", statustext: str, on_done: "Callable[[str | None], None]"
     ) -> bool:
-        """Run a task in the worker thread, e.g. a new read of the run. Return False if a task is in progress.
+        """Run a task in the worker thread, e.g. Reload Data. Return False if a task is in progress.
 
         The task starts after the plot in progress, and a new plot waits for the end of the task. Thus a plot never
         reads data that the task replaces. The status bar shows statustext while the task runs. on_done receives the
@@ -1796,10 +1801,10 @@ class DrawQueue[ValuesT]:
             on_done(message)
 
     def close(self) -> None:
-        """Cancel the plots that wait in the worker thread, because the window closed.
+        """Cancel the plots that wait in the worker thread.
 
-        A plot or a task in progress runs to its end, and the process ends after it. Without this, each plot that
-        waits also runs before the process ends.
+        A window calls this function when it closes. A plot or a task in progress runs to its end, and the process
+        ends after it. Without this function, each plot that waits also runs before the process ends.
         """
         if self.executor is not None:
             self.executor.shutdown(wait=False, cancel_futures=True)

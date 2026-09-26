@@ -3583,7 +3583,7 @@ def test_viewer_status_line_reads_text_in_colour() -> None:
 
 
 def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
-    """The embedded canvas gets no key events, thus the Shift key comes from the modifiers of the mouse event.
+    """The embedded canvas receives no key events, thus the Shift key comes from the modifiers of the mouse event.
 
     A release in a different frame gives a y value of a different scale, thus it selects nothing.
     """
@@ -3668,8 +3668,8 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
 def test_viewer_queue_runs_a_task_between_plots() -> None:
     """A task of the worker thread, e.g. Reload Data, waits for the plot in progress, and a new plot waits for it.
 
-    A plot that the user asked for during a reload took the time of the reload as its plot time, and Play then made
-    no pause.
+    A plot that the user asked for during a reload took the time of the reload as its plot time. Play then made no
+    pause.
     """
     pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     from PySide6 import QtCore

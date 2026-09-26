@@ -3500,7 +3500,7 @@ def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
 def test_interactive_cells_apply_only_where_cell_selects_the_cells() -> None:
     """-slice, -dimensionreduce 2, and -readonlymgi select the cells, thus the window offers no -cell with them.
 
-    plotestimators replaced the -cell of -readonlymgi with the cells along the axis. The menu then plotted other cells,
+    With -readonlymgi, plotestimators replaced -cell with the cells along the axis. The menu then plotted other cells,
     and Page Up, Page Down, and Play changed -cell with no effect on the plot.
     """
     viewer = make_headless_viewer([
@@ -3583,7 +3583,7 @@ def test_interactive_subplot_types_and_suggestions() -> None:
         "yscale=log",
     )
     assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
-    # a pick of the type that the subplot has already removed ymin= and ymax=
+    # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
     assert interactive.change_subplot_type(populations, "populations", columns) == populations
     # a subplot with only its type left has nothing to plot, thus it goes
     assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1, columns) == (("Te",),)
