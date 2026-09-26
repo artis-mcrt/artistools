@@ -185,6 +185,7 @@ ignore-missing-imports = [
     "PySide6",
     "PySide6.*",
     "pyvista",
+    "shiboken6",
     "zstandard",
 ]
 

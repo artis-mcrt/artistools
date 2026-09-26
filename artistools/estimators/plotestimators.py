@@ -391,6 +391,7 @@ def plot_init_abundances(
         ax.set_ylabel("Initial mass fraction")
         valuetype = "init_X_"
 
+    columnnames = set(estimators.collect_schema().names())
     plans = []
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -413,7 +414,9 @@ def plot_init_abundances(
             linelabel = "Fe group"
         else:
             linelabel = speciesstr
-            expr_yvalue = pl.col(f"{valuetype}{elsymbol}")
+            # an isotope, e.g. Fe52, has a column of its own, and an element takes the column of its symbol
+            speciescolumn = f"{valuetype}{speciesstr}"
+            expr_yvalue = pl.col(speciescolumn if speciescolumn in columnnames else f"{valuetype}{elsymbol}")
 
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
@@ -1172,6 +1175,9 @@ def get_xlist(
         statexprs["xmax"] = pl.col("xvalue").max()
     if args.xbins is None:
         statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+    if statexprs:
+        # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
+        statexprs["rowcount"] = pl.len()
 
     xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
 
@@ -1179,6 +1185,9 @@ def get_xlist(
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
     # a selection with no rows has no minimum and no maximum, and the bins below need both
     if xmin is None or xmax is None:
+        if xstats.get("rowcount"):
+            msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
+            raise ValueError(msg)
         raise ValueError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
@@ -1265,7 +1274,7 @@ def get_xlist(
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
     """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
 
-    The code before the plot expands a range of cells and converts -xmin and -xmax, thus the message gives the size
+    The code before the plot expands a range of cells and converts -xmin and -xmax. Thus the message gives the size
     of the selection and not those values. A status line shows one line of the message.
     """
     parts: list[str] = []

@@ -77,8 +77,10 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import show_status_message
+from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
+from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
 from artistools.viewertools import start_play_timer
@@ -1585,16 +1587,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        show_status_message(statusbar, "Copied the command", "")
+        show_status_note(statusbar, "Copied the command")
 
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        message = save_figure_of_command(
-            window, plotspectra_main, "plotspectra", viewer.get_plot_tokens(), viewer.parser.get_default("dpi")
-        )
-        if message is not None:
-            show_status_message(statusbar, message, "")
+        defaultdpi = viewer.parser.get_default("dpi")
+        rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
+        plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+        save_figure_of_command(window, statusbar, plotspectra_main, "plotspectra", plottokens, dpi, defaultdpi)
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:

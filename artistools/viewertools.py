@@ -17,6 +17,7 @@ import threading
 import time
 import traceback
 import typing as t
+from functools import cache
 from pathlib import Path
 from types import MappingProxyType
 
@@ -38,6 +39,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
+    from matplotlib.backend_bases import FigureCanvasBase
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -231,13 +233,17 @@ def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, ec
     return message
 
 
-def get_last_warning(errors: str) -> str:
-    """Return the last warning of the standard error of a step, without its prefix, or an empty text.
+def remove_colour_codes(text: str) -> str:
+    """Return the text without the colour codes of a terminal.
 
-    rich colours the text under FORCE_COLOR or TTY_COMPATIBLE also when it writes into a capture, thus the colour
-    codes go first.
+    rich colours the text under FORCE_COLOR or TTY_COMPATIBLE also when it writes into a capture.
     """
-    plainerrors = re.sub(r"\x1b\[[0-9;]*m", "", errors)
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def get_last_warning(errors: str) -> str:
+    """Return the last warning of the standard error of a step, without its prefix, or an empty text."""
+    plainerrors = remove_colour_codes(errors)
     warnings = [line.strip() for line in plainerrors.splitlines() if line.strip().startswith("WARNING: ")]
     return warnings[-1].removeprefix("WARNING: ") if warnings else ""
 
@@ -472,9 +478,10 @@ def get_first_line(errortext: str) -> str:
     """Return the line of an error for the status line of the window, without the "error: " of print_error.
 
     argparse prints its usage line before the error, and a warning can come before an error. Thus the function
-    returns the line that starts with "error: ". If no line has that start, it returns the first line.
+    returns the line that starts with "error: ". If no line has that start, it returns the first line. The colour
+    codes of the terminal go first, because a code in front of "error: " hides that start.
     """
-    lines = [line.strip() for line in errortext.splitlines() if line.strip()]
+    lines = [line.strip() for line in remove_colour_codes(errortext).splitlines() if line.strip()]
     errorline = next((line for line in lines if line.startswith("error: ")), lines[0] if lines else None)
     return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
@@ -665,6 +672,7 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         - a combo box;
         - a slider;
         - a list;
+        - a popup, e.g. the list of names of a completer;
         - a button, which uses only the space key.
 
         For example, the Up key in -maxseriescount made the time range wider.
@@ -674,7 +682,8 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
             if event.type() == QtCore.QEvent.Type.ShortcutOverride and isinstance(event, QtGui.QKeyEvent):
                 focuswidget = QtWidgets.QApplication.focusWidget()
-                usesarrows = isinstance(
+                # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
+                usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
                     focuswidget,
                     QtWidgets.QAbstractSpinBox
                     | QtWidgets.QComboBox
@@ -794,15 +803,20 @@ def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWi
     return header, grid
 
 
-def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
-    """Put the widgets side by side in one row of the grid, from the left."""
+def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":
+    """Return a layout that puts the widgets side by side from the left."""
     from PySide6 import QtWidgets
 
     rowlayout = QtWidgets.QHBoxLayout()
     for widget in widgets:
         rowlayout.addWidget(widget)
     rowlayout.addStretch(1)
-    grid.addLayout(rowlayout, row, 0, 1, -1)
+    return rowlayout
+
+
+def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
+    """Put the widgets side by side in one row of the grid, from the left."""
+    grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
 
 
 def make_flow_layout() -> "QtWidgets.QLayout":
@@ -810,8 +824,25 @@ def make_flow_layout() -> "QtWidgets.QLayout":
 
     Qt has no such layout. A row of chips, e.g. the series of a subplot, then wraps to the width of the sidebar.
     """
+    return get_flow_layout_class()()
+
+
+@cache
+def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
+    """Return the class of the layouts of make_flow_layout.
+
+    PySide keeps about 1.5 KB of memory for each class, thus the viewers make the class one time and not for each
+    layout.
+    """
+    import shiboken6
     from PySide6 import QtCore
     from PySide6 import QtWidgets
+
+    def delete_items(items: "list[QtWidgets.QLayoutItem]") -> None:
+        # each layout of Qt deletes its items when it goes, and a layout of Python must do the same
+        for item in items:
+            shiboken6.delete(item)
+        items.clear()
 
     class FlowLayout(QtWidgets.QLayout):
         """A layout that fills rows from the left, and gives each widget the size that it asks for."""
@@ -821,6 +852,9 @@ def make_flow_layout() -> "QtWidgets.QLayout":
             self.layoutitems: list[QtWidgets.QLayoutItem] = []
             self.setSpacing(4)
             self.setContentsMargins(0, 0, 0, 0)
+            # the signal comes after Python lost the layout, thus the function holds the list and not the layout
+            items = self.layoutitems
+            self.destroyed.connect(lambda: delete_items(items))
 
         @t.override
         def addItem(self, arg__1: QtWidgets.QLayoutItem, /) -> None:
@@ -879,7 +913,7 @@ def make_flow_layout() -> "QtWidgets.QLayout":
                 rowheight = max(rowheight, hint.height())
             return y + rowheight - rect.y()
 
-    return FlowLayout()
+    return FlowLayout
 
 
 def make_slider() -> "QtWidgets.QSlider":
@@ -1150,8 +1184,7 @@ def make_option_table(
             helptext = helptexts.get(actionsbyflag[itemflag].dest, "")
             box.setItemData(index, helptext, QtCore.Qt.ItemDataRole.ToolTipRole)
         if (completer := box.completer()) is not None:
-            completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
-            completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+            set_search_completion(completer)
         box.setCurrentText(flag)
         if (lineedit := box.lineEdit()) is not None:
             lineedit.setPlaceholderText("Add an option")
@@ -1267,6 +1300,17 @@ def make_option_table(
     return optiontable, set_rows
 
 
+def set_search_completion(completer: "QtWidgets.QCompleter") -> None:
+    """Let a completer show each name that holds the typed text, e.g. "ion" shows averageionisation."""
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+    completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+    completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+    completer.setMaxVisibleItems(15)
+
+
 def add_command_section(
     panellayout: "QtWidgets.QVBoxLayout",
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
@@ -1357,6 +1401,12 @@ def show_status_message(statusbar: StatusBar, message: str | None, warning: str)
     else:
         statusbar.message.setStyleSheet("color: darkorange")
         statusbar.message.setText(warning)
+
+
+def show_status_note(statusbar: StatusBar, note: str) -> None:
+    """Show a note about an action that succeeded, e.g. a saved file, in the colour of normal text."""
+    statusbar.message.setStyleSheet("")
+    statusbar.message.setText(note)
 
 
 def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
@@ -1456,18 +1506,28 @@ def copy_command(command: str) -> None:
     QtWidgets.QApplication.clipboard().setText(command)
 
 
+def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
+    """Return the rows without -dpi, and the resolution that -dpi gives, or defaultdpi for rows with no -dpi."""
+    dpivalues = next((values for flag, values in rows if flag == "-dpi"), None)
+    dpi = int(dpivalues[0]) if dpivalues and dpivalues[0].isdecimal() else defaultdpi
+    return tuple(row for row in rows if row[0] != "-dpi"), dpi
+
+
 def save_figure_of_command(
     window: "QtWidgets.QWidget",
+    statusbar: StatusBar,
     commandmain: "Callable[..., None]",
     commandname: str,
     plottokens: "Sequence[str]",
+    dpi: int,
     defaultdpi: int,
-) -> str | None:
-    """Ask for a file name, and save the figure of the command there. Return the message for the status line.
+) -> None:
+    """Ask for a file name, save the figure of the command there, and show the result in the status bar.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected type. A PNG file also needs a
-    resolution (-dpi), and defaultdpi is the default of the command.
+    name with no suffix as a folder, thus the name takes the suffix of the selected type. plottokens holds no -dpi.
+    dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or an SVG file takes dpi
+    for its raster parts, e.g. a colour image. defaultdpi is the default of the command.
     """
     from PySide6 import QtWidgets
 
@@ -1475,20 +1535,18 @@ def save_figure_of_command(
         window, "Save the figure", str(Path.cwd() / f"{commandname}.pdf"), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
     )
     if not filename:
-        return None
+        return
     if not Path(filename).suffix:
         # a filter such as "PNG (*.png)" names the suffix
         suffixmatch = re.search(r"\*(\.\w+)", selectedfilter)
         filename += suffixmatch.group(1) if suffixmatch else ".pdf"
-    dpitokens: list[str] = []
     if Path(filename).suffix.lower() == ".png":
         dpi, accepted = QtWidgets.QInputDialog.getInt(
-            window, "Save the figure", "Resolution of the PNG file [dots per inch]:", defaultdpi, 50, 2400, 50
+            window, "Save the figure", "Resolution of the PNG file [dots per inch]:", dpi, 10, 2400, 50
         )
         if not accepted:
-            return None
-        dpitokens = [] if dpi == defaultdpi else ["-dpi", str(dpi)]
-    savetokens = [*plottokens, *dpitokens, "-o", filename]
+            return
+    savetokens = [*plottokens, *([] if dpi == defaultdpi else ["-dpi", str(dpi)]), "-o", filename]
 
     def save() -> str | None:
         commandmain(argsraw=savetokens)
@@ -1497,11 +1555,12 @@ def save_figure_of_command(
     with show_wait_cursor():
         message = run_command_step(save)
     if message is not None:
-        return f"The command did not save the figure: {message}"
-    if not Path(filename).is_file():
-        return f"The command wrote no file at {filename}. The terminal shows its output"
-    print(shlex.join(["artistools", commandname, *savetokens]))
-    return f"Saved {filename}"
+        show_status_message(statusbar, f"The command did not save the figure: {message}", "")
+    elif not Path(filename).is_file():
+        show_status_message(statusbar, f"The command wrote no file at {filename}. The terminal shows its output", "")
+    else:
+        print(shlex.join(["artistools", commandname, *savetokens]))
+        show_status_note(statusbar, f"Saved {filename}")
 
 
 def open_model_window(
@@ -1607,6 +1666,12 @@ class DrawQueue[ValuesT]:
         self.renderstart = 0.0
         # the time of the last plot, which sets the pause of Play
         self.plotseconds = 0.0
+        # a task of the worker thread that is not a plot, e.g. a new read of the run, from run_task to its end.
+        # taskfuture is None until the plot in progress ends
+        self.task: Callable[[], str | None] | None = None
+        self.taskstatus = ""
+        self.on_task_done: Callable[[str | None], None] | None = None
+        self.taskfuture: Future[str | None] | None = None
         if render is not None:
             # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
             self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
@@ -1637,7 +1702,7 @@ class DrawQueue[ValuesT]:
     def draw_requested(self) -> None:
         """Draw the plot of the last values that the user gave."""
         if self.executor is not None:
-            if self.rendering is None:
+            if self.rendering is None and self.task is None:
                 self.start_render()
             return
         values, self.requestedvalues = self.requestedvalues, None
@@ -1656,12 +1721,26 @@ class DrawQueue[ValuesT]:
         self.rendertimer.start()
 
     def show_rendered(self) -> None:
-        """Show the plot of the worker thread when it is complete, then start a plot of newer values."""
-        if self.rendering is None or not self.rendering.done():
-            return
+        """Show the plot or the end of the task of the worker thread, then start the task or the plot that waits."""
+        if self.rendering is not None:
+            if not self.rendering.done():
+                return
+            self.show_rendered_plot(self.rendering)
+        elif self.taskfuture is not None:
+            if not self.taskfuture.done():
+                return
+            self.end_task(self.taskfuture)
         if self.rendertimer is not None:
             self.rendertimer.stop()
-        rendering, self.rendering = self.rendering, None
+        # a task waits for the plot in progress, and the newer values of the user wait for the task
+        if self.task is not None and self.taskfuture is None:
+            self.start_task()
+        elif self.task is None and self.requestedvalues is not None:
+            self.start_render()
+
+    def show_rendered_plot(self, rendering: "Future[Callable[[], str | None]]") -> None:
+        """Show the complete plot of the worker thread, or the message of a rejection."""
+        self.rendering = None
         try:
             message = rendering.result()()
         except Exception as exc:  # ruff:ignore[blind-except]
@@ -1675,8 +1754,55 @@ class DrawQueue[ValuesT]:
             self.viewer.values = self.drawnvalues
         self.show_plot_status(message, self.renderstart)
         self.after_draw(message)
-        if self.requestedvalues is not None:
-            self.start_render()
+
+    def run_task(
+        self, task: "Callable[[], str | None]", statustext: str, on_done: "Callable[[str | None], None]"
+    ) -> bool:
+        """Run a task in the worker thread, e.g. a new read of the run. Return False if a task is in progress.
+
+        The task starts after the plot in progress, and a new plot waits for the end of the task. Thus a plot never
+        reads data that the task replaces. The status bar shows statustext while the task runs. on_done receives the
+        message of the task in the thread of the window.
+        """
+        if self.task is not None:
+            return False
+        if self.executor is None:
+            on_done(task())
+            return True
+        self.task, self.taskstatus, self.on_task_done = task, statustext, on_done
+        if self.rendering is None:
+            self.start_task()
+        return True
+
+    def start_task(self) -> None:
+        """Start the task of run_task in the worker thread."""
+        if self.task is None or self.executor is None or self.rendertimer is None:
+            return
+        self.statusbar.drawtime.setText(self.taskstatus)
+        self.taskfuture = self.executor.submit(self.task)
+        self.rendertimer.start()
+
+    def end_task(self, taskfuture: "Future[str | None]") -> None:
+        """Give the message of the complete task to the function of run_task."""
+        on_done = self.on_task_done
+        self.task, self.taskfuture, self.on_task_done = None, None, None
+        self.statusbar.drawtime.setText("")
+        try:
+            message = taskfuture.result()
+        except Exception as exc:  # ruff:ignore[blind-except]
+            print_error(traceback.format_exc())
+            message = f"{type(exc).__name__}: {get_first_line(str(exc))}"
+        if on_done is not None:
+            on_done(message)
+
+    def close(self) -> None:
+        """Cancel the plots that wait in the worker thread, because the window closed.
+
+        A plot or a task in progress runs to its end, and the process ends after it. Without this, each plot that
+        waits also runs before the process ends.
+        """
+        if self.executor is not None:
+            self.executor.shutdown(wait=False, cancel_futures=True)
 
     def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
         """Draw the plot of the values with change, and return the message of a rejection."""
@@ -1719,8 +1845,24 @@ def set_edit_text(edit: "QtWidgets.QLineEdit", text: str) -> None:
         edit.setText(text)
 
 
+def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: float) -> None:
+    """Show the value in a spin box, unless the user types in that box.
+
+    A box with no keyboard tracking keeps the typed text until the user presses Return. setValue writes the text
+    again also for the same value, thus the end of a plot erased the text that the user typed.
+    """
+    from PySide6 import QtWidgets
+
+    if box.hasFocus() and math.isclose(box.value(), value):
+        return
+    if isinstance(box, QtWidgets.QSpinBox):
+        box.setValue(round(value))
+    else:
+        box.setValue(value)
+
+
 def connect_plot_mouse(
-    canvas: "FigureCanvasQTAgg",
+    canvas: "FigureCanvasBase",
     get_frames: "Callable[[], Sequence[mplax.Axes]]",
     get_readout: "Callable[[t.Any, mplax.Axes], str]",
     readoutlabel: "QtWidgets.QLabel",
