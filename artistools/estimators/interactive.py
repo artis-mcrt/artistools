@@ -458,6 +458,7 @@ class EstimatorViewer:
         else:
             first = last = self.validtimesteps[len(self.validtimesteps) // 2]
 
+        subplots, otheroptions = move_poptype_to_subplots(subplots, otheroptions, self.estimatorcolumns)
         self.values = ControlValues(
             first=first,
             last=last,
@@ -964,6 +965,31 @@ def get_directive_value(subplot: "Sequence[str]", directive: str) -> str | None:
     return next((item.partition("=")[2] for item in reversed(subplot) if get_item_directive(item) == directive), None)
 
 
+# the quantity of the ions of a populations subplot with no ionpoptype=, which is the default of -ionpoptype
+DEFAULT_POPTYPE: t.Final = "absolute"
+
+
+def move_poptype_to_subplots(
+    subplots: "Sequence[tuple[str, ...]]", otheroptions: OptionRows, estimatorcolumns: "Collection[str]"
+) -> tuple[tuple[tuple[str, ...], ...], OptionRows]:
+    """Return the subplots and the rows of the option table with -ionpoptype in each populations subplot.
+
+    The window sets the quantity of the ions for each populations subplot (ionpoptype=), thus -ionpoptype of the
+    command goes to each populations subplot that has no ionpoptype= of its own.
+    """
+    poptype = next((values[0] for flag, values in otheroptions if flag == "-ionpoptype" and values), None)
+    rows = tuple((flag, values) for flag, values in otheroptions if flag != "-ionpoptype")
+    if poptype is None or poptype == DEFAULT_POPTYPE:
+        return tuple(subplots), rows
+    return tuple(
+        (*subplot, f"ionpoptype={poptype}")
+        if get_subplot_seriestype(subplot, estimatorcolumns) == "populations"
+        and get_directive_value(subplot, "ionpoptype") is None
+        else subplot
+        for subplot in subplots
+    ), rows
+
+
 def remove_subplot_item(
     subplots: "Sequence[tuple[str, ...]]", row: int, index: int, estimatorcolumns: "Collection[str]"
 ) -> tuple[tuple[str, ...], ...]:
@@ -1031,9 +1057,11 @@ def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheropt
     """Return the values with new rows of the option table.
 
     An option such as -slice changes the default x of a snapshot. An x that equals the old default follows the new
-    default, because the command then gives no -x, as plotestimators does.
+    default, because the command then gives no -x, as plotestimators does. -ionpoptype goes to the populations
+    subplots.
     """
-    newvalues = dc.replace(values, otheroptions=otheroptions)
+    subplots, otheroptions = move_poptype_to_subplots(values.subplots, otheroptions, viewer.estimatorcolumns)
+    newvalues = dc.replace(values, subplots=subplots, otheroptions=otheroptions)
     if is_evolution(values) or values.x != viewer.get_default_xvariable(values.otheroptions, timegiven=True):
         return newvalues
     return viewer.set_xvariable(newvalues, viewer.get_default_xvariable(otheroptions, timegiven=True))
@@ -1455,10 +1483,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if currenttype == "populations":
             selectors += make_selector(
                 "Quantity",
-                ("default", *POPTYPE_YLABELS),
-                get_directive_value(subplot, "ionpoptype") or "default",
-                "The quantity of each ion (ionpoptype=). Default takes -ionpoptype of the command.",
-                partial(on_directive_selector, row, "ionpoptype", "default"),
+                tuple(POPTYPE_YLABELS),
+                get_directive_value(subplot, "ionpoptype") or DEFAULT_POPTYPE,
+                f"The quantity of each ion of this subplot (ionpoptype=). {DEFAULT_POPTYPE} needs no directive.",
+                partial(on_directive_selector, row, "ionpoptype", DEFAULT_POPTYPE),
             )
         add_row_layout = QtWidgets.QHBoxLayout()
         for widget in selectors:

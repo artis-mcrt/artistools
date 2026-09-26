@@ -3615,3 +3615,29 @@ def test_interactive_subplot_types_and_suggestions() -> None:
         *newsubplots,
     ):
         assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None, subplot
+
+
+def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
+    """The window sets the quantity of the ions for each populations subplot, thus -ionpoptype goes to them."""
+    tokens = [
+        "Te",
+        str(modelpath),
+        "-timestep",
+        "50",
+        "-plot",
+        "populations",
+        "Fe II",
+        "Fe III",
+        "-ionpoptype",
+        "elpop",
+    ]
+    viewer = make_headless_viewer([*tokens, "--interactive"])
+    assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
+    assert "-ionpoptype" not in viewer.get_plot_tokens()
+    # the default quantity needs no directive, and each subplot keeps its own
+    assert viewer.parser.get_default("poptype") == interactive.DEFAULT_POPTYPE
+    subplots = (("populations", "Fe II"), ("populations", "Fe III", "ionpoptype=totalpop"))
+    assert interactive.move_poptype_to_subplots(subplots, (("-ionpoptype", ("elpop",)),), viewer.estimatorcolumns) == (
+        (("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")),
+        (),
+    )
