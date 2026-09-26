@@ -17,7 +17,9 @@ import threading
 import time
 import traceback
 import typing as t
+from functools import cache
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -37,6 +39,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
+    from matplotlib.backend_bases import FigureCanvasBase
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -68,6 +71,9 @@ FIT_TOLERANCE: t.Final[float] = 0.05
 
 # each continuous slider of a window has this number of positions
 SLIDER_STEPS: t.Final = 1000
+
+# the first width of the sidebar. The user can drag the handle between the plot and the sidebar
+SIDEBAR_WIDTH: t.Final = 600
 
 # the Play button waits for this time after each plot, thus the user can see each step
 PLAY_MILLISECONDS: t.Final = 150
@@ -192,29 +198,54 @@ def send_output(stdout: t.TextIO | None, stderr: t.TextIO) -> "Generator[None]":
                 stream.local.target = oldtarget
 
 
-def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
-    """Run a step of a command, and return its message or the first line of its error for the status line.
+def run_command_step_with_warning(
+    step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True
+) -> tuple[str | None, str]:
+    """Run a step of a command, and return its message or the first line of its error, and its last warning.
 
     Each plot prints the same lines again, thus a quiet step discards the standard output. With echo, the terminal
     shows the whole error. A window stays open after a failed step, thus each type of error gives a message.
     """
     errors = io.StringIO()
+    message: str | None
     try:
         with send_output(io.StringIO() if quiet else None, errors):
-            return step()
+            message = step()
     except SystemExit:
         # exit_with_error and argparse print a line that starts with "error: " before they raise SystemExit
-        return get_first_line(errors.getvalue())
+        message = get_first_line(errors.getvalue())
     except USER_ERRORS as exc:
         if echo:
             print_error(str(exc) or type(exc).__name__)
-        return get_first_line(str(exc))
+        message = get_first_line(str(exc))
     except Exception as exc:  # ruff:ignore[blind-except]
         errors.write(traceback.format_exc())
-        return f"{type(exc).__name__}: {get_first_line(str(exc))}"
+        message = f"{type(exc).__name__}: {get_first_line(str(exc))}"
     finally:
         if echo:
             sys.stderr.write(errors.getvalue())
+    return message, get_last_warning(errors.getvalue())
+
+
+def run_command_step(step: "Callable[[], str | None]", *, quiet: bool = True, echo: bool = True) -> str | None:
+    """Run a step of a command, and return its message or the first line of its error for the status line."""
+    message, _ = run_command_step_with_warning(step, quiet=quiet, echo=echo)
+    return message
+
+
+def remove_colour_codes(text: str) -> str:
+    """Return the text without the colour codes of a terminal.
+
+    rich colours the text under FORCE_COLOR or TTY_COMPATIBLE also when it writes into a capture.
+    """
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def get_last_warning(errors: str) -> str:
+    """Return the last warning of the standard error of a step, without its prefix, or an empty text."""
+    plainerrors = remove_colour_codes(errors)
+    warnings = [line.strip() for line in plainerrors.splitlines() if line.strip().startswith("WARNING: ")]
+    return warnings[-1].removeprefix("WARNING: ") if warnings else ""
 
 
 def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple[argparse.Action | None, bool]:
@@ -447,9 +478,10 @@ def get_first_line(errortext: str) -> str:
     """Return the line of an error for the status line of the window, without the "error: " of print_error.
 
     argparse prints its usage line before the error, and a warning can come before an error. Thus the function
-    returns the line that starts with "error: ". If no line has that start, it returns the first line.
+    returns the line that starts with "error: ". If no line has that start, it returns the first line. The function
+    removes the colour codes of the terminal first, because a code in front of "error: " hides that start.
     """
-    lines = [line.strip() for line in errortext.splitlines() if line.strip()]
+    lines = [line.strip() for line in remove_colour_codes(errortext).splitlines() if line.strip()]
     errorline = next((line for line in lines if line.startswith("error: ")), lines[0] if lines else None)
     return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
@@ -615,6 +647,7 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         sys.stderr = ThreadOutput(sys.stderr)
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     assert isinstance(app, QtWidgets.QApplication)
+    app.setOrganizationName("artistools")
     app.setApplicationName("artistools")
     app.setApplicationDisplayName(applicationname)
     app.setWindowIcon(QtGui.QIcon(make_icon_pixmap(512, iconcurve)))
@@ -639,6 +672,7 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         - a combo box;
         - a slider;
         - a list;
+        - a popup, e.g. the list of names of a completer;
         - a button, which uses only the space key.
 
         For example, the Up key in -maxseriescount made the time range wider.
@@ -648,7 +682,8 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
         def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
             if event.type() == QtCore.QEvent.Type.ShortcutOverride and isinstance(event, QtGui.QKeyEvent):
                 focuswidget = QtWidgets.QApplication.focusWidget()
-                usesarrows = isinstance(
+                # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
+                usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
                     focuswidget,
                     QtWidgets.QAbstractSpinBox
                     | QtWidgets.QComboBox
@@ -665,6 +700,88 @@ def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]"
     keyownerfilter = KeyOwnerFilter(app)
     app.installEventFilter(keyownerfilter)
     return app
+
+
+def get_settings() -> "QtCore.QSettings":
+    """Return the settings of the viewers, which keep the geometry of each window and the last model folder.
+
+    The settings take the organisation and the name of the application, thus a test can send them to a folder with
+    QSettings.setPath.
+    """
+    from PySide6 import QtCore
+
+    return QtCore.QSettings()
+
+
+def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
+    """Return the window of a viewer, which keeps its geometry and the sizes of its splitter when it closes.
+
+    show_window restores them for the next window of the same viewer.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class ViewerWindow(QtWidgets.QMainWindow):
+        """A window that writes its geometry and the state of its splitter to the settings when it closes."""
+
+        def __init__(self, applicationname: str) -> None:
+            super().__init__()
+            # the name of the object gives the keys of the settings of the window
+            self.setObjectName(applicationname)
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        @t.override
+        def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+            geometrykey, splitterkey = get_window_setting_keys(self)
+            settings = get_settings()
+            settings.setValue(geometrykey, self.saveGeometry())
+            splitter = self.centralWidget()
+            if isinstance(splitter, QtWidgets.QSplitter):
+                settings.setValue(splitterkey, splitter.saveState())
+            super().closeEvent(event)
+
+    return ViewerWindow(applicationname)
+
+
+def get_window_setting_keys(window: "QtWidgets.QMainWindow") -> tuple[str, str]:
+    """Return the keys of the settings of the geometry and of the splitter of the window of a viewer."""
+    return f"{window.objectName()}/geometry", f"{window.objectName()}/splitter"
+
+
+def make_central_splitter(
+    window: "QtWidgets.QMainWindow", plotarea: "QtWidgets.QWidget", sidebar: "QtWidgets.QWidget"
+) -> "QtWidgets.QSplitter":
+    """Put the plot area and the sidebar side by side at the centre of the window, with a handle between them.
+
+    A drag of the handle changes the width of the sidebar, and a drag to the edge hides it. The plot area takes the
+    extra width of the window.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+    splitter.addWidget(plotarea)
+    splitter.addWidget(sidebar)
+    # the sidebar keeps its width and a drag to the edge hides it, which are the defaults of Qt for the sidebar
+    splitter.setStretchFactor(0, 1)
+    splitter.setCollapsible(0, False)  # ruff:ignore[boolean-positional-value-in-call]
+    window.setCentralWidget(splitter)
+    return splitter
+
+
+@contextlib.contextmanager
+def show_wait_cursor() -> "Generator[None]":
+    """Show the wait cursor until the block ends, e.g. while a step that can take seconds runs in the window thread."""
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+    try:
+        yield
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
 
 
 def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]":
@@ -686,15 +803,117 @@ def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWi
     return header, grid
 
 
-def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
-    """Put the widgets side by side in one row of the grid, from the left."""
+def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":
+    """Return a layout that puts the widgets side by side from the left."""
     from PySide6 import QtWidgets
 
     rowlayout = QtWidgets.QHBoxLayout()
     for widget in widgets:
         rowlayout.addWidget(widget)
     rowlayout.addStretch(1)
-    grid.addLayout(rowlayout, row, 0, 1, -1)
+    return rowlayout
+
+
+def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
+    """Put the widgets side by side in one row of the grid, from the left."""
+    grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
+
+
+def make_flow_layout() -> "QtWidgets.QLayout":
+    """Return a layout that puts its widgets side by side from the left, and starts a new row when a row is full.
+
+    Qt has no such layout. A row of chips, e.g. the series of a subplot, then wraps to the width of the sidebar.
+    """
+    return get_flow_layout_class()()
+
+
+@cache
+def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
+    """Return the class of the layouts of make_flow_layout.
+
+    PySide keeps about 1.5 KB of memory for each class, thus the viewers make the class one time and not for each
+    layout.
+    """
+    import shiboken6
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    def delete_items(items: "list[QtWidgets.QLayoutItem]") -> None:
+        # a layout of Qt deletes its items when Qt deletes the layout, and a layout of Python must do the same
+        for item in items:
+            shiboken6.delete(item)
+        items.clear()
+
+    class FlowLayout(QtWidgets.QLayout):
+        """A layout that fills rows from the left, and gives each widget the size that it asks for."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.layoutitems: list[QtWidgets.QLayoutItem] = []
+            self.setSpacing(4)
+            self.setContentsMargins(0, 0, 0, 0)
+            # the signal comes after Python lost the layout, thus the function holds the list and not the layout
+            items = self.layoutitems
+            self.destroyed.connect(lambda: delete_items(items))
+
+        @t.override
+        def addItem(self, arg__1: QtWidgets.QLayoutItem, /) -> None:
+            self.layoutitems.append(arg__1)
+
+        @t.override
+        def count(self, /) -> int:
+            return len(self.layoutitems)
+
+        @t.override
+        def itemAt(self, index: int, /) -> QtWidgets.QLayoutItem | None:
+            return self.layoutitems[index] if 0 <= index < len(self.layoutitems) else None
+
+        @t.override
+        def takeAt(self, index: int, /) -> QtWidgets.QLayoutItem | None:
+            return self.layoutitems.pop(index) if 0 <= index < len(self.layoutitems) else None
+
+        @t.override
+        def expandingDirections(self, /) -> QtCore.Qt.Orientation:
+            return QtCore.Qt.Orientation(0)
+
+        @t.override
+        def hasHeightForWidth(self, /) -> bool:
+            return True
+
+        @t.override
+        def heightForWidth(self, arg__1: int, /) -> int:
+            return self.arrange(QtCore.QRect(0, 0, arg__1, 0), move=False)
+
+        @t.override
+        def setGeometry(self, arg__1: QtCore.QRect, /) -> None:
+            super().setGeometry(arg__1)
+            self.arrange(arg__1, move=True)
+
+        @t.override
+        def sizeHint(self, /) -> QtCore.QSize:
+            return self.minimumSize()
+
+        @t.override
+        def minimumSize(self, /) -> QtCore.QSize:
+            size = QtCore.QSize()
+            for item in self.layoutitems:
+                size = size.expandedTo(item.minimumSize())
+            return size
+
+        def arrange(self, rect: QtCore.QRect, *, move: bool) -> int:
+            """Put each item in its place inside rect if move is True, and return the height that the rows take."""
+            x, y, rowheight = rect.x(), rect.y(), 0
+            for item in self.layoutitems:
+                hint = item.sizeHint()
+                if x + hint.width() > rect.right() + 1 and rowheight > 0:
+                    x, y, rowheight = rect.x(), y + rowheight + self.spacing(), 0
+                if move:
+                    item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
+                x += hint.width() + self.spacing()
+                rowheight = max(rowheight, hint.height())
+            return y + rowheight - rect.y()
+
+    return FlowLayout
 
 
 def make_slider() -> "QtWidgets.QSlider":
@@ -710,11 +929,16 @@ def make_slider() -> "QtWidgets.QSlider":
 
 def make_range_slider(
     steps: int,
-) -> "tuple[QtWidgets.QWidget, Callable[[int, int], None], Callable[[Callable[[int, int], None]], None]]":
-    """Return a slider with two handles for a range of the positions 0 to steps, and two functions of the slider.
+) -> tuple[
+    "QtWidgets.QWidget",
+    "Callable[[int, int], None]",
+    "Callable[[Callable[[int, int], None]], None]",
+    "Callable[[int], None]",
+]:
+    """Return a slider with two handles for a range of the positions 0 to steps, and three functions of the slider.
 
     The first function moves the handles. The second function connects a handler, which receives the index of the
-    handle that the user moved and its new position.
+    handle that the user moved and its new position. The third function gives the slider a new number of steps.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -732,6 +956,7 @@ def make_range_slider(
 
         def __init__(self) -> None:
             super().__init__()
+            self.steps = steps
             self.positions = [0, steps]
             self.draghandle: int | None = None
             self.setMinimumHeight(round(3 * self.handleradius))
@@ -743,12 +968,17 @@ def make_range_slider(
             self.positions = [low, high]
             self.update()
 
+        def set_steps(self, steps: int) -> None:
+            self.steps = steps
+            self.positions = [min(position, steps) for position in self.positions]
+            self.update()
+
         def get_pixel(self, position: int) -> float:
-            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / steps
+            return self.handleradius + (self.width() - 2.0 * self.handleradius) * position / self.steps
 
         def get_position(self, pixel: float) -> int:
             fraction = (pixel - self.handleradius) / max(self.width() - 2.0 * self.handleradius, 1.0)
-            return round(min(max(fraction, 0.0), 1.0) * steps)
+            return round(min(max(fraction, 0.0), 1.0) * self.steps)
 
         @t.override
         def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -804,7 +1034,7 @@ def make_range_slider(
     def connect_handler(handler: "Callable[[int, int], None]") -> None:
         slider.limitmoved.connect(handler)
 
-    return slider, slider.set_positions, connect_handler
+    return slider, slider.set_positions, connect_handler, slider.set_steps
 
 
 def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
@@ -813,7 +1043,8 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     from PySide6 import QtWidgets
 
     sidebar = QtWidgets.QWidget()
-    sidebar.setFixedWidth(600)
+    # the handle of the splitter sets the width, and a narrower sidebar cuts the controls
+    sidebar.setMinimumWidth(360)
     sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
     sidebarlayout.setContentsMargins(0, 0, 0, 0)
     panel = QtWidgets.QWidget()
@@ -953,8 +1184,7 @@ def make_option_table(
             helptext = helptexts.get(actionsbyflag[itemflag].dest, "")
             box.setItemData(index, helptext, QtCore.Qt.ItemDataRole.ToolTipRole)
         if (completer := box.completer()) is not None:
-            completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
-            completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+            set_search_completion(completer)
         box.setCurrentText(flag)
         if (lineedit := box.lineEdit()) is not None:
             lineedit.setPlaceholderText("Add an option")
@@ -1070,6 +1300,17 @@ def make_option_table(
     return optiontable, set_rows
 
 
+def set_search_completion(completer: "QtWidgets.QCompleter") -> None:
+    """Let a completer show each name that holds the typed text, e.g. "ion" shows averageionisation."""
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+    completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+    completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
+    completer.setMaxVisibleItems(15)
+
+
 def add_command_section(
     panellayout: "QtWidgets.QVBoxLayout",
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
@@ -1083,15 +1324,64 @@ def add_command_section(
     # the command text takes the width, and the Copy button keeps its size at the right
     commandgrid.setColumnStretch(0, 1)
     commandgrid.setColumnStretch(1, 0)
-    commandtext = QtWidgets.QPlainTextEdit()
+
+    # the instance of the box holds no reference to the window. PySide keeps each class, thus the class must hold none
+    class CommandBox(QtWidgets.QPlainTextEdit):
+        """The box of the command, which fits its height to the wrapped lines when its width changes."""
+
+        @t.override
+        def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+            super().resizeEvent(event)
+            if event.size().width() != event.oldSize().width():
+                fit_command_box(self)
+
+    commandtext = CommandBox()
     commandtext.setReadOnly(True)
     commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    commandtext.setFixedHeight(3 * commandtext.fontMetrics().lineSpacing() + 12)
+    fit_command_box(commandtext)
     copybutton = QtWidgets.QPushButton("Copy")
-    copybutton.setToolTip("Copy the command to the clipboard (⇧⌘C)")
+    copybutton.setToolTip(f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})")
     commandgrid.addWidget(commandtext, 0, 0)
     commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
     return commandtext, copybutton
+
+
+# the command box shows between these numbers of lines, and a longer command scrolls inside the box
+MIN_COMMAND_LINES: t.Final = 3
+MAX_COMMAND_LINES: t.Final = 8
+
+
+def set_command_text(commandtext: "QtWidgets.QPlainTextEdit", command: str) -> None:
+    """Show the command in its box, and give the box the height of the lines of the command."""
+    if commandtext.toPlainText() != command:
+        commandtext.setPlainText(command)
+        fit_command_box(commandtext)
+
+
+def fit_command_box(commandtext: "QtWidgets.QPlainTextEdit") -> None:
+    """Give the command box the height of the wrapped lines of its text, and keep that height inside the limits.
+
+    The layout of the document gives the wrapped lines at the width of the box. The rectangle of each block is a few
+    pixels taller than its lines, and the box needs those pixels, else it scrolls.
+    """
+    document = commandtext.document()
+    layout = document.documentLayout()
+    textlines = math.ceil(layout.documentSize().height())
+    textheight = sum(
+        layout.blockBoundingRect(document.findBlockByNumber(i)).height() for i in range(document.blockCount())
+    )
+    shownlines = min(max(textlines, MIN_COMMAND_LINES), MAX_COMMAND_LINES)
+    boxheight = textheight + (shownlines - textlines) * commandtext.fontMetrics().lineSpacing()
+    commandtext.setFixedHeight(math.ceil(boxheight + 2 * document.documentMargin() + 2 * commandtext.frameWidth()))
+
+
+def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float) -> None:
+    """Start the pause before the next step of Play.
+
+    The pause lets the user see each step. The old plot stays in view while the worker draws the next one, thus a
+    plot that took longer than the pause needs no pause.
+    """
+    playtimer.start(max(0, PLAY_MILLISECONDS - round(plotseconds * 1000.0)))
 
 
 class StatusBar(t.NamedTuple):
@@ -1101,6 +1391,22 @@ class StatusBar(t.NamedTuple):
     readout: "QtWidgets.QLabel"
     drawtime: "QtWidgets.QLabel"
     helpbutton: "QtWidgets.QToolButton"
+
+
+def show_status_message(statusbar: StatusBar, message: str | None, warning: str) -> None:
+    """Show the message of a rejected plot in red, or else the last warning of the plot in amber."""
+    if message is not None:
+        statusbar.message.setStyleSheet("color: firebrick")
+        statusbar.message.setText(message)
+    else:
+        statusbar.message.setStyleSheet("color: darkorange")
+        statusbar.message.setText(warning)
+
+
+def show_status_note(statusbar: StatusBar, note: str) -> None:
+    """Show a note about an action that succeeded, e.g. a saved file, in the colour of normal text."""
+    statusbar.message.setStyleSheet("")
+    statusbar.message.setText(note)
 
 
 def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
@@ -1124,21 +1430,70 @@ def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
     return StatusBar(message=messagelabel, readout=readoutlabel, drawtime=drawtimelabel, helpbutton=helpbutton)
 
 
-def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
-    """Add the File menu and the Help menu. callbacks gives the function of each item by the text of the item."""
+def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
+    """Return the menu, the text, and the shortcut of each menu item of a viewer."""
     from PySide6 import QtGui
 
+    return [
+        ("File", "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
+        ("File", "Reload Data", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Refresh)),
+        ("File", "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
+        ("File", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
+        ("File", "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
+        ("Help", "Keys and Mouse Actions", QtGui.QKeySequence("?")),
+    ]
+
+
+# the help text of each menu item in the table of the keys
+MENU_HELPTEXTS: t.Final = MappingProxyType({
+    "Save Figure...": "Run the command to save the figure",
+    "Copy Command": "Copy the command",
+    "Open Model...": "Open a model in a new window",
+    "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
+})
+
+
+def get_keyboard_help(keyrows: "Sequence[tuple[str, str]]", menuitems: "Collection[str]") -> str:
+    """Return the table of the keys and the mouse actions of a viewer, with the shortcuts of the platform.
+
+    keyrows gives the keys or the mouse action, and its help text, of each row of the viewer as HTML. menuitems gives
+    the texts of the menu items of the viewer, as add_menus receives them, and the table gives the shortcut of each.
+    """
+    shortcuts = get_menu_shortcut_texts()
+    rows = [
+        *keyrows,
+        *((f"<b>{shortcuts[text]}</b>", helptext) for text, helptext in MENU_HELPTEXTS.items() if text in menuitems),
+        (f"<b>{shortcuts['Keys and Mouse Actions']}</b>", "Show this list"),
+    ]
+    return (
+        "<table>\n" + "".join(f"<tr><td>{keys}</td><td>{helptext}</td></tr>\n" for keys, helptext in rows) + "</table>"
+    )
+
+
+def get_short_number(value: float) -> str:
+    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
+    return format(float(f"{value:.3g}"), ".10g")
+
+
+def get_menu_shortcut_texts() -> dict[str, str]:
+    """Return the shortcut of each menu item by its text, in the form of the platform, e.g. ⌘S or Ctrl+S."""
+    from PySide6 import QtGui
+
+    return {text: keys.toString(QtGui.QKeySequence.SequenceFormat.NativeText) for _menu, text, keys in get_menu_items()}
+
+
+def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
+    """Add the File menu and the Help menu.
+
+    callbacks gives the function of each item by the text of the item. A viewer omits an item that it does not
+    support, e.g. Reload Data.
+    """
     menubar = window.menuBar()
-    filemenu = menubar.addMenu("File")
-    helpmenu = menubar.addMenu("Help")
-    for menu, text, keys in (
-        (filemenu, "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
-        (filemenu, "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
-        (filemenu, "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
-        (filemenu, "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
-        (helpmenu, "Keys and Mouse Actions", QtGui.QKeySequence("?")),
-    ):
-        action = menu.addAction(text)
+    menus = {name: menubar.addMenu(name) for name in ("File", "Help")}
+    for menuname, text, keys in get_menu_items():
+        if text not in callbacks:
+            continue
+        action = menus[menuname].addAction(text)
         action.setShortcut(keys)
         action.triggered.connect(callbacks[text])
 
@@ -1151,43 +1506,63 @@ def copy_command(command: str) -> None:
     QtWidgets.QApplication.clipboard().setText(command)
 
 
+def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
+    """Return the rows without -dpi, and the resolution that -dpi gives, or defaultdpi for rows with no -dpi."""
+    dpivalues = next((values for flag, values in rows if flag == "-dpi"), None)
+    dpi = int(dpivalues[0]) if dpivalues and dpivalues[0].isdecimal() else defaultdpi
+    return tuple(row for row in rows if row[0] != "-dpi"), dpi
+
+
 def save_figure_of_command(
-    window: "QtWidgets.QWidget", commandmain: "Callable[..., None]", commandname: str, plottokens: "Sequence[str]"
-) -> str | None:
-    """Ask for a file name, and save the figure of the command there. Return the message for the status line.
+    window: "QtWidgets.QWidget",
+    statusbar: StatusBar,
+    commandmain: "Callable[..., None]",
+    commandname: str,
+    plottokens: "Sequence[str]",
+    dpi: int,
+    defaultdpi: int,
+) -> None:
+    """Save the figure of the command in a file that the user selects.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected type.
+    name with no suffix as a folder, thus the name takes the suffix of the selected type. The status bar shows the
+    result.
+
+    plottokens holds no -dpi. dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or
+    an SVG file takes dpi for its raster parts, e.g. a colour image. defaultdpi is the default of the command.
     """
-    from PySide6 import QtCore
-    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     filename, selectedfilter = QtWidgets.QFileDialog.getSaveFileName(
         window, "Save the figure", str(Path.cwd() / f"{commandname}.pdf"), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
     )
     if not filename:
-        return None
+        return
     if not Path(filename).suffix:
         # a filter such as "PNG (*.png)" names the suffix
         suffixmatch = re.search(r"\*(\.\w+)", selectedfilter)
         filename += suffixmatch.group(1) if suffixmatch else ".pdf"
+    if Path(filename).suffix.lower() == ".png":
+        dpi, accepted = QtWidgets.QInputDialog.getInt(
+            window, "Save the figure", "Resolution of the PNG file [dots per inch]:", dpi, 10, 2400, 50
+        )
+        if not accepted:
+            return
+    savetokens = [*plottokens, *([] if dpi == defaultdpi else ["-dpi", str(dpi)]), "-o", filename]
 
     def save() -> str | None:
-        commandmain(argsraw=[*plottokens, "-o", filename])
+        commandmain(argsraw=savetokens)
         return None
 
-    QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-    try:
+    with show_wait_cursor():
         message = run_command_step(save)
-    finally:
-        QtWidgets.QApplication.restoreOverrideCursor()
     if message is not None:
-        return f"The command did not save the figure: {message}"
-    if not Path(filename).is_file():
-        return f"The command wrote no file at {filename}. The terminal shows its output"
-    print(shlex.join(["artistools", commandname, *plottokens, "-o", filename]))
-    return f"Saved {filename}"
+        show_status_message(statusbar, f"The command did not save the figure: {message}", "")
+    elif not Path(filename).is_file():
+        show_status_message(statusbar, f"The command wrote no file at {filename}. The terminal shows its output", "")
+    else:
+        print(shlex.join(["artistools", commandname, *savetokens]))
+        show_status_note(statusbar, f"Saved {filename}")
 
 
 def open_model_window(
@@ -1201,12 +1576,18 @@ def open_model_window(
     """
     from PySide6 import QtWidgets
 
-    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(Path.cwd()))
+    # the dialog starts beside the model that the user opened last, where the other runs of a project are
+    settings = get_settings()
+    startfolder = settings.value("modelfolder", str(Path.cwd()))
+    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(startfolder))
     if not folder:
         return None
 
     message = run_command_step(lambda: open_window([folder], windows), quiet=False)
-    return None if message is None else f"The viewer cannot open {folder}: {message}"
+    if message is not None:
+        return f"The viewer cannot open {folder}: {message}"
+    settings.setValue("modelfolder", str(Path(folder).parent))
+    return None
 
 
 def get_new_figwidthscale(
@@ -1231,6 +1612,8 @@ class PlotViewer[ValuesT](t.Protocol):
     """A viewer with the values of its controls, which draws the plot of new values or keeps the old values."""
 
     values: ValuesT
+    # the last warning of the last plot, which the status bar shows. A user of the application sees no terminal
+    warning: str
 
     def change(self, values: ValuesT) -> str | None:
         """Draw the plot of the values, or keep the old values and return the reason for the status line."""
@@ -1283,6 +1666,14 @@ class DrawQueue[ValuesT]:
         self.renderedvalues: ValuesT = viewer.values
         self.rendering: Future[Callable[[], str | None]] | None = None
         self.renderstart = 0.0
+        # the time of the last plot, which sets the pause of Play
+        self.plotseconds = 0.0
+        # a task of the worker thread that is not a plot, e.g. Reload Data, from run_task to its end.
+        # taskfuture is None until the plot in progress ends
+        self.task: Callable[[], str | None] | None = None
+        self.taskstatus = ""
+        self.on_task_done: Callable[[str | None], None] | None = None
+        self.taskfuture: Future[str | None] | None = None
         if render is not None:
             # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
             self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
@@ -1293,23 +1684,27 @@ class DrawQueue[ValuesT]:
 
     def apply(self, values: ValuesT) -> None:
         """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot."""
-        from PySide6 import QtCore
-
         if values == self.viewer.values:
             # a handler that clamps a control to the old values must still move the control back
             self.show_values()
             return
-        if self.requestedvalues is None:
-            QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
-        self.requestedvalues = values
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
+        self.redraw()
+
+    def redraw(self) -> None:
+        """Show the values of the viewer, and draw them when Qt has no other events, e.g. after new data of the run."""
+        from PySide6 import QtCore
+
+        if self.requestedvalues is None:
+            QtCore.QTimer.singleShot(0, self.window, self.draw_requested)
+        self.requestedvalues = self.viewer.values
         self.show_values()
 
     def draw_requested(self) -> None:
         """Draw the plot of the last values that the user gave."""
         if self.executor is not None:
-            if self.rendering is None:
+            if self.rendering is None and self.task is None:
                 self.start_render()
             return
         values, self.requestedvalues = self.requestedvalues, None
@@ -1328,12 +1723,29 @@ class DrawQueue[ValuesT]:
         self.rendertimer.start()
 
     def show_rendered(self) -> None:
-        """Show the plot of the worker thread when it is complete, then start a plot of newer values."""
-        if self.rendering is None or not self.rendering.done():
-            return
+        """Show the plot or the result of the task of the worker thread when it is complete.
+
+        The task or the plot that waits then starts.
+        """
+        if self.rendering is not None:
+            if not self.rendering.done():
+                return
+            self.show_rendered_plot(self.rendering)
+        elif self.taskfuture is not None:
+            if not self.taskfuture.done():
+                return
+            self.end_task(self.taskfuture)
         if self.rendertimer is not None:
             self.rendertimer.stop()
-        rendering, self.rendering = self.rendering, None
+        # a task waits for the plot in progress, and the newer values of the user wait for the task
+        if self.task is not None and self.taskfuture is None:
+            self.start_task()
+        elif self.task is None and self.requestedvalues is not None:
+            self.start_render()
+
+    def show_rendered_plot(self, rendering: "Future[Callable[[], str | None]]") -> None:
+        """Show the complete plot of the worker thread, or the message of a rejection."""
+        self.rendering = None
         try:
             message = rendering.result()()
         except Exception as exc:  # ruff:ignore[blind-except]
@@ -1345,40 +1757,86 @@ class DrawQueue[ValuesT]:
         # newer values of the user stay, and the next plot draws them
         if self.requestedvalues is None:
             self.viewer.values = self.drawnvalues
-        drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - self.renderstart:.2f} s")
-        self.statusbar.readout.setText("")
-        self.statusbar.message.setText(message or "")
-        self.show_values()
+        self.show_plot_status(message, self.renderstart)
         self.after_draw(message)
-        if self.requestedvalues is not None:
-            self.start_render()
+
+    def run_task(
+        self, task: "Callable[[], str | None]", statustext: str, on_done: "Callable[[str | None], None]"
+    ) -> bool:
+        """Run a task in the worker thread, e.g. Reload Data. Return False if a task is in progress.
+
+        The task starts after the plot in progress, and a new plot waits for the end of the task. Thus a plot never
+        reads data that the task replaces. The status bar shows statustext while the task runs. on_done receives the
+        message of the task in the thread of the window.
+        """
+        if self.task is not None:
+            return False
+        if self.executor is None:
+            on_done(task())
+            return True
+        self.task, self.taskstatus, self.on_task_done = task, statustext, on_done
+        if self.rendering is None:
+            self.start_task()
+        return True
+
+    def start_task(self) -> None:
+        """Start the task of run_task in the worker thread."""
+        if self.task is None or self.executor is None or self.rendertimer is None:
+            return
+        self.statusbar.drawtime.setText(self.taskstatus)
+        self.taskfuture = self.executor.submit(self.task)
+        self.rendertimer.start()
+
+    def end_task(self, taskfuture: "Future[str | None]") -> None:
+        """Give the message of the complete task to the function of run_task."""
+        on_done = self.on_task_done
+        self.task, self.taskfuture, self.on_task_done = None, None, None
+        self.statusbar.drawtime.setText("")
+        try:
+            message = taskfuture.result()
+        except Exception as exc:  # ruff:ignore[blind-except]
+            print_error(traceback.format_exc())
+            message = f"{type(exc).__name__}: {get_first_line(str(exc))}"
+        if on_done is not None:
+            on_done(message)
+
+    def close(self) -> None:
+        """Cancel the plots that wait in the worker thread.
+
+        A window calls this function when it closes. A plot or a task in progress runs to its end, and the process
+        ends after it. Without this function, each plot that waits also runs before the process ends.
+        """
+        if self.executor is not None:
+            self.executor.shutdown(wait=False, cancel_futures=True)
 
     def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
         """Draw the plot of the values with change, and return the message of a rejection."""
         from PySide6 import QtCore
-        from PySide6 import QtGui
         from PySide6 import QtWidgets
 
         # a plot can take seconds, thus the cursor and the status bar show the wait
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-        self.statusbar.drawtime.setText("Plot in progress...")
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        starttime = time.perf_counter()
-        # change() keeps the values of the last plot when the command rejects the new values
-        self.viewer.values = self.drawnvalues
-        try:
-            message = change(values)
-        finally:
-            self.drawnvalues = self.viewer.values
-            QtWidgets.QApplication.restoreOverrideCursor()
+        with show_wait_cursor():
+            self.statusbar.drawtime.setText("Plot in progress...")
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            starttime = time.perf_counter()
+            # change() keeps the values of the last plot when the command rejects the new values
+            self.viewer.values = self.drawnvalues
+            try:
+                message = change(values)
+            finally:
+                self.drawnvalues = self.viewer.values
+        self.show_plot_status(message, starttime)
+        return message
+
+    def show_plot_status(self, message: str | None, starttime: float) -> None:
+        """Show the time of the plot that started at starttime, its message or its warning, and the values."""
         drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.statusbar.drawtime.setText(f"{drawkind} time: {time.perf_counter() - starttime:.2f} s")
+        self.plotseconds = time.perf_counter() - starttime
+        self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
-        self.statusbar.message.setText(message or "")
+        show_status_message(self.statusbar, message, self.viewer.warning)
         self.show_values()
-        return message
 
 
 def set_edit_text(edit: "QtWidgets.QLineEdit", text: str) -> None:
@@ -1392,45 +1850,89 @@ def set_edit_text(edit: "QtWidgets.QLineEdit", text: str) -> None:
         edit.setText(text)
 
 
+def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: float) -> None:
+    """Show the value in a spin box, unless the user types in that box.
+
+    A box with no keyboard tracking keeps the typed text until the user presses Return. setValue writes the text
+    again also for the same value, thus the end of a plot erased the text that the user typed.
+    """
+    from PySide6 import QtWidgets
+
+    if box.hasFocus() and math.isclose(box.value(), value):
+        return
+    if isinstance(box, QtWidgets.QSpinBox):
+        box.setValue(round(value))
+    else:
+        box.setValue(value)
+
+
 def connect_plot_mouse(
-    canvas: "FigureCanvasQTAgg",
+    canvas: "FigureCanvasBase",
     get_frames: "Callable[[], Sequence[mplax.Axes]]",
     get_readout: "Callable[[t.Any, mplax.Axes], str]",
     readoutlabel: "QtWidgets.QLabel",
     on_select: "Callable[[float, float], None]",
     on_reset: "Callable[[], None]",
     can_select: "Callable[[], bool]",
+    on_select_y: "Callable[[int, float, float], None] | None" = None,
+    on_menu: "Callable[[int, t.Any], None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
-    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. matplotlib keeps
-    the connections in the figure. Call the returned function after the canvas receives a new figure.
+    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. on_select_y
+    receives the index of the frame and the two y values of a drag with the Shift key inside one frame. on_menu
+    receives the index of the frame and the matplotlib event of a click with the right button. matplotlib keeps the
+    connections in the figure. Call the returned function after the canvas receives a new figure.
     """
+    # the data value and the pixel of the start of a drag, the span that shows it, and its frame
     dragstart: tuple[float, float] | None = None
     dragspan: t.Any = None
+    dragframeindex = 0
+    dragvertical = False
 
-    def get_frame(event: t.Any) -> "mplax.Axes | None":
-        return next((axis for axis in get_frames() if event.inaxes is axis), None)
+    def get_frame_index(event: t.Any) -> int | None:
+        return next((index for index, axis in enumerate(get_frames()) if event.inaxes is axis), None)
 
     def on_press(event: t.Any) -> None:
-        nonlocal dragstart, dragspan
-        frame = get_frame(event)
-        if frame is None or event.button != 1 or event.xdata is None:
+        nonlocal dragstart, dragspan, dragframeindex, dragvertical
+        frameindex = get_frame_index(event)
+        if frameindex is None or event.xdata is None:
+            return
+        if event.button == 3:
+            if on_menu is not None:
+                on_menu(frameindex, event)
+            return
+        if event.button != 1:
             return
         if event.dblclick:
             on_reset()
             return
-        if can_select():
+        dragframeindex = frameindex
+        # the canvas has no keyboard focus, thus matplotlib gives no key, and the modifiers hold the Shift key
+        dragvertical = "shift" in event.modifiers and on_select_y is not None
+        if dragvertical:
+            dragstart = (event.ydata, event.y)
+            dragspan = event.inaxes.axhspan(event.ydata, event.ydata, color="0.5", alpha=0.3)
+        elif can_select():
             dragstart = (event.xdata, event.x)
-            dragspan = frame.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
+            dragspan = event.inaxes.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
 
     def on_motion(event: t.Any) -> None:
-        frame = get_frame(event)
-        readoutlabel.setText(get_readout(event, frame) if frame is not None and event.xdata is not None else "")
-        if dragstart is None or dragspan is None or event.xdata is None or frame is None:
+        frameindex = get_frame_index(event)
+        readoutlabel.setText(
+            get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
+        )
+        if dragstart is None or dragspan is None or event.xdata is None or frameindex is None:
             return
-        dragspan.set_x(min(dragstart[0], event.xdata))
-        dragspan.set_width(abs(event.xdata - dragstart[0]))
+        # the frames share the x axis but not the y axis, thus a y value of a different frame does not apply
+        if dragvertical and frameindex != dragframeindex:
+            return
+        if dragvertical:
+            dragspan.set_y(min(dragstart[0], event.ydata))
+            dragspan.set_height(abs(event.ydata - dragstart[0]))
+        else:
+            dragspan.set_x(min(dragstart[0], event.xdata))
+            dragspan.set_width(abs(event.xdata - dragstart[0]))
         canvas.draw_idle()
 
     def on_release(event: t.Any) -> None:
@@ -1442,8 +1944,13 @@ def connect_plot_mouse(
             dragspan.remove()
         start, dragstart, dragspan = dragstart, None, None
         canvas.draw_idle()
+        if event.xdata is None or get_frame_index(event) is None:
+            return
         # a movement of a few pixels is a click and not a selection
-        if event.xdata is not None and get_frame(event) is not None and abs(event.x - start[1]) > 5:
+        if dragvertical:
+            if on_select_y is not None and get_frame_index(event) == dragframeindex and abs(event.y - start[1]) > 5:
+                on_select_y(dragframeindex, *sorted((start[0], event.ydata)))
+        elif abs(event.x - start[1]) > 5:
             on_select(*sorted((start[0], event.xdata)))
 
     connectedfigure: object = None
@@ -1483,19 +1990,33 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     return parts
 
 
-def show_window(
-    window: "QtWidgets.QMainWindow", figsize: tuple[float, float], sidebarwidth: int, on_screen: "Callable[[], None]"
-) -> None:
-    """Give the window its first size and show it. on_screen runs after the window moves to a different screen."""
+def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], on_screen: "Callable[[], None]") -> None:
+    """Give the window the size of the last window of the viewer, or a first size, and show it.
+
+    make_window and make_central_splitter give the window. on_screen runs after the window moves to a different
+    screen.
+    """
     from PySide6 import QtCore
     from PySide6 import QtGui
+    from PySide6 import QtWidgets
 
-    # the first size gives the plot 100 dpi, inside the screen
-    screen = window.screen().availableGeometry()
-    figwidth, figheight = figsize
-    plotwidth = min(round(figwidth * 100) + 24, screen.width() - sidebarwidth - 80)
-    plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
-    window.resize(plotwidth + sidebarwidth + 40, max(plotheight, 700))
+    splitter = window.centralWidget()
+    assert isinstance(splitter, QtWidgets.QSplitter)
+    geometrykey, splitterkey = get_window_setting_keys(window)
+    settings = get_settings()
+    geometry = settings.value(geometrykey)
+    splitterstate = settings.value(splitterkey)
+    if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
+        if isinstance(splitterstate, QtCore.QByteArray):
+            splitter.restoreState(splitterstate)
+    else:
+        # the first size gives the plot 100 dpi, inside the screen
+        screen = window.screen().availableGeometry()
+        figwidth, figheight = figsize
+        plotwidth = min(round(figwidth * 100) + 24, screen.width() - SIDEBAR_WIDTH - 80)
+        plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
+        window.resize(plotwidth + SIDEBAR_WIDTH + 40, max(plotheight, 700))
+        splitter.setSizes([plotwidth, SIDEBAR_WIDTH])
     window.show()
     if (windowhandle := window.windowHandle()) is not None:
 

@@ -126,6 +126,11 @@ if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 
 
+# the axes of a spectrum carry no y margin, thus the tallest peak would touch the frame. The data takes this part
+# of its height as a margin. set_legend gives the legend its own room
+YMARGIN: t.Final = 0.05
+
+
 def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
     """Return the reference spectrum path, or None when no such file exists.
 
@@ -899,9 +904,8 @@ def make_spectrum_plot(
         # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
         # inflate a value that -ymax gives by five percent, thus the rescue leaves that side alone
         if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
-            # the axes carry no y margin, thus the top would sit on the tallest peak and clip it
             _, datatop = axis.get_ylim()
-            axis.set_ylim(bottom=0.0 if args.ymin is None else None, top=datatop * 1.05)
+            axis.set_ylim(bottom=0.0 if args.ymin is None else None, top=datatop * (1.0 + YMARGIN))
 
         set_plot_title(axis, args.title, args)
 
@@ -1382,11 +1386,12 @@ def make_emissionabsorption_plot(
 
     set_plot_title(axis, get_emission_plot_label(modelpath, args, modelname, dirbin, timemin, timemax), args)
 
+    # set_legend gives the legend its room above the data
     if args.ymax is None:
-        axis.set_ylim(top=max(ymaxrefall, scalefactor * max_f_emission_total * 1.2))
+        axis.set_ylim(top=max(ymaxrefall, scalefactor * max_f_emission_total) * (1.0 + YMARGIN))
 
     if args.ymin is None:
-        axis.set_ylim(bottom=-scalefactor * max_absorption * 1.2)
+        axis.set_ylim(bottom=-scalefactor * max_absorption * (1.0 + YMARGIN))
 
     return plotobjects, plotobjectlabels, dfaxisdata
 
@@ -1470,9 +1475,6 @@ def draw_plot(
     filterfunc = get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
-
-    if args.normalised and args.ymax is None:
-        args.ymax = 1.10
 
     # the plot functions read the x range back from the axes, thus the x scale and the x limits go on
     # before the data. The y properties wait until set_auto_yscale has read the drawn values

@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import hashlib
 import importlib
 import inspect
@@ -22,6 +23,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
@@ -29,6 +31,7 @@ import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
 from artistools import viewertools
@@ -2058,6 +2061,52 @@ def test_set_legend_draws_no_legend_without_a_labelled_series() -> None:
     plt.close(fig)
 
 
+@pytest.mark.parametrize("yscale", ["linear", "log", "inverted"])
+def test_set_legend_gives_the_legend_room_clear_of_the_data(yscale: str) -> None:
+    """The legend of set_legend does not cover the data, on a linear, a log, and an inverted axis.
+
+    Each command gave its legend room with a factor of its own, e.g. a top of 1.2 times the tallest peak.
+    """
+    fig = mplfig.Figure(figsize=(5.0, 3.5))
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.subplots()
+    xvalues = np.linspace(0.0, 10.0, 50)
+    ax.plot(xvalues, 10.0 ** (1.0 + xvalues / 10.0), label="rising")
+    # a line of two points crosses the whole legend, and only the ends of its segment are data points
+    ax.plot([0.0, 10.0], [90.0, 90.0], label="flat")
+    if yscale == "log":
+        ax.set_yscale("log")
+    at.plottools.set_legend(ax, loc="upper right")
+    # a limit that comes after set_legend still leaves the legend its room, because the room follows at the draw
+    ax.set_ylim(5.0, 100.0)
+    if yscale == "inverted":
+        ax.invert_yaxis()
+
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    legend = ax.get_legend()
+    assert legend is not None
+    frame = at.plottools.get_legend_frame(legend, renderer)
+    yrange = at.plottools.get_data_fraction_range(ax, frame.x0, frame.x1)
+    assert yrange is not None
+    # the fractions of the axes run upwards also on an inverted axis, thus the data stays below the legend
+    assert yrange[1] < frame.y0
+    ylimits = ax.get_ylim()
+    canvas.draw()
+    assert np.allclose(ax.get_ylim(), ylimits, rtol=1e-12, atol=0.0), "a second draw must keep the limits"
+
+
+def test_set_legend_keeps_a_top_of_the_user() -> None:
+    """A -ymax of the user stays, although the legend then covers the data."""
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0], [1.0, 1.0], label="flat")
+    ax.set_ylim(0.0, 1.02)
+    at.plottools.set_legend(ax, argparse.Namespace(ymax=1.02), loc="upper right")
+    fig.canvas.draw()
+    assert np.isclose(ax.get_ylim()[1], 1.02, rtol=1e-12, atol=0.0)
+    plt.close(fig)
+
+
 def test_get_series_colors_greys_then_cycle() -> None:
     """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])
@@ -3566,6 +3615,144 @@ def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
     with mock.patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value="mymodel"):
         message = viewertools.open_model_window(mock.Mock(), open_window, [mock.Mock()])
     assert message == "The viewer cannot open mymodel: ComputeError: the query failed for mymodel and 1 window"
+
+
+def test_viewer_status_line_reads_text_in_colour() -> None:
+    """The library rich colours its text under FORCE_COLOR also in a capture, and the status line must read it.
+
+    A colour code in front of "error: " hid the error, thus the status line showed the usage line of argparse.
+    """
+    warning = "\x1b[1;33mWARNING: every Te value is below the requested minimum\x1b[0m\n"
+    assert viewertools.get_last_warning(warning) == "every Te value is below the requested minimum"
+    error = "\x1b[1;34musage: \x1b[0martistools [options]\n\x1b[1;31merror: \x1b[0m'q=1' is not a plane or a line\n"
+    assert viewertools.get_first_line(error) == "'q=1' is not a plane or a line"
+
+
+def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
+    """The embedded canvas receives no key events, thus the Shift key comes from the modifiers of the mouse event.
+
+    A release in a different frame gives a y value of a different scale, thus it selects nothing.
+    """
+    from matplotlib.backend_bases import MouseButton
+    from matplotlib.backend_bases import MouseEvent
+
+    fig = mplfig.Figure()
+    canvas = FigureCanvasAgg(fig)
+    frames = fig.subplots(2, 1)
+    frames[0].set_ylim(0.0, 10.0)
+    frames[1].set_ylim(1e5, 1e9)
+    frames[1].set_yscale("log")
+    canvas.draw()
+    xselections: list[tuple[float, float]] = []
+    yselections: list[tuple[int, float, float]] = []
+    viewertools.connect_plot_mouse(
+        canvas,
+        get_frames=lambda: list(frames),
+        get_readout=lambda _event, _frame: "",
+        readoutlabel=mock.MagicMock(),
+        on_select=lambda low, high: xselections.append((low, high)),
+        on_reset=lambda: None,
+        can_select=lambda: True,
+        on_select_y=lambda index, low, high: yselections.append((index, low, high)),
+    )
+
+    def drag(startframe: int, starty: float, endframe: int, endy: float) -> None:
+        x0, y0 = frames[startframe].transData.transform((0.5, starty))
+        x1, y1 = frames[endframe].transData.transform((0.5, endy))
+        for name, x, y in (
+            ("button_press_event", x0, y0),
+            ("motion_notify_event", x1, y1),
+            ("button_release_event", x1, y1),
+        ):
+            canvas.callbacks.process(
+                name, MouseEvent(name, canvas, x, y, button=MouseButton.LEFT, modifiers=frozenset({"shift"}))
+            )
+
+    drag(0, 2.0, 0, 8.0)
+    assert len(yselections) == 1
+    assert yselections[0][0] == 0
+    assert np.allclose(yselections[0][1:], (2.0, 8.0), rtol=1e-6, atol=0.0)
+    drag(0, 6.0, 1, 1e7)
+    assert len(yselections) == 1
+    assert not xselections
+
+
+def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
+    """Save Figure proposes the -dpi of the command, and each type of file takes it.
+
+    The spectrum viewer proposed the default of 250 and kept -dpi 300 of the command, thus the file had 300 dpi. The
+    estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    rows, dpi = viewertools.split_dpi_row((("-xmin", ("5",)), ("-dpi", ("300",))), 250)
+    assert (rows, dpi) == ((("-xmin", ("5",)),), 300)
+    savedtokens: list[list[str]] = []
+
+    def commandmain(argsraw: Sequence[str]) -> None:
+        savedtokens.append(list(argsraw))
+        Path(argsraw[-1]).write_text("figure", encoding="utf-8")
+
+    def accept_proposal(*args: object) -> tuple[object, bool]:
+        return args[3], True
+
+    statusbar = mock.Mock()
+    for suffix in ("png", "pdf"):
+        filename = str(tmp_path / f"plot.{suffix}")
+        with (
+            mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
+            mock.patch("PySide6.QtWidgets.QInputDialog.getInt", side_effect=accept_proposal) as getint,
+            mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
+        ):
+            viewertools.save_figure_of_command(
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, 250
+            )
+        assert getint.call_count == (1 if suffix == "png" else 0)
+        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", filename]
+        statusbar.message.setText.assert_called_with(f"Saved {filename}")
+
+
+def test_viewer_queue_runs_a_task_between_plots() -> None:
+    """A task of the worker thread, e.g. Reload Data, waits for the plot in progress, and a new plot waits for it.
+
+    A plot that the user asked for during a reload took the time of the reload as its plot time. Play then made no
+    pause.
+    """
+    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    events: list[str] = []
+
+    def render(values: int) -> Callable[[], str | None]:
+        events.append(f"plot {values}")
+        time.sleep(0.05)
+        return lambda: None
+
+    def task() -> str | None:
+        events.append("task")
+        time.sleep(0.5)
+        return None
+
+    statusbar = mock.Mock()
+    ondone = mock.Mock()
+    viewer = mock.Mock(values=0, warning="")
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, statusbar, mock.Mock(), mock.Mock(), render=render)
+    queue.apply(1)
+    app.processEvents()
+    assert queue.run_task(task, "Reload in progress...", ondone)
+    assert not queue.run_task(task, "Reload in progress...", ondone), "a second task must wait for the first"
+    queue.apply(2)
+    deadline = time.perf_counter() + 10.0
+    while (
+        queue.rendering is not None or queue.task is not None or queue.requestedvalues is not None
+    ) and time.perf_counter() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+    assert events == ["plot 1", "task", "plot 2"]
+    ondone.assert_called_once_with(None)
+    assert queue.plotseconds < 0.4, "the time of the task is not the time of a plot"
+    assert "Reload in progress..." in [call.args[0] for call in statusbar.drawtime.setText.call_args_list]
+    queue.close()
 
 
 def test_viewer_typed_centre_gives_back_the_range() -> None:

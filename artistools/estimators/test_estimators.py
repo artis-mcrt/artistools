@@ -3361,3 +3361,392 @@ def test_interactive_readout_names_each_series() -> None:
 
     assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
     assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None
+
+
+def test_interactive_converts_stale_batches_in_a_child_process() -> None:
+    """A run with no stale batch reads its caches in the viewer process, and a child process converts a stale batch."""
+    at.estimators.scan_estimators(modelpath).head(1).collect()
+    with mock.patch.object(interactive, "call_in_child_process") as mockchild:
+        assert interactive.get_batch_caches(modelpath)
+    mockchild.assert_not_called()
+
+    states = interactive.get_estimator_batch_states(modelpath, None, None)
+    stalestates = [states[0]._replace(rebuild=True), *states[1:]]
+    with (
+        mock.patch.object(interactive, "get_estimator_batch_states", return_value=stalestates),
+        mock.patch.object(interactive, "call_in_child_process", return_value=[]) as mockchild,
+    ):
+        assert interactive.get_batch_caches(modelpath) == []
+    mockchild.assert_called_once()
+
+
+def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
+    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert viewer.plotxbins is not None
+    assert viewer.plotxbins > 3
+    assert viewer.plotcolorbyion
+    assert not viewer.values.colorbyion
+    assert viewer.change(dc.replace(viewer.values, xbins="8")) is None
+    assert viewer.plotxbins == 8
+    assert not viewer.plotcolorbyion
+    assert interactive.get_xunit_text(1.0, "velocity") == " [km/s]"
+    assert interactive.get_xunit_text(1.0, "Te") == " [K]"
+    assert not interactive.get_xunit_text(1.0, "timestep")
+    assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"
+
+
+def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
+    """A limit outside the data gives a warning, which the status bar of the window shows after the plot."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert not viewer.warning
+    assert viewer.change(dc.replace(viewer.values, subplots=(("Te", "ymin=1e12"),))) is None
+    assert "requested minimum" in viewer.warning
+    assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
+    assert not viewer.warning
+
+
+def test_interactive_directives_of_a_subplot() -> None:
+    """A directive replaces its old value, None removes it, and an ion or a variable is not a directive."""
+    assert interactive.get_item_directive("ymin=1e-16") == "ymin"
+    assert interactive.get_item_directive("_yscale=log") == "yscale"
+    assert interactive.get_item_directive("Fe II") is None
+    assert interactive.get_item_directive("Te") is None
+    # plotestimators reads a directive in any case
+    assert interactive.get_item_directive("YMIN=100") == "ymin"
+    assert interactive.replace_directives(("TR", "YMIN=100"), {"ymin": None}) == ("TR",)
+    subplot = ("rho", "yscale=log", "ymin=1e-16")
+    assert interactive.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
+        "rho",
+        "yscale=log",
+        "ymin=2",
+        "ymax=3",
+    )
+    assert interactive.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
+    assert interactive.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
+    assert interactive.get_short_number(12345.678) == "12300"
+    assert interactive.get_short_number(1.23456e-5) == "1.23e-05"
+
+
+def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
+    """The menu of a snapshot names the cell at the pointer, and the menu of a plot against time names the time."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert viewer.values.x == "velocity"
+    assert interactive.get_snapshot_values(viewer, 1.0) is None
+    cell = interactive.get_nearest_cell(viewer, 12000.0)
+    assert cell is not None
+    assert np.isclose(viewer.cellvelocities[cell] / 1e5, 12000.0, rtol=0.2)
+    evolution = interactive.get_evolution_values(viewer, str(cell))
+    assert interactive.is_evolution(evolution)
+    assert evolution.cells == str(cell)
+    assert (evolution.first, evolution.last) == (viewer.validtimesteps[0], viewer.validtimesteps[-1])
+    assert viewer.change(evolution) is None
+    assert interactive.get_nearest_cell(viewer, 12000.0) is None
+    snapshot = interactive.get_snapshot_values(viewer, viewer.tmids[7])
+    assert snapshot is not None
+    assert not interactive.is_evolution(snapshot)
+    assert (snapshot.first, snapshot.last) == (7, 7)
+    assert not snapshot.cells
+
+
+def reread_run(viewer: interactive.EstimatorViewer) -> interactive.RunData:
+    """Read the run of a viewer again, as Reload Data does in the worker thread."""
+    return interactive.read_run_again(viewer.modelpath, viewer.userargs, len(viewer.tmids))
+
+
+def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
+    """A reload reads the valid timesteps again.
+
+    A range of the whole run grows with the run, and a different range stays inside the valid timesteps.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    validtimesteps = viewer.validtimesteps
+    assert len(validtimesteps) > 8
+    assert viewer.change(viewer.select_timesteps(viewer.values, len(validtimesteps) - 1, 1)) is None
+    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps[:-5]):
+        interactive.reload_run(viewer, reread_run(viewer))
+    assert viewer.validtimesteps == validtimesteps[:-5]
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[-6], validtimesteps[-6])
+    assert viewer.draw() is None
+
+    assert viewer.change(interactive.get_evolution_values(viewer, str(viewer.cells[0]))) is None
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-6])
+    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps):
+        interactive.reload_run(viewer, reread_run(viewer))
+    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-1])
+    assert viewer.draw() is None
+
+
+def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
+    """An empty cell with -xbins gave a TypeError, because the bins read the minimum of no rows.
+
+    The message gives the size of a long selection of cells and not each cell.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    emptycell = next(cell for cell in range(1000) if cell not in viewer.cells)
+    for xbins in ("8", "-1"):
+        message = viewer.change(dc.replace(viewer.values, cells=str(emptycell), xbins=xbins))
+        assert message is not None
+        assert message.startswith("The estimators hold no row"), message
+        assert f"the cells {emptycell}" in message
+
+    manycells = ",".join(str(cell) for cell in range(1000) if cell not in viewer.cells)
+    message = viewer.change(dc.replace(viewer.values, cells=manycells, xmin="1e9"))
+    assert message is not None
+    assert message.startswith("The estimators hold no row"), message
+    assert len(message) < 200
+
+
+def test_interactive_cells_apply_only_where_cell_selects_the_cells() -> None:
+    """-slice, -dimensionreduce 2, and -readonlymgi select the cells, thus the window offers no -cell with them.
+
+    With -readonlymgi, plotestimators replaced -cell with the cells along the axis. The menu then plotted other cells,
+    and Page Up, Page Down, and Play changed -cell with no effect on the plot.
+    """
+    viewer = make_headless_viewer([
+        "Te",
+        str(modelpath_classic_3d),
+        "-t",
+        "5",
+        "-dimensionreduce",
+        "2",
+        "--interactive",
+    ])
+    assert viewer.isimage
+    assert not interactive.cells_apply(viewer.values)
+    for mode in ("alongaxis", "cone", "plane", "line"):
+        viewer.values = interactive.set_geometry_mode(viewer, viewer.values, mode)
+        assert not interactive.cells_apply(viewer.values), mode
+        assert viewer.step_cell(1) is None, mode
+    viewer.values = interactive.set_geometry_mode(viewer, viewer.values, "all")
+    assert interactive.cells_apply(viewer.values)
+    assert viewer.step_cell(1) is not None
+
+
+def test_interactive_subplot_types_and_suggestions() -> None:
+    """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    columns = viewer.estimatorcolumns
+    types = interactive.get_subplot_types(columns)
+    assert types[:2] == [interactive.VARIABLES_TYPE, "populations"]
+    assert "gamma_NT" in types
+    # the families of the populations and of the initial abundances are no type of their own
+    assert not {"nnion", "nnelement", "init_X"} & set(types)
+
+    assert interactive.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
+    assert interactive.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
+    assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
+    # the other ions of the element come first, and the total of the element after its ions
+    assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
+    # a control of the card sets each directive, thus only the names show as chips
+    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
+
+    assert interactive.make_new_subplot("populations", columns) == ("populations", "Fe I")
+    assert interactive.make_new_subplot("gamma_NT Fe II", columns) == ("gamma_NT", "Fe II")
+    assert interactive.make_new_subplot("Te TR", columns) == ("Te", "TR")
+    newsubplots = interactive.get_new_subplot_suggestions(viewer.values.subplots, viewer.defaultsubplots, columns)
+    assert ("populations", "Fe I", "Fe II") in newsubplots
+    # the field of a new subplot read the text of a suggestion as one name, e.g. "'Fe I' 'Fe II'"
+    for subplot in newsubplots:
+        assert interactive.make_new_subplot(shlex.join(subplot), columns) == subplot
+    assert interactive.make_new_subplot("populations Fe II Fe III yscale=log", columns) == (
+        "populations",
+        "Fe II",
+        "Fe III",
+        "yscale=log",
+    )
+    assert interactive.make_new_subplot("averageionisation Fe Co", columns) == ("averageionisation", "Fe", "Co")
+    assert interactive.make_new_subplot("Fe II 'Fe III'", columns) == ("Fe II", "Fe III")
+    # cooling_coll is a variable and also the family of the cooling of each ion
+    coolingcolumns = ["cooling_coll", "cooling_coll_Fe_II", "Te"]
+    assert interactive.make_new_subplot("cooling_coll Fe II", coolingcolumns) == ("cooling_coll", "Fe II")
+    assert interactive.make_new_subplot("cooling_coll Te", coolingcolumns) == ("cooling_coll", "Te")
+    # plotestimators reads an alias as its variable, and the card of n_e was a card of populations
+    assert interactive.make_new_subplot("n_e T_e", columns) == ("nne", "Te")
+    aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
+    assert aliasviewer.values.subplots == (("nne",),)
+    # a directive changes only a control of the card, thus the card stays with the keyboard focus in it
+    assert interactive.get_card_key(0, (("Te", "ymin=1000"),), columns) == interactive.get_card_key(
+        0, (("Te",),), columns
+    )
+    # a chip removes the item at its position, thus a name at a new position needs a new card
+    assert interactive.get_card_key(0, (("Te", "ymin=1", "TR"),), columns) != interactive.get_card_key(
+        0, (("Te", "TR", "ymin=1"),), columns
+    )
+
+    populations = ("populations", "Fe II", "Fe III", "ionpoptype=elpop", "yscale=log", "ymin=1e-5")
+    # only a plot of the populations takes ionpoptype=, and the names that apply to the new type stay
+    assert interactive.change_subplot_type(populations, "gamma_NT", columns) == (
+        "gamma_NT",
+        "Fe II",
+        "Fe III",
+        "yscale=log",
+    )
+    assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
+    # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
+    assert interactive.change_subplot_type(populations, "populations", columns) == populations
+    # a subplot with only its type left has nothing to plot, thus it goes
+    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1, columns) == (("Te",),)
+    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0, columns) == (("TR",),)
+
+    for subplot in (
+        interactive.change_subplot_type(populations, "gamma_NT", columns),
+        interactive.change_subplot_type(("Te",), "averageionisation", columns),
+        *newsubplots,
+    ):
+        assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None, subplot
+
+
+def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
+    """The window sets the quantity of the ions for each populations subplot, thus -ionpoptype goes to them."""
+    tokens = [
+        "Te",
+        str(modelpath),
+        "-timestep",
+        "50",
+        "-plot",
+        "populations",
+        "Fe II",
+        "Fe III",
+        "-ionpoptype",
+        "elpop",
+    ]
+    viewer = make_headless_viewer([*tokens, "--interactive"])
+    assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
+    assert "-ionpoptype" not in viewer.get_plot_tokens()
+    # the default quantity needs no directive, and each subplot keeps its own
+    assert viewer.parser.get_default("poptype") == interactive.DEFAULT_POPTYPE
+    subplots = (("populations", "Fe II"), ("populations", "Fe III", "ionpoptype=totalpop"))
+    assert interactive.move_poptype_to_subplots(subplots, (("-ionpoptype", ("elpop",)),), viewer.estimatorcolumns) == (
+        (("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")),
+        (),
+    )
+    # with no populations subplot the option stays, thus a populations subplot that the user adds later takes it
+    rows = (("-ionpoptype", ("elpop",)),)
+    assert interactive.move_poptype_to_subplots((("Te",),), rows, viewer.estimatorcolumns) == ((("Te",),), rows)
+    teviewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "-ionpoptype", "elpop", "--interactive"])
+    assert "-ionpoptype" in teviewer.get_plot_tokens()
+
+
+def test_interactive_geometry_modes_draw() -> None:
+    """Each way to select the cells of a 3D model gives a command that plotestimators draws."""
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    for mode in interactive.GEOMETRY_MODES:
+        values = interactive.set_geometry_mode(viewer, viewer.values, mode)
+        assert interactive.get_geometry_mode(values) == mode
+        assert viewer.change(values) is None, (mode, viewer.get_command())
+    # a colour image is a snapshot, thus a plot against time becomes one
+    assert viewer.change(interactive.set_geometry_mode(viewer, viewer.values, "cells")) is None
+    evolution = interactive.get_evolution_values(viewer, str(viewer.cells[0]))
+    assert viewer.change(evolution) is None
+    image = interactive.set_geometry_mode(viewer, viewer.values, "plane")
+    assert not interactive.is_evolution(image)
+    assert not image.cells
+    assert viewer.change(image) is None
+
+    assert interactive.get_slice_parts("z=-0.2c") == ("xy", "-0.2c")
+    assert interactive.get_slice_parts("xz") == ("xz", "")
+    # plotestimators reads these forms, and the plane box showed xy for each of them
+    assert interactive.get_slice_parts("zx") == ("xz", "")
+    assert interactive.get_slice_parts("zy") == ("yz", "")
+    assert interactive.get_slice_parts(" z = 0.1c ") == ("xy", "0.1c")
+    assert interactive.get_slice_text("xz", "5000km/s") == "y=5000km/s"
+    assert interactive.get_line_axis("z=0,y=0") == "x"
+    rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
+    assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
+        ("-coneangle", ("40",)),
+        ("-axis", ("-x",)),
+    )
+    # the axes of a colour image are velocities, and plotestimators rejected an image of a snapshot against rho
+    rhovalues = viewer.set_xvariable(interactive.set_geometry_mode(viewer, viewer.values, "all"), "rho")
+    assert viewer.change(rhovalues) is None
+    for mode in ("plane", "average"):
+        assert viewer.change(interactive.set_geometry_mode(viewer, rhovalues, mode)) is None, mode
+
+    # a 1D model has the average around the z axis, and the selector of the window did not offer it
+    assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
+    viewer1d = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
+    assert viewer1d.change(interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
+
+
+def test_interactive_smoothing_and_section_rows() -> None:
+    """A smoothing draws, and the rows of the sections and of the output stay in the command.
+
+    The window dropped -dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
+    the user could not remove it.
+    """
+    viewer = make_headless_viewer([
+        "Te",
+        str(modelpath_classic_3d),
+        "-t",
+        "5",
+        "-dpi",
+        "300",
+        "--verbose",
+        "--interactive",
+    ])
+    assert {"-dpi", "--verbose"} <= set(viewer.get_plot_tokens())
+    assert "--verbose" not in viewer.sectionflags
+    for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
+        rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))
+        assert interactive.get_smoothing(rows) == (mode, numbers)
+        assert viewer.change(dc.replace(viewer.values, otheroptions=(*rows, ("--notitle", ())))) is None
+    assert "--notitle" in viewer.get_plot_tokens()
+    assert "--notitle" in viewer.sectionflags
+
+
+def test_interactive_level_populations() -> None:
+    """A run with NLTE populations offers the level populations, with the lowest NLTE levels of each ion.
+
+    The choices came from the atomic data, thus they gave levels with no NLTE population, e.g. Fe V 3 and each level
+    of Ni. A run with no NLTE populations offered averageexcitation, which reads them.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    assert viewer.nltetypes == ("averageexcitation", "levelpopulation", "levelpopulation_dn_on_dvel")
+    columns = viewer.estimatorcolumns
+    assert "levelpopulation" in interactive.get_subplot_types(columns, viewer.nltetypes)
+    levelnames = interactive.get_level_names(viewer.modelpath, 50, viewer.cells[0])
+    assert levelnames[:2] == ["Fe I 0", "Fe I 1"]
+    # the NLTE populations hold only the ground level of the top ion, and no level of Ni
+    assert "Fe V 0" in levelnames
+    assert "Fe V 1" not in levelnames
+    assert not any(name.startswith("Ni") for name in levelnames)
+    # timestep 0 comes before the first NLTE timestep, and the other timesteps of the cell then give the levels
+    assert interactive.get_level_names(viewer.modelpath, 0, viewer.cells[0]) == levelnames
+    subplot = interactive.change_subplot_type(("Te",), "levelpopulation", columns, levelnames)
+    assert subplot == ("levelpopulation", "Fe I 0")
+    assert interactive.get_series_suggestions(subplot, columns, levelnames)[:2] == ["Fe I 1", "Fe I 2"]
+    for name in (subplot[1], "Fe V 0", levelnames[-1]):
+        assert viewer.change(dc.replace(viewer.values, subplots=(("levelpopulation", name),))) is None, name
+
+    classicviewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    assert not classicviewer.nltetypes
+    assert "averageexcitation" not in interactive.get_subplot_types(classicviewer.estimatorcolumns)
+    # each series type of plotestimators has a family of columns, or it reads the NLTE populations
+    assert set(plotestimators.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
+
+
+def test_interactive_initial_abundance_of_an_isotope() -> None:
+    """An isotope such as Fe52 has its own column of initial abundances, and not the column of its element.
+
+    plotestimators removed the mass number and plotted the abundance of Fe with the label Fe52.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    assert {"Fe52", "Fe"} <= set(interactive.get_species_choices("initabundances", viewer.estimatorcolumns))
+    assert viewer.change(dc.replace(viewer.values, subplots=(("initabundances", "Fe52", "Fe"),))) is None
+    ydata = {line.get_label(): np.asarray(line.get_ydata()) for ax in viewer.fig.axes for line in ax.get_lines()}
+    fe52 = at.inputmodel.get_modeldata(modelpath)[0].select("X_Fe52").collect().item()
+    assert np.allclose(ydata["Fe52"], fe52, rtol=1e-6, atol=1e-30)
+    assert not np.allclose(ydata["Fe52"], ydata["Fe"], rtol=1e-6, atol=1e-30)
+
+
+def test_interactive_x_variable_with_no_value_names_the_variable() -> None:
+    """A column with no value in the rows of the plot, e.g. tmid_days_prevtimestep at timestep 0, gives its name.
+
+    The message said that the estimators held no row, although the rows were there.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    first = viewer.validtimesteps[0]
+    message = viewer.change(dc.replace(viewer.values, x="tmid_days_prevtimestep", first=first, last=first))
+    assert message is not None
+    assert "tmid_days_prevtimestep has no value" in message

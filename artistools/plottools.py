@@ -8,7 +8,9 @@ from collections.abc import Iterable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import cache
+from functools import partial
 
+import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
 import matplotlib.cm as mplcm
@@ -120,14 +122,16 @@ def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
 type AxesTree = mplax.Axes | Iterable[AxesTree]
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
-    import matplotlib.artist as mplartist
     import matplotlib.legend as mpllegend
     import matplotlib.legend_handler as mpllegendhandler
+    import matplotlib.transforms as mpltransforms
     import matplotlib.typing as mplt
     import numpy as np
     import numpy.typing as npt
+    from matplotlib.backend_bases import RendererBase
 
 # colorcet.glasbey_category20
 glasbey_category20 = [
@@ -577,17 +581,29 @@ def make_frame_figure(
 
 
 def set_legend(
-    ax: mplax.Axes, args: argparse.Namespace | None = None, **legendkwargs: t.Any
+    ax: mplax.Axes,
+    args: argparse.Namespace | None = None,
+    *,
+    keeptop: bool = False,
+    keepbottom: bool = False,
+    **legendkwargs: t.Any,
 ) -> "mpllegend.Legend | None":
     """Draw the legend of the axes and return it. Return None when -nolegend was given or no series has a label.
 
     A helper that parses no arguments passes no args, and -nolegend then does not apply.
     Each label takes the colour of its series, unless the caller gives labelcolor.
+
+    The legend does not cover the data. At each draw, LegendRoom moves the top or the bottom of the y axis to give
+    the legend room. A limit that the user gave stays: -ymax and -ymin of args, or keeptop and keepbottom.
     """
     if getattr(args, "nolegend", False):
         return None
 
     legendkwargs.setdefault("labelcolor", "linecolor")
+
+    if getattr(args, "legendframe", False):
+        # a caller such as plotspectra passes frameon=False. --legendframe overrides it
+        legendkwargs.update(frameon=True, framealpha=0.85, facecolor="white", edgecolor="none")
 
     if "handles" not in legendkwargs:
         legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(
@@ -598,7 +614,193 @@ def set_legend(
         # matplotlib raises ValueError for an empty list of handles
         return None
 
-    return ax.legend(**legendkwargs)
+    isbest = legendkwargs.get("loc", plt.rcParams["legend.loc"]) in {"best", 0}
+    legend = ax.legend(**legendkwargs)
+    fig = ax.get_figure(root=True)
+    if fig is not None:
+        room = next((artist for artist in fig.artists if isinstance(artist, LegendRoom)), None)
+        if room is None:
+            room = LegendRoom()
+            fig.add_artist(room)
+        room.rooms.append(
+            partial(
+                make_room_for_legend,
+                legend,
+                isbest=isbest,
+                keeptop=keeptop or getattr(args, "ymax", None) is not None,
+                keepbottom=keepbottom or getattr(args, "ymin", None) is not None,
+            )
+        )
+    return legend
+
+
+# the space between the data and a legend, in units of the font size of the legend
+LEGEND_GAP_FONTSIZES: t.Final = 0.5
+
+
+class LegendRoom(mplartist.Artist):
+    """An artist that draws nothing and gives each legend of set_legend room clear of the data.
+
+    The figure draws its artists in the order of their zorder, and this artist has the lowest zorder. Thus it runs at
+    the start of each draw, after the code gave the axes its data and its limits, and before the axes draw. A save,
+    a window, and a viewer all draw the figure, thus the rule applies to each of them.
+    """
+
+    def __init__(self) -> None:
+        """Make the artist with no legend. set_legend adds each legend."""
+        super().__init__()
+        self.set_zorder(-math.inf)
+        # the artist has no extent, thus it must not change the tight bounding box of a saved file
+        self.set_in_layout(False)
+        self.rooms: list[Callable[[RendererBase], None]] = []
+
+    @t.override
+    def draw(self, renderer: "RendererBase") -> None:
+        for make_room in self.rooms:
+            make_room(renderer)
+
+
+def get_polyline_yrange(points: "npt.NDArray[np.float64]", xlow: float, xhigh: float) -> tuple[float, float] | None:
+    """Return the lowest and the highest y of a line between two x positions, or None if the line has no point there.
+
+    The points are in the fractions of the axes. A segment that crosses a side of the range counts at that side, thus
+    a line with few points under a legend still counts. The part of the line outside the axes does not count.
+    """
+    import numpy as np
+
+    x, y = points[:, 0], points[:, 1]
+    candidates = [y[(x >= xlow) & (x <= xhigh)]]
+    if len(x) > 1:
+        x0, x1, y0, y1 = x[:-1], x[1:], y[:-1], y[1:]
+        for edge in (xlow, xhigh):
+            crosses = (x0 - edge) * (x1 - edge) < 0.0
+            candidates.append(
+                y0[crosses] + (edge - x0[crosses]) * (y1[crosses] - y0[crosses]) / (x1[crosses] - x0[crosses])
+            )
+    yvalues = np.concatenate(candidates)
+    visible = yvalues[np.isfinite(yvalues) & (yvalues >= 0.0) & (yvalues <= 1.0)]
+    return (float(visible.min()), float(visible.max())) if visible.size else None
+
+
+def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[float, float] | None:
+    """Return the lowest and the highest y of the data of the axes between two x positions, or None for no data.
+
+    The positions and the result are fractions of the axes. A line, a bar, a filled area, and a scatter point count.
+    An artist whose y position is a fraction of the axes, e.g. axvline, covers each height, thus it does not count.
+    """
+    import matplotlib.collections as mplcollections
+    import numpy as np
+
+    toaxes = ax.transAxes.inverted()
+    scatterpoints: list[npt.NDArray[np.float64]] = []
+
+    def follows_data(artist: mplartist.Artist) -> bool:
+        return artist.get_visible() and artist.get_transform().contains_branch_seperately(ax.transData)[1]
+
+    polylines = [
+        toaxes.transform(line.get_transform().transform(line.get_xydata())) for line in ax.lines if follows_data(line)
+    ]
+    polylines.extend(
+        toaxes.transform(patch.get_transform().transform(patch.get_path().vertices))
+        for patch in ax.patches
+        if follows_data(patch)
+    )
+    for collection in ax.collections:
+        if isinstance(collection, mplcollections.QuadMesh) or not follows_data(collection):
+            continue
+        if isinstance(collection, mplcollections.PathCollection):
+            offsets = np.asarray(collection.get_offsets(), dtype=np.float64)
+            if offsets.size:
+                scatterpoints.append(toaxes.transform(collection.get_offset_transform().transform(offsets)))
+            continue
+        polylines.extend(
+            toaxes.transform(collection.get_transform().transform(path.vertices)) for path in collection.get_paths()
+        )
+
+    ranges = [get_polyline_yrange(points, xlow, xhigh) for points in polylines if len(points)]
+    for points in scatterpoints:
+        inside = points[(points[:, 0] >= xlow) & (points[:, 0] <= xhigh)]
+        ranges.append(get_polyline_yrange(inside, -math.inf, math.inf) if len(inside) else None)
+    found = [yrange for yrange in ranges if yrange is not None]
+    return (min(low for low, _ in found), max(high for _, high in found)) if found else None
+
+
+def get_legend_frame(legend: "mpllegend.Legend", renderer: "RendererBase") -> "mpltransforms.Bbox":
+    """Return the box of a legend in the fractions of its axes."""
+    assert legend.axes is not None
+    return legend.get_window_extent(renderer).transformed(legend.axes.transAxes.inverted())
+
+
+def make_room_for_legend(
+    legend: "mpllegend.Legend", renderer: "RendererBase", *, isbest: bool, keeptop: bool, keepbottom: bool
+) -> None:
+    """Move the top or the bottom of the y axis, thus the legend does not cover the data.
+
+    A legend in the upper half of the axes moves the top, and a legend in the lower half moves the bottom. The
+    change scales the distances of the data from the other limit, in the scale of the axis, thus it also suits a log
+    axis and an inverted axis. The data then keeps a gap of LEGEND_GAP_FONTSIZES from the legend. A legend at "best"
+    moves to the upper corner that needs less room, because matplotlib found no place clear of the data.
+    """
+    ax = legend.axes
+    if ax is None or ax.get_legend() is not legend or not legend.get_visible():
+        return
+    # the locator of a frame of make_frame_figure sets its position at the draw of the axes, which comes later
+    if (locator := ax.get_axes_locator()) is not None:
+        ax.apply_aspect(locator(ax, renderer))
+    if ax.bbox.height <= 0.0:
+        return
+    fig = ax.get_figure(root=True)
+    if fig is None:
+        return
+    # a point is 1/72 inch
+    gap = LEGEND_GAP_FONTSIZES * legend.prop.get_size_in_points() / 72.0 * fig.dpi / ax.bbox.height
+
+    def get_overlap() -> "tuple[mpltransforms.Bbox, tuple[float, float] | None]":
+        frame = get_legend_frame(legend, renderer)
+        yrange = get_data_fraction_range(ax, frame.x0, frame.x1)
+        overlaps = yrange is not None and yrange[1] > frame.y0 - gap and yrange[0] < frame.y1 + gap
+        return frame, yrange if overlaps else None
+
+    frame, yrange = get_overlap()
+    if yrange is None:
+        return
+    if isbest and not keeptop:
+        corners: tuple[t.Literal["upper right", "upper left"], ...] = ("upper right", "upper left")
+
+        def get_corner_height(corner: t.Literal["upper right", "upper left"]) -> float:
+            # the highest data under an upper corner sets the room that the corner needs
+            legend.set_loc(corner)
+            cornerframe = get_legend_frame(legend, renderer)
+            cornerrange = get_data_fraction_range(ax, cornerframe.x0, cornerframe.x1)
+            return cornerrange[1] if cornerrange is not None else -math.inf
+
+        legend.set_loc(min(corners, key=get_corner_height))
+        frame, yrange = get_overlap()
+        if yrange is None:
+            return
+
+    import numpy as np
+
+    scale = ax.yaxis.get_transform()
+    bottom, top = ax.get_ylim()
+    if (bottom, top) != ax.yaxis.limit_range_for_scale(bottom, top):
+        # the scale cannot show a limit, e.g. zero on a log axis, thus the fractions of the data mean nothing
+        return
+    scaledbottom, scaledtop = scale.transform(np.array([[bottom], [top]], dtype=np.float64))[:, 0]
+    scaledheight = scaledtop - scaledbottom
+    if (frame.y0 + frame.y1) / 2.0 >= 0.5:
+        clearheight = frame.y0 - gap
+        if keeptop or clearheight <= 0.1:
+            return
+        newscaledtop = scaledbottom + scaledheight * yrange[1] / clearheight
+        ax.set_ylim(top=float(scale.inverted().transform(np.array([[newscaledtop]]))[0, 0]), auto=None)
+    else:
+        clearbottom = frame.y1 + gap
+        if keepbottom or clearbottom >= 0.9:
+            return
+        lowest = scaledbottom + scaledheight * yrange[0]
+        newscaledbottom = (lowest - clearbottom * scaledtop) / (1.0 - clearbottom)
+        ax.set_ylim(bottom=float(scale.inverted().transform(np.array([[newscaledbottom]]))[0, 0]), auto=None)
 
 
 def get_legend_entries_in_draw_order(
@@ -1264,6 +1466,11 @@ def set_axis_properties(
             axis.set_xscale("log")
         if logscaley:
             axis.set_yscale("log")
+            # a limit of the linear axis can be zero, e.g. the bottom of plotspectra before set_auto_yscale chose the
+            # scale. A log axis puts zero far below the data, thus the limit takes the lowest positive data value
+            ylow, yhigh = axis.get_ylim()
+            if ylow <= 0.0 or yhigh <= 0.0:
+                axis.set_ylim(*axis.yaxis.limit_range_for_scale(ylow, yhigh))
 
         # the lowest label of one axes meets the highest label of the axes below, thus a stack needs its
         # end ticks pruned. A single axes keeps them, because they mark the ends of the data. set_yscale

@@ -391,6 +391,7 @@ def plot_init_abundances(
         ax.set_ylabel("Initial mass fraction")
         valuetype = "init_X_"
 
+    columnnames = set(estimators.collect_schema().names())
     plans = []
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -413,7 +414,9 @@ def plot_init_abundances(
             linelabel = "Fe group"
         else:
             linelabel = speciesstr
-            expr_yvalue = pl.col(f"{valuetype}{elsymbol}")
+            # an isotope, e.g. Fe52, has a column of its own, and an element takes the column of its symbol
+            speciescolumn = f"{valuetype}{speciesstr}"
+            expr_yvalue = pl.col(speciescolumn if speciescolumn in columnnames else f"{valuetype}{elsymbol}")
 
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
@@ -1074,18 +1077,14 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(get_varname_formatted(seriestype))
 
-    def make_space_for_legend() -> None:
-        """Clip the bottom of a log axis to ten decades below the top, and lift the top for the legend."""
+    def clip_log_bottom() -> None:
+        """Clip the bottom of a log axis to ten decades below the top. set_legend gives the legend its room."""
         if ax.get_yscale() != "log":
             return
         ymin, ymax = ax.get_ylim()
-        ymin = max(ymin, ymax / 1e10)
-        ax.set_ylim(bottom=ymin)
-        new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
-        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-            ax.set_ylim(top=new_ymax)
+        ax.set_ylim(bottom=max(ymin, ymax / 1e10))
 
-    return plans, make_space_for_legend if plans else None
+    return plans, clip_log_bottom if plans else None
 
 
 def plot_series(
@@ -1172,11 +1171,20 @@ def get_xlist(
         statexprs["xmax"] = pl.col("xvalue").max()
     if args.xbins is None:
         statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+    if statexprs:
+        # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
+        statexprs["rowcount"] = pl.len()
 
     xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
+    # a selection with no rows has no minimum and no maximum, and the bins below need both
+    if xmin is None or xmax is None:
+        if xstats.get("rowcount"):
+            msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
+            raise ValueError(msg)
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
@@ -1253,9 +1261,31 @@ def get_xlist(
         .row(0, named=True)
     )
 
-    assert len(uniques["xvalue"]) > 0, "No data found for x-axis variable"
+    if not uniques["xvalue"]:
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
+
+
+def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
+    """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
+
+    The code before the plot expands a range of cells and converts -xmin and -xmax. Thus the message gives the size
+    of the selection and not those values. A status line shows one line of the message.
+    """
+    parts: list[str] = []
+    if timestepslist:
+        parts.append(f"the timesteps {min(timestepslist)} to {max(timestepslist)}")
+    if args.modelgridindex is not None:
+        cells = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
+        parts.append(
+            f"the cells {', '.join(map(str, cells))}"
+            if len(cells) <= 3
+            else f"{len(cells)} cells from {min(cells)} to {max(cells)}"
+        )
+    if args.xmin is not None or args.xmax is not None:
+        parts.append("the x range of -xmin and -xmax")
+    return f"The estimators hold no row for {', '.join(parts)}" if parts else "The estimators hold no row"
 
 
 def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
@@ -1429,7 +1459,18 @@ def plot_subplot(
                 print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend:
-        set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
+        set_legend(
+            ax,
+            args,
+            keeptop=ymax is not None,
+            keepbottom=ymin is not None,
+            loc="best",
+            handlelength=2,
+            frameon=False,
+            numpoints=1,
+            ncols=legend_ncols,
+            markerscale=3,
+        )
 
 
 def get_snapshot_timestrings(
@@ -2687,11 +2728,6 @@ def draw_plot(
     """
     modelpath, timesteps_included = resolve_plot_args(args)
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    if estimators.select(pl.len()).collect().item() == 0:
-        msg = f"The model has no estimators for the timesteps {timesteps_included[0]} to {timesteps_included[-1]}"
-        if args.modelgridindex is not None:
-            msg += f" and the cells {args.modelgridindex}"
-        raise ValueError(msg)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
@@ -2702,6 +2738,9 @@ def draw_plot(
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
     if args.dimensionreduce == 2:
+        # get_xlist checks the rows of a line plot, and an image reads the estimators without it
+        if estimators.select(pl.len()).collect().item() == 0:
+            raise ValueError(get_no_rows_message(timesteps_included, args))
         draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
     else:
         draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)

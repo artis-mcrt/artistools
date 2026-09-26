@@ -50,11 +50,14 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
+from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_short_number
+from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -63,17 +66,24 @@ from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
+from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
+from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import show_status_message
+from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
+from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_application
+from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -130,6 +140,8 @@ DAYS_DECIMALS: t.Final = 6
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
+    # Save Figure asks for the resolution of a PNG file
+    "dpi",
     "timedayslist",
     "multispecplot",
     "makevspecpol",
@@ -514,6 +526,8 @@ class SpectrumViewer:
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
         )
         self.drewpreview = False
+        # the last warning of the last plot, which the status bar shows
+        self.warning = ""
         # a rejection before the draw keeps the old plot on the frames, thus it needs no new plot of the old values
         self.clearedframes = False
         # a window can change the size of the figure, thus the size of the frames stays here
@@ -696,7 +710,8 @@ class SpectrumViewer:
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        return run_command_step(lambda: self.draw_command(preview=preview), quiet=quiet)
+        message, self.warning = run_command_step_with_warning(lambda: self.draw_command(preview=preview), quiet=quiet)
+        return message
 
     def draw_command(self, *, preview: bool = False) -> str | None:
         """Parse the command and draw its plot, or return a message if the plot differs from the values.
@@ -826,18 +841,15 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
     return 0.72 - 0.45 * np.exp(-(((xvalues - 0.42) / 0.06) ** 2)) - 0.25 * np.exp(-(((xvalues - 0.65) / 0.09) ** 2))
 
 
-KEYBOARD_HELP: t.Final = """<table>
-<tr><td><b>Left</b>, <b>Right</b></td><td>Move the time to the adjacent timestep</td></tr>
-<tr><td><b>Up</b>, <b>Down</b></td><td>Make the time range one timestep wider or narrower</td></tr>
-<tr><td><b>Home</b>, <b>End</b></td><td>Move the time to the first or the last valid timestep</td></tr>
-<tr><td><b>Space</b></td><td>Play or pause</td></tr>
-<tr><td><b>Drag</b> across the plot</td><td>Select the x range</td></tr>
-<tr><td><b>Double-click</b> the plot</td><td>Get the default x range</td></tr>
-<tr><td><b>⌘S</b></td><td>Save the figure with the command</td></tr>
-<tr><td><b>⇧⌘C</b></td><td>Copy the command</td></tr>
-<tr><td><b>⌘O</b></td><td>Open a model in a new window</td></tr>
-<tr><td><b>?</b></td><td>Show this list</td></tr>
-</table>"""
+# the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
+KEYBOARD_HELP_ROWS: t.Final = (
+    ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
+    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
+    ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
+    ("<b>Space</b>", "Play or pause"),
+    ("<b>Drag</b> across the plot", "Select the x range"),
+    ("<b>Double-click</b> the plot", "Get the default x range"),
+)
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
@@ -859,8 +871,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from artistools.commands import get_path
 
     viewer = SpectrumViewer(tokens, mplfig.Figure())
-    window = QtWidgets.QMainWindow()
-    window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+    window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
     canvas = FigureCanvasQTAgg(viewer.fig)
     if (message := viewer.draw(quiet=False)) is not None:
@@ -880,12 +891,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         fittimer.start()
 
     plotarea = make_plot_area(canvas, on_resize)
-    central = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(central)
-    layout.addWidget(plotarea, stretch=1)
-    window.setCentralWidget(central)
     sidebar, panellayout = make_sidebar()
-    layout.addWidget(sidebar)
+    make_central_splitter(window, plotarea, sidebar)
 
     # each continuous slider maps its position from 0 to SLIDER_STEPS onto the range of its value
     def to_position(value: float, low: float, high: float) -> int:
@@ -938,7 +945,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addWidget(playbutton, 3, 2)
 
     xheader, xgrid = add_section(panellayout, "")
-    xrangeslider, set_xrange_positions, connect_xrange = make_range_slider(SLIDER_STEPS)
+    xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
     xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)
@@ -1090,6 +1097,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
     statusbar = make_status_bar(window)
+    # the first plot came before the status bar, and a user of the application sees no terminal
+    show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         snapbutton,
@@ -1307,7 +1316,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             referencelist.clear()
             referencelist.addItems(list(values.references))
         set_option_rows(values.otheroptions)
-        commandtext.setPlainText(viewer.get_command())
+        set_command_text(commandtext, viewer.get_command())
         show_rejections()
         for blocker in blockers:
             blocker.unblock()
@@ -1324,7 +1333,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            playtimer.start()
+            start_play_timer(playtimer, queue.plotseconds)
 
     def change_with_preview(values: ControlValues) -> str | None:
         return viewer.change(values, preview=True)
@@ -1355,7 +1364,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     fulldrawtimer.timeout.connect(draw_full)
 
     def show_error(message: str) -> None:
-        statusbar.message.setText(message)
+        show_status_message(statusbar, message, "")
         show_values()
 
     def on_time_mode() -> None:
@@ -1473,7 +1482,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             apply(dc.replace(viewer.values, ymin="", ymax=""))
             return
         # the limits of the plot on the screen become the limits of the command, thus the plot does not change
-        low, high = (format(float(f"{limit:.3g}"), ".10g") for limit in viewer.axes[0].get_ylim())
+        low, high = (get_short_number(limit) for limit in viewer.axes[0].get_ylim())
         apply(dc.replace(viewer.values, ymin=low, ymax=high))
 
     def on_yedit() -> None:
@@ -1578,21 +1587,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_copy() -> None:
         copy_command(viewer.get_command())
-        statusbar.message.setText("Copied the command")
+        show_status_note(statusbar, "Copied the command")
 
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        message = save_figure_of_command(window, plotspectra_main, "plotspectra", viewer.get_plot_tokens())
-        if message is not None:
-            statusbar.message.setText(message)
+        defaultdpi = viewer.parser.get_default("dpi")
+        rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
+        plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+        save_figure_of_command(window, statusbar, plotspectra_main, "plotspectra", plottokens, dpi, defaultdpi)
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
             show_error(message)
 
     def on_help() -> None:
-        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", KEYBOARD_HELP)
+        QtWidgets.QMessageBox.information(
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+        )
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1600,16 +1612,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    add_menus(
-        window,
-        {
-            "Open Model...": on_open_model,
-            "Save Figure...": on_save,
-            "Copy Command": on_copy,
-            "Close Window": window.close,
-            "Keys and Mouse Actions": on_help,
-        },
-    )
+    menucallbacks = {
+        "Open Model...": on_open_model,
+        "Save Figure...": on_save,
+        "Copy Command": on_copy,
+        "Close Window": window.close,
+        "Keys and Mouse Actions": on_help,
+    }
+    add_menus(window, menucallbacks)
 
     modebuttons.buttonToggled.connect(on_time_mode)
     timeslider.valueChanged.connect(on_time)
@@ -1669,6 +1679,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(window, viewer.figsize, sidebar.width(), lambda: fit_canvas(canvas, viewer.figsize, plotarea))
+    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
     show_values()
     return None

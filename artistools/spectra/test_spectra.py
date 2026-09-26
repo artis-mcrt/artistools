@@ -1127,6 +1127,8 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
         at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outputpath / "sp.pdf")
     assert {call.args[1] for call in mockyscale.call_args_list} == {"log"}
+    # the linear axis had a bottom of zero, which put the data of the log axis in a thin band at the top
+    assert all(call.args[0].get_ylim()[0] > 0.0 for call in mockyscale.call_args_list)
 
     # --logscaley replaces the default scale
     mockyscale.reset_mock()
@@ -2579,8 +2581,10 @@ def test_interactive_option_rows() -> None:
         "list",
         "text",
     ]
-    # an option with no default needs a value from the user before the command can give it
-    assert viewertools.get_default_tokens(actions["-dpi"]) == ("250",)
+    # an option with no default needs a value from the user before the command can give it. Save Figure asks for
+    # -dpi, thus the table does not offer it
+    assert "-dpi" not in actions
+    assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
     assert viewertools.get_default_tokens(actions["-title"]) is None
 
 
