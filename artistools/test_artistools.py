@@ -2061,6 +2061,52 @@ def test_set_legend_draws_no_legend_without_a_labelled_series() -> None:
     plt.close(fig)
 
 
+@pytest.mark.parametrize("yscale", ["linear", "log", "inverted"])
+def test_set_legend_gives_the_legend_room_clear_of_the_data(yscale: str) -> None:
+    """The legend of set_legend does not cover the data, on a linear, a log, and an inverted axis.
+
+    Each command gave its legend room with a factor of its own, e.g. a top of 1.2 times the tallest peak.
+    """
+    fig = mplfig.Figure(figsize=(5.0, 3.5))
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.subplots()
+    xvalues = np.linspace(0.0, 10.0, 50)
+    ax.plot(xvalues, 10.0 ** (1.0 + xvalues / 10.0), label="rising")
+    # a line of two points crosses the whole legend, and only the ends of its segment are data points
+    ax.plot([0.0, 10.0], [90.0, 90.0], label="flat")
+    if yscale == "log":
+        ax.set_yscale("log")
+    at.plottools.set_legend(ax, loc="upper right")
+    # a limit that comes after set_legend still leaves the legend its room, because the room follows at the draw
+    ax.set_ylim(5.0, 100.0)
+    if yscale == "inverted":
+        ax.invert_yaxis()
+
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    legend = ax.get_legend()
+    assert legend is not None
+    frame = at.plottools.get_legend_frame(legend, renderer)
+    yrange = at.plottools.get_data_fraction_range(ax, frame.x0, frame.x1)
+    assert yrange is not None
+    # the fractions of the axes run upwards also on an inverted axis, thus the data stays below the legend
+    assert yrange[1] < frame.y0
+    ylimits = ax.get_ylim()
+    canvas.draw()
+    assert np.allclose(ax.get_ylim(), ylimits, rtol=1e-12, atol=0.0), "a second draw must keep the limits"
+
+
+def test_set_legend_keeps_a_top_of_the_user() -> None:
+    """A -ymax of the user stays, although the legend then covers the data."""
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0], [1.0, 1.0], label="flat")
+    ax.set_ylim(0.0, 1.02)
+    at.plottools.set_legend(ax, argparse.Namespace(ymax=1.02), loc="upper right")
+    fig.canvas.draw()
+    assert np.isclose(ax.get_ylim()[1], 1.02, rtol=1e-12, atol=0.0)
+    plt.close(fig)
+
+
 def test_get_series_colors_greys_then_cycle() -> None:
     """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])

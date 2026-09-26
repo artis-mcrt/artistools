@@ -1077,18 +1077,14 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(get_varname_formatted(seriestype))
 
-    def make_space_for_legend() -> None:
-        """Clip the bottom of a log axis to ten decades below the top, and lift the top for the legend."""
+    def clip_log_bottom() -> None:
+        """Clip the bottom of a log axis to ten decades below the top. set_legend gives the legend its room."""
         if ax.get_yscale() != "log":
             return
         ymin, ymax = ax.get_ylim()
-        ymin = max(ymin, ymax / 1e10)
-        ax.set_ylim(bottom=ymin)
-        new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
-        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-            ax.set_ylim(top=new_ymax)
+        ax.set_ylim(bottom=max(ymin, ymax / 1e10))
 
-    return plans, make_space_for_legend if plans else None
+    return plans, clip_log_bottom if plans else None
 
 
 def plot_series(
@@ -1463,7 +1459,18 @@ def plot_subplot(
                 print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend:
-        set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
+        set_legend(
+            ax,
+            args,
+            keeptop=ymax is not None,
+            keepbottom=ymin is not None,
+            loc="best",
+            handlelength=2,
+            frameon=False,
+            numpoints=1,
+            ncols=legend_ncols,
+            markerscale=3,
+        )
 
 
 def get_snapshot_timestrings(
