@@ -2029,16 +2029,20 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
 
 
 def test_estimator_image_takes_the_series_that_it_can_show(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """An image keeps the ions and the isotopes that have a column, and it leaves the other series out.
+    """An image keeps the ions, the isotopes, and the average ionisation, and it leaves the other series out.
 
-    The default plot list holds series such as averageionisation, thus these must not stop the command.
+    The default plot list holds series such as averageexcitation, thus these must not stop the command.
     """
-    plotlist = [[["populations", ["Fe II", "Fe VI", "Ni56"]]], [["averageionisation", ["Fe"]]]]
+    plotlist = [
+        [["populations", ["Fe II", "Fe VI", "Ni56"]]],
+        [["averageionisation", ["Fe"]]],
+        [["averageexcitation", ["Fe II"]]],
+    ]
     panelcalls = get_image_panel_calls({"plotlist": plotlist, "slice": "xy"}, tmp_path)
-    assert len(panelcalls) == 2
+    assert len(panelcalls) == 3
     warnings = capsys.readouterr().err
     assert "Fe VI" in warnings
-    assert "averageionisation" in warnings
+    assert "averageexcitation" in warnings
 
     # a fraction of the element lies below 1, and the absolute density of the same ion does not
     ((_, _, _, elpopgrid),) = get_image_panel_calls(
@@ -3796,6 +3800,44 @@ def test_interactive_image_panels_name_their_subplot() -> None:
     assert viewer.isimage
     labels = [ax.get_label() for ax in interactive.get_plot_frames(viewer.fig)]
     assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
+
+
+def test_image_shows_the_average_ionisation() -> None:
+    """A colour image shows the average ion charge of an element. The image left out a subplot of averageionisation.
+
+    The mean over the cells of a pixel takes the number density of the element as a weight, as the line does. Thus
+    the pixel gives the charge of each nucleus of the pixel.
+    """
+    viewer = make_headless_viewer([
+        "Te",
+        str(modelpath_classic_3d),
+        "-t",
+        "5",
+        "-slice",
+        "xy",
+        "-plot",
+        "averageionisation",
+        "Fe",
+        "--interactive",
+    ])
+    frames = interactive.get_plot_frames(viewer.fig)
+    assert [frame.get_label() for frame in frames] == [plotestimators.get_panel_axes_label(index) for index in (0, 1)]
+    chargearray = frames[1].collections[0].get_array()
+    assert chargearray is not None
+    charges = np.ma.compressed(chargearray)
+    assert charges.size
+    assert np.all((charges >= 0.0) & (charges <= 26.0))
+
+    # two cells in one pixel: 1e3 Fe nuclei at a charge of 1 and 1e5 Fe nuclei at a charge of 3
+    dfcells = pl.DataFrame({
+        "nnelement_Fe": [1e3, 1e5],
+        "nnion_Fe_II": [1e3, 0.0],
+        "nnion_Fe_IV": [0.0, 1e5],
+        "deltavol_deltat": [1.0, 1.0],
+    })
+    panels = plotestimators.get_image_panels([[["averageionisation", ["Fe"]]]], dfcells.columns, "absolute")
+    mean = dfcells.select(plotestimators.get_panel_means(panels)).item()
+    assert np.isclose(mean, (1e3 * 1 + 1e5 * 3) / (1e3 + 1e5), rtol=1e-12)
 
 
 def test_interactive_initial_abundance_of_an_isotope() -> None:

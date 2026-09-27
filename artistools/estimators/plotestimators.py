@@ -430,6 +430,28 @@ def plot_init_abundances(
     return plans
 
 
+def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl.Expr, int]:
+    """Return the mean charge of the ions of an element in a cell, and the highest charge of its ions.
+
+    The mean takes the number density of each ion as the weight, thus it is the charge for each nucleus.
+    """
+    elsymb = get_elsymbol(get_atomic_number(element))
+    if f"nnelement_{elsymb}" not in colnames:
+        msg = f"ERROR: No element data found for {element}"
+        raise ValueError(msg)
+
+    ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
+    if not ioncols:
+        msg = f"ERROR: No ion data found for {element}"
+        raise ValueError(msg)
+
+    ioncharges = [decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+    expr_charge_per_nuc = pl.sum_horizontal([
+        ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
+    ]) / pl.col(f"nnelement_{elsymb}")
+    return expr_charge_per_nuc, max(ioncharges)
+
+
 def plot_average_ionisation(
     ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
@@ -447,20 +469,8 @@ def plot_average_ionisation(
 
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = get_elsymbol(atomic_number)
-        if f"nnelement_{elsymb}" not in colnames:
-            msg = f"ERROR: No element data found for {paramvalue}"
-            raise ValueError(msg)
-
-        ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
-        if not ioncols:
-            msg = f"ERROR: No ion data found for {paramvalue}"
-            raise ValueError(msg)
-
-        ioncharges = [decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
-        maxioncharge = max(maxioncharge, *ioncharges)
-        expr_charge_per_nuc = pl.sum_horizontal([
-            ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
-        ]) / pl.col(f"nnelement_{elsymb}")
+        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
+        maxioncharge = max(maxioncharge, elementmaxcharge)
 
         dfplotdata = estimators.with_columns(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
@@ -1497,6 +1507,11 @@ def get_snapshot_timestrings(
     return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
 
+def get_default_subplots_per_row(*, isimage: bool) -> int:
+    """Return the number of subplots in each row with no -subplotsperrow. A colour image puts 3 panels in a row."""
+    return 3 if isimage else 1
+
+
 def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
     """Return the number of rows and of columns of a figure of subplots, which fills each row from the left."""
     if subplotsperrow < 1:
@@ -1522,7 +1537,7 @@ def draw_figure(
     modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow or 1)
+    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow or get_default_subplots_per_row(isimage=False))
     fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
     axes = axesgrid.ravel()[: len(plotlist)]
     for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
@@ -1626,6 +1641,9 @@ class ImagePanel(t.NamedTuple):
     vmax: float | None
     # the position of the subplot in the plot list, which get_panel_axes_label names
     subplotindex: int = 0
+    # the weight of each cell in the mean of a pixel, with the volume and the duration. None gives the volume and the
+    # duration alone, e.g. the number density of an element gives the mean charge of its nuclei
+    weightexpr: pl.Expr | None = None
 
 
 def get_panel_axes_label(subplotindex: int) -> str:
@@ -1684,6 +1702,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             if not isinstance(plotitem, str | pl.Expr) and (directive := get_directive_name(plotitem[0])) is not None
         }
         columns: list[tuple[pl.Expr, str, str]] = []
+        weights: dict[str, pl.Expr] = {}
         for plotitem in plotitems:
             if isinstance(plotitem, pl.Expr):
                 colname = plotitem.meta.output_name()
@@ -1702,6 +1721,14 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
                 subplotpoptype = str(directives.get("ionpoptype", poptype))
                 columns += get_ion_panel_columns(plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns)
+            elif plotitem[0] == "averageionisation":
+                for element in plotitem[1]:
+                    elsymb = get_elsymbol(get_atomic_number(element))
+                    chargeexpr, _ = get_average_charge_expr(element, estimatorcolumns)
+                    colname = f"averageionisation_{elsymb}"
+                    columns.append((chargeexpr.alias(colname), colname, f"Average ion charge of {elsymb}"))
+                    # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
+                    weights[colname] = pl.col(f"nnelement_{elsymb}")
             else:
                 print_warning(f"a colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
 
@@ -1711,7 +1738,10 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
         colourscale = "linear" if yscale == "lin" else yscale
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
-        panels += [ImagePanel(colexpr, label, colourscale, vmin, vmax, subplotindex) for colexpr, _, label in columns]
+        panels += [
+            ImagePanel(colexpr, label, colourscale, vmin, vmax, subplotindex, weights.get(colname))
+            for colexpr, colname, label in columns
+        ]
 
     if not panels:
         exit_with_error(
@@ -1722,10 +1752,13 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
 
 
 def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
-    """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight."""
-    weight = pl.col("deltavol_deltat")
+    """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight.
+
+    A panel with a weightexpr takes the product of that weight with volume x time.
+    """
     means = []
     for panelindex, panel in enumerate(panels):
+        weight = pl.col("deltavol_deltat") * (panel.weightexpr if panel.weightexpr is not None else pl.lit(1.0))
         value = panel.colexpr.cast(pl.Float64)
         # a cell or a timestep with no value must not pull the mean to zero, and a NaN is not a null
         hasvalue = value.is_not_null() & value.is_not_nan()
@@ -1872,7 +1905,7 @@ def draw_image_figure(
     grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
     isplane = plotaxis1 != "rcyl"
 
-    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow or 3)
+    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow or get_default_subplots_per_row(isimage=True))
     # the image at each cylindrical radius has half the width of a plane
     panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
     figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
