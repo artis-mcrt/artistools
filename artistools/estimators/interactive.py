@@ -36,6 +36,7 @@ from artistools.estimators.plotestimators import get_default_plotlist
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
+from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
 from artistools.estimators.plotestimators import is_seriestype
@@ -175,11 +176,11 @@ SECTION_DESTS: t.Final = frozenset({
 GEOMETRY_MODES: t.Final = MappingProxyType({
     "all": "All the cells",
     "cells": "Selected cells (-cell)",
-    "alongaxis": "Cells along an axis (-readonlymgi alongaxis)",
-    "cone": "Cells in a cone around an axis (-readonlymgi cone)",
-    "plane": "A plane of the model as an image (-slice)",
-    "line": "A line through the model (-slice)",
-    "average": "An image of the average around the z axis (-dimensionreduce 2)",
+    "alongaxis": "A column of cells along an axis (-readonlymgi alongaxis)",
+    "cone": "The cells in a cone around an axis (-readonlymgi cone)",
+    "plane": "A layer of cells as an image (-slice)",
+    "line": "A row of cells along an axis (-slice)",
+    "average": "The mean over the azimuth around the z axis as an image (-dimensionreduce 2)",
 })
 
 # the rows of the option table that a mode of the geometry sets
@@ -510,6 +511,62 @@ def get_line_label(axis: str, slicetext: str) -> str:
     first, second = (positions[other] for other in others)
     conditions = f"{others[0]}={others[1]}={first}" if first == second else f"{others[0]}={first}, {others[1]}={second}"
     return f"{axis} ({conditions})"
+
+
+def get_slice_conditions(slicetext: str) -> dict[str, str]:
+    """Return the position on each axis of a -slice condition, e.g. {"z": "0.1c", "y": "0"} for "z=0.1c,y=0"."""
+    conditions: dict[str, str] = {}
+    for condition in slicetext.lower().split(","):
+        name, equals, position = (part.strip() for part in condition.partition("="))
+        if equals and name in {"x", "y", "z"}:
+            conditions[name] = position or "0"
+    return conditions
+
+
+def get_geometry_description(values: "ControlValues", dimensions: int, axis: str, coneangle: float) -> str:
+    """Return the cells that the plot reads in the terms of the model grid, or an empty text for all or listed cells.
+
+    x, y, and z are the velocity coordinates of the grid. A cell edge is the lower or the upper edge of a cell on one
+    axis, e.g. z_min. plotestimators selects the same cells. axis and coneangle are the values of -axis and
+    -coneangle.
+    """
+    mode = get_geometry_mode(values)
+    slicetext = (get_row_values(values.otheroptions, "-slice") or ("",))[0]
+    if mode in {"alongaxis", "cone"}:
+        sign, name = axis[0], axis[1]
+        first, second = (other for other in "xyz" if other != name)
+        if mode == "alongaxis":
+            side = "≥ 0" if sign == "+" else "< 0"
+            return (
+                f"The column of cells along the {axis} axis: {first}_min = {second}_min = e and {name}_min {side}. "
+                "e is the lower cell edge nearest to 0."
+            )
+        halfangle = format(coneangle / 2.0, "g")
+        signedname = name if sign == "+" else f"-{name}"
+        return (
+            f"The cells whose centre is within {halfangle}° of the {axis} axis: "
+            f"{signedname} ≥ √({first}² + {second}²) / tan {halfangle}° at the centre of the cell."
+        )
+    if mode == "plane":
+        plane, offset = get_slice_parts(slicetext)
+        normal = next(normalaxis for normalaxis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
+        position = offset or "0"
+        return f"The layer of cells with {normal}_min ≤ {position} < {normal}_max, as an image in {plane[0]} and {plane[1]}."
+    if mode == "line":
+        conditions = get_slice_conditions(slicetext)
+        lineaxis = get_line_axis(slicetext)
+        bounds = " and ".join(f"{name}_min ≤ {conditions[name]} < {name}_max" for name in sorted(conditions))
+        return f"The row of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
+    if mode == "average":
+        if dimensions == 1:
+            return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
+        if dimensions == 2:
+            return "The cells of the model grid in the cylindrical radius r and z."
+        return (
+            "At each cylindrical radius r = √(x² + y²) and each z, the mean over the azimuth φ. "
+            "The weight of a cell is its volume times the timestep duration."
+        )
+    return ""
 
 
 def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: str) -> "ControlValues":
@@ -1407,16 +1464,17 @@ def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheropt
 
 
 def get_card_key(
-    row: int, subplots: "Sequence[Sequence[str]]", estimatorcolumns: "Sequence[str]"
+    row: int, subplots: "Sequence[Sequence[str]]", estimatorcolumns: "Sequence[str]", *, isimage: bool = False
 ) -> tuple[object, ...]:
     """Return the parts of the plot that the widgets of the card of a subplot show.
 
     A directive, e.g. ymin=, changes only the text of a control of the card, thus the card stays. The focus then stays
     in the control, e.g. in the field of the y maximum after an edit of the y minimum. A chip removes the
-    item at its position, thus the key holds the position of each name.
+    item at its position, thus the key holds the position of each name. A colour image gives the card the controls of
+    a colour scale, thus the key also holds isimage.
     """
     names = tuple((position, item) for position, item in enumerate(subplots[row]) if get_item_directive(item) is None)
-    return (row, row == len(subplots) - 1, names, estimatorcolumns)
+    return (row, row == len(subplots) - 1, names, estimatorcolumns, isimage)
 
 
 class SubplotCard(t.NamedTuple):
@@ -1528,6 +1586,7 @@ def run_viewer(tokens: "Sequence[str]") -> None:
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
     """Open a window of the viewer for the plotestimators arguments in tokens, or return the reason for no window."""
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.collections import QuadMesh
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -1600,7 +1659,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     for mode in get_geometry_choices(viewer.dimensions):
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
-        "The cells that the plot reads. A plane and the average around the z axis give a colour image of a snapshot."
+        "The cells that the plot reads. x, y, and z are the velocity coordinates of the model grid. A layer and the"
+        " mean over the azimuth give a colour image of a snapshot."
     )
     cellslider = make_slider()
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
@@ -1613,7 +1673,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     axisbox = QtWidgets.QComboBox()
     axisbox.addItems(["+x", "-x", "+y", "-y", "+z", "-z"])
     axisbox.setToolTip(helptexts.get("axis", ""))
-    coneanglelabel = QtWidgets.QLabel("Angle")
+    coneanglelabel = QtWidgets.QLabel("Full angle")
     coneanglebox = QtWidgets.QDoubleSpinBox()
     coneanglebox.setRange(1.0, 180.0)
     coneanglebox.setSuffix("°")
@@ -1642,14 +1702,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return row
 
     axisparameters = make_parameter_row([QtWidgets.QLabel("-axis"), axisbox, coneanglelabel, coneanglebox])
-    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, QtWidgets.QLabel("at"), offsetedit])
+    # show_blocked_values names the axis that is normal to the plane, e.g. "at z ="
+    planeatlabel = QtWidgets.QLabel()
+    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, planeatlabel, offsetedit])
     lineparameters = make_parameter_row([QtWidgets.QLabel("Line along"), lineaxisbox])
     add_row(cellgrid, 0, [geometrybox])
     cellgrid.addWidget(cellnamelabel, 1, 0)
     cellgrid.addWidget(cellslider, 1, 1)
     cellgrid.addWidget(celledit, 1, 2)
     cellgrid.addWidget(celllabel, 2, 0, 1, -1)
-    for row, widget in enumerate((axisparameters, planeparameters, lineparameters), start=3):
+    # the set of cells in the terms of the model grid, which show_blocked_values writes
+    geometrydescription = QtWidgets.QLabel()
+    geometrydescription.setWordWrap(True)
+    geometrydescription.setEnabled(False)
+    for row, widget in enumerate((axisparameters, planeparameters, lineparameters, geometrydescription), start=3):
         cellgrid.addWidget(widget, row, 0, 1, -1)
 
     _, xgrid = add_section(panellayout, "Horizontal axis")
@@ -1868,7 +1934,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return {"lin": "linear"}.get(value, value)
 
     def make_subplot_card(
-        row: int, subplot: tuple[str, ...], subplottypes: "Sequence[str]", key: tuple[object, ...]
+        row: int, subplot: tuple[str, ...], subplottypes: "Sequence[str]", key: tuple[object, ...], *, isimage: bool
     ) -> SubplotCard:
         """Return the card of a subplot. The controls of the card follow the type of the subplot.
 
@@ -1974,14 +2040,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 )
             cardlayout.addWidget(suggestionsbox)
 
+        # a colour image shows the values as colours, and its vertical axis is a velocity. Thus the directives of the
+        # y axis set the colour scale
+        quantityname = "value" if isimage else "y"
         yscalebox = make_selector(
             "yscale",
             ("auto", "linear", "log"),
             get_yscale_choice(subplot),
-            "The scale of the y axis (yscale=). Auto takes log for ions and linear for the other series.",
+            "The colour scale of the values (yscale=). Auto takes log for values that cover many decades."
+            if isimage
+            else "The scale of the y axis (yscale=). Auto takes log for ions and linear for the other series.",
             partial(on_directive_selector, row, "yscale", "auto"),
         )
-        selectorwidgets: list[QtWidgets.QWidget] = [QtWidgets.QLabel("y scale"), yscalebox]
+        selectorwidgets: list[QtWidgets.QWidget] = [QtWidgets.QLabel(f"{quantityname} scale"), yscalebox]
         poptypebox = None
         if currenttype == "populations":
             poptypebox = make_selector(
@@ -1994,18 +2065,34 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             selectorwidgets += [QtWidgets.QLabel("Quantity"), poptypebox]
         cardlayout.addLayout(make_row_layout(selectorwidgets))
 
-        # a Shift-drag on the subplot also sets these fields
         yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
         for edit, directive in ((yminedit, "ymin"), (ymaxedit, "ymax")):
             edit.setObjectName(directive)
             edit.setFixedWidth(90)
             edit.setPlaceholderText("auto")
             edit.setText(get_directive_value(subplot, directive) or "")
-            edit.setToolTip(f"The {directive[1:]}imum of the y axis ({directive}=). Shift-drag on the subplot sets it.")
+            extent = f"{directive[1:]}imum"
+            edit.setToolTip(
+                f"The {extent} of the colour scale ({directive}=)."
+                if isimage
+                else f"The {extent} of the y axis ({directive}=). Shift-drag on the subplot sets it."
+            )
             edit.editingFinished.connect(partial(on_yrange, row, yminedit, ymaxedit))
-        cardlayout.addLayout(
-            make_row_layout([QtWidgets.QLabel("y min"), yminedit, QtWidgets.QLabel("y max"), ymaxedit])
-        )
+        yrangewidgets: list[QtWidgets.QWidget] = [
+            QtWidgets.QLabel(f"{quantityname} min"),
+            yminedit,
+            QtWidgets.QLabel(f"{quantityname} max"),
+            ymaxedit,
+        ]
+        if isimage:
+            fixbutton = QtWidgets.QPushButton("Fix max")
+            fixbutton.setToolTip(
+                "Set the value max to the current maximum of the colour scale. The colours then keep their meaning"
+                " at each timestep."
+            )
+            fixbutton.clicked.connect(partial(on_fix_max, row))
+            yrangewidgets.append(fixbutton)
+        cardlayout.addLayout(make_row_layout(yrangewidgets))
         return SubplotCard(
             key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit
         )
@@ -2090,10 +2177,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         nonlocal shownnewkey, pendingfocus
         subplots, columns = viewer.values.subplots, viewer.estimatorcolumns
         subplottypes = get_subplot_types(columns, viewer.nltetypes)
+        isimage = get_geometry_mode(viewer.values) in {"plane", "average"}
         focuswidget = QtWidgets.QApplication.focusWidget()
         focus, pendingfocus = pendingfocus, None
         for row, subplot in enumerate(subplots):
-            key = get_card_key(row, subplots, columns)
+            key = get_card_key(row, subplots, columns, isimage=isimage)
             if row < len(cards) and cards[row].key == key:
                 show_card_directives(cards[row], subplot)
                 continue
@@ -2102,7 +2190,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 if focus is None and focuswidget is not None and oldframe.isAncestorOf(focuswidget):
                     focus = (row, focuswidget.objectName())
                 remove_widget(subplotslayout, oldframe)
-            card = make_subplot_card(row, subplot, subplottypes, key)
+            card = make_subplot_card(row, subplot, subplottypes, key, isimage=isimage)
             subplotslayout.insertWidget(row, card.frame)
             if row < len(cards):
                 cards[row] = card
@@ -2162,6 +2250,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lineparameters.setVisible(geometrymode == "line")
         plane, offset = get_slice_parts(slicetext)
         planebox.setCurrentText(plane)
+        coneangletext = (get_row_values(rows, "-coneangle") or (str(viewer.parser.get_default("coneangle")),))[0]
+        axistext = (get_row_values(rows, "-axis") or (viewer.parser.get_default("axis"),))[0]
+        description = ""
+        with contextlib.suppress(ValueError):
+            description = get_geometry_description(values, viewer.dimensions, axistext, float(coneangletext))
+        geometrydescription.setText(description)
+        geometrydescription.setVisible(bool(description))
+        normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
+        planeatlabel.setText(f"at {normal} =")
         set_edit_text(offsetedit, offset)
         for index, axis in enumerate("xyz"):
             lineaxisbox.setItemText(index, get_line_label(axis, slicetext))
@@ -2619,6 +2716,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         subplots = list(viewer.values.subplots)
         subplots[row] = replace_directives(subplots[row], directives)
         apply(dc.replace(viewer.values, subplots=tuple(subplots)))
+
+    def on_fix_max(row: int) -> None:
+        """Set ymax= of a subplot of a colour image to the maximum of the colour scale on the screen."""
+        label = get_panel_axes_label(row)
+        maxima = [
+            mesh.get_clim()[1]
+            for axis in viewer.fig.axes
+            if axis.get_label() == label
+            for mesh in axis.collections
+            if isinstance(mesh, QuadMesh)
+        ]
+        if not (viewer.isimage and plot_shows_values() and maxima):
+            show_error("The image of this subplot is not on the screen yet. Wait for the plot, then try again")
+            return
+        set_directives(row, {"ymax": format(max(maxima), ".6g")})
 
     def on_select_y(frameindex: int, low: float, high: float) -> None:
         row = get_subplot_row(frameindex)

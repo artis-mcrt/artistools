@@ -1609,6 +1609,13 @@ class ImagePanel(t.NamedTuple):
     colourscale: str | None
     vmin: float | None
     vmax: float | None
+    # the position of the subplot in the plot list, which get_panel_axes_label names
+    subplotindex: int = 0
+
+
+def get_panel_axes_label(subplotindex: int) -> str:
+    """Return the label of the axes of each panel of a subplot in a colour image, e.g. for the controls of a window."""
+    return f"subplot {subplotindex}"
 
 
 # a colour image shows a density or a fraction of it, and the other population types belong to a line
@@ -1655,7 +1662,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
     default plot list holds such series.
     """
     panels: list[ImagePanel] = []
-    for plotitems in plotlist:
+    for subplotindex, plotitems in enumerate(plotlist):
         directives: dict[str, t.Any] = {
             directive: plotitem[1]
             for plotitem in plotitems
@@ -1689,7 +1696,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
         colourscale = "linear" if yscale == "lin" else yscale
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
-        panels += [ImagePanel(colexpr, label, colourscale, vmin, vmax) for colexpr, _, label in columns]
+        panels += [ImagePanel(colexpr, label, colourscale, vmin, vmax, subplotindex) for colexpr, _, label in columns]
 
     if not panels:
         exit_with_error(
@@ -1876,6 +1883,7 @@ def draw_image_figure(
         edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
+        ax.set_label(get_panel_axes_label(panel.subplotindex))
         colourbar = fig.colorbar(image, ax=ax)
         colourbar.set_label(panel.label, fontsize=args.labelfontsize)
         # an empty cell has no value, and black sets it apart from the lowest colour of the scale

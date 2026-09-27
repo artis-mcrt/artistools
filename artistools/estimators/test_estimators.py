@@ -3565,6 +3565,10 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     assert interactive.make_new_subplot("n_e T_e", columns) == ("nne", "Te")
     aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
     assert aliasviewer.values.subplots == (("nne",),)
+    # a colour image gives the card the controls of a colour scale, thus the card of an image is a new card
+    assert interactive.get_card_key(0, (("Te",),), columns, isimage=True) != interactive.get_card_key(
+        0, (("Te",),), columns
+    )
     # a directive changes only a control of the card, thus the card stays with the keyboard focus in it
     assert interactive.get_card_key(0, (("Te", "ymin=1000"),), columns) == interactive.get_card_key(
         0, (("Te",),), columns
@@ -3655,6 +3659,19 @@ def test_interactive_geometry_modes_draw() -> None:
     assert interactive.get_line_label("x", "z=0,y=0") == "x (y=z=0)"
     assert interactive.get_line_label("x", "z=0.1c,y=0") == "x (y=0, z=0.1c)"
     assert interactive.get_line_label("z", "z=0.1c,y=0") == "z (x=y=0)"
+
+    # the text below the controls gives the set of cells in the terms of the model grid
+    def describe(mode: str, dimensions: int = 3) -> str:
+        values = interactive.set_geometry_mode(viewer, viewer.values, mode)
+        return interactive.get_geometry_description(values, dimensions, "-y", 30.0)
+
+    assert describe("alongaxis").startswith("The column of cells along the -y axis: x_min = z_min = e and y_min < 0.")
+    assert "-y ≥ √(x² + z²) / tan 15°" in describe("cone")
+    assert describe("plane").startswith("The layer of cells with z_min ≤ 0 < z_max")
+    assert "y_min ≤ 0 < y_max and z_min ≤ 0 < z_max, against v_x" in describe("line")
+    assert "r = √(x² + y²)" in describe("average")
+    assert "√(r² + z²)" in describe("average", dimensions=1)
+    assert not describe("all")
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
     assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
@@ -3727,6 +3744,29 @@ def test_interactive_level_populations() -> None:
     assert "averageexcitation" not in interactive.get_subplot_types(classicviewer.estimatorcolumns)
     # each series type of plotestimators has a family of columns, or it reads the NLTE populations
     assert set(plotestimators.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
+
+
+def test_interactive_image_panels_name_their_subplot() -> None:
+    """Each panel of a colour image names its subplot, thus Fix max finds the colour scale of each subplot.
+
+    A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
+    """
+    viewer = make_headless_viewer([
+        "Te",
+        str(modelpath_classic_3d),
+        "-t",
+        "5",
+        "-slice",
+        "xy",
+        "-plot",
+        "populations",
+        "Fe II",
+        "Fe III",
+        "--interactive",
+    ])
+    assert viewer.isimage
+    labels = [ax.get_label() for ax in interactive.get_plot_frames(viewer.fig)]
+    assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
 
 
 def test_interactive_initial_abundance_of_an_isotope() -> None:
