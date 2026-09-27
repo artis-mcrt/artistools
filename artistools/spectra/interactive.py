@@ -1414,7 +1414,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
     def change_with_preview(values: ControlValues) -> str | None:
-        return viewer.change(values, preview=True)
+        # each frame of Play is a full plot, because the frame stays in view until the next step
+        return viewer.change(values, preview=not playbutton.isChecked())
 
     def get_drawkind() -> str:
         return "Preview" if viewer.drewpreview else "Plot"

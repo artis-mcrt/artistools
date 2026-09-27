@@ -78,7 +78,7 @@ SLIDER_STEPS: t.Final = 1000
 SIDEBAR_WIDTH: t.Final = 600
 
 # the first frame rate of the Play button, in frames per second
-DEFAULT_PLAY_FPS: t.Final = 5.0
+DEFAULT_PLAY_FPS: t.Final = 2.0
 
 
 def get_command_tokens(
