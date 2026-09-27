@@ -1991,6 +1991,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Type a variable, a type of series and its names, or an ion. Press Return to add the subplot. Part of a name"
         " shows the names that hold it."
     )
+    # the + button of a card opens this field under the card, and Return inserts the new subplot there
+    insertbox = QtWidgets.QWidget()
+    insertlayout = QtWidgets.QHBoxLayout(insertbox)
+    insertlayout.setContentsMargins(0, 0, 0, 0)
+    insertedit = QtWidgets.QLineEdit()
+    insertedit.setPlaceholderText("Insert a subplot, e.g. nne, or populations Fe II")
+    insertedit.setToolTip("Type a variable, a type of series and its names, or an ion. Press Return to insert it.")
+    insertcancel = make_glyph_button("✕", "Close the field (Escape)", "Close")
+    insertlayout.addWidget(insertedit, 1)
+    insertlayout.addWidget(insertcancel)
+    insertbox.hide()
+    # the row of the new subplot, or None while the field is closed
+    insertrow: int | None = None
     addsubplotbutton = QtWidgets.QPushButton("Add Subplot")
     addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
@@ -2182,6 +2195,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         header.addWidget(typebox)
         header.addWidget(quantity, 1)
         for text, tooltip, callback, enabled in (
+            ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1), True),
             ("▲", "Move the subplot up", partial(on_move_subplot, row, -1), row > 0),
             ("▼", "Move the subplot down", partial(on_move_subplot, row, 1), row < len(viewer.values.subplots) - 1),
             ("✕", "Delete the subplot", partial(on_delete_subplot, row), True),
@@ -2368,6 +2382,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             newsubplotedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], newsubplotedit))
             if oldcompleter is not None:
                 oldcompleter.deleteLater()
+            oldcompleter = insertedit.completer()
+            insertedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], insertedit))
+            if oldcompleter is not None:
+                oldcompleter.deleteLater()
         oldbuttons = [
             item.widget()
             for index in range(newsuggestionslayout.count())
@@ -2398,6 +2416,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         isimage = get_geometry_mode(viewer.values) in IMAGE_MODES
         focuswidget = QtWidgets.QApplication.focusWidget()
         focus, pendingfocus = pendingfocus, None
+        # the cards take their places by the row, thus the insert field leaves the layout during the rebuild
+        subplotslayout.removeWidget(insertbox)
         for row, subplot in enumerate(subplots):
             key = get_card_key(row, subplots, columns, isimage=isimage)
             if row < len(cards) and cards[row].key == key:
@@ -2417,6 +2437,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for card in cards[len(subplots) :]:
             remove_widget(subplotslayout, card.frame)
         del cards[len(subplots) :]
+        if insertrow is not None and insertrow <= len(cards):
+            subplotslayout.insertWidget(insertrow, insertbox)
+        else:
+            insertbox.hide()
         newkey = (subplots, viewer.defaultsubplots, columns)
         if newkey != shownnewkey:
             show_new_subplot_suggestions(subplottypes, columnschanged=newkey[2:] != shownnewkey[2:])
@@ -2892,6 +2916,38 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             pendingfocus = (len(viewer.values.subplots), "add")
             apply_subplots([*viewer.values.subplots, subplot])
 
+    def open_insert_field(row: int) -> None:
+        """Show the field of a new subplot under the card above row, and give it the keyboard."""
+        nonlocal insertrow
+        insertrow = row
+        subplotslayout.removeWidget(insertbox)
+        subplotslayout.insertWidget(row, insertbox)
+        insertbox.show()
+        insertedit.clear()
+        insertedit.setFocus()
+
+    def close_insert_field() -> None:
+        nonlocal insertrow
+        insertrow = None
+        insertedit.clear()
+        subplotslayout.removeWidget(insertbox)
+        insertbox.hide()
+
+    def on_insert_subplot() -> None:
+        nonlocal pendingfocus
+        # a name that the user picks in the popup goes into the field, and the next Return inserts the subplot
+        if popup_has_pick(insertedit) or insertrow is None:
+            return
+        row, text = insertrow, insertedit.text()
+        words = text.split()
+        subplot = make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else ""))
+        close_insert_field()
+        if subplot:
+            # the field of the new card takes the focus, thus the user can add more names
+            pendingfocus = (row, "add")
+            subplots = list(viewer.values.subplots)
+            apply_subplots([*subplots[:row], subplot, *subplots[row:]])
+
     def on_new_subplot() -> None:
         # a name that the user picks in the popup goes into the field, and the next Return adds the subplot
         if popup_has_pick(newsubplotedit):
@@ -3188,6 +3244,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
     newsubplotedit.returnPressed.connect(on_new_subplot)
+    insertedit.returnPressed.connect(on_insert_subplot)
+    insertcancel.clicked.connect(close_insert_field)
+    QtGui.QShortcut(
+        QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), insertedit, context=QtCore.Qt.ShortcutContext.WidgetShortcut
+    ).activated.connect(close_insert_field)
     addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
     copybutton.clicked.connect(on_copy)
