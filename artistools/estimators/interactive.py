@@ -74,7 +74,6 @@ from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
-from artistools.viewertools import add_sidebar_search
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_figure
@@ -2060,11 +2059,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *sectionrows)))
 
     tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS
-    optiontable, set_option_rows, add_option = make_option_table(
+    optiontable, set_option_rows = make_option_table(
         window, viewer.parser, tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    add_sidebar_search(sidebar, panellayout, viewer.parser, tablehiddendests, add_option)
     commandtext, copybutton = add_command_section(panellayout)
     pythontext, pythoncopybutton = add_copy_box(
         panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
