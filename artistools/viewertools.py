@@ -789,12 +789,14 @@ EDIT_SECONDS: t.Final = 1.0
 
 def get_edited_field(window: "QtCore.QObject") -> "QtWidgets.QLineEdit | None":
     """Return the text field that the user confirmed just now in the window, or None."""
+    edittime = window.property("lastedittime")
+    # each change of the user calls this function, thus a change with no recent edit returns before the import
+    if not isinstance(edittime, float) or time.monotonic() - edittime >= EDIT_SECONDS:
+        return None
     from PySide6 import QtWidgets
 
-    field, edittime = window.property("lasteditedfield"), window.property("lastedittime")
-    if isinstance(field, QtWidgets.QLineEdit) and isinstance(edittime, float):
-        return field if time.monotonic() - edittime < EDIT_SECONDS else None
-    return None
+    field = window.property("lasteditedfield")
+    return field if isinstance(field, QtWidgets.QLineEdit) else None
 
 
 def mark_field_error(window: "QtCore.QObject", field: "QtWidgets.QLineEdit", message: str) -> None:
@@ -810,10 +812,13 @@ def mark_field_error(window: "QtCore.QObject", field: "QtWidgets.QLineEdit", mes
 
 def clear_field_error(window: "QtCore.QObject") -> None:
     """Remove the mark of mark_field_error, e.g. after a plot that the command accepts."""
+    field = window.property("errorfield")
+    # each plot calls this function, thus a window with no mark returns before the imports
+    if field is None:
+        return
     import shiboken6
     from PySide6 import QtWidgets
 
-    field = window.property("errorfield")
     # a new card of a subplot replaces its fields, and Qt then deletes the old field
     if isinstance(field, QtWidgets.QLineEdit) and shiboken6.isValid(field):
         field.setStyleSheet("")
