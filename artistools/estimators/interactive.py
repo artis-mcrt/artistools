@@ -1819,7 +1819,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit.setFixedWidth(110)
     timeedit.setToolTip("A time in days. The time range moves to the timestep that holds it.")
     # the width row has the same label and field as the width row of the spectrum viewer
-    widthlabel = QtWidgets.QLabel("Timesteps")
+    widthlabel = QtWidgets.QLabel("Δ timesteps")
     widthedit = QtWidgets.QLineEdit()
     widthedit.setFixedWidth(110)
     widthedit.setToolTip("The number of timesteps of the time range. The Up key and the Down key change it.")

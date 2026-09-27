@@ -1322,7 +1322,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             widthslider.setRange(0, SLIDER_STEPS)
         else:
             widthslider.setRange(1, nvalid)
-        widthlabel.setText("Δt [d]" if continuous else "Timesteps")
+        widthlabel.setText("Δt [d]" if continuous else "Δ timesteps")
         slidermode = continuous
 
     # the test of each choice parses the arguments again, thus the code keeps one result for each set of options
