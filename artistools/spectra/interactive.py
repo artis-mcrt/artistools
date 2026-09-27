@@ -74,8 +74,11 @@ from artistools.viewertools import get_short_number
 from artistools.viewertools import handle_file_open_events
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
+from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
+from artistools.viewertools import make_play_button
+from artistools.viewertools import make_play_row
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_row_layout
@@ -83,8 +86,8 @@ from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
+from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
-from artistools.viewertools import make_toolbar
 from artistools.viewertools import make_window
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
@@ -995,10 +998,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit, widthedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     widthlabel = QtWidgets.QLabel()
     timestepslabel = QtWidgets.QLabel()
-    toolbar = make_toolbar(
-        window, "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
+    playbutton = make_play_button(
+        "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
     )
-    playbutton, fpsbox = toolbar.play, toolbar.fpsbox
+    fpsbox = make_fps_box()
+    previousbutton, nextbutton = make_step_button(forward=False), make_step_button(forward=True)
     timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
     widthtip = (
         'The width of the time range. The Up key and the Down key change the width by one timestep. With "Snap to'
@@ -1014,7 +1018,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(label, row, 0)
         timegrid.addWidget(slider, row, 1)
         timegrid.addWidget(edit, row, 2)
-    timegrid.addWidget(timestepslabel, 3, 0, 1, -1)
+    timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 3, 0, 1, -1)
 
     xheader, xgrid = add_section(panellayout, "", key="x axis")
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
@@ -1187,9 +1191,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    add_sidebar_search(
-        toolbar.search, sidebar, panellayout, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, add_option
-    )
+    add_sidebar_search(sidebar, panellayout, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, add_option)
     commandtext, copybutton = add_command_section(panellayout)
     pythontext, pythoncopybutton = add_copy_box(
         panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
@@ -1350,8 +1352,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values.notimeclamp != slidermode:
             set_time_mode()
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
-        toolbar.previous.setEnabled(viewer.step_time(-1) is not None)
-        toolbar.next.setEnabled(viewer.step_time(1) is not None)
+        previousbutton.setEnabled(viewer.step_time(-1) is not None)
+        nextbutton.setEnabled(viewer.step_time(1) is not None)
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthslider.setValue(to_position(values.width, 0.0, widthmax))
@@ -1874,17 +1876,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     set_drop_handler(window, on_drop)
     window.setProperty("settingshandler", on_colour_scheme)
+
     # the window keeps its command at a quit, and the next start opens the window again
-    window.setProperty("sessiontokens", viewer.get_plot_tokens)
+    def get_session_tokens() -> list[str]:
+        # a command with no path reads the working folder, and the next start can be in a different folder
+        tokens = viewer.get_plot_tokens()
+        return [str(Path.cwd()), *tokens] if viewer.values.spectra == DEFAULT_SPECTRA else tokens
+
+    window.setProperty("sessiontokens", get_session_tokens)
     QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     modesegments.currentChanged.connect(on_time_mode)
-    toolbar.previous.triggered.connect(lambda: on_arrow(-1))
-    toolbar.next.triggered.connect(lambda: on_arrow(1))
-    toolbar.save.triggered.connect(on_save)
-    toolbar.copyfigure.triggered.connect(on_copy_figure)
-    toolbar.copycommand.triggered.connect(on_copy)
-    toolbar.exportanimation.triggered.connect(on_export_animation)
+    previousbutton.clicked.connect(lambda: on_arrow(-1))
+    nextbutton.clicked.connect(lambda: on_arrow(1))
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
     timeedit.editingFinished.connect(on_timeedit)

@@ -744,25 +744,6 @@ def start_application(
     app.installEventFilter(keyownerfilter)
     apply_appearance()
 
-    class InspectorSizer(QtCore.QObject):
-        """Give each control of the sidebar the small size of macOS, as the inspector of Keynote has.
-
-        The cards of the subplots come and go, thus the filter gives the size to each widget when Qt polishes it.
-        """
-
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if event.type() == QtCore.QEvent.Type.Polish and isinstance(watched, QtWidgets.QWidget):
-                parent = watched.parentWidget()
-                while parent is not None and parent.objectName() != "inspector":
-                    parent = parent.parentWidget()
-                if parent is not None:
-                    watched.setAttribute(QtCore.Qt.WidgetAttribute.WA_MacSmallSize)
-            return super().eventFilter(watched, event)
-
-    if sys.platform == "darwin":
-        app.installEventFilter(InspectorSizer(app))
-
     class EditTracker(QtCore.QObject):
         """Keep the text field that the user confirmed last, and the time, in two properties of its window.
 
@@ -919,8 +900,6 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
             geometrykey, splitterkey = get_window_setting_keys(self)
             settings = get_settings()
             settings.setValue(geometrykey, self.saveGeometry())
-            # the state of the window holds whether the toolbar shows
-            settings.setValue(f"{self.objectName()}/state", self.saveState())
             app = QtWidgets.QApplication.instance()
             isquitting = app is not None and app.property("quittime") is not None
             if isquitting and callable(get_tokens := self.property("sessiontokens")):
@@ -1416,8 +1395,6 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     from PySide6 import QtWidgets
 
     sidebar = QtWidgets.QWidget()
-    # the controls in the sidebar take the small size of macOS, which start_application gives by this name
-    sidebar.setObjectName("inspector")
     # the handle of the splitter sets the width, and a narrower sidebar cuts the controls
     sidebar.setMinimumWidth(360)
     sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
@@ -1875,105 +1852,72 @@ def make_segmented_control(labels: "Sequence[str]", tooltips: "Sequence[str]") -
     return segments
 
 
-class ViewerToolbar(t.NamedTuple):
-    """The toolbar of a window: the steps of the time, Play, the frame rate, the export actions, and the search."""
+def make_step_button(*, forward: bool) -> "QtWidgets.QToolButton":
+    """Return a button that moves the time to the next or the previous timestep, with the icon of the platform."""
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
 
-    previous: "QtGui.QAction"
-    play: "QtGui.QAction"
-    next: "QtGui.QAction"
-    fpsbox: "QtWidgets.QDoubleSpinBox"
-    save: "QtGui.QAction"
-    exportanimation: "QtGui.QAction"
-    copyfigure: "QtGui.QAction"
-    copycommand: "QtGui.QAction"
-    search: "QtWidgets.QLineEdit"
+    button = QtWidgets.QToolButton()
+    if forward:
+        icon = get_icon("forward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipForward, None)
+        button.setToolTip("Move the time to the next timestep (Right key)")
+        button.setAccessibleName("Next Timestep")
+    else:
+        icon = get_icon("backward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipBackward, None)
+        button.setToolTip("Move the time to the previous timestep (Left key)")
+        button.setAccessibleName("Previous Timestep")
+    button.setIcon(icon)
+    # a platform with no icon shows the arrow as text
+    if icon.isNull():
+        button.setText("▶" if forward else "◀")
+    return button
 
 
-def make_toolbar(window: "QtWidgets.QMainWindow", playtooltip: str) -> ViewerToolbar:
-    """Add the toolbar at the top of the window, as the apps of macOS have, and return its actions.
-
-    The toolbar holds the actions that a user takes often, thus they stay in view while the sidebar scrolls. The
-    Play action is checkable, and its icon shows Pause while Play runs. The search field and the button of the
-    sidebar are at the trailing edge, as in Finder and Mail.
-    """
+def make_play_button(tooltip: str) -> "QtWidgets.QToolButton":
+    """Return the checkable Play button, which shows Pause and its icon while Play runs."""
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    themeicon, pixmap = QtGui.QIcon.ThemeIcon, QtWidgets.QStyle.StandardPixmap
-    toolbar = window.addToolBar("Toolbar")
-    # the state of the window names the toolbar, thus the next window keeps the choice of Hide Toolbar
-    toolbar.setObjectName("toolbar")
-    toolbar.setMovable(False)
-    toolbar.setFloatable(False)
-    toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
-    window.setUnifiedTitleAndToolBarOnMac(True)
-
-    def add_action(text: str, icon: "QtGui.QIcon", tooltip: str) -> "QtGui.QAction":
-        action = toolbar.addAction(icon, text)
-        action.setToolTip(tooltip)
-        return action
-
-    previous = add_action(
-        "Previous",
-        get_icon("backward.end.fill", themeicon.MediaSkipBackward, pixmap.SP_MediaSkipBackward),
-        "Move the time to the previous timestep (Left key)",
-    )
-    playicon = get_icon("play.fill", themeicon.MediaPlaybackStart, pixmap.SP_MediaPlay)
-    pauseicon = get_icon("pause.fill", themeicon.MediaPlaybackPause, pixmap.SP_MediaPause)
-    play = add_action("Play", playicon, playtooltip)
+    playicon = get_icon("play.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackStart, None)
+    pauseicon = get_icon("pause.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackPause, None)
+    play = QtWidgets.QToolButton()
     play.setCheckable(True)
+    play.setText("Play")
+    play.setIcon(playicon)
+    play.setToolTip(tooltip)
+    play.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
     def show_play_state(checked: bool) -> None:
         play.setIcon(pauseicon if checked else playicon)
 
     play.toggled.connect(show_play_state)
-    nextaction = add_action(
-        "Next",
-        get_icon("forward.end.fill", themeicon.MediaSkipForward, pixmap.SP_MediaSkipForward),
-        "Move the time to the next timestep (Right key)",
-    )
-    fpsbox = make_fps_box()
-    toolbar.addWidget(QtWidgets.QLabel(" FPS: "))
-    toolbar.addWidget(fpsbox)
-    toolbar.addSeparator()
-    save = add_action(
-        "Save Figure…",
-        get_icon("square.and.arrow.down", themeicon.DocumentSave, pixmap.SP_DialogSaveButton),
-        "Save the figure of the command in a file",
-    )
-    exportanimation = add_action(
-        "Export Animation…", get_icon("film", None, None), "Save a GIF file of the steps of Play"
-    )
-    copyfigure = add_action("Copy Figure", get_icon("doc.on.doc", themeicon.EditCopy, None), "Copy the figure")
-    copycommand = add_action("Copy Command", get_icon("terminal", None, None), "Copy the command of the plot")
+    return play
 
-    spacer = QtWidgets.QWidget()
-    spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
-    toolbar.addWidget(spacer)
-    search = QtWidgets.QLineEdit()
-    search.setObjectName("sidebarsearch")
-    search.setPlaceholderText("Search")
-    search.setClearButtonEnabled(True)
-    search.setFixedWidth(220)
-    search.addAction(
-        get_icon("magnifyingglass", themeicon.SystemSearch, None), QtWidgets.QLineEdit.ActionPosition.LeadingPosition
-    )
-    toolbar.addWidget(search)
-    add_action(
-        "Hide Sidebar", get_icon("sidebar.right", None, None), "Hide or show the sidebar of the controls"
-    ).triggered.connect(lambda: toggle_sidebar(window))
-    return ViewerToolbar(
-        previous=previous,
-        play=play,
-        next=nextaction,
-        fpsbox=fpsbox,
-        save=save,
-        exportanimation=exportanimation,
-        copyfigure=copyfigure,
-        copycommand=copycommand,
-        search=search,
-    )
+
+def make_play_row(
+    stepbuttons: "Sequence[QtWidgets.QWidget]",
+    label: "QtWidgets.QLabel",
+    fpsbox: "QtWidgets.QDoubleSpinBox",
+    playbutton: "QtWidgets.QWidget",
+) -> "QtWidgets.QHBoxLayout":
+    """Return one row of the Time section: the step buttons, the label of the timesteps, the frame rate, and Play.
+
+    One row for these items keeps more of the other controls in view. The step buttons touch, as a pair of arrows.
+    """
+    from PySide6 import QtWidgets
+
+    steps = QtWidgets.QHBoxLayout()
+    steps.setSpacing(0)
+    for button in stepbuttons:
+        steps.addWidget(button)
+    row = QtWidgets.QHBoxLayout()
+    row.addLayout(steps)
+    row.addWidget(label, 1)
+    row.addWidget(QtWidgets.QLabel("FPS:"))
+    row.addWidget(fpsbox)
+    row.addWidget(playbutton)
+    return row
 
 
 def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
@@ -2065,7 +2009,6 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),
         ("View", "Hide Sidebar", QtGui.QKeySequence("Ctrl+Meta+S")),
-        ("View", "Hide Toolbar", QtGui.QKeySequence("Ctrl+Alt+T")),
         ("View", "Enter Full Screen", QtGui.QKeySequence(standardkey.FullScreen)),
         ("Window", "Minimize", QtGui.QKeySequence("Ctrl+M")),
         ("Window", "Zoom", QtGui.QKeySequence()),
@@ -2137,7 +2080,7 @@ def add_menus(
     """Add the menus File, Edit, View, Window, and Help.
 
     callbacks gives the function of each item by the text of get_menu_items. A viewer omits an item that it does not
-    support, e.g. Reload Data. This function gives the items of the sidebar, the toolbar, the full screen, and the
+    support, e.g. Reload Data. This function gives the items of the sidebar, the full screen, and the
     window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
     Pause for Play. File > Open Recent gives a recent model to open_folder.
     """
@@ -2147,7 +2090,6 @@ def add_menus(
 
     windowcallbacks: dict[str, Callable[[], object]] = {
         "Hide Sidebar": lambda: toggle_sidebar(window),
-        "Hide Toolbar": lambda: toggle_toolbar(window),
         "Enter Full Screen": lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen(),
         "Minimize": window.showMinimized,
         "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
@@ -2158,9 +2100,6 @@ def add_menus(
     }
     windowtitles: dict[str, Callable[[], str]] = {
         "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
-        "Hide Toolbar": lambda: (
-            "Hide Toolbar" if any(bar.isVisible() for bar in get_toolbars(window)) else "Show Toolbar"
-        ),
         "Enter Full Screen": lambda: "Exit Full Screen" if window.isFullScreen() else "Enter Full Screen",
     }
     allcallbacks = {**windowcallbacks, **callbacks}
@@ -2402,14 +2341,13 @@ MAX_SEARCH_OPTIONS: t.Final = 8
 
 
 def add_sidebar_search(
-    searchedit: "QtWidgets.QLineEdit",
     sidebar: "QtWidgets.QWidget",
     panellayout: "QtWidgets.QVBoxLayout",
     parser: argparse.ArgumentParser,
     hiddendests: "Collection[str]",
     add_option: "Callable[[str], None]",
 ) -> None:
-    """Let the search field of the toolbar filter the sections of the sidebar, as the Settings app of macOS does.
+    """Add a search field above the sections of the sidebar, as the Settings app of macOS has.
 
     The text shows only the sections with a control that holds it, e.g. in a label or a tooltip, and opens them. Each
     option of the command that holds the text shows as a button below the field. A click on the button adds the
@@ -2419,17 +2357,29 @@ def add_sidebar_search(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
+    searchedit = QtWidgets.QLineEdit()
+    searchedit.setObjectName("sidebarsearch")
+    searchedit.setPlaceholderText("Search")
+    searchedit.setClearButtonEnabled(True)
+    searchedit.addAction(
+        get_icon("magnifyingglass", QtGui.QIcon.ThemeIcon.SystemSearch, None),
+        QtWidgets.QLineEdit.ActionPosition.LeadingPosition,
+    )
     searchedit.setToolTip(
         f"Show the controls and the options of the command that hold the text ({get_menu_shortcut_texts()['Find']})"
     )
-    # the options of the command that match the text show above the sections
+    # the options of the command that match the text show below the field
     resultsbox = QtWidgets.QWidget()
     resultslayout = make_flow_layout()
     resultsbox.setLayout(resultslayout)
-    resultsbox.setContentsMargins(8, 6, 8, 2)
     resultsbox.hide()
+    searchbox = QtWidgets.QWidget()
+    searchlayout = QtWidgets.QVBoxLayout(searchbox)
+    searchlayout.setContentsMargins(8, 6, 8, 2)
+    searchlayout.addWidget(searchedit)
+    searchlayout.addWidget(resultsbox)
     if (sidebarlayout := sidebar.layout()) is not None and isinstance(sidebarlayout, QtWidgets.QVBoxLayout):
-        sidebarlayout.insertWidget(0, resultsbox)
+        sidebarlayout.insertWidget(0, searchbox)
     tableactions = get_table_actions(parser, hiddendests)
     helptexts = get_helptexts(parser)
 
@@ -2465,10 +2415,6 @@ def add_sidebar_search(
 
     def on_search(text: str) -> None:
         query = text.strip().lower()
-        # the results show in the sidebar, thus a search shows a hidden sidebar
-        window = sidebar.window()
-        if query and isinstance(window, QtWidgets.QMainWindow) and is_sidebar_hidden(window):
-            toggle_sidebar(window)
         for header, content in get_sections():
             shown = header.property("sectionshown") is not False
             if not query:
@@ -2547,21 +2493,6 @@ def toggle_sidebar(window: "QtWidgets.QMainWindow") -> None:
     if sidebar.width() == 0:
         total = sum(splitter.sizes())
         splitter.setSizes([max(total - SIDEBAR_WIDTH, 0), SIDEBAR_WIDTH])
-
-
-def get_toolbars(window: "QtWidgets.QMainWindow") -> "list[QtWidgets.QToolBar]":
-    """Return the toolbars of the window."""
-    from PySide6 import QtWidgets
-
-    return window.findChildren(QtWidgets.QToolBar)
-
-
-def toggle_toolbar(window: "QtWidgets.QMainWindow") -> None:
-    """Hide the toolbars of the window, or show them."""
-    toolbars = get_toolbars(window)
-    shown = any(toolbar.isVisible() for toolbar in toolbars)
-    for toolbar in toolbars:
-        toolbar.setVisible(not shown)
 
 
 # the background and the text colour of a dark plot while the palette of the window is still light
@@ -3321,8 +3252,6 @@ def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], o
     settings = get_settings()
     geometry = settings.value(geometrykey)
     splitterstate = settings.value(splitterkey)
-    if isinstance(windowstate := settings.value(f"{window.objectName()}/state"), QtCore.QByteArray):
-        window.restoreState(windowstate)
     if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
         if isinstance(splitterstate, QtCore.QByteArray):
             splitter.restoreState(splitterstate)
