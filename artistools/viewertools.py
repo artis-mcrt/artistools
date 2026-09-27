@@ -2729,17 +2729,99 @@ EXPORT_FORMATS: t.Final = (
 )
 
 
-def ask_export_options(window: "QtWidgets.QWidget", dpi: int) -> tuple[str, int] | None:
-    """Ask for the file type and the resolution before the save panel, as the Export dialog of Keynote does.
+class FigureSizeModel(t.NamedTuple):
+    """The size of a figure in inches for its -figscale and -figwidthscale.
 
-    Return the suffix of the type and the resolution in dots per inch, or None if the user cancels. The settings keep
-    the type for the next export.
+    The frames grow with the scales, and the margins of the labels keep their size. The width of a frame follows the
+    product of the two scales, and the height of a frame follows -figscale.
+    """
+
+    figsize: tuple[float, float]
+    """The width and the height of the figure on the screen."""
+
+    framesize: tuple[float, float]
+    """The part of the width and of the height of the figure that the frames take."""
+
+    scales: tuple[float, float]
+    """The -figscale and the -figwidthscale of the figure on the screen."""
+
+    def get_size(self, figscale: float, figwidthscale: float) -> tuple[float, float]:
+        """Return the width and the height of the figure for the two scales."""
+        (width, height), (framewidth, frameheight), (oldfigscale, oldfigwidthscale) = self
+        widthfactor = figscale * figwidthscale / (oldfigscale * oldfigwidthscale)
+        return (width + framewidth * (widthfactor - 1.0), height + frameheight * (figscale / oldfigscale - 1.0))
+
+    def get_scales(self, width: float, height: float) -> tuple[float, float]:
+        """Return the -figscale and the -figwidthscale that give the figure this width and height."""
+        (oldwidth, oldheight), (framewidth, frameheight), (oldfigscale, oldfigwidthscale) = self
+        figscale = max(oldfigscale * (1.0 + (height - oldheight) / frameheight), 0.1)
+        widthfactor = 1.0 + (width - oldwidth) / framewidth
+        figwidthscale = max(oldfigwidthscale * widthfactor * oldfigscale / figscale, 0.1)
+        return figscale, figwidthscale
+
+
+def get_figure_size_model(fig: "mplfig.Figure", tokens: "Sequence[str]", defaultfigscale: float) -> FigureSizeModel:
+    """Return the size model of the figure on the screen, which the command of tokens draws.
+
+    Each column of frames adds its width once, and each row adds its height once. A figure with no frame scales as a
+    whole.
+    """
+    width, height = (float(value) for value in fig.get_size_inches())
+    positions = [axis.get_position() for axis in fig.axes if axis.get_visible()]
+    columns = {round(position.x0, 4): position.width for position in positions if position.width > 0.0}
+    rows = {round(position.y0, 4): position.height for position in positions if position.height > 0.0}
+    framewidth = min(sum(columns.values()), 1.0) * width or width
+    frameheight = min(sum(rows.values()), 1.0) * height or height
+    scales = (get_token_float(tokens, "-figscale", defaultfigscale), get_token_float(tokens, "-figwidthscale", 1.0))
+    return FigureSizeModel(figsize=(width, height), framesize=(framewidth, frameheight), scales=scales)
+
+
+def get_token_float(tokens: "Sequence[str]", flag: str, default: float) -> float:
+    """Return the number after the last occurrence of flag in the tokens, or default if the tokens do not give it."""
+    positions = [index for index, word in enumerate(tokens[:-1]) if word == flag]
+    try:
+        return float(tokens[positions[-1] + 1]) if positions else default
+    except ValueError:
+        return default
+
+
+def set_figure_scales(
+    parser: "SuggestingArgumentParser", tokens: "Sequence[str]", scales: tuple[float, float] | None
+) -> list[str]:
+    """Return the tokens with the -figscale and the -figwidthscale of scales, or the tokens unchanged for None."""
+    if scales is None:
+        return list(tokens)
+    figscale, figwidthscale = scales
+    newtokens = remove_options(parser, tokens, {"figscale", "figwidthscale"})
+    if not math.isclose(figscale, parser.get_default("figscale")):
+        newtokens += ["-figscale", get_short_number(figscale)]
+    if not math.isclose(figwidthscale, 1.0):
+        newtokens += ["-figwidthscale", get_short_number(figwidthscale)]
+    return newtokens
+
+
+class ExportOptions(t.NamedTuple):
+    """The choices of the export dialog."""
+
+    suffix: str
+    dpi: int
+    scales: tuple[float, float] | None
+    """The -figscale and the -figwidthscale of the size that the user gave, or None for the size of the screen."""
+
+
+def ask_export_options(
+    window: "QtWidgets.QWidget", dpi: int | None, sizemodel: FigureSizeModel, title: str = "Save Figure"
+) -> ExportOptions | None:
+    """Ask for the file type, the resolution, and the size before the save panel, as the Export dialog of Keynote does.
+
+    Return the choices, or None if the user cancels. The settings keep the type for the next export. With no dpi, the
+    dialog asks only for the size, e.g. for an animation.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
     dialog = QtWidgets.QDialog(window)
-    dialog.setWindowTitle("Save Figure")
+    dialog.setWindowTitle(title)
     form = QtWidgets.QFormLayout(dialog)
     segments = make_segmented_control(
         [suffix.upper() for suffix, _ in EXPORT_FORMATS], [tooltip for _, tooltip in EXPORT_FORMATS]
@@ -2747,14 +2829,33 @@ def ask_export_options(window: "QtWidgets.QWidget", dpi: int) -> tuple[str, int]
     suffixes = [suffix for suffix, _ in EXPORT_FORMATS]
     lastsuffix = str(get_settings().value("exportformat", "pdf"))
     segments.setCurrentIndex(suffixes.index(lastsuffix) if lastsuffix in suffixes else 0)
-    form.addRow("Format:", segments)
     dpibox = QtWidgets.QSpinBox()
     dpibox.setRange(10, 2400)
     dpibox.setSingleStep(50)
-    dpibox.setValue(dpi)
+    dpibox.setValue(dpi or 0)
     dpibox.setSuffix(" dpi")
     dpibox.setToolTip("The resolution of a PNG file, and of a colour image in a PDF or an SVG file (-dpi)")
-    form.addRow("Resolution:", dpibox)
+    if dpi is not None:
+        form.addRow("Format:", segments)
+        form.addRow("Resolution:", dpibox)
+    sizeboxes: list[QtWidgets.QDoubleSpinBox] = []
+    for value, flag in zip(sizemodel.figsize, ("-figscale and -figwidthscale", "-figscale"), strict=True):
+        box = QtWidgets.QDoubleSpinBox()
+        box.setRange(0.5, 100.0)
+        box.setDecimals(2)
+        box.setSingleStep(0.5)
+        box.setSuffix(" in")
+        box.setValue(value)
+        box.setToolTip(
+            f"The command sets {flag} for this size. The margins of the labels keep their size, and a saved file"
+            " crops the empty part of a margin."
+        )
+        sizeboxes.append(box)
+    sizerow = QtWidgets.QHBoxLayout()
+    sizerow.addWidget(sizeboxes[0])
+    sizerow.addWidget(QtWidgets.QLabel("\N{MULTIPLICATION SIGN}"))
+    sizerow.addWidget(sizeboxes[1])
+    form.addRow("Size:", sizerow)
     buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
     nextbutton = buttons.addButton("Next…", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
     nextbutton.setDefault(True)
@@ -2765,8 +2866,12 @@ def ask_export_options(window: "QtWidgets.QWidget", dpi: int) -> tuple[str, int]
     if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
         return None
     suffix = suffixes[segments.currentIndex()]
-    get_settings().setValue("exportformat", suffix)
-    return suffix, dpibox.value()
+    if dpi is not None:
+        get_settings().setValue("exportformat", suffix)
+    size = (sizeboxes[0].value(), sizeboxes[1].value())
+    # the boxes round the size of the screen, thus an unchanged box keeps the scales of the command
+    unchanged = all(abs(new - old) < 0.006 for new, old in zip(size, sizemodel.figsize, strict=True))
+    return ExportOptions(suffix=suffix, dpi=dpibox.value(), scales=None if unchanged else sizemodel.get_scales(*size))
 
 
 def export_animation(
@@ -2777,15 +2882,26 @@ def export_animation(
     commandname: str,
     frametokens: "Sequence[Sequence[str]]",
     fps: float,
+    parser: "SuggestingArgumentParser",
+    fig: "mplfig.Figure",
 ) -> None:
     """Save a GIF file of the steps of Play, with one run of the command for each frame.
 
     Each frame comes from the command, as for Save Figure. The worker thread runs the command for each frame and
-    joins the frames, thus the window stays responsive. The GIF shows each frame for 1/fps seconds.
+    joins the frames, thus the window stays responsive. The GIF shows each frame for 1/fps seconds. A dialog first
+    asks for the size of the frames, and fig gives the size on the screen.
     """
     import tempfile
 
     from PySide6 import QtWidgets
+
+    if not frametokens:
+        return
+    sizemodel = get_figure_size_model(fig, frametokens[0], parser.get_default("figscale"))
+    options = ask_export_options(window, None, sizemodel, "Export Animation")
+    if options is None:
+        return
+    frametokens = [set_figure_scales(parser, tokens, options.scales) for tokens in frametokens]
 
     if len(frametokens) > MAX_ANIMATION_FRAMES:
         answer = QtWidgets.QMessageBox.question(
@@ -2834,7 +2950,8 @@ def save_figure_of_command(
     commandname: str,
     plottokens: "Sequence[str]",
     dpi: int,
-    defaultdpi: int,
+    parser: "SuggestingArgumentParser",
+    fig: "mplfig.Figure",
 ) -> None:
     """Save the figure of the command in a file that the user selects.
 
@@ -2843,14 +2960,18 @@ def save_figure_of_command(
     result.
 
     plottokens holds no -dpi. dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or
-    an SVG file takes dpi for its raster parts, e.g. a colour image. defaultdpi is the default of the command.
+    an SVG file takes dpi for its raster parts, e.g. a colour image. The dialog also proposes the size of fig, which is
+    the figure on the screen.
     """
     from PySide6 import QtWidgets
 
-    options = ask_export_options(window, dpi)
+    sizemodel = get_figure_size_model(fig, plottokens, parser.get_default("figscale"))
+    options = ask_export_options(window, dpi, sizemodel)
     if options is None:
         return
-    suffix, dpi = options
+    suffix, dpi = options.suffix, options.dpi
+    defaultdpi = parser.get_default("dpi")
+    plottokens = set_figure_scales(parser, plottokens, options.scales)
     filename, _ = QtWidgets.QFileDialog.getSaveFileName(
         window, "Save the figure", str(Path.cwd() / f"{commandname}.{suffix}"), f"{suffix.upper()} (*.{suffix})"
     )

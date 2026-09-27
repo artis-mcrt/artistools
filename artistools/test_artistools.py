@@ -3839,12 +3839,19 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         savedtokens.append(list(argsraw))
         Path(argsraw[-1]).write_text("figure", encoding="utf-8")
 
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
+    parser.add_argument("-dpi", type=int, default=250)
+    parser.add_argument("-figscale", type=float, default=1.0)
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
 
-        def accept_proposal(_window: object, proposeddpi: int, suffix: str = suffix) -> tuple[str, int]:
-            return suffix, proposeddpi
+        def accept_proposal(
+            _window: object, proposeddpi: int, _sizemodel: object, suffix: str = suffix
+        ) -> viewertools.ExportOptions:
+            return viewertools.ExportOptions(suffix=suffix, dpi=proposeddpi, scales=None)
 
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
@@ -3852,11 +3859,35 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewertools.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, 250
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, parser, mplfig.Figure()
             )
         # a name with no suffix takes the suffix of the type that the dialog selected
         assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
+
+
+def test_viewer_size_model_gives_the_scales_of_a_size() -> None:
+    """The export dialog finds the -figscale and the -figwidthscale that give a figure a new size.
+
+    The frames grow with the scales, and the margins of the labels keep their size. Thus a figure is not in proportion
+    to -figscale, and a proportional model gave a wrong size.
+    """
+    from artistools.plottools import make_frame_figure
+
+    def make_figure(figscale: float, figwidthscale: float) -> mplfig.Figure:
+        args = argparse.Namespace(figscale=figscale, figwidthscale=figwidthscale)
+        fig, _ = make_frame_figure(args, rows=2, cols=2, sharey=True)
+        FigureCanvasAgg(fig).draw()
+        return fig
+
+    tokens = ["-figscale", "1.5", "-figwidthscale", "0.8"]
+    model = viewertools.get_figure_size_model(make_figure(1.5, 0.8), tokens, 1.0)
+    assert model.scales == (1.5, 0.8)
+    newfig = make_figure(0.9, 1.7)
+    newsize = tuple(float(value) for value in newfig.get_size_inches())
+    # make_frame_figure rounds the size of the figure to 0.01 inches
+    assert np.allclose(model.get_size(0.9, 1.7), newsize, rtol=1e-3, atol=0.0)
+    assert np.allclose(model.get_scales(*newsize), (0.9, 1.7), rtol=1e-3, atol=0.0)
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:

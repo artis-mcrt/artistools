@@ -3129,7 +3129,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         defaultdpi = viewer.parser.get_default("dpi")
         rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
         plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        save_figure_of_command(window, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, defaultdpi)
+        save_figure_of_command(
+            window, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, viewer.parser, viewer.fig
+        )
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -3302,7 +3304,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         from artistools.estimators.plotestimators import main as plotestimators_main
 
         frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
-        export_animation(window, queue, statusbar, plotestimators_main, "plotestimators", frametokens, fpsbox.value())
+        export_animation(
+            window,
+            queue,
+            statusbar,
+            plotestimators_main,
+            "plotestimators",
+            frametokens,
+            fpsbox.value(),
+            viewer.parser,
+            viewer.fig,
+        )
 
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
