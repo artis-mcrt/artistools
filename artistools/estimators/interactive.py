@@ -933,8 +933,10 @@ class EstimatorViewer:
         """
         if values is None:
             values = self.values
-        subplots = values.subplots
-        tokens = [*(subplots[0] if subplots else ()), *([self.modeltoken] if self.modeltoken else [])]
+        subplots = [get_command_items(subplot, self.estimatorcolumns) for subplot in values.subplots]
+        # a first subplot with no item cannot go before the folder, thus it follows -plot as the others do
+        firstpositional = bool(subplots and subplots[0])
+        tokens = [*(subplots[0] if firstpositional else ()), *([self.modeltoken] if self.modeltoken else [])]
         timetokens = self.get_time_tokens(values)
         tokens += timetokens
         if values.x != self.get_default_xvariable(values.otheroptions, timegiven=bool(timetokens)):
@@ -954,7 +956,7 @@ class EstimatorViewer:
         if values.figwidthscale != 1.0:
             tokens += ["-figwidthscale", format(values.figwidthscale, "g")]
         tokens += get_option_row_tokens(values.otheroptions)
-        for subplot in subplots[1:]:
+        for subplot in subplots[1:] if firstpositional else subplots:
             tokens += ["-plot", *subplot]
         return tokens
 
@@ -1562,27 +1564,29 @@ def move_poptype_to_subplots(
     ), rows
 
 
-def remove_subplot_item(
-    subplots: "Sequence[tuple[str, ...]]", row: int, index: int, estimatorcolumns: "Collection[str]"
-) -> tuple[tuple[str, ...], ...]:
+def remove_subplot_item(subplots: "Sequence[tuple[str, ...]]", row: int, index: int) -> tuple[tuple[str, ...], ...]:
     """Return the subplots without one item of a subplot.
 
-    A subplot with no name left, or with its series type alone, has nothing to plot, thus it goes with its
-    directives.
+    A subplot with no series left stays, and it draws an empty frame until the user adds a series. Only the ✕ of
+    the card deletes a subplot.
     """
     subplot = subplots[row][:index] + subplots[row][index + 1 :]
+    return (*subplots[:row], subplot, *subplots[row + 1 :])
+
+
+def get_command_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> tuple[str, ...]:
+    """Return the items of a subplot that the command gives.
+
+    A series type with no names has nothing to plot, and plotestimators rejects it. The card keeps the type, and the
+    command gives the directives alone, which draw an empty frame.
+    """
     names = get_subplot_names(subplot)
     seriestypeonly = (
         len(names) == 1
         and names[0] not in estimatorcolumns
         and (is_seriestype(names[0], estimatorcolumns) or bool(get_species_choices(names[0], estimatorcolumns)))
     )
-    keep = bool(names) and not seriestypeonly
-    return (
-        tuple(item for position, item in enumerate(subplots) if position != row)
-        if not keep
-        else (*subplots[:row], subplot, *subplots[row + 1 :])
-    )
+    return tuple(item for item in subplot if item not in names) if seriestypeonly else tuple(subplot)
 
 
 def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
@@ -2800,7 +2804,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         -ionpoptype of the command waits for a populations subplot, and then it goes to each one.
         """
-        newsubplots = tuple(subplot for subplot in subplots if subplot) or viewer.defaultsubplots
+        # a subplot with no item stays, and it draws an empty frame
+        newsubplots = tuple(subplots) or viewer.defaultsubplots
         if not newsubplots:
             show_error("Give the items of at least one subplot")
             return
@@ -2875,7 +2880,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         add_item(row, item)
 
     def on_remove_item(row: int, position: int) -> None:
-        apply_subplots(remove_subplot_item(viewer.values.subplots, row, position, viewer.estimatorcolumns))
+        apply_subplots(remove_subplot_item(viewer.values.subplots, row, position))
 
     def on_delete_subplot(row: int) -> None:
         apply_subplots([subplot for position, subplot in enumerate(viewer.values.subplots) if position != row])

@@ -900,9 +900,9 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         if not isinstance(plotvar, str) or "=" not in plotvar
     ]
 
+    # a subplot with no series draws an empty frame, e.g. in the viewer after the user removed its last series
     if not plotvars:
-        msg = "Empty plot item list; provide at least one plot variable after -plot (e.g. -plot Te)."
-        raise ValueError(msg)
+        return plot_directives
 
     # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
     if is_seriestype(plotvars[0], estimatorcolumns):

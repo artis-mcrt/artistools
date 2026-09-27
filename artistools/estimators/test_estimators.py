@@ -3230,6 +3230,23 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     assert_same_lines(viewer.fig, savedfigure)
 
 
+def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Path) -> None:
+    """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
+
+    The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
+    -plot, and a series type with no names gives only its directives to the command.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = ((), ("TR", "yscale=linear"), ("populations", "yscale=log"))
+    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
+    assert viewer.values.subplots == subplots
+    assert len(interactive.get_plot_frames(viewer.fig)) == 3
+    tokens = viewer.get_plot_tokens()
+    assert tokens[-6:] == ["-plot", "-plot", "TR", "yscale=linear", "-plot", "yscale=log"]
+
+    assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
+
+
 def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
 
@@ -3632,9 +3649,10 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
     # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
     assert interactive.change_subplot_type(populations, "populations", columns) == populations
-    # a subplot with only its type left has nothing to plot, thus it goes
-    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1, columns) == (("Te",),)
-    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0, columns) == (("TR",),)
+    # a subplot with no series left stays, and the command gives it with no item, which draws an empty frame
+    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1) == (("Te",), ("gamma_NT",))
+    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0) == (("TR",),)
+    assert interactive.get_command_items(("gamma_NT", "yscale=log"), columns) == ("yscale=log",)
 
     for subplot in (
         interactive.change_subplot_type(populations, "gamma_NT", columns),
