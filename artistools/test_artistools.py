@@ -3594,6 +3594,29 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())
 
 
+def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command wins.
+
+    plotspectra has no -labelfontsize, thus its window gets no such option.
+    """
+    settings = {"default-figscale": 1.5, "default-labelfontsize": 12.0}
+
+    def get_float_setting(key: str, default: float) -> float:
+        return settings.get(key, default)
+
+    monkeypatch.setattr(viewertools, "get_float_setting", get_float_setting)
+    estimatorparser = viewertools.make_parser(at.estimators.addargs)
+    assert viewertools.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
+        "-labelfontsize",
+        "12",
+        "Te",
+        "-figscale",
+        "2",
+    ]
+    spectraparser = viewertools.make_parser(at.spectra.plotspectra.addargs)
+    assert viewertools.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
+
+
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     """A worker thread hides the output of its plot, and the window thread still prints to the terminal.
 

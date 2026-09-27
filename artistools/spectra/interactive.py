@@ -43,6 +43,7 @@ from artistools.spectra.plotspectra import path_is_reference_spectrum
 from artistools.spectra.plotspectra import resolve_plot_args
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
+from artistools.viewertools import add_default_options
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -55,6 +56,7 @@ from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import get_bool_setting
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
@@ -931,7 +933,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     from artistools.commands import get_path
 
-    viewer = SpectrumViewer(tokens, mplfig.Figure())
+    # the Settings window can give a new window options, e.g. -figscale, that the command does not give
+    viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
     canvas = FigureCanvasQTAgg(viewer.fig)
@@ -1453,7 +1456,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, and draw a preview if a slider drag gives them."""
-        viewer.dragging = is_slider_dragged()
+        viewer.dragging = is_slider_dragged() and get_bool_setting("dragpreview", default=True)
         queue.apply(viewer.clamp_time(values), undoable=undoable)
 
     def on_undo() -> None:
@@ -1819,6 +1822,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         open_folder=on_open_recent,
     )
     set_drop_handler(window, on_drop)
+    window.setProperty("settingshandler", on_colour_scheme)
     QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     modesegments.currentChanged.connect(on_time_mode)

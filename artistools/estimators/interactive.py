@@ -69,6 +69,7 @@ from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
+from artistools.viewertools import add_default_options
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -1777,7 +1778,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    viewer = EstimatorViewer(tokens, mplfig.Figure())
+    # the Settings window can give a new window options, e.g. -figscale, that the command does not give
+    viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
     canvas = FigureCanvasQTAgg(viewer.fig)
@@ -3111,6 +3113,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         open_folder=on_open_recent,
     )
     set_drop_handler(window, on_drop)
+    window.setProperty("settingshandler", on_colour_scheme)
     QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     timeslider.valueChanged.connect(on_time)

@@ -812,6 +812,18 @@ def get_settings() -> "QtCore.QSettings":
     return QtCore.QSettings()
 
 
+def get_float_setting(key: str, default: float) -> float:
+    """Return a number of the settings, or the default if the settings do not hold one."""
+    value = get_settings().value(key, defaultValue=default, type=float)
+    return value if isinstance(value, float) else default
+
+
+def get_bool_setting(key: str, *, default: bool) -> bool:
+    """Return a choice of the settings, or the default if the settings do not hold one."""
+    value = get_settings().value(key, defaultValue=default, type=bool)
+    return value if isinstance(value, bool) else default
+
+
 def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
     """Return the window of a viewer, which keeps its geometry and the sizes of its splitter when it closes.
 
@@ -1000,7 +1012,7 @@ def add_section(
     grid.setVerticalSpacing(4)
     grid.setColumnStretch(1, 1)
     settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
-    isopen = bool(get_settings().value(settingkey, title not in CLOSED_SECTIONS, type=bool))
+    isopen = get_bool_setting(settingkey, default=title not in CLOSED_SECTIONS)
 
     def set_open(checked: bool) -> None:
         header.setArrowType(QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow)
@@ -1791,7 +1803,7 @@ def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
     fpsbox.setRange(0.5, 60.0)
     fpsbox.setDecimals(1)
     fpsbox.setSingleStep(0.5)
-    fpsbox.setValue(DEFAULT_PLAY_FPS)
+    fpsbox.setValue(get_float_setting("playfps", DEFAULT_PLAY_FPS))
     fpsbox.setToolTip(
         "The frames per second of Play. A plot that takes longer than one frame gives a lower rate. After the last"
         " step, Play starts again at the first step."
@@ -1865,6 +1877,8 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Copy Figure", QtGui.QKeySequence(standardkey.Copy)),
         ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
+        # macOS moves this item to the menu of the application
+        ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),
         ("View", "Hide Sidebar", QtGui.QKeySequence("Ctrl+Meta+S")),
         ("View", "Hide Toolbar", QtGui.QKeySequence("Ctrl+Alt+T")),
@@ -1938,6 +1952,7 @@ def add_menus(
     window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
     Pause for Play. File > Open Recent gives a recent model to open_folder.
     """
+    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     windowcallbacks: dict[str, Callable[[], object]] = {
@@ -1946,6 +1961,7 @@ def add_menus(
         "Enter Full Screen": lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen(),
         "Minimize": window.showMinimized,
         "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
+        "Settings…": lambda: show_settings_window(window),
     }
     windowtitles: dict[str, Callable[[], str]] = {
         "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
@@ -1965,6 +1981,8 @@ def add_menus(
         action = menus[menuname].addAction(text)
         action.setShortcut(keys)
         action.triggered.connect(allcallbacks[text])
+        if text == "Settings…":
+            action.setMenuRole(QtGui.QAction.MenuRole.PreferencesRole)
         actions[text] = action
         if text == "Open Model…":
             add_recent_menu(menus["File"], open_folder)
@@ -2021,6 +2039,78 @@ def add_recent_menu(filemenu: "QtWidgets.QMenu", open_folder: "Callable[[str], o
         clearaction.triggered.connect(lambda: get_settings().remove(get_recent_setting_key()))
 
     recentmenu.aboutToShow.connect(show_recent_models)
+
+
+def show_settings_window(parent: "QtWidgets.QWidget") -> None:
+    """Show the Settings window of the viewers, or bring it to the front if it is open.
+
+    A change applies at once and the settings keep it, as in the Settings windows of macOS. Each viewer window
+    receives a change of the colours of the plot through its property "settingshandler".
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    for widget in QtWidgets.QApplication.topLevelWidgets():
+        if widget.objectName() == "settings" and widget.isVisible():
+            activate_window(widget)
+            return
+    settings = get_settings()
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setObjectName("settings")
+    dialog.setWindowTitle("Settings")
+    dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+    form = QtWidgets.QFormLayout(dialog)
+
+    fpsbox = make_fps_box()
+    fpsbox.setToolTip("The frames per second of Play in a new window")
+    fpsbox.valueChanged.connect(partial(settings.setValue, "playfps"))
+    form.addRow("Play in a new window [FPS]:", fpsbox)
+
+    previewcheck = QtWidgets.QCheckBox("Draw a fast preview while a slider moves (plotspectra)")
+    previewcheck.setToolTip("The preview reads the first batch of ranks only, and the full plot follows the release")
+    previewcheck.setChecked(get_bool_setting("dragpreview", default=True))
+    previewcheck.toggled.connect(partial(settings.setValue, "dragpreview"))
+    form.addRow(previewcheck)
+
+    darkcheck = QtWidgets.QCheckBox("Show the plot in the colours of Dark Mode")
+    darkcheck.setToolTip("A saved figure keeps its usual colours")
+    darkcheck.setChecked(get_bool_setting("darkplot", default=True))
+
+    def on_dark(checked: bool) -> None:
+        settings.setValue("darkplot", checked)
+        for widget in QtWidgets.QApplication.topLevelWidgets():
+            if callable(handler := widget.property("settingshandler")):
+                handler()
+
+    darkcheck.toggled.connect(on_dark)
+    form.addRow(darkcheck)
+
+    for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
+        box = QtWidgets.QDoubleSpinBox()
+        box.setRange(0.0, maximum)
+        box.setSingleStep(step)
+        # the minimum of the box shows "Default", which gives no option
+        box.setSpecialValueText("Default")
+        box.setValue(get_float_setting(f"default{flag}", 0.0))
+        box.setToolTip(f"A new window adds {flag} with this value if its command does not give {flag}")
+        box.valueChanged.connect(partial(settings.setValue, f"default{flag}"))
+        form.addRow(f"{flag} of a new window:", box)
+    dialog.show()
+
+
+def add_default_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
+    """Return the tokens with the options of the Settings window that the tokens do not give, e.g. -figscale.
+
+    The options go before the other tokens, and an option that the parser of the command does not have gives nothing.
+    """
+    actions = get_actions_by_flag(parser)
+    givendests = {action.dest for token in tokens if (action := find_option_action(parser, token)[0]) is not None}
+    added: list[str] = []
+    for flag in ("-figscale", "-labelfontsize"):
+        value = get_float_setting(f"default{flag}", 0.0)
+        if value > 0.0 and flag in actions and actions[flag].dest not in givendests:
+            added += [flag, format(value, "g")]
+    return [*added, *tokens]
 
 
 def activate_window(window: "QtWidgets.QWidget") -> None:
@@ -2087,7 +2177,7 @@ def get_dark_plot_colours() -> tuple[str, str] | None:
     from PySide6 import QtCore
     from PySide6 import QtGui
 
-    if not get_settings().value("darkplot", defaultValue=True, type=bool):
+    if not get_bool_setting("darkplot", default=True):
         return None
     if QtGui.QGuiApplication.styleHints().colorScheme() != QtCore.Qt.ColorScheme.Dark:
         return None
