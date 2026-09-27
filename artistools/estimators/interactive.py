@@ -72,6 +72,7 @@ from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
@@ -1712,6 +1713,11 @@ def get_image_value(cursordata: t.Any) -> float | None:
     return float(values[0]) if values.size else None
 
 
+def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
+    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    return dc.replace(restored, figwidthscale=current.figwidthscale)
+
+
 def get_icon_curve() -> "npt.NDArray[np.float64]":
     """Return the curve of the icon of the viewer, which is a temperature that decreases as the velocity increases."""
     xvalues = np.linspace(0.0, 1.0, 200)
@@ -1965,7 +1971,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Type a variable, a type of series and its names, or an ion. Press Return to add the subplot. Part of a name"
         " shows the names that hold it."
     )
-    addsubplotbutton = QtWidgets.QPushButton("Add subplot")
+    addsubplotbutton = QtWidgets.QPushButton("Add Subplot")
     addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
     defaultbutton.setToolTip("Show the default subplots of plotestimators for this model")
@@ -2277,7 +2283,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             QtWidgets.QLabel(f"{quantityname} max"),
             ymaxedit,
         ]
-        setrangebutton = QtWidgets.QPushButton("Set current range")
+        setrangebutton = QtWidgets.QPushButton("Set Current Range")
         setrangebutton.setToolTip(
             "Set the value min and max to the current range of the colour scale. The colours then keep their"
             " meaning at each timestep."
@@ -2553,7 +2559,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
             start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
-    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, render=viewer.render)
+    queue = DrawQueue(
+        window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
+    )
     apply = queue.apply
 
     def fit_figwidthscale() -> None:
@@ -2562,7 +2570,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
         )
         if figwidthscale is not None:
-            apply(dc.replace(viewer.values, figwidthscale=figwidthscale))
+            # the window sets the width, thus Undo does not return to an old width
+            apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
 
     fittimer.timeout.connect(fit_figwidthscale)
 
@@ -2640,7 +2649,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values is None or values == viewer.values:
             playbutton.setChecked(False)
             return
-        apply(values)
+        apply(values, undoable=False)
 
     def on_play(checked: bool) -> None:
         playbutton.setText("Pause" if checked else "Play")
@@ -2878,6 +2887,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
+    def on_copy_figure() -> None:
+        copy_figure(viewer.fig)
+        show_status_note(statusbar, "Copied the figure")
+
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
         show_status_note(statusbar, "Copied the Python code")
@@ -3000,9 +3013,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         row = get_subplot_row(frameindex)
         if row is not None:
             islog = get_plot_frames(viewer.fig)[frameindex].get_yscale() == "log"
-            scaleaction = menu.addAction("Linear scale" if islog else "Log scale")
+            scaleaction = menu.addAction("Linear Scale" if islog else "Log Scale")
             scaleaction.triggered.connect(lambda: set_directives(row, {"yscale": "linear" if islog else "log"}))
-            resetaction = menu.addAction("Show the y range of the data")
+            resetaction = menu.addAction("Auto Y Range")
             resetaction.setEnabled(
                 any(get_item_directive(item) in {"ymin", "ymax"} for item in viewer.values.subplots[row])
             )
@@ -3011,15 +3024,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if is_evolution(viewer.values):
             snapshot = get_snapshot_values(viewer, event.xdata)
             if snapshot is not None:
-                snapshotaction = menu.addAction(f"Plot a snapshot at {viewer.tmids[snapshot.first]:.4g} d")
+                snapshotaction = menu.addAction(f"Plot a Snapshot at {viewer.tmids[snapshot.first]:.4g} d")
                 snapshotaction.triggered.connect(lambda: apply(snapshot))
         elif cells_apply(viewer.values):
             cell = get_nearest_cell(viewer, event.xdata)
             if cell is not None:
-                cellaction = menu.addAction(f"Plot cell {cell} against time")
+                cellaction = menu.addAction(f"Plot Cell {cell} Against Time")
                 cellaction.triggered.connect(lambda: apply(get_evolution_values(viewer, str(cell))))
             if viewer.values.cells:
-                cellsaction = menu.addAction(f"Plot the cells {viewer.values.cells} against time")
+                cellsaction = menu.addAction(f"Plot Cells {viewer.values.cells} Against Time")
                 cellsaction.triggered.connect(lambda: apply(get_evolution_values(viewer, viewer.values.cells)))
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
@@ -3038,14 +3051,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         windows.remove(window)
 
     menucallbacks = {
-        "Open Model...": on_open_model,
+        "Open Model…": on_open_model,
         "Reload Data": on_reload,
-        "Save Figure...": on_save,
-        "Copy Command": on_copy,
+        "Save Figure…": on_save,
         "Close Window": window.close,
+        "Undo": queue.undo,
+        "Redo": queue.redo,
+        "Copy Figure": on_copy_figure,
+        "Copy Command": on_copy,
+        "Copy Python": on_copy_python,
+        "Play": playbutton.toggle,
         "Keys and Mouse Actions": on_help,
     }
-    add_menus(window, menucallbacks)
+    add_menus(
+        window,
+        menucallbacks,
+        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo},
+        titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
+    )
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
@@ -3111,7 +3134,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         (QtCore.Qt.Key.Key_End, lambda: apply(viewer.move_to_end(last=True))),
         (QtCore.Qt.Key.Key_PageUp, lambda: on_step_cell(-1)),
         (QtCore.Qt.Key.Key_PageDown, lambda: on_step_cell(1)),
-        (QtCore.Qt.Key.Key_Space, playbutton.toggle),
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 

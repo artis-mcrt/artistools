@@ -45,6 +45,7 @@ from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
@@ -376,6 +377,11 @@ def get_reference_spectrum_names() -> list[str]:
         if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
     }
     return sorted(names, key=str.lower)
+
+
+def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
+    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    return dc.replace(restored, figwidthscale=current.figwidthscale)
 
 
 def get_direction_kind(args: argparse.Namespace) -> str:
@@ -1050,7 +1056,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         widget.setToolTip(helptexts.get(dest, ""))
     nostackcheck = QtWidgets.QCheckBox("--nostack")
     nostackcheck.setToolTip(helptexts.get("nostack", ""))
-    lockbutton = QtWidgets.QPushButton("Lock series")
+    lockbutton = QtWidgets.QPushButton("Lock Series")
     lockbutton.setCheckable(True)
     lockbutton.setToolTip(
         "Keep the series of the plot and their colours when the time or the x range changes. The command gives the"
@@ -1132,7 +1138,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         " -label and the style of each series. The command gives a file from the reference data of artistools by"
         " its name alone."
     )
-    addmodelbutton = QtWidgets.QPushButton("Add model...")
+    addmodelbutton = QtWidgets.QPushButton("Add Model…")
     addmodelbutton.setToolTip("Add the folder of an ARTIS run")
     removebutton = QtWidgets.QPushButton("Remove")
     removebutton.setToolTip("Remove the selected spectra. The plot keeps one ARTIS model at least")
@@ -1144,7 +1150,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     referencecompleter = make_completer(get_reference_spectrum_names(), referenceedit)
     referenceedit.setCompleter(referencecompleter)
-    openreferencebutton = QtWidgets.QPushButton("Open...")
+    openreferencebutton = QtWidgets.QPushButton("Open…")
     openreferencebutton.setToolTip("Add the file of a reference spectrum from a folder")
     referencerow = QtWidgets.QHBoxLayout()
     referencerow.addWidget(referenceedit, 1)
@@ -1423,7 +1429,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def get_drawkind() -> str:
         return "Preview" if viewer.drewpreview else "Plot"
 
-    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, change_with_preview, get_drawkind)
+    queue = DrawQueue(
+        window,
+        viewer,
+        statusbar,
+        show_values,
+        after_draw,
+        change_with_preview,
+        get_drawkind,
+        keep_on_undo=keep_figwidthscale,
+    )
     apply = queue.apply
 
     def fit_figwidthscale() -> None:
@@ -1432,7 +1447,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
         )
         if figwidthscale is not None:
-            apply(dc.replace(viewer.values, figwidthscale=figwidthscale))
+            # the window sets the width, thus Undo does not return to an old width
+            apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
 
     fittimer.timeout.connect(fit_figwidthscale)
 
@@ -1525,7 +1541,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values == viewer.values:
             playbutton.setChecked(False)
             return
-        apply(values)
+        apply(values, undoable=False)
 
     def on_play(checked: bool) -> None:
         playbutton.setText("Pause" if checked else "Play")
@@ -1709,6 +1725,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
+    def on_copy_figure() -> None:
+        copy_figure(viewer.fig)
+        show_status_note(statusbar, "Copied the figure")
+
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
         show_status_note(statusbar, "Copied the Python code")
@@ -1737,13 +1757,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         windows.remove(window)
 
     menucallbacks = {
-        "Open Model...": on_open_model,
-        "Save Figure...": on_save,
-        "Copy Command": on_copy,
+        "Open Model…": on_open_model,
+        "Save Figure…": on_save,
         "Close Window": window.close,
+        "Undo": queue.undo,
+        "Redo": queue.redo,
+        "Copy Figure": on_copy_figure,
+        "Copy Command": on_copy,
+        "Copy Python": on_copy_python,
+        "Play": playbutton.toggle,
         "Keys and Mouse Actions": on_help,
     }
-    add_menus(window, menucallbacks)
+    add_menus(
+        window,
+        menucallbacks,
+        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo},
+        titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
+    )
 
     modebuttons.buttonToggled.connect(on_time_mode)
     timeslider.valueChanged.connect(on_time)
@@ -1803,7 +1833,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         (QtCore.Qt.Key.Key_Down, lambda: on_widthstep(-1)),
         (QtCore.Qt.Key.Key_Home, lambda: apply(viewer.move_to_end(last=False))),
         (QtCore.Qt.Key.Key_End, lambda: apply(viewer.move_to_end(last=True))),
-        (QtCore.Qt.Key.Key_Space, playbutton.toggle),
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 

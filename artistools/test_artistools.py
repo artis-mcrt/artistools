@@ -3540,6 +3540,36 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     assert queue.requestedvalues is None, "unchanged values must draw no plot"
 
 
+def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One step of Undo reverts all the changes of a drag, and Undo skips a change that the command rejected.
+
+    A rejected change leaves the old values, thus its step of Undo holds the current values and changes nothing.
+    """
+    qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    clock = [100.0]
+    monkeypatch.setattr(viewertools.time, "monotonic", lambda: clock[0])
+    viewer = mock.Mock(values=1)
+    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock())
+    # a drag gives a new value at each movement of the mouse
+    for values in (2, 3, 4):
+        queue.apply(values)
+        clock[0] += 0.1
+    clock[0] += 5.0
+    queue.apply(5)
+    # the command rejected 5, thus the viewer kept the values of the last plot
+    viewer.values = 4
+
+    queue.undo()
+    assert viewer.values == 1
+    queue.redo()
+    assert viewer.values == 4
+    queue.apply(7)
+    assert not queue.can_redo(), "a new change must remove the steps of Redo"
+    queue.apply(8, undoable=False)
+    queue.undo()
+    assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
+
+
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     """A worker thread hides the output of its plot, and the window thread still prints to the terminal.
 

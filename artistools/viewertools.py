@@ -19,6 +19,7 @@ import time
 import traceback
 import typing as t
 from functools import cache
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -40,6 +41,7 @@ if t.TYPE_CHECKING:
     from concurrent.futures import Future
 
     import matplotlib.axes as mplax
+    import matplotlib.figure as mplfig
     import numpy.typing as npt
     from matplotlib.backend_bases import FigureCanvasBase
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -76,6 +78,15 @@ SLIDER_STEPS: t.Final = 1000
 
 # the first width of the sidebar. The user can drag the handle between the plot and the sidebar
 SIDEBAR_WIDTH: t.Final = 600
+
+# the resolution of Copy Figure, in dots per inch
+COPY_FIGURE_DPI: t.Final = 300
+
+# changes closer together than this, e.g. the steps of a slider drag, give one step of Undo
+UNDO_MERGE_SECONDS: t.Final = 0.8
+
+# Undo keeps this number of steps
+UNDO_LIMIT: t.Final = 200
 
 # the first frame rate of the Play button, in frames per second
 DEFAULT_PLAY_FPS: t.Final = 2.0
@@ -1529,25 +1540,46 @@ def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
 
 
 def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
-    """Return the menu, the text, and the shortcut of each menu item of a viewer."""
+    """Return the menu, the text, and the shortcut of each menu item of a viewer.
+
+    The texts use the capitals of a title, and an item that opens a dialog ends with an ellipsis, as in the apps of
+    macOS. On macOS, Ctrl is the Command key and Meta is the Control key.
+    """
     from PySide6 import QtGui
 
+    standardkey = QtGui.QKeySequence.StandardKey
     return [
-        ("File", "Open Model...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)),
-        ("File", "Reload Data", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Refresh)),
-        ("File", "Save Figure...", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Save)),
-        ("File", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
-        ("File", "Close Window", QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Close)),
+        ("File", "Open Model…", QtGui.QKeySequence(standardkey.Open)),
+        ("File", "Reload Data", QtGui.QKeySequence(standardkey.Refresh)),
+        ("File", "Save Figure…", QtGui.QKeySequence(standardkey.Save)),
+        ("File", "Close Window", QtGui.QKeySequence(standardkey.Close)),
+        ("Edit", "Undo", QtGui.QKeySequence(standardkey.Undo)),
+        ("Edit", "Redo", QtGui.QKeySequence(standardkey.Redo)),
+        ("Edit", "Copy Figure", QtGui.QKeySequence(standardkey.Copy)),
+        ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
+        ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
+        ("View", "Play", QtGui.QKeySequence("Space")),
+        ("View", "Hide Sidebar", QtGui.QKeySequence("Ctrl+Meta+S")),
+        ("View", "Hide Toolbar", QtGui.QKeySequence("Ctrl+Alt+T")),
+        ("View", "Enter Full Screen", QtGui.QKeySequence(standardkey.FullScreen)),
+        ("Window", "Minimize", QtGui.QKeySequence("Ctrl+M")),
+        ("Window", "Zoom", QtGui.QKeySequence()),
         ("Help", "Keys and Mouse Actions", QtGui.QKeySequence("?")),
     ]
 
 
 # the help text of each menu item in the table of the keys
 MENU_HELPTEXTS: t.Final = MappingProxyType({
-    "Save Figure...": "Run the command to save the figure",
-    "Copy Command": "Copy the command",
-    "Open Model...": "Open a model in a new window",
+    "Open Model…": "Open a model in a new window",
     "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
+    "Save Figure…": "Run the command to save the figure",
+    "Undo": "Undo the last change",
+    "Redo": "Redo the change that Undo removed",
+    "Copy Figure": "Copy the figure as an image",
+    "Copy Command": "Copy the command",
+    "Copy Python": "Copy the Python code of the plot",
+    "Play": "Play or pause",
+    "Hide Sidebar": "Hide or show the sidebar",
 })
 
 
@@ -1560,7 +1592,12 @@ def get_keyboard_help(keyrows: "Sequence[tuple[str, str]]", menuitems: "Collecti
     shortcuts = get_menu_shortcut_texts()
     rows = [
         *keyrows,
-        *((f"<b>{shortcuts[text]}</b>", helptext) for text, helptext in MENU_HELPTEXTS.items() if text in menuitems),
+        # every window has the sidebar, and add_menus gives its item
+        *(
+            (f"<b>{shortcuts[text]}</b>", helptext)
+            for text, helptext in MENU_HELPTEXTS.items()
+            if text in menuitems or text == "Hide Sidebar"
+        ),
         (f"<b>{shortcuts['Keys and Mouse Actions']}</b>", "Show this list"),
     ]
     return (
@@ -1580,20 +1617,146 @@ def get_menu_shortcut_texts() -> dict[str, str]:
     return {text: keys.toString(QtGui.QKeySequence.SequenceFormat.NativeText) for _menu, text, keys in get_menu_items()}
 
 
-def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable[[], object]]") -> None:
-    """Add the File menu and the Help menu.
+def add_menus(
+    window: "QtWidgets.QMainWindow",
+    callbacks: "Mapping[str, Callable[[], object]]",
+    enabled: "Mapping[str, Callable[[], bool]]",
+    titles: "Mapping[str, Callable[[], str]]",
+) -> None:
+    """Add the menus File, Edit, View, Window, and Help.
 
-    callbacks gives the function of each item by the text of the item. A viewer omits an item that it does not
-    support, e.g. Reload Data.
+    callbacks gives the function of each item by the text of get_menu_items. A viewer omits an item that it does not
+    support, e.g. Reload Data. This function gives the items of the sidebar, the toolbar, the full screen, and the
+    window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
+    Pause for Play.
     """
+    from PySide6 import QtWidgets
+
+    windowcallbacks: dict[str, Callable[[], object]] = {
+        "Hide Sidebar": lambda: toggle_sidebar(window),
+        "Hide Toolbar": lambda: toggle_toolbar(window),
+        "Enter Full Screen": lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen(),
+        "Minimize": window.showMinimized,
+        "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
+    }
+    windowtitles: dict[str, Callable[[], str]] = {
+        "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
+        "Hide Toolbar": lambda: (
+            "Hide Toolbar" if any(bar.isVisible() for bar in get_toolbars(window)) else "Show Toolbar"
+        ),
+        "Enter Full Screen": lambda: "Exit Full Screen" if window.isFullScreen() else "Enter Full Screen",
+    }
+    allcallbacks = {**windowcallbacks, **callbacks}
+    alltitles = {**windowtitles, **titles}
     menubar = window.menuBar()
-    menus = {name: menubar.addMenu(name) for name in ("File", "Help")}
+    menus = {name: menubar.addMenu(name) for name in ("File", "Edit", "View", "Window", "Help")}
+    actions: dict[str, QtGui.QAction] = {}
     for menuname, text, keys in get_menu_items():
-        if text not in callbacks:
+        if text not in allcallbacks:
             continue
         action = menus[menuname].addAction(text)
         action.setShortcut(keys)
-        action.triggered.connect(callbacks[text])
+        action.triggered.connect(allcallbacks[text])
+        actions[text] = action
+
+    def update_items() -> None:
+        for text, action in actions.items():
+            if text in alltitles:
+                action.setText(alltitles[text]())
+            action.setEnabled(enabled[text]() if text in enabled else True)
+
+    def enable_all() -> None:
+        # a disabled item takes no shortcut, and the state of an item can change while the menu is closed
+        for action in actions.values():
+            action.setEnabled(True)
+
+    windowmenu = menus["Window"]
+    windowmenu.addSeparator()
+    windowlistactions: list[QtGui.QAction] = []
+
+    def update_window_list() -> None:
+        """Show each window of the viewers at the end of the Window menu, with a mark at this window."""
+        for action in windowlistactions:
+            windowmenu.removeAction(action)
+            action.deleteLater()
+        windowlistactions.clear()
+        for other in QtWidgets.QApplication.topLevelWidgets():
+            if isinstance(other, QtWidgets.QMainWindow) and other.isVisible():
+                action = windowmenu.addAction(other.windowTitle())
+                action.setCheckable(True)
+                action.setChecked(other is window)
+                action.triggered.connect(partial(activate_window, other))
+                windowlistactions.append(action)
+
+    for menu in menus.values():
+        menu.aboutToShow.connect(update_items)
+        menu.aboutToHide.connect(enable_all)
+    windowmenu.aboutToShow.connect(update_window_list)
+
+
+def activate_window(window: "QtWidgets.QWidget") -> None:
+    """Show the window in front of the other windows, and give it the keyboard."""
+    if window.isMinimized():
+        window.showNormal()
+    window.raise_()
+    window.activateWindow()
+
+
+def get_sidebar(window: "QtWidgets.QMainWindow") -> "QtWidgets.QWidget | None":
+    """Return the sidebar of the window, which make_central_splitter puts at the right of the plot."""
+    from PySide6 import QtWidgets
+
+    splitter = window.centralWidget()
+    return splitter.widget(1) if isinstance(splitter, QtWidgets.QSplitter) else None
+
+
+def is_sidebar_hidden(window: "QtWidgets.QMainWindow") -> bool:
+    """Return whether the user hid the sidebar, with the menu or with a drag of the handle to the edge."""
+    sidebar = get_sidebar(window)
+    return sidebar is None or sidebar.isHidden() or sidebar.width() == 0
+
+
+def toggle_sidebar(window: "QtWidgets.QMainWindow") -> None:
+    """Hide the sidebar, or show it with its first width."""
+    from PySide6 import QtWidgets
+
+    sidebar = get_sidebar(window)
+    splitter = window.centralWidget()
+    if sidebar is None or not isinstance(splitter, QtWidgets.QSplitter):
+        return
+    if not is_sidebar_hidden(window):
+        sidebar.hide()
+        return
+    sidebar.show()
+    # a drag to the edge gives the sidebar a width of zero, thus the sidebar takes its first width again
+    if sidebar.width() == 0:
+        total = sum(splitter.sizes())
+        splitter.setSizes([max(total - SIDEBAR_WIDTH, 0), SIDEBAR_WIDTH])
+
+
+def get_toolbars(window: "QtWidgets.QMainWindow") -> "list[QtWidgets.QToolBar]":
+    """Return the toolbars of the window."""
+    from PySide6 import QtWidgets
+
+    return window.findChildren(QtWidgets.QToolBar)
+
+
+def toggle_toolbar(window: "QtWidgets.QMainWindow") -> None:
+    """Hide the toolbars of the window, or show them."""
+    toolbars = get_toolbars(window)
+    shown = any(toolbar.isVisible() for toolbar in toolbars)
+    for toolbar in toolbars:
+        toolbar.setVisible(not shown)
+
+
+def copy_figure(fig: "mplfig.Figure") -> None:
+    """Put the figure on the clipboard as a PNG image, with the resolution of a printed page."""
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=COPY_FIGURE_DPI)
+    QtWidgets.QApplication.clipboard().setImage(QtGui.QImage.fromData(buffer.getvalue()))
 
 
 def copy_text(text: str) -> None:
@@ -1726,6 +1889,8 @@ class DrawQueue[ValuesT]:
     values of the plot. If the command rejects new values, the viewer keeps the values of the plot.
 
     With render, a worker thread draws each plot. The window then shows each new value of a drag at once.
+
+    The queue also keeps the values before each change of the user, thus Undo and Redo can return to them.
     """
 
     def __init__(
@@ -1738,12 +1903,16 @@ class DrawQueue[ValuesT]:
         change: "Callable[[ValuesT], str | None] | None" = None,
         get_drawkind: "Callable[[], str] | None" = None,
         render: "Callable[[ValuesT], Callable[[], str | None]] | None" = None,
+        keep_on_undo: "Callable[[ValuesT, ValuesT], ValuesT] | None" = None,
     ) -> None:
         """Make an empty queue. after_draw receives the message of each plot of the queue.
 
         change draws the values of the queue in place of viewer.change, e.g. a preview. get_drawkind gives the name of
         the last plot for the status bar, e.g. "Preview". render draws the plot of the values in a worker thread. It
         returns the function that shows that plot in the window and gives the message of a rejection.
+
+        keep_on_undo receives the values that Undo or Redo restores and the current values. It returns the restored
+        values with the parts that the window sets and the user does not, e.g. the width of the figure.
         """
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1759,6 +1928,11 @@ class DrawQueue[ValuesT]:
         self.requestedvalues: ValuesT | None = None
         self.drawnvalues: ValuesT = viewer.values
         self.render = render
+        self.keep_on_undo = keep_on_undo
+        # the values before each change of the user, for Undo, and the values that Undo replaced, for Redo
+        self.undovalues: list[ValuesT] = []
+        self.redovalues: list[ValuesT] = []
+        self.lastchangetime = -math.inf
         self.executor: ThreadPoolExecutor | None = None
         self.rendertimer: QtCore.QTimer | None = None
         self.renderedvalues: ValuesT = viewer.values
@@ -1780,14 +1954,63 @@ class DrawQueue[ValuesT]:
             self.rendertimer.setInterval(10)
             self.rendertimer.timeout.connect(self.show_rendered)
 
-    def apply(self, values: ValuesT) -> None:
-        """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot."""
+    def apply(self, values: ValuesT, *, undoable: bool = True) -> None:
+        """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot.
+
+        A change that the window makes, e.g. a step of Play or a fit to the size of the window, is not undoable.
+        """
         if values == self.viewer.values:
             # a handler that clamps a control to the old values must still move the control back
             self.show_values()
             return
+        if undoable:
+            self.record_undo()
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
+        self.redraw()
+
+    def record_undo(self) -> None:
+        """Keep the current values for Undo, before a change of the user."""
+        now = time.monotonic()
+        # a drag of a slider or a repeated key gives many changes, and one step of Undo reverts all of them
+        if not self.undovalues or now - self.lastchangetime > UNDO_MERGE_SECONDS:
+            self.undovalues = [*self.undovalues[-UNDO_LIMIT + 1 :], self.viewer.values]
+        self.lastchangetime = now
+        self.redovalues.clear()
+
+    def can_undo(self) -> bool:
+        """Return whether Undo has values that differ from the current values."""
+        return any(values != self.viewer.values for values in self.undovalues)
+
+    def can_redo(self) -> bool:
+        """Return whether Redo has values that differ from the current values."""
+        return any(values != self.viewer.values for values in self.redovalues)
+
+    def undo(self) -> None:
+        """Return to the values before the last change of the user."""
+        self.step_history(self.undovalues, self.redovalues)
+
+    def redo(self) -> None:
+        """Return to the values that the last Undo replaced."""
+        self.step_history(self.redovalues, self.undovalues)
+
+    def step_history(self, source: list[ValuesT], target: list[ValuesT]) -> None:
+        """Take the last values of source that differ from the current values, and keep the current values in target.
+
+        The command can reject a change, and the viewer then keeps the old values. Such a change gives values in
+        source that are the same as the current values, and a step of Undo skips them.
+        """
+        while source and source[-1] == self.viewer.values:
+            source.pop()
+        if not source:
+            return
+        restored = source.pop()
+        if self.keep_on_undo is not None:
+            restored = self.keep_on_undo(restored, self.viewer.values)
+        target.append(self.viewer.values)
+        # the next change of the user starts a new step of Undo
+        self.lastchangetime = -math.inf
+        self.viewer.values = restored
         self.redraw()
 
     def redraw(self) -> None:
