@@ -100,6 +100,7 @@ from artistools.viewertools import get_table_actions
 from artistools.viewertools import handle_file_open_events
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
+from artistools.viewertools import make_drag_header
 from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_glyph_button
@@ -1519,6 +1520,15 @@ def change_subplot_type(
     return (seriestype, *(kept or get_first_choice(choices)), *directives)
 
 
+def get_card_summary(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str:
+    """Return the text that the header of a collapsed card shows in place of its controls, e.g. "Te, TR · log"."""
+    items = [item for _, item in get_chip_items(subplot, estimatorcolumns)]
+    maxshown = 4
+    text = ", ".join(items[:maxshown]) + (f" +{len(items) - maxshown}" if len(items) > maxshown else "")
+    yscale = get_directive_value(subplot, "yscale")
+    return f"{text} · {yscale}" if yscale else text
+
+
 def get_chip_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[tuple[int, str]]:
     """Return the position and the text of each item of a subplot that shows as a chip.
 
@@ -1673,6 +1683,7 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     " QFrame#chip { border: 1px solid palette(mid); border-radius: 10px; background: palette(base); }"
     " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
     " QToolButton#suggestion:hover { border-style: solid; }"
+    " QFrame#dropline { background: palette(highlight); border: none; }"
 )
 
 
@@ -1991,6 +2002,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     insertbox.hide()
     # the row of the new subplot, or None while the field is closed
     insertrow: int | None = None
+    # the rows of the cards that show only their header. A move, an insert, or a delete of a subplot moves them too
+    collapsedrows: set[int] = set()
+    # the line that shows where a dragged card goes
+    dropline = QtWidgets.QFrame(subplotsbox)
+    dropline.setObjectName("dropline")
+    dropline.hide()
     addsubplotbutton = QtWidgets.QPushButton("Add Subplot")
     addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
@@ -2159,9 +2176,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         names = get_subplot_names(subplot)
         card = QtWidgets.QFrame()
         card.setObjectName("subplotcard")
-        cardlayout = QtWidgets.QVBoxLayout(card)
-        cardlayout.setContentsMargins(6, 4, 4, 6)
-        cardlayout.setSpacing(4)
+        framelayout = QtWidgets.QVBoxLayout(card)
+        framelayout.setContentsMargins(6, 4, 4, 6)
+        framelayout.setSpacing(4)
 
         typebox = QtWidgets.QComboBox()
         typebox.setObjectName("type")
@@ -2173,23 +2190,58 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         typebox.setCurrentText(currenttype)
         typebox.setToolTip("The type of the subplot. A new type keeps the names that still apply.")
         typebox.textActivated.connect(partial(on_subplot_type, row))
-        quantity = QtWidgets.QLabel(plain_label(get_ylabel(names[0])).strip() if seriestype is None and names else "")
+        iscollapsed = row in collapsedrows
+        quantity = QtWidgets.QLabel(
+            get_card_summary(subplot, columns)
+            if iscollapsed
+            else plain_label(get_ylabel(names[0])).strip()
+            if seriestype is None and names
+            else ""
+        )
         quantity.setEnabled(False)
-        header = QtWidgets.QHBoxLayout()
-        header.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
-        header.addWidget(typebox)
-        header.addWidget(quantity, 1)
-        for text, tooltip, callback, enabled in (
-            ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1), True),
-            ("▲", "Move the subplot up", partial(on_move_subplot, row, -1), row > 0),
-            ("▼", "Move the subplot down", partial(on_move_subplot, row, 1), row < len(viewer.values.subplots) - 1),
-            ("✕", "Delete the subplot", partial(on_delete_subplot, row), True),
+        disclosure = QtWidgets.QToolButton()
+        disclosure.setArrowType(QtCore.Qt.ArrowType.RightArrow if iscollapsed else QtCore.Qt.ArrowType.DownArrow)
+        disclosure.setStyleSheet("QToolButton { border: none; }")
+        disclosure.setToolTip("Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot")
+        disclosure.setAccessibleName("Expand" if iscollapsed else "Collapse")
+        disclosure.clicked.connect(partial(on_collapse_subplot, row))
+        header = make_drag_header(partial(on_drag_subplot, row), partial(on_drop_subplot, row))
+        header.setToolTip("Drag the header to move the subplot")
+        headerlayout = QtWidgets.QHBoxLayout(header)
+        headerlayout.setContentsMargins(0, 0, 0, 0)
+        headerlayout.addWidget(disclosure)
+        headerlayout.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
+        headerlayout.addWidget(typebox)
+        headerlayout.addWidget(quantity, 1)
+        for text, tooltip, callback in (
+            ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
+            ("✕", "Delete the subplot", partial(on_delete_subplot, row)),
         ):
             button = make_glyph_button(text, tooltip, tooltip)
-            button.setEnabled(enabled)
             button.clicked.connect(callback)
-            header.addWidget(button)
-        cardlayout.addLayout(header)
+            headerlayout.addWidget(button)
+        grip = QtWidgets.QLabel("≡")
+        grip.setEnabled(False)
+        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        headerlayout.addWidget(grip)
+        # the keyboard and VoiceOver reach the moves through the menu of the header
+        header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+        for text, target, enabled in (
+            ("Move Up", row - 1, row > 0),
+            ("Move Down", row + 1, row < len(viewer.values.subplots) - 1),
+        ):
+            action = QtGui.QAction(text, header)
+            action.setEnabled(enabled)
+            action.triggered.connect(partial(move_subplot, row, target))
+            header.addAction(action)
+        framelayout.addWidget(header)
+        # a collapsed card shows only its header
+        body = QtWidgets.QWidget()
+        body.setVisible(not iscollapsed)
+        cardlayout = QtWidgets.QVBoxLayout(body)
+        cardlayout.setContentsMargins(0, 0, 0, 0)
+        cardlayout.setSpacing(4)
+        framelayout.addWidget(body)
 
         chipsbox = QtWidgets.QWidget()
         chipslayout = make_flow_layout()
@@ -2250,7 +2302,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         # a colour image shows the values as colours, and its vertical axis is a velocity. Thus the directives of the
         # y axis set the colour scale
-        quantityname = "value" if isimage else "y"
         yscalebox = make_selector(
             "yscale",
             ("auto", "linear", "log"),
@@ -2260,7 +2311,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "The scale of the y axis (yscale=). Auto takes log for ions and linear for the other series.",
             partial(on_directive_selector, row, "yscale", "auto"),
         )
-        selectorwidgets: list[QtWidgets.QWidget] = [QtWidgets.QLabel(f"{quantityname} scale"), yscalebox]
         poptypebox = None
         if currenttype == "populations":
             poptypebox = make_selector(
@@ -2270,13 +2320,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 f"The quantity of each ion of this subplot (ionpoptype=). {DEFAULT_POPTYPE} needs no directive.",
                 partial(on_directive_selector, row, "ionpoptype", DEFAULT_POPTYPE),
             )
-            selectorwidgets += [QtWidgets.QLabel("Quantity"), poptypebox]
-        cardlayout.addLayout(make_row_layout(selectorwidgets))
+            cardlayout.addLayout(make_row_layout([QtWidgets.QLabel("Quantity"), poptypebox]))
 
         yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
         for edit, directive in ((yminedit, "ymin"), (ymaxedit, "ymax")):
             edit.setObjectName(directive)
-            edit.setFixedWidth(90)
+            edit.setFixedWidth(70)
             edit.setPlaceholderText("auto")
             edit.setText(get_directive_value(subplot, directive) or "")
             extent = f"{directive[1:]}imum"
@@ -2286,13 +2335,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 else f"The {extent} of the y axis ({directive}=). Shift-drag on the subplot sets it."
             )
             edit.editingFinished.connect(partial(on_yrange, row, yminedit, ymaxedit))
-        yrangewidgets: list[QtWidgets.QWidget] = [
-            QtWidgets.QLabel(f"{quantityname} min"),
-            yminedit,
-            QtWidgets.QLabel(f"{quantityname} max"),
-            ymaxedit,
-        ]
-        setrangebutton = QtWidgets.QPushButton("Set Current Range")
+        setrangebutton = QtWidgets.QPushButton("Current")
         setrangebutton.setToolTip(
             "Set the value min and max to the current range of the colour scale. The colours then keep their"
             " meaning at each timestep."
@@ -2300,6 +2343,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "Set the y min and max to the current range of the y axis. The axis then stays the same at each"
             " timestep."
         )
+        setrangebutton.setAccessibleName("Set Current Range")
         setrangebutton.clicked.connect(partial(on_set_current_range, row))
         autorangebutton = QtWidgets.QPushButton("Auto")
         autorangebutton.setToolTip(
@@ -2307,9 +2351,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             if isimage
             else "Remove the y min and max, thus the y axis follows the data of each timestep."
         )
+        autorangebutton.setAccessibleName("Automatic Range")
         autorangebutton.clicked.connect(partial(set_directives, row, {"ymin": None, "ymax": None}))
-        yrangewidgets += [setrangebutton, autorangebutton]
-        cardlayout.addLayout(make_row_layout(yrangewidgets))
+        quantityname = "value" if isimage else "y"
+        cardlayout.addLayout(
+            make_row_layout([
+                QtWidgets.QLabel(f"{quantityname} scale"),
+                yscalebox,
+                QtWidgets.QLabel("min"),
+                yminedit,
+                QtWidgets.QLabel("max"),
+                ymaxedit,
+                setrangebutton,
+                autorangebutton,
+            ])
+        )
         return SubplotCard(
             key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit
         )
@@ -2404,7 +2460,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the cards take their places by the row, thus the insert field leaves the layout during the rebuild
         subplotslayout.removeWidget(insertbox)
         for row, subplot in enumerate(subplots):
-            key = get_card_key(row, subplots, columns, isimage=isimage)
+            key = (*get_card_key(row, subplots, columns, isimage=isimage), row in collapsedrows)
             if row < len(cards) and cards[row].key == key:
                 show_card_directives(cards[row], subplot)
                 continue
@@ -2882,14 +2938,58 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_remove_item(row: int, position: int) -> None:
         apply_subplots(remove_subplot_item(viewer.values.subplots, row, position))
 
-    def on_delete_subplot(row: int) -> None:
-        apply_subplots([subplot for position, subplot in enumerate(viewer.values.subplots) if position != row])
+    def apply_subplot_order(order: "Sequence[int | tuple[str, ...]]") -> None:
+        """Apply the subplots in a new order, and keep the collapsed state of each card with its subplot.
 
-    def on_move_subplot(row: int, step: int) -> None:
-        subplots = list(viewer.values.subplots)
-        if 0 <= row + step < len(subplots):
-            subplots[row], subplots[row + step] = subplots[row + step], subplots[row]
-            apply_subplots(subplots)
+        Each item of order is the old row of a subplot, or a new subplot.
+        """
+        subplots = viewer.values.subplots
+        newcollapsed = {newrow for newrow, item in enumerate(order) if isinstance(item, int) and item in collapsedrows}
+        collapsedrows.clear()
+        collapsedrows.update(newcollapsed)
+        apply_subplots([subplots[item] if isinstance(item, int) else item for item in order])
+
+    def on_delete_subplot(row: int) -> None:
+        apply_subplot_order([oldrow for oldrow in range(len(viewer.values.subplots)) if oldrow != row])
+
+    def move_subplot(row: int, newrow: int) -> None:
+        order = list(range(len(viewer.values.subplots)))
+        if row != newrow and 0 <= newrow < len(order):
+            order.insert(newrow, order.pop(row))
+            apply_subplot_order(order)
+
+    def on_collapse_subplot(row: int) -> None:
+        collapsedrows.symmetric_difference_update({row})
+        show_subplots()
+
+    def get_drop_index(position: QtCore.QPoint) -> int:
+        """Return the index of the gap between the cards that is nearest to a position on the screen."""
+        y = subplotsbox.mapFromGlobal(position).y()
+        return sum(card.frame.geometry().center().y() < y for card in cards)
+
+    def on_drag_subplot(row: int, position: QtCore.QPoint) -> None:
+        index = get_drop_index(position)
+        spacing = subplotslayout.spacing()
+        if index < len(cards):
+            y = cards[index].frame.geometry().top() - (spacing + 2) // 2
+        else:
+            y = cards[-1].frame.geometry().bottom() + (spacing + 2) // 2
+        dropline.setGeometry(0, min(max(y, 0), subplotsbox.height() - 2), subplotsbox.width(), 2)
+        dropline.show()
+        dropline.raise_()
+        # a disabled header gets no mouse events, thus the dragged card fades but stays enabled
+        if (fade := cards[row].frame.graphicsEffect()) is None:
+            fade = QtWidgets.QGraphicsOpacityEffect(cards[row].frame)
+            fade.setOpacity(0.5)
+            cards[row].frame.setGraphicsEffect(fade)
+        fade.setEnabled(True)
+
+    def on_drop_subplot(row: int, position: QtCore.QPoint) -> None:
+        dropline.hide()
+        if (fade := cards[row].frame.graphicsEffect()) is not None:
+            fade.setEnabled(False)
+        index = get_drop_index(position)
+        move_subplot(row, index if index <= row else index - 1)
 
     def on_directive_selector(row: int, directive: str, defaulttext: str, text: str) -> None:
         subplot = viewer.values.subplots[row]
@@ -2931,8 +3031,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if subplot:
             # the field of the new card takes the focus, thus the user can add more names
             pendingfocus = (row, "add")
-            subplots = list(viewer.values.subplots)
-            apply_subplots([*subplots[:row], subplot, *subplots[row:]])
+            oldrows = range(len(viewer.values.subplots))
+            apply_subplot_order([*oldrows[:row], subplot, *oldrows[row:]])
 
     def on_new_subplot() -> None:
         # a name that the user picks in the popup goes into the field, and the next Return adds the subplot

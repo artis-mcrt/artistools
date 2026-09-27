@@ -1298,6 +1298,78 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
     return FlowLayout
 
 
+def make_drag_header(
+    on_drag: "Callable[[QtCore.QPoint], None]", on_drop: "Callable[[QtCore.QPoint], None]"
+) -> "QtWidgets.QWidget":
+    """Return a header that the user can drag, e.g. to move a card to a new place in a list.
+
+    During a drag, on_drag receives each position of the pointer on the screen. on_drop receives the last position.
+    A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label.
+    """
+    header = get_drag_header_class()()
+    header.setProperty("on_drag", on_drag)
+    header.setProperty("on_drop", on_drop)
+    return header
+
+
+@cache
+def get_drag_header_class() -> "type[QtWidgets.QWidget]":
+    """Return the class of the headers of make_drag_header.
+
+    PySide keeps about 1.5 KB of memory for each class, thus the viewers make the class one time and not for each
+    header.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class DragHeader(QtWidgets.QWidget):
+        """A widget that sends the positions of a drag with the left mouse button to its two callbacks."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.pressposition: QtCore.QPoint | None = None
+            self.dragging = False
+
+        def send(self, name: str, position: QtCore.QPoint) -> None:
+            if callable(callback := self.property(name)):
+                callback(position)
+
+        @t.override
+        def mousePressEvent(self, event: QtGui.QMouseEvent, /) -> None:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                self.pressposition = event.globalPosition().toPoint()
+                event.accept()
+            else:
+                super().mousePressEvent(event)
+
+        @t.override
+        def mouseMoveEvent(self, event: QtGui.QMouseEvent, /) -> None:
+            if self.pressposition is None:
+                super().mouseMoveEvent(event)
+                return
+            position = event.globalPosition().toPoint()
+            distance = (position - self.pressposition).manhattanLength()
+            if not self.dragging and distance >= QtWidgets.QApplication.startDragDistance():
+                self.dragging = True
+                self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+            if self.dragging:
+                self.send("on_drag", position)
+
+        @t.override
+        def mouseReleaseEvent(self, event: QtGui.QMouseEvent, /) -> None:
+            wasdragging = self.dragging
+            self.pressposition, self.dragging = None, False
+            self.unsetCursor()
+            # on_drop can make the card again, thus the header resets its state first
+            if wasdragging:
+                self.send("on_drop", event.globalPosition().toPoint())
+            else:
+                super().mouseReleaseEvent(event)
+
+    return DragHeader
+
+
 def make_slider() -> "QtWidgets.QSlider":
     """Return a horizontal slider that does not take the keyboard focus."""
     from PySide6 import QtCore
