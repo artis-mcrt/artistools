@@ -2332,6 +2332,26 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
         assert args.maxseriescount == maxseriescount
 
 
+def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() -> None:
+    """A render draws a new figure and changes nothing of the viewer. Only the function that it returns shows the plot.
+
+    The worker thread runs the render while the window reads the viewer, thus a render that changed the figure or the
+    frames gave the window a plot in progress. The spectrum viewer drew in the thread of the window for this reason.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldfig, oldaxes = viewer.fig, viewer.axes
+    newvalues = viewer.step_time(1)
+    assert newvalues is not None
+
+    show_plot = viewer.render(newvalues)
+    assert viewer.fig is oldfig
+    assert viewer.axes is oldaxes
+
+    assert show_plot() is None
+    assert viewer.fig is not oldfig
+    assert viewer.fig.canvas is oldfig.canvas, "the canvas of the window must show the new figure"
+
+
 def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
     """A preview of a plot of the packets reads the first batch of ranks, and the command keeps all the packets."""
     from artistools.packets.core import RANKS_PER_BATCH

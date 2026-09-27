@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.misc import exit_with_error
 from artistools.misc import get_dirbin_definitions
@@ -95,6 +96,7 @@ from artistools.viewertools import start_application
 from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -287,19 +289,14 @@ def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -
     return [*basetokens[:pathcount], *options, *basetokens[pathcount:]]
 
 
-def clear_axes_keep_ticks(axis: "mplax.Axes") -> None:
-    """Clear the axes, and keep the tick objects for the next plot.
+class RenderedSpectrum(t.NamedTuple):
+    """A figure that the worker thread drew, with the frames and the data that the window reads."""
 
-    When cla clears the axes, it removes each tick. matplotlib then makes each tick again when it draws the plot. The
-    plot code sets the properties of the ticks again, thus matplotlib draws the old ticks the same as new ticks.
-    """
-    ticklists = [(xyaxis, xyaxis.majorTicks, xyaxis.minorTicks) for xyaxis in (axis.xaxis, axis.yaxis)]
-    axis.cla()
-    for xyaxis, majorticks, minorticks in ticklists:
-        # the tick lists are lazy descriptors that matplotlib replaces with a list in the instance dict
-        vars(xyaxis).update(majorTicks=majorticks, minorTicks=minorticks)
-        # cla makes a new patch for the axes, and the grid lines of the ticks must clip to the new patch
-        xyaxis.set_clip_path(axis.patch)
+    fig: mplfig.Figure
+    axes: "npt.NDArray[t.Any]"
+    residualaxis: "mplax.Axes | None"
+    dfalldata: pl.DataFrame
+    ispreview: bool
 
 
 def fix_title_position(axis: "mplax.Axes") -> None:
@@ -573,17 +570,15 @@ class SpectrumViewer:
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        # the options in frameskey change the layout, the size, or the tick parameters of the frames
-        self.frameskey: tuple[bool, bool, float, float, bool, bool, float | None] | None = None
         # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
         self.previewmaxpacketfiles = (
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
         )
         self.drewpreview = False
+        # the window sets this before each plot that a slider drag gives, and the worker thread reads it
+        self.dragging = False
         # the last warning of the last plot, which the status bar shows
         self.warning = ""
-        # a rejection before the draw keeps the old plot on the frames, thus it needs no new plot of the old values
-        self.clearedframes = False
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
@@ -757,70 +752,72 @@ class SpectrumViewer:
         return run_command_step(check, echo=False)
 
     def draw(self, *, quiet: bool = True, preview: bool = False) -> str | None:
-        """Draw the plot of the command, and return the reason for the status line if plotspectra rejects it.
+        """Draw the plot of the values, and return the reason for the status line if plotspectra rejects it.
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        message, self.warning = run_command_step_with_warning(lambda: self.draw_command(preview=preview), quiet=quiet)
-        return message
+        return self.render(self.values, quiet=quiet, preview=preview)()
 
-    def draw_command(self, *, preview: bool = False) -> str | None:
-        """Parse the command and draw its plot, or return a message if the plot differs from the values.
+    def render(self, values: ControlValues, *, quiet: bool = True, preview: bool = False) -> "Callable[[], str | None]":
+        """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
+
+        The function returns the reason for the status line if plotspectra rejects the values, and the old plot then
+        stays. A worker thread can run this method, because it changes nothing that the window reads. The function
+        that it returns must run in the thread of the window.
 
         A preview of a plot of the packets reads the first batch of ranks only. For the 20 batches of a kilonova run,
         a range of 8 days took 0.12 s in place of 1.1 s. The flux stays correct, because the reader divides by the
         number of ranks that it reads. The reader does not divide a count of packets, thus a plot of
         -yvariable packetcount has no preview. The command in the window has no -maxpacketfiles for the preview.
         """
-        plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens())
-        resolve_plot_args(plotargs)
-        check_viewer_args(plotargs)
-        self.drewpreview = bool(
-            preview
-            and plotargs.frompackets
-            and plotargs.maxpacketfiles is None
-            and plotargs.yvariable != "packetcount"
-            and self.previewmaxpacketfiles
-        )
-        if self.drewpreview:
-            plotargs.maxpacketfiles = self.previewmaxpacketfiles
-        shown = (plotargs.showemission, plotargs.showabsorption)
-        if shown != (self.values.showemission, self.values.showabsorption):
-            return "A different option of the command keeps the emission plot on"
-        self.clearedframes = True
-        self.draw_frames(plotargs)
-        return None
+        plots: list[RenderedSpectrum] = []
 
-    def draw_frames(self, plotargs: argparse.Namespace) -> None:
-        """Draw the plot on empty frames."""
-        # cla() keeps the tick parameters, and the plot sets them only for these options. Thus a change to one of
-        # them makes new frames
-        frameskey = (
-            plotargs.showabsorption,
-            plotargs.residuals,
-            plotargs.figwidthscale,
-            plotargs.figscale,
-            plotargs.hidexticklabels,
-            plotargs.hideyticklabels,
-            getattr(plotargs, "labelfontsize", None),
-        )
-        if frameskey != self.frameskey:
-            # an error of make_plot_figure leaves an empty figure, and the next plot then needs new frames
-            self.frameskey = None
-            self.fig.clear()
-            _, self.axes, self.residualaxis = make_plot_figure(plotargs, fig=self.fig)
-            self.frameskey = frameskey
-            figwidth, figheight = self.fig.get_size_inches()
+        def make_plot() -> str | None:
+            plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
+            resolve_plot_args(plotargs)
+            check_viewer_args(plotargs)
+            ispreview = bool(
+                preview
+                and plotargs.frompackets
+                and plotargs.maxpacketfiles is None
+                and plotargs.yvariable != "packetcount"
+                and self.previewmaxpacketfiles
+            )
+            if ispreview:
+                plotargs.maxpacketfiles = self.previewmaxpacketfiles
+            if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
+                return "A different option of the command keeps the emission plot on"
+            fig = mplfig.Figure()
+            FigureCanvasAgg(fig)
+            _, axes, residualaxis = make_plot_figure(plotargs, fig=fig)
+            dfalldata, _ = draw_plot(plotargs, axes, residualaxis)
+            for axis in axes:
+                fix_title_position(axis)
+            plots.append(
+                RenderedSpectrum(
+                    fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata, ispreview=ispreview
+                )
+            )
+            return None
+
+        message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
+
+        def show_plot() -> str | None:
+            self.warning = warning
+            if message is not None:
+                return message
+            plot = plots[0]
+            canvas = self.fig.canvas
+            plot.fig.set_canvas(canvas)
+            canvas.figure = plot.fig
+            self.fig, self.axes, self.residualaxis = plot.fig, plot.axes, plot.residualaxis
+            self.dfalldata, self.drewpreview = plot.dfalldata, plot.ispreview
+            figwidth, figheight = plot.fig.get_size_inches()
             self.figsize = (float(figwidth), float(figheight))
-        else:
-            for axis in (*self.axes, self.residualaxis):
-                if axis is not None:
-                    clear_axes_keep_ticks(axis)
+            canvas.draw_idle()
+            return None
 
-        self.dfalldata, _ = draw_plot(plotargs, self.axes, self.residualaxis)
-        for axis in self.axes:
-            fix_title_position(axis)
-        self.fig.canvas.draw_idle()
+        return show_plot
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
         """Return the -figwidthscale that gives the figure the shape of the plot area."""
@@ -843,15 +840,11 @@ class SpectrumViewer:
         return values if centre == values.centre else dc.replace(values, centre=centre)
 
     def change(self, values: ControlValues, *, preview: bool = False) -> str | None:
-        """Draw the plot of the new values, and keep the old values if plotspectra rejects the new command."""
-        oldvalues, self.values = self.values, self.clamp_time(values)
-        self.clearedframes = False
-        message = self.draw(preview=preview)
-        if message is not None:
-            self.values = oldvalues
-            # a draw that fails after it clears the frames leaves no plot, thus the old values need a new plot
-            if self.clearedframes:
-                self.draw(preview=preview)
+        """Draw the plot of the new values, and keep the old values and the old plot if plotspectra rejects them."""
+        values = self.clamp_time(values)
+        message = self.render(values, preview=preview)()
+        if message is None:
+            self.values = values
         return message
 
     def get_drawn_series(self) -> tuple[str, ...]:
@@ -1403,6 +1396,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
+        # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
+        connect_mouse_to_figure()
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
         # each change starts the timer again, thus the full plot follows after the last change
@@ -1419,8 +1414,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """Return whether the user drags a slider. Only a drag draws a preview, because a drag gives many plots."""
         return timeslider.isSliderDown() or widthslider.isSliderDown() or bool(xrangeslider.property("dragging"))
 
-    def change_with_preview(values: ControlValues) -> str | None:
-        return viewer.change(values, preview=is_slider_dragged())
+    def render_plot(values: ControlValues) -> "Callable[[], str | None]":
+        # the worker thread runs this function, thus it reads the drag state from the viewer and not from a widget
+        return viewer.render(values, preview=viewer.dragging)
 
     def get_drawkind() -> str:
         return "Preview" if viewer.drewpreview else "Plot"
@@ -1431,11 +1427,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         statusbar,
         show_values,
         after_draw,
-        change_with_preview,
-        get_drawkind,
+        get_drawkind=get_drawkind,
+        render=render_plot,
         keep_on_undo=keep_figwidthscale,
     )
-    apply = queue.apply
+
+    def apply(values: ControlValues, *, undoable: bool = True) -> None:
+        """Give the queue the new values, and draw a preview if a slider drag gives them."""
+        viewer.dragging = is_slider_dragged()
+        queue.apply(viewer.clamp_time(values), undoable=undoable)
+
+    def on_undo() -> None:
+        viewer.dragging = False
+        queue.undo()
+
+    def on_redo() -> None:
+        viewer.dragging = False
+        queue.redo()
 
     def fit_figwidthscale() -> None:
         """Give the plot the -figwidthscale that fills the plot area."""
@@ -1457,7 +1465,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if is_slider_dragged():
             fulldrawtimer.start()
             return
-        queue.draw(queue.drawnvalues, viewer.change)
+        viewer.dragging = False
+        queue.redraw()
 
     fulldrawtimer.timeout.connect(draw_full)
 
@@ -1748,6 +1757,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
+        queue.close()
         # the list holds a reference to each open window, thus Python does not delete the window. A closed window
         # leaves the list
         windows.remove(window)
@@ -1756,8 +1766,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Open Model…": on_open_model,
         "Save Figure…": on_save,
         "Close Window": window.close,
-        "Undo": queue.undo,
-        "Redo": queue.redo,
+        "Undo": on_undo,
+        "Redo": on_redo,
         "Copy Figure": on_copy_figure,
         "Copy Command": on_copy,
         "Copy Python": on_copy_python,
@@ -1817,7 +1827,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     pythoncopybutton.clicked.connect(on_copy_python)
     statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
-    connect_plot_mouse(
+    connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: [axis for axis in (*viewer.axes, viewer.residualaxis) if axis is not None],
         get_readout=lambda event, _frame: viewer.get_readout(event.xdata),
