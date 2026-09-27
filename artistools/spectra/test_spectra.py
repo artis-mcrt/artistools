@@ -2335,7 +2335,7 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
 def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() -> None:
     """A render draws a new figure and changes nothing of the viewer. Only the function that it returns shows the plot.
 
-    The worker thread runs the render while the window reads the viewer, thus a render that changed the figure or the
+    The worker thread runs the render while the window reads the viewer. Thus a render that changed the figure or the
     frames gave the window a plot in progress. The spectrum viewer drew in the thread of the window for this reason.
     """
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])

@@ -3595,7 +3595,7 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
 
 
 def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command wins.
+    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command has priority.
 
     plotspectra has no -labelfontsize, thus its window gets no such option.
     """

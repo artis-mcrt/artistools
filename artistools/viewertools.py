@@ -616,7 +616,9 @@ def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[s
         tmpinfo.replace(infopath)
         # macOS keeps the old Info.plist of a bundle until lsregister reads the bundle again
         if LSREGISTER.is_file():
-            subprocess.run([LSREGISTER, "-f", contents.parent], check=False, capture_output=True)  # ruff:ignore[subprocess-without-shell-equals-true]
+            subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+                [LSREGISTER, "-f", contents.parent], check=False, capture_output=True
+            )
     return executable
 
 
@@ -767,7 +769,7 @@ def start_application(
     app.installEventFilter(EditTracker(app))
 
     class QuitTracker(QtCore.QObject):
-        """Mark the application as quitting before Qt closes its windows, e.g. after Quit in the menu of macOS.
+        """Record the time of a quit before Qt closes the windows, e.g. after Quit in the menu of macOS.
 
         A window that closes during a quit keeps its command for the next start, and a window that the user closes
         does not.
@@ -800,7 +802,7 @@ def get_edited_field(window: "QtCore.QObject") -> "QtWidgets.QLineEdit | None":
 
 
 def mark_field_error(window: "QtCore.QObject", field: "QtWidgets.QLineEdit", message: str) -> None:
-    """Give the field a red border and show the message beside it, as a form of macOS does for a bad value."""
+    """Give the field a red border and the message beside it, as a form of macOS does."""
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
@@ -869,7 +871,7 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
     class ViewerWindow(QtWidgets.QMainWindow):
         """A window that writes its geometry and the state of its splitter to the settings when it closes.
 
-        The window also takes the folders and the files that the user drops on it, and gives their paths to the
+        The window also takes the folders and the files that the user drops on it. It gives their paths to the
         function in its property "drophandler", which set_drop_handler sets.
         """
 
@@ -922,7 +924,7 @@ def set_drop_handler(window: "QtWidgets.QMainWindow", handler: "Callable[[list[s
 
 
 def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callable[[str], None]") -> None:
-    """Open a folder that the user drops on the Dock icon, and give a file to the drop handler of the active window.
+    """Open a folder from the Dock icon in a new window, and give a file to the active window.
 
     macOS gives such an item to the application as a QFileOpenEvent, and not to a window.
     """
@@ -994,7 +996,7 @@ def add_session_window(tokens: "Sequence[str]") -> None:
 def take_session_windows() -> list[list[str]]:
     """Return the commands of the windows that were open at the last quit, and remove them from the settings.
 
-    The setting "reopenwindows" of the Settings window can stop the reopen, and the list then is empty.
+    If the setting "reopenwindows" of the Settings window is off, the list is empty.
     """
     saved = get_list_setting(get_session_setting_key())
     get_settings().remove(get_session_setting_key())
@@ -1007,7 +1009,7 @@ def reopen_session_windows(
     open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
     windows: "list[QtWidgets.QMainWindow]",
 ) -> None:
-    """Open the windows that were open at the last quit, as the apps of macOS do, and keep the first window in front.
+    """Open the windows of the last session, as the apps of macOS do, and keep the first window in front.
 
     A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
     because each window fits it to its own size. An error of a window goes to the terminal.
@@ -1452,7 +1454,7 @@ def make_option_table(
     rows: OptionRows,
     on_rows: "Callable[[OptionRows], None]",
 ) -> "tuple[QtWidgets.QTableWidget, Callable[[OptionRows], None], Callable[[str], None]]":
-    """Return a table of the options that no other control sets, and the functions that show rows and add an option.
+    """Return a table of the other options, and the functions that show rows and add an option.
 
     The table has a list of the options that the user can search, and a control that matches the type of each
     option. on_rows receives the rows that have all their values after each change. The function that shows new
@@ -1800,7 +1802,7 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
 def get_theme_icon(
     themeicon: "QtGui.QIcon.ThemeIcon", fallback: "QtWidgets.QStyle.StandardPixmap | None"
 ) -> "QtGui.QIcon":
-    """Return the icon of the platform, e.g. an SF Symbol on macOS, or the icon of the Qt style if it has none.
+    """Return the icon of the platform, e.g. an SF Symbol, or the icon of the Qt style.
 
     With no fallback, the result can be an empty icon, and a tool button then shows its text.
     """
@@ -1814,7 +1816,7 @@ def get_theme_icon(
 
 
 def make_segmented_control(labels: "Sequence[str]", tooltips: "Sequence[str]") -> "QtWidgets.QTabBar":
-    """Return a control of side-by-side segments, one of which is selected, e.g. two modes of the time.
+    """Return a control of side-by-side segments, in which the user selects one segment, e.g. one mode of the time.
 
     The macOS style of Qt draws a tab bar as a segmented control, which the apps of macOS use for a choice of modes.
     """
@@ -2250,8 +2252,8 @@ def add_sidebar_search(
     """Add a search field above the sections of the sidebar, as the Settings app of macOS has.
 
     The text shows only the sections with a control that holds it, e.g. in a label or a tooltip, and opens them. Each
-    option of the command that holds the text shows as a button below the field, and a click adds the option to the
-    table of the other options.
+    option of the command that holds the text shows as a button below the field. A click on the button adds the
+    option to the table of the other options.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -2491,7 +2493,7 @@ EXPORT_FORMATS: t.Final = (
 
 
 def ask_export_options(window: "QtWidgets.QWidget", dpi: int) -> tuple[str, int] | None:
-    """Ask for the type of the file and the resolution, as the Export dialog of Keynote does before the save panel.
+    """Ask for the file type and the resolution before the save panel, as the Export dialog of Keynote does.
 
     Return the suffix of the type and the resolution in dots per inch, or None if the user cancels. The settings keep
     the type for the next export.
@@ -2539,10 +2541,10 @@ def export_animation(
     frametokens: "Sequence[Sequence[str]]",
     fps: float,
 ) -> None:
-    """Save a GIF file of the steps of Play, with one run of the command for each frame, as Save Figure does.
+    """Save a GIF file of the steps of Play, with one run of the command for each frame.
 
-    The worker thread runs the command for each frame and joins the frames, thus the window stays responsive. The
-    GIF shows each frame for 1/fps seconds.
+    Each frame comes from the command, as for Save Figure. The worker thread runs the command for each frame and
+    joins the frames, thus the window stays responsive. The GIF shows each frame for 1/fps seconds.
     """
     import tempfile
 
@@ -2778,7 +2780,7 @@ class DrawQueue[ValuesT]:
             self.rendertimer.timeout.connect(self.show_rendered)
 
     def apply(self, values: ValuesT, *, undoable: bool = True) -> None:
-        """Show the new values now, and draw them when Qt has no other events. Values of no change draw no plot.
+        """Show the new values now, and draw them when Qt has no other events. Only a change of the values draws a plot.
 
         A change that the window makes, e.g. a step of Play or a fit to the size of the window, is not undoable.
         """
