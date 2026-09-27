@@ -2221,14 +2221,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             QtWidgets.QLabel(f"{quantityname} max"),
             ymaxedit,
         ]
-        if isimage:
-            fixbutton = QtWidgets.QPushButton("Fix max")
-            fixbutton.setToolTip(
-                "Set the value max to the current maximum of the colour scale. The colours then keep their meaning"
-                " at each timestep."
-            )
-            fixbutton.clicked.connect(partial(on_fix_max, row))
-            yrangewidgets.append(fixbutton)
+        setrangebutton = QtWidgets.QPushButton("Set current min,max" if isimage else "Set current y min,max")
+        setrangebutton.setToolTip(
+            "Set the value min and max to the current range of the colour scale. The colours then keep their"
+            " meaning at each timestep."
+            if isimage
+            else "Set the y min and max to the current range of the y axis. The axis then stays the same at each"
+            " timestep."
+        )
+        setrangebutton.clicked.connect(partial(on_set_current_range, row))
+        yrangewidgets.append(setrangebutton)
         cardlayout.addLayout(make_row_layout(yrangewidgets))
         return SubplotCard(
             key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit
@@ -2871,21 +2873,37 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         subplots[row] = replace_directives(subplots[row], directives)
         apply(dc.replace(viewer.values, subplots=tuple(subplots)))
 
-    def on_fix_max(row: int) -> None:
-        """Set ymax= of a subplot of a colour image to the maximum of the colour scale on the screen."""
-        label = get_panel_axes_label(row)
+    def on_set_current_range(row: int) -> None:
+        """Set ymin= and ymax= of a subplot to the range of its colour scale or of its y axis on the screen."""
+        limits: list[tuple[float | None, float | None]]
+        if viewer.isimage:
+            label = get_panel_axes_label(row)
+            limits = [
+                mesh.get_clim()
+                for axis in viewer.fig.axes
+                if axis.get_label() == label
+                for mesh in axis.collections
+                if isinstance(mesh, QuadMesh)
+            ]
+        else:
+            frames = get_plot_frames(viewer.fig)
+            limits = [frames[row].get_ylim()] if row < len(frames) else []
         # a panel with no value has no colour scale
-        maxima = [
-            float(vmax)
-            for axis in viewer.fig.axes
-            if axis.get_label() == label
-            for mesh in axis.collections
-            if isinstance(mesh, QuadMesh) and (vmax := mesh.get_clim()[1]) is not None and np.isfinite(vmax)
+        finitelimits = [
+            (float(low), float(high))
+            for low, high in limits
+            if low is not None and high is not None and np.isfinite(low) and np.isfinite(high)
         ]
-        if not (viewer.isimage and plot_shows_values() and maxima):
-            show_error("The image of this subplot is not on the screen yet. Wait for the plot, then try again")
+        if not (plot_shows_values() and finitelimits):
+            show_error("This subplot is not on the screen yet. Wait for the plot, then try again")
             return
-        set_directives(row, {"ymax": format(max(maxima), ".6g")})
+        set_directives(
+            row,
+            {
+                "ymin": format(min(low for low, _ in finitelimits), ".6g"),
+                "ymax": format(max(high for _, high in finitelimits), ".6g"),
+            },
+        )
 
     def on_select_y(frameindex: int, low: float, high: float) -> None:
         row = get_subplot_row(frameindex)
