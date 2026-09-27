@@ -126,8 +126,8 @@ if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 
 
-# the axes of a spectrum carry no y margin, thus the tallest peak would touch the frame. The data takes this part
-# of its height as a margin. set_legend gives the legend its own room
+# the part of the height of the data that the axes of a spectrum add above the tallest peak, thus the peak does not
+# touch the frame. set_legend gives the legend its own room
 YMARGIN: t.Final = 0.05
 
 
@@ -793,7 +793,8 @@ def make_spectrum_plot(
 
     set_prop_cycle_unusedcolors(axes, args.color)
     for axis in axes:
-        axis.margins(0.0, 0.0)
+        # matplotlib adds the y margin in the scale of the axis, thus a log axis also keeps room above the peak
+        axis.margins(x=0.0, y=YMARGIN)
 
     for seriesindex, specpath in enumerate(speclist):
         plotkwargs: dict[str, t.Any] = {
@@ -901,11 +902,10 @@ def make_spectrum_plot(
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
             plot_filter_functions(axis)
 
-        # make_plot applies -ymin and -ymax after this function returns. Reading the top back would
-        # inflate a value that -ymax gives by five percent, thus the rescue leaves that side alone
-        if args.stokesparam == "I" and not args.logscaley and args.ymax is None:
-            _, datatop = axis.get_ylim()
-            axis.set_ylim(bottom=0.0 if args.ymin is None else None, top=datatop * (1.0 + YMARGIN))
+        # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
+        # and -ymax after this function returns
+        if args.stokesparam == "I" and not args.logscaley and args.ymin is None and args.ymax is None:
+            axis.set_ylim(bottom=0.0)
 
         set_plot_title(axis, args.title, args)
 

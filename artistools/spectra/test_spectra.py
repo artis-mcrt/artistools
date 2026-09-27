@@ -1905,6 +1905,22 @@ def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
     assert np.allclose(specdata["f_lambda"].to_numpy(), np.array([1.0, 2.0, 3.0]) * (1 + redshift), atol=0.0)
 
 
+def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
+    """A normalised spectrum on a log axis keeps a margin above its peak of 1.
+
+    The default -ymax 1.10 of --normalised gave the room, and a log axis had no margin after its removal.
+    """
+    args = at.misc.parse_cli_args(
+        plotspectra.addargs, None, None, [str(modelpath), "-t", "300", "--normalised", "-yscale", "log"]
+    )
+    plotspectra.resolve_plot_args(args)
+    fig, axes, _, _ = plotspectra.make_plot(args)
+    fig.canvas.draw()
+    assert axes[0].get_yscale() == "log"
+    assert axes[0].get_ylim()[1] > 1.02
+    plt.close(fig)
+
+
 @mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
     """The velocity range arguments must reach the packet reader that selects the contributions."""

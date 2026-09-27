@@ -1815,13 +1815,15 @@ def get_image_values(
     """Return the grid of values of each panel, and the two plot axes.
 
     With a sliceaxis, a pixel takes the cells of the estimators with its indices on the two other axes. The estimators
-    of -slice hold the cells of one plane of a 3D model, which is normal to that axis, and the estimators of
-    -projection hold each cell, thus a pixel is the mean of one line of cells. With no sliceaxis, the grid holds the
-    average around the z axis. The grid then has a point at
-    each cylindrical radius and each z, as the reduction of a 3D model to 2D gives. A 2D model has this
-    grid already, and a 1D model gives the value of its shell at each point. An empty cell has no
-    estimators and gives NaN. Each value is the mean over the cells and the timesteps with volume x time
-    as the weight.
+    of -slice hold the cells of one plane of a 3D model, which is normal to that axis. The estimators of -projection
+    hold each cell, thus a pixel is the mean of one line of cells.
+
+    With no sliceaxis, the grid holds the average around the z axis. A pixel then takes the cells of one ring of
+    cylindrical radius and one layer of z, as the reduction of a 3D model to 2D gives. A 2D model has this grid
+    already, and a 1D model gives the value of its shell at each point.
+
+    An empty cell has no estimators and gives NaN. Each value is the mean over the cells and the timesteps, and
+    get_panel_means gives the weight.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if modelmeta["dimensions"] == 1:
@@ -1947,7 +1949,7 @@ def draw_image_figure(
         ax.set_visible(False)
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
-    projection = getattr(args, "projection", None)
+    projection = args.projection
     strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
     if projection is not None:
         strimage = f"mean along the {projection} axis"
@@ -2396,7 +2398,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     its axis. An argument that disagrees with the selection stops the command.
     """
     conditions: list[tuple[str, float, str]] = parse_slice_argument(args.slice) if args.slice is not None else []
-    projection = getattr(args, "projection", None)
+    projection = args.projection
     if projection is not None:
         if conditions:
             exit_with_error("-projection and -slice select different cells", "Remove -projection or -slice")
@@ -2619,7 +2621,7 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
     panels: list[ImagePanel] = []
-    if getattr(args, "projection", None) is not None and modelmeta["dimensions"] != 3:
+    if args.projection is not None and modelmeta["dimensions"] != 3:
         exit_with_error(
             f"-projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
             "Give -dimensionreduce 2 for the average around the z axis",
@@ -2627,7 +2629,13 @@ def prepare_snapshot(
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
-        panelcolumns = {name for panel in panels for name in panel.colexpr.meta.root_names()}
+        panelcolumns = {
+            name
+            for panel in panels
+            for expr in (panel.colexpr, panel.weightexpr)
+            if expr is not None
+            for name in expr.meta.root_names()
+        }
         estimators = estimators.select(
             cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
         )

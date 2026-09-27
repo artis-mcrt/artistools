@@ -3674,23 +3674,44 @@ def test_interactive_geometry_modes_draw() -> None:
         return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
 
     assert describe("alongaxis") == (
-        "The line of cells along the -y axis with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and -0.09647c ≤ y < 0."
+        "The half line of cells from the centre along the -y axis, with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and"
+        " -0.09647c ≤ y < 0."
     )
-    assert "-y ≥ √(x² + z²) / tan 15°" in describe("cone")
+    assert describe("cone") == "The cells whose centre lies within 15° of the -y axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
+    # 1 / tan 90° is not 0 in floating point, thus the cone of 180° leaves out the central plane
+    values180 = interactive.set_geometry_mode(viewer, viewer.values, "cone")
+    assert interactive.get_geometry_description(values180, viewer.modelmeta, "+z", 180.0) == (
+        "The cells in front of the +z axis: z_c > 0, and the cell at the centre."
+    )
     assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
     # a position between two edges selects the layer that holds it, in the unit of the position
     assert describe("plane", "z=0.02c").startswith("The 2D plane slice of cells with 0.01929c ≤ z < 0.03859c")
     assert describe("plane", "y=5000km/s").startswith("The 2D plane slice of cells with 0 ≤ y < 5784.04 km/s")
-    assert describe("line", "z=0.1c,y=-0.02c") == (
-        "The line of cells along the x axis with -0.03859c ≤ y < -0.01929c and 0.07717c ≤ z < 0.09647c, against v_x."
+    # plotestimators rejects a position outside the grid. The text gave a layer inside the grid, or an IndexError
+    for position in ("-0.2c", "0.2c", "-1e5km/s"):
+        assert "outside the grid of |z| <" in describe("plane", f"z={position}"), position
+    assert describe("line", "z=0.09c,y=-0.02c") == (
+        "The full line of cells through the grid along the x axis with -0.03859c ≤ y < -0.01929c and"
+        " 0.07717c ≤ z < 0.09647c, against v_x."
     )
-    assert "r = √(x² + y²)" in describe("average")
+    # a line keeps a -x of the user, e.g. time, and the text named v_x
+    linevalues = dc.replace(viewer.values, x="time", otheroptions=(("-slice", ("z=0,y=0",)),))
+    assert interactive.get_geometry_description(linevalues, viewer.modelmeta, "+z", 30.0).endswith("against -x time.")
+    assert "Δr = 0.01929c" in describe("average")
     assert describe("projection").startswith(
-        "The mean along the z axis, as an image in x and y. Each pixel is one line of cells along z, and its sides"
-        " are 0.01929c wide."
+        "Pixel (i, j) is the mean of the line of cells along z in layer i of x and layer j of y. Each layer is"
+        " 0.01929c wide."
     )
+    assert "n_element for an average ion charge" in describe("projection")
     assert "√(r² + z²)" in describe("average", dimensions=1)
-    assert not describe("all")
+    # plotestimators leaves out the corners of the grid, thus "all the cells" of a 3D model was wrong
+    assert describe("all").startswith("The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = 0.09647c.")
+    assert not describe("all", dimensions=1)
+    # an odd number of cells has its middle cell edge at -Δ/2, which plotestimators takes for a half line
+    oddgrid = {"ncoordgridx": 11, "ncoordgridy": 11, "ncoordgridz": 11, "vmax_cmps": 2297436514.4767036}
+    oddvalues = interactive.set_geometry_mode(viewer, viewer.values, "alongaxis")
+    oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
+    assert "-0.006967c ≤ x < 0.006967c" in oddtext
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
     assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
@@ -3817,6 +3838,32 @@ def test_interactive_image_panels_name_their_subplot() -> None:
     assert viewer.isimage
     labels = [ax.get_label() for ax in interactive.get_plot_frames(viewer.fig)]
     assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
+
+
+def test_projection_is_the_mean_of_each_line_of_cells() -> None:
+    """A pixel of -projection z is the weighted mean over the cells of its line along z, with volume x time as weight.
+
+    A plane of -slice gives one cell for each pixel, and a projection reads every cell of the line.
+    """
+    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    vmax_cmps = 1.0e9
+    modelmeta = {"dimensions": 3, "ncoordgridx": 2, "ncoordgridy": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
+    # the line at x layer 0 and y layer 1 holds two cells, and the line at x layer 1 and y layer 0 holds one
+    estimators = pl.LazyFrame({
+        "timestep": [5, 5, 5],
+        "modelgridindex": [0, 1, 2],
+        "vel_x_mid": [-0.5e9, -0.5e9, 0.5e9],
+        "vel_y_mid": [0.5e9, 0.5e9, -0.5e9],
+        "vel_z_mid": [-0.5e9, 0.5e9, 0.5e9],
+        "deltavol_deltat": [1.0, 3.0, 1.0],
+        "Te": [1000.0, 5000.0, 7000.0],
+    })
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5])
+    assert plotaxes == ("x", "y")
+    # the grid holds [y layer][x layer]
+    assert np.isclose(grid[1, 0], (1000.0 * 1.0 + 5000.0 * 3.0) / 4.0, rtol=1e-12)
+    assert np.isclose(grid[0, 1], 7000.0, rtol=1e-12)
+    assert np.isnan(grid[0, 0])
 
 
 def test_image_shows_the_average_ionisation() -> None:

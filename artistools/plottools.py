@@ -686,7 +686,8 @@ def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[
     """Return the lowest and the highest y of the data of the axes between two x positions, or None for no data.
 
     The positions and the result are fractions of the axes. A line, a bar, a filled area, and a scatter point count.
-    An artist whose y position is a fraction of the axes, e.g. axvline, covers each height, thus it does not count.
+    An artist with a position in the fractions of the axes on one axis does not count. For example, axvline covers
+    each height, and the span of a Shift-drag covers each x.
     """
     import matplotlib.collections as mplcollections
     import numpy as np
@@ -695,7 +696,7 @@ def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[
     scatterpoints: list[npt.NDArray[np.float64]] = []
 
     def follows_data(artist: mplartist.Artist) -> bool:
-        return artist.get_visible() and artist.get_transform().contains_branch_seperately(ax.transData)[1]
+        return artist.get_visible() and all(artist.get_transform().contains_branch_seperately(ax.transData))
 
     polylines = [
         toaxes.transform(line.get_transform().transform(line.get_xydata())) for line in ax.lines if follows_data(line)

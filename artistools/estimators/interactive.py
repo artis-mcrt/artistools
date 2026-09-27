@@ -178,13 +178,13 @@ SECTION_DESTS: t.Final = frozenset({
 
 # the ways to select the cells of the plot, by the key of the selector of the window
 GEOMETRY_MODES: t.Final = MappingProxyType({
-    "all": "All the cells",
+    "all": "The cells inside the sphere of radius v_max",
     "cells": "Selected cells (-cell)",
-    "alongaxis": "A line of cells along an axis (-readonlymgi alongaxis)",
+    "alongaxis": "A half line of cells from the centre along an axis (-readonlymgi alongaxis)",
     "cone": "The cells in a cone around an axis (-readonlymgi cone)",
     "plane": "A 2D plane slice of cells as an image (-slice)",
-    "line": "A line of cells along an axis (-slice)",
-    "average": "The mean over the azimuth around the z axis as an image (-dimensionreduce 2)",
+    "line": "A full line of cells through the grid along an axis (-slice)",
+    "average": "The mean over rings around the z axis as an image (-dimensionreduce 2)",
     "projection": "The mean along an axis of each line of cells as an image (-projection)",
 })
 
@@ -505,6 +505,16 @@ def get_line_axis(slicetext: str) -> str:
     return next((axis for axis in "xyz" if axis not in conditionaxes), "x")
 
 
+def get_slice_conditions(slicetext: str) -> dict[str, str]:
+    """Return the position on each axis of a -slice condition, e.g. {"z": "0.1c", "y": "0"} for "z=0.1c,y=0"."""
+    conditions: dict[str, str] = {}
+    for condition in slicetext.lower().split(","):
+        name, equals, position = (part.strip() for part in condition.partition("="))
+        if equals and name in {"x", "y", "z"}:
+            conditions[name] = position
+    return conditions
+
+
 def get_line_label(axis: str, slicetext: str) -> str:
     """Return the text of a line along an axis in the line box, e.g. "x (y=z=0)".
 
@@ -512,25 +522,11 @@ def get_line_label(axis: str, slicetext: str) -> str:
     the origin.
     """
     others = [other for other in "xyz" if other != axis]
-    positions = dict.fromkeys(others, "0")
-    if "," in slicetext and get_line_axis(slicetext) == axis:
-        for condition in slicetext.lower().split(","):
-            name, _, position = (part.strip() for part in condition.partition("="))
-            if name in positions and position:
-                positions[name] = position
-    first, second = (positions[other] for other in others)
-    conditions = f"{others[0]}={others[1]}={first}" if first == second else f"{others[0]}={first}, {others[1]}={second}"
-    return f"{axis} ({conditions})"
-
-
-def get_slice_conditions(slicetext: str) -> dict[str, str]:
-    """Return the position on each axis of a -slice condition, e.g. {"z": "0.1c", "y": "0"} for "z=0.1c,y=0"."""
-    conditions: dict[str, str] = {}
-    for condition in slicetext.lower().split(","):
-        name, equals, position = (part.strip() for part in condition.partition("="))
-        if equals and name in {"x", "y", "z"}:
-            conditions[name] = position or "0"
-    return conditions
+    isthisline = "," in slicetext and get_line_axis(slicetext) == axis
+    conditions = get_slice_conditions(slicetext if isthisline else "")
+    first, second = (conditions.get(other) or "0" for other in others)
+    positions = f"{others[0]}={others[1]}={first}" if first == second else f"{others[0]}={first}, {others[1]}={second}"
+    return f"{axis} ({positions})"
 
 
 def format_velocity(velocity_cmps: float, unit: str) -> str:
@@ -551,59 +547,86 @@ def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDAr
 def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, t.Any]") -> str:
     """Return the edges of the plane slice of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
 
-    plotestimators reads this plane slice for -slice. The edges take the unit of the position, and a position with no unit
-    takes c. A position that is not a velocity gives the condition on the edges of the cells.
+    plotestimators reads this plane slice for -slice. A number with no unit is in km/s, as plotestimators reads it.
+    The edges take km/s for a position in km/s, and c for each other position. plotestimators rejects a position
+    outside the grid, thus the text then gives the range of the grid.
     """
     # plotestimators imports the spectra package in its function too, because the CLI must start quickly
     from artistools.spectra import parse_velocity_argument
 
     try:
-        velocity_kmps, unit = parse_velocity_argument(positiontext)
+        velocity_kmps, _ = parse_velocity_argument(positiontext)
     except argparse.ArgumentTypeError:
-        return f"{axisname}_min ≤ {positiontext} < {axisname}_max"
-    if not positiontext.strip().lower().endswith("km/s"):
-        unit = "c"
+        return f"{axisname} = '{positiontext}', which is not a velocity"
+    unit = "kmps" if positiontext.strip().lower().endswith("km/s") else "c"
     edges = get_cell_edges(axisname, modelmeta)
-    index = get_layer_index(velocity_kmps * km_to_cm, float(edges[-1]), len(edges) - 1)
+    vmax_cmps = float(edges[-1])
+    velocity_cmps = velocity_kmps * km_to_cm
+    if abs(velocity_cmps) >= vmax_cmps:
+        gridedge = format_velocity(vmax_cmps, unit)
+        return f"{axisname} = {positiontext.strip()}, outside the grid of |{axisname}| < {gridedge}"
+    index = get_layer_index(velocity_cmps, vmax_cmps, len(edges) - 1)
     return f"{format_velocity(edges[index], unit)} ≤ {axisname} < {format_velocity(edges[index + 1], unit)}"
+
+
+# the weight of a cell in each mean over the cells and the timesteps of a colour image
+MEAN_WEIGHT_TEXT: t.Final = (
+    "The weight is the volume times the timestep duration, times n_element for an average ion charge."
+)
 
 
 def get_geometry_description(
     values: "ControlValues", modelmeta: "Mapping[str, t.Any]", axis: str, coneangle: float
 ) -> str:
-    """Return the cells that the plot reads in the terms of the model grid, or an empty text for all or listed cells.
+    """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
 
-    x, y, and z are the velocity coordinates of the grid. The edges of the cells come from the grid of the model,
-    thus the text gives the range of each coordinate that the selected cells cover. plotestimators selects the same
-    cells. axis and coneangle are the values of -axis and -coneangle.
+    x, y, and z are the velocity coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of
+    the cells come from the grid of the model, thus the text gives the range of each coordinate that the selected
+    cells cover. plotestimators selects the same cells. axis and coneangle are the values of -axis and -coneangle.
     """
     mode = get_geometry_mode(values)
+    dimensions = int(modelmeta["dimensions"])
+    vmaxtext = format_velocity(float(modelmeta["vmax_cmps"]), "c")
     slicetext = (get_row_values(values.otheroptions, "-slice") or ("",))[0]
-    if mode in {"alongaxis", "cone"}:
+    if mode == "all":
+        if dimensions == 1:
+            return ""
+        # add_plot_columns of plotestimators leaves out each cell with a centre beyond vmax
+        return (
+            f"The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = {vmaxtext}. The plot leaves out the cells in"
+            " the corners of the grid."
+        )
+    if mode == "alongaxis":
         sign, name = axis[0], axis[1]
         first, second = (other for other in "xyz" if other != name)
-        if mode == "alongaxis":
-            # plotestimators takes the lower edge nearest to 0 on the second axis for both of the other axes
-            secondedges = get_cell_edges(second, modelmeta)
-            lower = float(secondedges[np.argmin(np.abs(secondedges[:-1]))])
-            upper = lower + float(secondedges[1] - secondedges[0])
-            axisedges = get_cell_edges(name, modelmeta)
-            if sign == "+":
-                start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
-                axisrange = f"{format_velocity(start, 'c')} ≤ {name} < {format_velocity(float(axisedges[-1]), 'c')}"
-            else:
-                end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
-                axisrange = f"{format_velocity(float(axisedges[0]), 'c')} ≤ {name} < {format_velocity(end, 'c')}"
-            lowertext, uppertext = format_velocity(lower, "c"), format_velocity(upper, "c")
-            return (
-                f"The line of cells along the {axis} axis with {lowertext} ≤ {first} < {uppertext},"
-                f" {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
-            )
-        halfangle = format(coneangle / 2.0, "g")
-        signedname = name if sign == "+" else f"-{name}"
+        # plotestimators takes the lower cell edge nearest to 0 on the second axis for both of the other axes. That
+        # edge is 0 for an even number of cells, and -Δ/2 for an odd number
+        secondedges = get_cell_edges(second, modelmeta)
+        middle = (len(secondedges) - 1) // 2
+        lowertext = format_velocity(float(secondedges[middle]), "c")
+        uppertext = format_velocity(float(secondedges[middle + 1]), "c")
+        axisedges = get_cell_edges(name, modelmeta)
+        if sign == "+":
+            start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
+            axisrange = f"{format_velocity(start, 'c')} ≤ {name} < {format_velocity(float(axisedges[-1]), 'c')}"
+        else:
+            end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
+            axisrange = f"{format_velocity(float(axisedges[0]), 'c')} ≤ {name} < {format_velocity(end, 'c')}"
         return (
-            f"The cells whose centre is within {halfangle}° of the {axis} axis: "
-            f"{signedname} ≥ √({first}² + {second}²) / tan {halfangle}° at the centre of the cell."
+            f"The half line of cells from the centre along the {axis} axis, with {lowertext} ≤ {first} < {uppertext},"
+            f" {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
+        )
+    if mode == "cone":
+        sign, name = axis[0], axis[1]
+        first, second = (other for other in "xyz" if other != name)
+        halfangle = coneangle / 2.0
+        signedname = f"{name}_c" if sign == "+" else f"-{name}_c"
+        if math.isclose(halfangle, 90.0):
+            # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
+            return f"The cells in front of the {axis} axis: {signedname} > 0, and the cell at the centre."
+        return (
+            f"The cells whose centre lies within {halfangle:g}° of the {axis} axis:"
+            f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
         )
     if mode == "plane":
         plane, offset = get_slice_parts(slicetext)
@@ -614,25 +637,26 @@ def get_geometry_description(
         conditions = get_slice_conditions(slicetext)
         lineaxis = get_line_axis(slicetext)
         bounds = " and ".join(get_layer_bounds(name, conditions[name], modelmeta) for name in sorted(conditions))
-        return f"The line of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
+        xtext = f"v_{lineaxis}" if values.x == f"vel_{lineaxis}_mid_on_c" else f"-x {values.x}"
+        return f"The full line of cells through the grid along the {lineaxis} axis with {bounds}, against {xtext}."
     if mode == "projection":
         projectionaxis = (get_row_values(values.otheroptions, "-projection") or ("z",))[0]
         first, second = (other for other in "xyz" if other != projectionaxis)
         width = format_velocity(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
         return (
-            f"The mean along the {projectionaxis} axis, as an image in {first} and {second}. Each pixel is one line"
-            f" of cells along {projectionaxis}, and its sides are {width} wide. The weight of a cell is its volume"
-            " times the timestep duration."
+            f"Pixel (i, j) is the mean of the line of cells along {projectionaxis} in layer i of {first} and layer j"
+            f" of {second}. Each layer is {width} wide. {MEAN_WEIGHT_TEXT}"
         )
     if mode == "average":
-        dimensions = int(modelmeta["dimensions"])
         if dimensions == 1:
             return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
         if dimensions == 2:
-            return "The cells of the model grid in the cylindrical radius r and z."
+            return f"The cells of the model grid in the cylindrical radius r and z. {MEAN_WEIGHT_TEXT}"
+        ringwidth = format_velocity(float(modelmeta["vmax_cmps"]) / (int(modelmeta["ncoordgridx"]) // 2), "c")
         return (
-            "At each cylindrical radius r = √(x² + y²) and each z, the mean over the azimuth φ. "
-            "The weight of a cell is its volume times the timestep duration."
+            f"Pixel (i, j) is the mean of the cells in layer j of z whose centre has i Δr ≤ √(x_c² + y_c²) < (i + 1)"
+            f" Δr, with Δr = {ringwidth}. The image leaves out the cells with √(x_c² + y_c²) ≥ v_max = {vmaxtext}."
+            f" A cell or a timestep with no value does not count. {MEAN_WEIGHT_TEXT}"
         )
     return ""
 
@@ -825,7 +849,7 @@ class EstimatorViewer:
         # the default -x of a command depends on its time and its other options, thus each set has one result
         self.defaultxvariables: dict[tuple[bool, OptionRows], str] = {}
         timegiven = time_is_given(args)
-        isimage = args.slice is not None or args.dimensionreduce == 2
+        isimage = args.slice is not None or args.dimensionreduce == 2 or args.projection is not None
         # plotestimators plots all the cells against time when the command gives no time. On a large model that plot
         # is slow, thus the window starts with a snapshot unless the command selects a cell
         xvariable: str = args.x or (
@@ -1728,8 +1752,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
     for widget in (tminedit, trangeslider, tmaxedit):
         trangelayout.addWidget(widget)
+    # a button beside the slider moves the time range by one timestep, as the Left key and the Right key do
+    previousbutton, nextbutton = QtWidgets.QToolButton(), QtWidgets.QToolButton()
+    previousbutton.setText("◀")
+    previousbutton.setToolTip("Move the time range to the previous timestep (Left key)")
+    nextbutton.setText("▶")
+    nextbutton.setToolTip("Move the time range to the next timestep (Right key)")
+    timesliderbox = QtWidgets.QWidget()
+    timesliderlayout = QtWidgets.QHBoxLayout(timesliderbox)
+    timesliderlayout.setContentsMargins(0, 0, 0, 0)
+    timesliderlayout.addWidget(previousbutton)
+    timesliderlayout.addWidget(timeslider, 1)
+    timesliderlayout.addWidget(nextbutton)
     timegrid.addWidget(QtWidgets.QLabel("Time [d]"), 0, 0)
-    timegrid.addWidget(timeslider, 0, 1)
+    timegrid.addWidget(timesliderbox, 0, 1)
     timegrid.addWidget(timeedit, 0, 2)
     timegrid.addWidget(trangebox, 0, 1, 1, 2)
     timegrid.addWidget(widthlabel, 1, 0)
@@ -1743,7 +1779,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
         "The cells that the plot reads. x, y, and z are the velocity coordinates of the model grid. A 2D plane slice"
-        " and the mean over the azimuth give a colour image of a snapshot."
+        " and the mean over rings give a colour image of a snapshot."
     )
     cellslider = make_slider()
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
@@ -2317,8 +2353,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = viewer.values
         firstpos, lastpos = viewer.get_selection_positions()
         evolution = is_evolution(values)
-        for widget in (timeslider, timeedit, widthlabel, widthslider):
+        for widget in (timesliderbox, timeedit, widthlabel, widthslider):
             widget.setVisible(not evolution)
+        previousbutton.setEnabled(firstpos > 0)
+        nextbutton.setEnabled(lastpos < len(viewer.validtimesteps) - 1)
         trangebox.setVisible(evolution)
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
@@ -2331,7 +2369,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the slider selects one cell, which suits a plot against time. A snapshot of one cell has one point, and
         # the field of a snapshot takes a list or a range of cells
         cellslider.setVisible(geometrymode == "cells" and evolution)
-        celllabel.setVisible(geometrymode in {"all", "cells"})
+        # the text below the controls gives the cells of a 3D or a 2D model, which leaves out the corners
+        celllabel.setVisible(geometrymode == "cells" or (geometrymode == "all" and viewer.dimensions == 1))
         axisparameters.setVisible(geometrymode in {"alongaxis", "cone"})
         for widget in (coneanglelabel, coneanglebox):
             widget.setVisible(geometrymode == "cone")
@@ -2824,12 +2863,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_fix_max(row: int) -> None:
         """Set ymax= of a subplot of a colour image to the maximum of the colour scale on the screen."""
         label = get_panel_axes_label(row)
+        # a panel with no value has no colour scale
         maxima = [
-            mesh.get_clim()[1]
+            float(vmax)
             for axis in viewer.fig.axes
             if axis.get_label() == label
             for mesh in axis.collections
-            if isinstance(mesh, QuadMesh)
+            if isinstance(mesh, QuadMesh) and (vmax := mesh.get_clim()[1]) is not None and np.isfinite(vmax)
         ]
         if not (viewer.isimage and plot_shows_values() and maxima):
             show_error("The image of this subplot is not on the screen yet. Wait for the plot, then try again")
@@ -2905,6 +2945,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
     playtimer.timeout.connect(play_step)
+    previousbutton.clicked.connect(lambda: on_step_time(-1))
+    nextbutton.clicked.connect(lambda: on_step_time(1))
     cellslider.valueChanged.connect(on_cell)
     celledit.editingFinished.connect(on_celledit)
     geometrybox.activated.connect(on_geometry)

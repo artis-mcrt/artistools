@@ -2096,6 +2096,23 @@ def test_set_legend_gives_the_legend_room_clear_of_the_data(yscale: str) -> None
     assert np.allclose(ax.get_ylim(), ylimits, rtol=1e-12, atol=0.0), "a second draw must keep the limits"
 
 
+def test_set_legend_room_leaves_out_full_width_spans() -> None:
+    """An axhspan covers each x, e.g. the span of a Shift-drag of a viewer, and it must not move the top.
+
+    The top of the axis moved during a Shift-drag near the legend, thus the drag moved under the pointer.
+    """
+    fig = mplfig.Figure()
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.subplots()
+    ax.plot([0.0, 10.0], [0.0, 1.0], label="rising")
+    ax.set_ylim(0.0, 2.0)
+    at.plottools.set_legend(ax, loc="upper right")
+    ax.axhspan(1.7, 1.9, color="0.5")
+    ax.axhline(1.95)
+    canvas.draw()
+    assert np.allclose(ax.get_ylim(), (0.0, 2.0), rtol=1e-12, atol=0.0)
+
+
 def test_set_legend_keeps_a_top_of_the_user() -> None:
     """A -ymax of the user stays, although the legend then covers the data."""
     fig, ax = plt.subplots()
