@@ -2552,7 +2552,7 @@ def get_default_plotlist() -> list[t.Any]:
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
+        ["rho", ["_yscale", "log"]],
         ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
         # ["Te"],
         # ["Te", "TR"],
