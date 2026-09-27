@@ -554,32 +554,38 @@ def make_icon_pixmap(size: int, curve: "npt.NDArray[np.float64]") -> "QtGui.QPix
     return pixmap
 
 
-def get_macos_bundle_executable(applicationname: str) -> Path:
+# the tool of macOS that reads the Info.plist of an application bundle again
+LSREGISTER: t.Final = Path(
+    "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A"
+    "/Support/lsregister"
+)
+
+
+def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[str]") -> Path:
     """Return the Python executable in the application bundle of the viewer.
 
     Make the bundle if it does not exist. The bundle holds a hard link to the Python executable, thus it uses almost
     no disk space. On a different volume, it holds a copy. If the Python executable changes, this function replaces
-    the link.
+    the link. documenttypes gives the uniform type identifiers that the Dock icon accepts, e.g. "public.folder".
     """
     import os
     import plistlib
     import shutil
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
 
     baseexecutable = Path(sys.executable).resolve()
     contents = Path.home() / "Library" / "Caches" / "artistools" / f"{applicationname}.app" / "Contents"
     executable = contents / "MacOS" / baseexecutable.name
-    if executable.exists() and executable.samefile(baseexecutable):
-        return executable
-
-    executable.parent.mkdir(parents=True, exist_ok=True)
-    # two viewers can make the bundle at the same time, thus each file receives its final name in one step
-    tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
-    try:
-        tmpexecutable.hardlink_to(baseexecutable)
-    except OSError:
-        # a hard link must be on the same volume as its target
-        shutil.copy2(baseexecutable, tmpexecutable)
-    tmpexecutable.replace(executable)
+    if not (executable.exists() and executable.samefile(baseexecutable)):
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        # two viewers can make the bundle at the same time, thus each file receives its final name in one step
+        tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
+        try:
+            tmpexecutable.hardlink_to(baseexecutable)
+        except OSError:
+            # a hard link must be on the same volume as its target
+            shutil.copy2(baseexecutable, tmpexecutable)
+        tmpexecutable.replace(executable)
 
     info = {
         "CFBundleName": applicationname,
@@ -588,14 +594,29 @@ def get_macos_bundle_executable(applicationname: str) -> Path:
         "CFBundleExecutable": executable.name,
         "CFBundlePackageType": "APPL",
         "NSHighResolutionCapable": True,
+        # a folder or a file that the user drops on the Dock icon comes to the viewer as a QFileOpenEvent
+        "CFBundleDocumentTypes": [
+            {
+                "CFBundleTypeName": "ARTIS data",
+                "CFBundleTypeRole": "Viewer",
+                "LSHandlerRank": "Alternate",
+                "LSItemContentTypes": list(documenttypes),
+            }
+        ],
     }
-    tmpinfo = contents / f"Info.plist.{os.getpid()}.tmp"
-    tmpinfo.write_bytes(plistlib.dumps(info))
-    tmpinfo.replace(contents / "Info.plist")
+    infopath = contents / "Info.plist"
+    infobytes = plistlib.dumps(info)
+    if not infopath.is_file() or infopath.read_bytes() != infobytes:
+        tmpinfo = contents / f"Info.plist.{os.getpid()}.tmp"
+        tmpinfo.write_bytes(infobytes)
+        tmpinfo.replace(infopath)
+        # macOS keeps the old Info.plist of a bundle until lsregister reads the bundle again
+        if LSREGISTER.is_file():
+            subprocess.run([LSREGISTER, "-f", contents.parent], check=False, capture_output=True)  # ruff:ignore[subprocess-without-shell-equals-true]
     return executable
 
 
-def relaunch_in_macos_bundle(applicationname: str) -> None:
+def relaunch_in_macos_bundle(applicationname: str, documenttypes: "Sequence[str]") -> None:
     """Run the command again from an application bundle, which gives its name to the Dock and to the menu bar.
 
     The Dock gives a process outside a bundle the file name of its executable, e.g. "python3.14". A process cannot
@@ -615,7 +636,7 @@ def relaunch_in_macos_bundle(applicationname: str) -> None:
         return
 
     try:
-        executable = get_macos_bundle_executable(applicationname)
+        executable = get_macos_bundle_executable(applicationname, documenttypes)
     except OSError:
         # the viewer can open without the bundle, and the Dock then gives the name of the executable
         return
@@ -627,16 +648,19 @@ def relaunch_in_macos_bundle(applicationname: str) -> None:
     os.execve(executable, argv, environment)  # ruff:ignore[start-process-with-no-shell]
 
 
-def start_application(applicationname: str, iconcurve: "npt.NDArray[np.float64]") -> "QtWidgets.QApplication":
+def start_application(
+    applicationname: str, iconcurve: "npt.NDArray[np.float64]", documenttypes: "Sequence[str]" = ("public.folder",)
+) -> "QtWidgets.QApplication":
     """Return the Qt application of a viewer, with the name and the icon of the viewer.
 
     The window is a Qt window with native controls. The Qt canvas of matplotlib draws at the pixel ratio
-    of the screen, thus the plot has the full resolution of a Retina display.
+    of the screen, thus the plot has the full resolution of a Retina display. documenttypes gives the types of the
+    items that the Dock icon accepts on macOS.
     """
     import os
 
     if sys.platform == "darwin":
-        relaunch_in_macos_bundle(applicationname)
+        relaunch_in_macos_bundle(applicationname, documenttypes)
 
     import_optional("PySide6.QtWidgets")
     import matplotlib.pyplot as plt
@@ -736,13 +760,30 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
     from PySide6 import QtWidgets
 
     class ViewerWindow(QtWidgets.QMainWindow):
-        """A window that writes its geometry and the state of its splitter to the settings when it closes."""
+        """A window that writes its geometry and the state of its splitter to the settings when it closes.
+
+        The window also takes the folders and the files that the user drops on it, and gives their paths to the
+        function in its property "drophandler", which set_drop_handler sets.
+        """
 
         def __init__(self, applicationname: str) -> None:
             super().__init__()
             # the name of the object gives the keys of the settings of the window
             self.setObjectName(applicationname)
             self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+            self.setAcceptDrops(True)
+
+        @t.override
+        def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+            if get_dropped_paths(event.mimeData()) and callable(self.property("drophandler")):
+                event.acceptProposedAction()
+
+        @t.override
+        def dropEvent(self, event: QtGui.QDropEvent) -> None:
+            handler = self.property("drophandler")
+            if (paths := get_dropped_paths(event.mimeData())) and callable(handler):
+                event.acceptProposedAction()
+                handler(paths)
 
         @t.override
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:
@@ -757,6 +798,76 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
             super().closeEvent(event)
 
     return ViewerWindow(applicationname)
+
+
+def get_dropped_paths(mimedata: "QtCore.QMimeData") -> list[str]:
+    """Return the local paths of the folders and the files of a drop, e.g. from the Finder."""
+    return [url.toLocalFile() for url in mimedata.urls() if url.isLocalFile()] if mimedata.hasUrls() else []
+
+
+def set_drop_handler(window: "QtWidgets.QMainWindow", handler: "Callable[[list[str]], None]") -> None:
+    """Give the window the function that receives the paths that the user drops on the window."""
+    window.setProperty("drophandler", handler)
+
+
+def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callable[[str], None]") -> None:
+    """Open a folder that the user drops on the Dock icon, and give a file to the drop handler of the active window.
+
+    macOS gives such an item to the application as a QFileOpenEvent, and not to a window.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    # the instance holds open_folder, and the class holds no reference to it, as for PlotArea
+    class FileOpenFilter(QtCore.QObject):
+        """Receive the QFileOpenEvent of the application."""
+
+        def __init__(self, parent: QtCore.QObject, open_folder: "Callable[[str], None]") -> None:
+            super().__init__(parent)
+            self.open_folder = open_folder
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            if event.type() == QtCore.QEvent.Type.FileOpen and isinstance(event, QtGui.QFileOpenEvent):
+                path = event.file()
+                activewindow = QtWidgets.QApplication.activeWindow()
+                handler = activewindow.property("drophandler") if activewindow is not None else None
+                if Path(path).is_dir() or not callable(handler):
+                    self.open_folder(path)
+                else:
+                    handler([path])
+                return True
+            return super().eventFilter(watched, event)
+
+    app.installEventFilter(FileOpenFilter(app, open_folder))
+
+
+# File > Open Recent shows this number of models
+RECENT_LIMIT: t.Final = 10
+
+
+def get_recent_setting_key() -> str:
+    """Return the key of the settings that holds the recent models of this viewer."""
+    from PySide6 import QtWidgets
+
+    return f"{QtWidgets.QApplication.applicationDisplayName()}/recentmodels"
+
+
+def get_recent_models() -> list[str]:
+    """Return the folders of the models that the viewer opened last, the newest first."""
+    value = get_settings().value(get_recent_setting_key(), [])
+    # the INI format of QSettings gives a list of one item as a string
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def add_recent_model(folder: Path | str) -> None:
+    """Put the folder of a model at the start of the recent models of File > Open Recent."""
+    path = str(Path(folder).absolute())
+    recent = [path, *(other for other in get_recent_models() if other != path)][:RECENT_LIMIT]
+    get_settings().setValue(get_recent_setting_key(), recent)
 
 
 def get_window_setting_keys(window: "QtWidgets.QMainWindow") -> tuple[str, str]:
@@ -1756,13 +1867,14 @@ def add_menus(
     callbacks: "Mapping[str, Callable[[], object]]",
     enabled: "Mapping[str, Callable[[], bool]]",
     titles: "Mapping[str, Callable[[], str]]",
+    open_folder: "Callable[[str], object]",
 ) -> None:
     """Add the menus File, Edit, View, Window, and Help.
 
     callbacks gives the function of each item by the text of get_menu_items. A viewer omits an item that it does not
     support, e.g. Reload Data. This function gives the items of the sidebar, the toolbar, the full screen, and the
     window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
-    Pause for Play.
+    Pause for Play. File > Open Recent gives a recent model to open_folder.
     """
     from PySide6 import QtWidgets
 
@@ -1792,6 +1904,8 @@ def add_menus(
         action.setShortcut(keys)
         action.triggered.connect(allcallbacks[text])
         actions[text] = action
+        if text == "Open Model…":
+            add_recent_menu(menus["File"], open_folder)
 
     def update_items() -> None:
         for text, action in actions.items():
@@ -1826,6 +1940,25 @@ def add_menus(
         menu.aboutToShow.connect(update_items)
         menu.aboutToHide.connect(enable_all)
     windowmenu.aboutToShow.connect(update_window_list)
+
+
+def add_recent_menu(filemenu: "QtWidgets.QMenu", open_folder: "Callable[[str], object]") -> None:
+    """Add the submenu Open Recent, which shows the recent models when it opens, and Clear Menu at its end."""
+    recentmenu = filemenu.addMenu("Open Recent")
+
+    def show_recent_models() -> None:
+        recentmenu.clear()
+        for folder in get_recent_models():
+            action = recentmenu.addAction(Path(folder).name)
+            action.setToolTip(folder)
+            action.setEnabled(Path(folder).is_dir())
+            action.triggered.connect(partial(open_folder, folder))
+        recentmenu.addSeparator()
+        clearaction = recentmenu.addAction("Clear Menu")
+        clearaction.setEnabled(bool(get_recent_models()))
+        clearaction.triggered.connect(lambda: get_settings().remove(get_recent_setting_key()))
+
+    recentmenu.aboutToShow.connect(show_recent_models)
 
 
 def activate_window(window: "QtWidgets.QWidget") -> None:
@@ -1977,11 +2110,22 @@ def open_model_window(
     folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(startfolder))
     if not folder:
         return None
+    return open_model_folder(folder, open_window, windows)
 
+
+def open_model_folder(
+    folder: str,
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    windows: "list[QtWidgets.QMainWindow]",
+) -> str | None:
+    """Open a new window for the folder of a run. Return an error message if no window opened.
+
+    A SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window.
+    """
     message = run_command_step(lambda: open_window([folder], windows), quiet=False)
     if message is not None:
         return f"The viewer cannot open {folder}: {message}"
-    settings.setValue("modelfolder", str(Path(folder).parent))
+    get_settings().setValue("modelfolder", str(Path(folder).parent))
     return None
 
 

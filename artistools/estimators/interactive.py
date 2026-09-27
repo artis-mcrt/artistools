@@ -58,6 +58,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
+from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
@@ -69,6 +70,7 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_menus
+from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import connect_plot_mouse
@@ -91,6 +93,7 @@ from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import get_table_actions
+from artistools.viewertools import handle_file_open_events
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_flow_layout
@@ -105,6 +108,7 @@ from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_toolbar
 from artistools.viewertools import make_window
+from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
@@ -113,6 +117,7 @@ from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
+from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_section_shown
@@ -1748,6 +1753,12 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     app = start_application(APPLICATION_NAME, get_icon_curve())
     # the list holds a reference to each window, thus Python keeps the window while it is open
     windows: list[QtWidgets.QMainWindow] = []
+
+    def open_dock_folder(folder: str) -> None:
+        if (message := open_model_folder(folder, open_window, windows)) is not None:
+            print_error(message)
+
+    handle_file_open_events(app, open_dock_folder)
     open_window(tokens, windows)
     app.exec()
 
@@ -1770,6 +1781,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             raise SystemExit(1)
         return message
     windows.append(window)
+    add_recent_model(viewer.modelpath)
 
     fittimer = make_timer(window, FIT_MILLISECONDS)
     playtimer = make_timer(window, 0)
@@ -3042,6 +3054,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
+    def on_open_recent(folder: str) -> None:
+        if (message := open_model_folder(folder, open_window, windows)) is not None:
+            show_error(message)
+
+    def on_drop(paths: list[str]) -> None:
+        """Open a new window for each dropped folder of a run."""
+        for path in paths:
+            if not Path(path).is_dir():
+                show_error(f"plotestimators reads the folder of an ARTIS run, and {Path(path).name} is a file")
+            elif (message := open_model_folder(path, open_window, windows)) is not None:
+                show_error(message)
+
     def on_closed() -> None:
         print(viewer.get_command())
         if queue.task is not None:
@@ -3071,7 +3095,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         menucallbacks,
         enabled={"Undo": queue.can_undo, "Redo": queue.can_redo},
         titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
+        open_folder=on_open_recent,
     )
+    set_drop_handler(window, on_drop)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
