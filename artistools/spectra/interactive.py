@@ -489,34 +489,12 @@ class SpectrumViewer:
         check_viewer_args(args)
         self.args = args
 
-        self.runfolders = get_artis_run_folders(args.modelspecpaths)
-        if not self.runfolders:
+        if not get_artis_run_folders(args.modelspecpaths):
             exit_with_error(
                 "--interactive takes the time range from the timesteps of an ARTIS run, and no path names a run",
                 "Give the folder of an ARTIS run, e.g. plotspectra mymodel --interactive",
             )
-        self.tmids = get_timestep_times(self.runfolders[0], loc="mid")
-        self.tstarts = get_timestep_times(self.runfolders[0], loc="start")
-        self.tends = get_timestep_times(self.runfolders[0], loc="end")
-        self.twidths = get_timestep_times(self.runfolders[0], loc="delta")
-
-        # plotspectra rejects a time outside the arrival times of the escaped packets of each run. Thus the controls
-        # stay inside the times that are valid for all the runs. With --plotinvalidpart, plotspectra accepts all times
-        timebounds = [self.tstarts[0], self.tends[-1]]
-        if not args.plotinvalidpart:
-            for runfolder in self.runfolders:
-                with contextlib.suppress(FileNotFoundError):
-                    _, validstart, validend = get_escaped_arrivalrange(runfolder)
-                    if validstart is not None:
-                        timebounds[0] = max(timebounds[0], float(validstart))
-                    if validend is not None:
-                        timebounds[1] = min(timebounds[1], float(validend))
-        self.timebounds = (timebounds[0], timebounds[1])
-        self.validtimesteps = [
-            timestep
-            for timestep in range(len(self.tmids))
-            if self.tstarts[timestep] >= self.timebounds[0] and self.tends[timestep] <= self.timebounds[1]
-        ] or list(range(len(self.tmids)))
+        self.load_runs(args.modelspecpaths)
 
         # the table of the window shows each option that no other control sets. The tokens that no option takes are
         # paths, e.g. the path of "--notitle mymodel", or the paths after "--"
@@ -584,14 +562,13 @@ class SpectrumViewer:
             otheroptions=otheroptions,
         )
         self.values = self.clamp_time(values) if values.notimeclamp else self.snap(values, *self.get_selection(values))
+        # the list of spectra of the runs of load_runs. After a change of the list, e.g. Add Model or Undo, load_runs
+        # reads the runs again. The paths of the command give the same runs as the list of the values
+        self.runspectra = self.values.spectra
 
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
-        self.previewmaxpacketfiles = (
-            RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in self.runfolders) else None
-        )
         self.drewpreview = False
         # the window sets this before each plot that a slider drag gives, and the worker thread reads it
         self.dragging = False
@@ -603,6 +580,40 @@ class SpectrumViewer:
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
         self.dfalldata = pl.DataFrame()
+
+    def load_runs(self, spectra: "Sequence[str | Path]") -> None:
+        """Read the timesteps of the ARTIS runs of the spectra, and the times that are valid for all the runs.
+
+        The time controls take the timesteps of the first run. plotspectra rejects a time outside the arrival times of
+        the escaped packets of each run. Thus the controls stay inside the times that are valid for all the runs. With
+        --plotinvalidpart, plotspectra accepts all times. A reference spectrum has no run.
+        """
+        runfolders = get_artis_run_folders([Path(path) for path in spectra])
+        tmids = get_timestep_times(runfolders[0], loc="mid")
+        tstarts = get_timestep_times(runfolders[0], loc="start")
+        tends = get_timestep_times(runfolders[0], loc="end")
+        timebounds = [tstarts[0], tends[-1]]
+        if not self.args.plotinvalidpart:
+            for runfolder in runfolders:
+                with contextlib.suppress(FileNotFoundError):
+                    _, validstart, validend = get_escaped_arrivalrange(runfolder)
+                    if validstart is not None:
+                        timebounds[0] = max(timebounds[0], float(validstart))
+                    if validend is not None:
+                        timebounds[1] = min(timebounds[1], float(validend))
+        self.runfolders, self.tmids, self.tstarts, self.tends = runfolders, tmids, tstarts, tends
+        self.twidths = get_timestep_times(runfolders[0], loc="delta")
+        self.timebounds = (timebounds[0], timebounds[1])
+        self.validtimesteps = [
+            timestep
+            for timestep in range(len(tmids))
+            if tstarts[timestep] >= self.timebounds[0] and tends[timestep] <= self.timebounds[1]
+        ] or list(range(len(tmids)))
+        # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
+        self.previewmaxpacketfiles = (
+            RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in runfolders) else None
+        )
+        self.runspectra = tuple(str(path) for path in spectra)
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
         """Return the first and the last valid timestep with a middle in the time range of the values.
@@ -1314,6 +1325,22 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
+    # the spectra of the runs that give the ranges of the time controls
+    shownruns = viewer.runspectra
+
+    def show_run_ranges() -> None:
+        """Set the ranges of the time controls and the direction bins from the runs of the plot, e.g. after Add Model.
+
+        The ranges of the sliders and the direction bins came from the models of the command only.
+        """
+        nonlocal logtrange, widthmax, nvalid, slidermode, shownchoices, shownruns
+        logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
+        widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
+        nvalid = len(viewer.validtimesteps)
+        # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
+        slidermode, shownchoices = None, None
+        directionchoices.clear()
+        shownruns = viewer.runspectra
 
     def set_time_mode() -> None:
         nonlocal slidermode
@@ -1376,6 +1403,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
         values = viewer.values
+        # Undo or a rejected change can give a different list of spectra, and its runs have different times
+        if values.spectra != viewer.runspectra:
+            viewer.load_runs(values.spectra)
+        if viewer.runspectra != shownruns:
+            show_run_ranges()
         if values.xunit != rangesunit:
             set_xunit_ranges()
         if values.notimeclamp != slidermode:
@@ -1626,10 +1658,22 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         elif viewer.drewpreview:
             fulldrawtimer.start()
 
+    def plot_shows_values() -> bool:
+        """Return True if the plot on the screen has the values of the controls.
+
+        DrawQueue gives the viewer the new values immediately, and the old plot stays until the worker draws the new
+        one. A handler that reads the plot, e.g. the y limits or the series, must not put them into different values.
+        """
+        return queue.drawnvalues == viewer.values
+
+    def plot_has_xunit() -> bool:
+        """Return True if the x axis of the plot on the screen has the unit of the controls, e.g. during Play."""
+        return queue.drawnvalues.xunit == viewer.values.xunit
+
     def set_xlimits(low: float, high: float) -> None:
         # a value of 3 significant digits gives a short command, and a text field gives an exact value
         low, high = float(f"{low:.3g}"), float(f"{high:.3g}")
-        if low < high:
+        if low < high and plot_has_xunit():
             apply(dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g")))
 
     def on_xrange(handle: int, position: int) -> None:
@@ -1661,6 +1705,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_fixy(checked: bool) -> None:
         if not checked:
             apply(dc.replace(viewer.values, ymin="", ymax=""))
+            return
+        if not plot_shows_values():
+            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
             return
         # the limits of the plot on the screen become the limits of the command, thus the plot does not change
         low, high = (get_short_number(limit) for limit in viewer.axes[0].get_ylim())
@@ -1753,14 +1800,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if not checked:
             apply(remove_series_lock(viewer.values))
             return
+        if not plot_shows_values():
+            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
+            return
         if not (series := viewer.get_drawn_series()):
             show_error("The plot has no series of contributions to lock")
             return
         apply(dc.replace(viewer.values, fixedionlist=series))
 
+    def apply_spectra(spectra: "Sequence[str]") -> None:
+        """Read the runs of a new list of spectra, and apply the list with a time that the runs have.
+
+        The runs of the new list can cover a shorter time, e.g. after Add Model, thus the time moves inside it.
+        """
+        viewer.load_runs(spectra)
+        values = dc.replace(viewer.values, spectra=tuple(spectra))
+        apply(viewer.clamp_time(values) if values.notimeclamp else viewer.snap(values, *viewer.get_selection(values)))
+
     def add_spectra(paths: "Sequence[str]") -> None:
         spectra = viewer.values.spectra
-        apply(dc.replace(viewer.values, spectra=(*spectra, *(path for path in paths if path not in spectra))))
+        apply_spectra((*spectra, *(path for path in paths if path not in spectra)))
 
     def on_add_model() -> None:
         startfolder = Path(viewer.runfolders[0]).absolute().parent
@@ -1798,7 +1857,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if not get_artis_run_folders([Path(path) for path in spectra]):
             show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
             return
-        apply(dc.replace(viewer.values, spectra=spectra))
+        apply_spectra(spectra)
 
     def on_copy() -> None:
         copy_text(viewer.get_command())
@@ -1990,7 +2049,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         readoutlabel=statusbar.readout,
         on_select=set_xlimits,
         on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
-        can_select=lambda: True,
+        can_select=plot_has_xunit,
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )

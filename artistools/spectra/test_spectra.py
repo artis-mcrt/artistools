@@ -2722,3 +2722,28 @@ def test_interactive_lock_series() -> None:
     shared = set(colours) & set(latercolours)
     assert shared
     assert all(colours[name] == latercolours[name] for name in shared)
+
+
+def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> None:
+    """A model that the user adds can have a shorter valid time, and the time controls then stay inside it.
+
+    The viewer read the valid times of the models of the command only. After Add Model, the first time of the slider
+    was before the valid range of the new model, and plotspectra rejected it.
+    """
+    # a copy of the model with a smaller maximum velocity gives a longer range of arrival times
+    widemodel = tmp_path / "widemodel"
+    widemodel.mkdir()
+    for path in modelpath.iterdir():
+        if path.name != "model.txt":
+            (widemodel / path.name).symlink_to(path.absolute())
+    modeltext = (modelpath / "model.txt").read_text(encoding="utf-8")
+    (widemodel / "model.txt").write_text(modeltext.replace("8000.", "1000.", 1), encoding="utf-8")
+
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
+    widestart = viewer.timebounds[0]
+    viewer.load_runs((str(widemodel), str(modelpath)))
+    assert viewer.timebounds[0] > widestart
+    firsttime = viewer.move_to_end(last=False)
+    assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None

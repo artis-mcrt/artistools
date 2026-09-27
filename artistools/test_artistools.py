@@ -3530,7 +3530,9 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     The queue returned before it showed the values, thus a slider stayed at a position that the plot did not show.
     """
     # PySide6 is an optional dependency. CI does not install it for each Python version, and a CI machine with no
-    # libEGL.so.1 raises an ImportError that is not a ModuleNotFoundError
+    # libEGL.so.1 gives an ImportError that is not a ModuleNotFoundError. The spinner and the banner of the queue
+    # need QtWidgets, which needs libEGL.so.1, thus each queue test skips without QtWidgets
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=5)
     showvalues = mock.Mock()
@@ -3546,6 +3548,7 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
 
     A rejected change leaves the old values, thus its step of Undo holds the current values and changes nothing.
     """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=1)
     queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
@@ -3572,10 +3575,123 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
     queue.close()
 
 
+def test_viewer_cancel_keeps_the_history_of_the_plot_on_the_screen() -> None:
+    """Cancel Plot after Undo keeps the step of Undo, because the plot on the screen did not change.
+
+    The cancel returned to the values of the plot but kept the lists of Undo and Redo of the cancelled step. Thus
+    Undo lost the step back to the earlier values.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    viewer = mock.Mock(values=1, warning="")
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    with mock.patch.object(queue, "redraw"), mock.patch.object(viewertools, "set_plot_busy"):
+        queue.apply(2)
+        # the plot of 2 is on the screen, then Undo asks for a plot of 1, which waits
+        queue.drawnvalues = 2
+        queue.undo()
+        assert viewer.values == 1
+        queue.requestedvalues = 1
+        queue.cancel()
+        assert viewer.values == 2
+        assert queue.can_undo()
+        assert not queue.can_redo()
+        queue.undo()
+        assert viewer.values == 1
+    queue.close()
+
+
+def test_viewer_undo_ignores_the_parts_that_the_window_sets() -> None:
+    """A step of Undo that differs only in a part that the window sets, e.g. the width of the figure, is no step.
+
+    keep_on_undo gives such a part its current value. Undo compared the entries before it applied keep_on_undo.
+    Thus a resize of the window after a rejected change enabled Undo, and Undo only drew the same plot again.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    def keep_width(restored: tuple[int, float], current: tuple[int, float]) -> tuple[int, float]:
+        return restored[0], current[1]
+
+    viewer = mock.Mock(values=(1, 1.0))
+    queue = viewertools.DrawQueue(
+        QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock(), keep_on_undo=keep_width
+    )
+    with mock.patch.object(queue, "redraw") as mockredraw:
+        queue.apply((2, 1.0))
+        # the command rejected the change, thus the viewer kept the values of the plot
+        viewer.values = (1, 1.0)
+        queue.apply((1, 1.3), undoable=False)
+        assert not queue.can_undo()
+        mockredraw.reset_mock()
+        queue.undo()
+        assert viewer.values == (1, 1.3)
+        mockredraw.assert_not_called()
+    queue.close()
+
+
+def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
+    """A rejection marks the text field that gave its own change, and a field that Qt deleted gets no mark.
+
+    The queue kept one field for all the plots, thus a second edit during a plot took the mark of the first plot. A
+    new card of a subplot replaces its fields, and a mark of the deleted field raised an error, so the window then
+    showed the rejected values.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+
+    def render(values: int) -> Callable[[], str | None]:
+        time.sleep(0.2)
+        return lambda: f"rejected {values}" if values >= 2 else None
+
+    fields = [mock.Mock(name=f"field{index}") for index in range(4)]
+    deletedfield = fields[3]
+    viewer = mock.Mock(values=0, warning="")
+    showvalues = mock.Mock()
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    def is_live(field: object) -> bool:
+        return field is not deletedfield
+
+    with (
+        mock.patch.object(viewertools, "get_edited_field", side_effect=fields),
+        mock.patch.object(viewertools, "is_live", side_effect=is_live),
+        mock.patch.object(viewertools, "mark_field_error") as mockmark,
+        mock.patch.object(viewertools, "clear_field_error"),
+        mock.patch.object(viewertools, "set_plot_busy"),
+        mock.patch.object(viewertools, "show_plot_banner"),
+    ):
+        queue.apply(1)
+        app.processEvents()
+        # the plot of 1 is in progress, and the command accepts it. The command rejects the next change
+        queue.apply(2)
+        wait_for_plots()
+        mockmark.assert_called_once_with(fields[1], "rejected 2")
+        queue.apply(3)
+        wait_for_plots()
+        assert mockmark.call_args == mock.call(fields[2], "rejected 3")
+        showvalues.reset_mock()
+        queue.apply(4)
+        wait_for_plots()
+        assert mockmark.call_count == 2, "a field that Qt deleted must get no mark"
+        assert showvalues.called, "the window must show the values of the plot after a rejection"
+    queue.close()
+
+
 def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     """In Dark Mode, a black line and a black text take the colour of the text, and a coloured series keeps its colour.
 
-    A black line on the dark background of the window cannot show, and a series needs its colour for the legend.
+    A black line on the dark background of the window cannot show, and a series needs its colour for the legend. A
+    dark colour of an element, e.g. of O, Si, or S, is a colour of a series too.
     """
     import matplotlib.colors as mcolors
     import matplotlib.figure as mplfig
@@ -3584,6 +3700,8 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     axis = fig.add_subplot()
     blackline = axis.plot([0, 1], [0, 1], color="black", label="model")[0]
     blueline = axis.plot([0, 1], [1, 0], color="tab:blue", label="reference")[0]
+    # the colour of sulphur is dark, and it made the series grey
+    sulphurline = axis.plot([0, 1], [0.5, 0.5], color="#7d0200", label="S")[0]
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
@@ -3591,6 +3709,7 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
 
     assert mcolors.same_color(blackline.get_color(), "#dddddd")
     assert mcolors.same_color(blueline.get_color(), "tab:blue")
+    assert mcolors.same_color(sulphurline.get_color(), "#7d0200")
     assert mcolors.same_color(axis.xaxis.label.get_color(), "#dddddd")
     assert mcolors.same_color(axis.get_facecolor(), "#1e1e1e")
     # the frame of the legend keeps its transparency
@@ -3653,7 +3772,7 @@ def test_viewer_cancel_discards_the_plot_in_progress() -> None:
 
     A change after Cancel Plot waits for the end of the discarded plot, and then the queue draws it.
     """
-    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
@@ -3701,7 +3820,7 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
     The window thread drew each plot, thus a drag of the time slider stopped until the plot ended.
     """
     # the queue needs the timers of Qt alone, and a QCoreApplication loads no plugin of a display
-    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
@@ -3866,28 +3985,47 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
 
 
+def test_viewer_row_wraps_its_groups() -> None:
+    """A group of a row goes to a new line when the line is full, and a hidden group takes no place and no gap."""
+    assert viewertools.get_wrapped_lines([100, 100, 100], 250, 12) == [[0, 1], [2]]
+    assert viewertools.get_wrapped_lines([100, 0, 100], 212, 12) == [[0, 1, 2]]
+    # a group wider than the line has a line of its own
+    assert viewertools.get_wrapped_lines([50, 400, 50], 300, 12) == [[0], [1], [2]]
+
+
 def test_viewer_size_model_gives_the_scales_of_a_size() -> None:
     """The export dialog finds the -figscale and the -figwidthscale that give a figure a new size.
 
     The frames grow with the scales, and the margins of the labels keep their size. Thus a figure is not in proportion
-    to -figscale, and a proportional model gave a wrong size.
+    to -figscale, and a proportional model gave a wrong size. A colour image of plotestimators has the constrained
+    layout, and all of it scales, but the model took the colour bar as the only frame.
     """
     from artistools.plottools import make_frame_figure
 
     def make_figure(figscale: float, figwidthscale: float) -> mplfig.Figure:
         args = argparse.Namespace(figscale=figscale, figwidthscale=figwidthscale)
-        fig, _ = make_frame_figure(args, rows=2, cols=2, sharey=True)
+        # a figure of pyplot stays open after the test, thus the test gives an empty figure
+        fig, _ = make_frame_figure(args, rows=2, cols=2, sharey=True, fig=mplfig.Figure())
         FigureCanvasAgg(fig).draw()
         return fig
 
     tokens = ["-figscale", "1.5", "-figwidthscale", "0.8"]
     model = viewertools.get_figure_size_model(make_figure(1.5, 0.8), tokens, 1.0)
-    assert model.scales == (1.5, 0.8)
+    assert np.allclose(model.scales, (1.5, 0.8), rtol=1e-12, atol=0.0)
     newfig = make_figure(0.9, 1.7)
     newsize = tuple(float(value) for value in newfig.get_size_inches())
     # make_frame_figure rounds the size of the figure to 0.01 inches
     assert np.allclose(model.get_size(0.9, 1.7), newsize, rtol=1e-3, atol=0.0)
     assert np.allclose(model.get_scales(*newsize), (0.9, 1.7), rtol=1e-3, atol=0.0)
+
+    # the size of a colour image is in proportion to -figscale, and its width also to -figwidthscale
+    imagefig = mplfig.Figure(figsize=(3.8, 4.2), layout="constrained")
+    image = imagefig.add_subplot().pcolormesh(np.arange(9.0).reshape(3, 3))
+    imagefig.colorbar(image)
+    FigureCanvasAgg(imagefig).draw()
+    imagemodel = viewertools.get_figure_size_model(imagefig, [], 1.0)
+    assert np.allclose(imagemodel.get_scales(7.6, 8.4), (2.0, 1.0), rtol=1e-12, atol=0.0)
+    assert np.allclose(imagemodel.get_scales(5.7, 4.2), (1.0, 1.5), rtol=1e-12, atol=0.0)
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:
@@ -3896,7 +4034,7 @@ def test_viewer_queue_runs_a_task_between_plots() -> None:
     A plot that the user asked for during a reload took the time of the reload as its plot time. Play then made no
     pause.
     """
-    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])

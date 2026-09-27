@@ -928,20 +928,23 @@ class EstimatorViewer:
             return []
         return ["-timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
 
-    def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
+    def get_plot_tokens(self, values: ControlValues | None = None, modeltoken: str | None = None) -> list[str]:
         """Return the plotestimators arguments of the values, or of the current values if the caller gives none.
 
         The first subplot comes before the folder, e.g. "Te TR mymodel", and each other subplot follows -plot at the
         end. A -plot takes each word up to the next flag, thus nothing can follow the last -plot. The command gives
         each subplot also when the subplots are the default of plotestimators. The command then states the plot in
-        full, and a later change of the default does not change it.
+        full, and a later change of the default does not change it. modeltoken replaces the folder of the command,
+        e.g. the full path of the working folder for the next start.
         """
         if values is None:
             values = self.values
+        if modeltoken is None:
+            modeltoken = self.modeltoken
         subplots = [get_command_items(subplot, self.estimatorcolumns) for subplot in values.subplots]
         # a first subplot with no item cannot go before the folder, thus it follows -plot as the others do
         firstpositional = bool(subplots and subplots[0])
-        tokens = [*(subplots[0] if firstpositional else ()), *([self.modeltoken] if self.modeltoken else [])]
+        tokens = [*(subplots[0] if firstpositional else ()), *([modeltoken] if modeltoken else [])]
         timetokens = self.get_time_tokens(values)
         tokens += timetokens
         if values.x != self.get_default_xvariable(values.otheroptions, timegiven=bool(timetokens)):
@@ -1555,6 +1558,31 @@ def change_subplot_type(
     return (seriestype, *(kept or get_first_choice(choices)), *directives)
 
 
+def get_moved_rows(
+    oldsubplots: "Sequence[Sequence[str]]", newsubplots: "Sequence[Sequence[str]]", rows: "Collection[int]"
+) -> set[int]:
+    """Return the new rows of the subplots at rows, after a change of the subplots from oldsubplots to newsubplots.
+
+    A subplot goes to the nearest row that has the same items and that no other subplot of rows took, e.g. after a
+    move, an insert, a delete, or Undo. If no such row exists, the subplot keeps its row when the count of subplots
+    stays the same, e.g. after a new y scale. If not, the subplot has no new row.
+    """
+    newrows: set[int] = set()
+    for row in sorted(rows):
+        if not 0 <= row < len(oldsubplots):
+            continue
+        matches = [
+            newrow
+            for newrow, subplot in enumerate(newsubplots)
+            if tuple(subplot) == tuple(oldsubplots[row]) and newrow not in newrows
+        ]
+        if matches:
+            newrows.add(min(matches, key=lambda newrow: abs(newrow - row)))
+        elif len(newsubplots) == len(oldsubplots):
+            newrows.add(row)
+    return newrows
+
+
 def get_card_summary(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str:
     """Return the text that the header of a collapsed card shows in place of its controls, e.g. "Te, TR · log"."""
     items = [item for _, item in get_chip_items(subplot, estimatorcolumns)]
@@ -2044,8 +2072,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     insertbox.hide()
     # the row of the new subplot, or None while the field is closed
     insertrow: int | None = None
-    # the rows of the cards that show only their header. A move, an insert, or a delete of a subplot moves them too
+    # the rows of the cards that show only their header
     collapsedrows: set[int] = set()
+    # the subplots of the cards on the screen. After each change, e.g. a move, Undo, or a rejected change,
+    # show_subplots moves the collapsed cards and the insert field with their subplots
+    shownsubplots: tuple[tuple[str, ...], ...] = ()
     # the line that shows where a dragged card goes
     dropline = QtWidgets.QFrame(subplotsbox)
     dropline.setObjectName("dropline")
@@ -2442,7 +2473,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         A variable that the subplot shows has a check mark, and the menu does not offer it again.
         """
         names = set(get_subplot_names(viewer.values.subplots[row]))
-        menu = QtWidgets.QMenu(button)
+        # a plot that ends while the menu shows can make the card again, and that deletes the children of the card
+        menu = QtWidgets.QMenu(window)
         for title, columns in get_variable_menu_groups(tuple(viewer.estimatorcolumns)):
             if not columns:
                 continue
@@ -2523,8 +2555,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         A card with the same key stays, and its controls show the new directives. A new card of the same row gives
         the focus to the control that had it in the old card.
         """
-        nonlocal shownnewkey, pendingfocus
+        nonlocal shownnewkey, pendingfocus, shownsubplots, insertrow
         subplots, columns = viewer.values.subplots, viewer.estimatorcolumns
+        if subplots != shownsubplots:
+            movedcollapsed = get_moved_rows(shownsubplots, subplots, collapsedrows)
+            collapsedrows.clear()
+            collapsedrows.update(movedcollapsed)
+            # the insert field stays under its card, and it closes when its card goes
+            if insertrow is not None:
+                movedcard = get_moved_rows(shownsubplots, subplots, {insertrow - 1})
+                insertrow = min(movedcard) + 1 if movedcard else None
+            shownsubplots = subplots
         subplottypes = get_subplot_types(columns, viewer.nltetypes)
         isimage = get_geometry_mode(viewer.values) in IMAGE_MODES
         focuswidget = QtWidgets.QApplication.focusWidget()
@@ -2532,7 +2573,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the cards take their places by the row, thus the insert field leaves the layout during the rebuild
         subplotslayout.removeWidget(insertbox)
         for row, subplot in enumerate(subplots):
-            key = (*get_card_key(row, subplots, columns, isimage=isimage), row in collapsedrows)
+            # the header of a collapsed card shows the summary, which holds the y scale
+            summary = get_card_summary(subplot, columns) if row in collapsedrows else None
+            key = (*get_card_key(row, subplots, columns, isimage=isimage), summary)
             if row < len(cards) and cards[row].key == key:
                 show_card_directives(cards[row], subplot)
                 continue
@@ -3007,14 +3050,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply_subplots(remove_subplot_item(viewer.values.subplots, row, position))
 
     def apply_subplot_order(order: "Sequence[int | tuple[str, ...]]") -> None:
-        """Apply the subplots in a new order, and keep the collapsed state of each card with its subplot.
-
-        Each item of order is the old row of a subplot, or a new subplot.
-        """
+        """Apply the subplots in a new order. Each item of order is the old row of a subplot, or a new subplot."""
         subplots = viewer.values.subplots
-        newcollapsed = {newrow for newrow, item in enumerate(order) if isinstance(item, int) and item in collapsedrows}
-        collapsedrows.clear()
-        collapsedrows.update(newcollapsed)
         apply_subplots([subplots[item] if isinstance(item, int) else item for item in order])
 
     def on_delete_subplot(row: int) -> None:
@@ -3371,9 +3408,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the window keeps its command at a quit, and the next start opens the window again
     def get_session_tokens() -> list[str]:
-        # a command with no folder reads the working folder, and the next start can be in a different folder
-        tokens = viewer.get_plot_tokens()
-        return tokens if viewer.modeltoken else [*tokens, str(Path.cwd())]
+        # a command with no folder reads the working folder, and the next start can be in a different folder. The
+        # folder takes the place of the folder of the command, because a folder after an empty -plot removes that -plot
+        return viewer.get_plot_tokens(modeltoken=viewer.modeltoken or str(Path.cwd()))
 
     window.setProperty("sessiontokens", get_session_tokens)
     QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)

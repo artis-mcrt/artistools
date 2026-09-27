@@ -3247,6 +3247,19 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Pa
     assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
 
 
+def test_interactive_session_keeps_an_empty_last_subplot() -> None:
+    """The command of the next start keeps a last subplot with no item, also when the window read the working folder.
+
+    The session put the working folder after the last -plot. plotestimators then took the folder out of that -plot and
+    removed the -plot, which was empty, thus the next start lost the subplot.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = (("TR",), ())
+    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
+    tokens = viewer.get_plot_tokens(modeltoken=str(modelpath_classic_3d.absolute()))
+    assert make_headless_viewer([*tokens, "--interactive"]).values.subplots == subplots
+
+
 def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
 
@@ -4008,3 +4021,21 @@ def test_variable_menu_groups_the_columns() -> None:
     assert len(groups) == 3
     assert groups[2][0].endswith("(heating_…)")
     assert groups[2][1] == ("heating_bf", "heating_ff")
+
+
+def test_card_state_follows_its_subplot() -> None:
+    """A collapsed card and the insert field stay with their subplot after each change of the subplots.
+
+    The window moved the rows only for a move, an insert, or a delete of the window. After Undo of a delete, the
+    window collapsed a different card, and it put the insert field below a different card.
+    """
+    before = (("Te",), ("TR",), ("nne",))
+    # a delete of the first subplot, then Undo of the delete
+    assert interactive.get_moved_rows(before, before[1:], {2}) == {1}
+    assert interactive.get_moved_rows(before[1:], before, {1}) == {2}
+    # a move of the last subplot to the top
+    assert interactive.get_moved_rows(before, (("nne",), ("Te",), ("TR",)), {0, 2}) == {0, 1}
+    # a new y scale changes the items of the subplot, and the subplot keeps its row
+    assert interactive.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
+    # the change removes the subplot of the row
+    assert not interactive.get_moved_rows(before, before[1:], {0})

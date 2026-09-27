@@ -2229,7 +2229,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--colorbyion",
         action="store_true",
-        help="Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this",
+        help=(
+            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this"
+        ),
     )
 
     parser.add_argument(

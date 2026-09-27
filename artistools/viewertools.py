@@ -18,6 +18,7 @@ import threading
 import time
 import traceback
 import typing as t
+import weakref
 from functools import cache
 from functools import partial
 from pathlib import Path
@@ -43,6 +44,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
     import matplotlib.figure as mplfig
+    import matplotlib.typing as mplt
     import numpy.typing as npt
     from matplotlib.backend_bases import FigureCanvasBase
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -716,9 +718,11 @@ def start_application(
         - a slider;
         - a list;
         - a popup, e.g. the list of names of a completer;
-        - a button, which uses only the space key.
+        - a button, which uses only the space key;
+        - a text field or a text box with selected text, which uses the Copy key.
 
-        For example, the Up key in -maxseriescount made the time range wider.
+        For example, the Up key in -maxseriescount made the time range wider, and the Copy key in the Command box
+        copied the figure.
         """
 
         @t.override
@@ -734,8 +738,17 @@ def start_application(
                     | QtWidgets.QAbstractItemView,
                 )
                 usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
+                hastextselection = (
+                    isinstance(focuswidget, QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
+                    and focuswidget.textCursor().hasSelection()
+                ) or (isinstance(focuswidget, QtWidgets.QLineEdit) and focuswidget.hasSelectedText())
                 key = event.key()
-                if (usesarrows and key in arrowkeys) or (usesspace and key == QtCore.Qt.Key.Key_Space):
+                keyowners = (
+                    (usesarrows, key in arrowkeys),
+                    (usesspace, key == QtCore.Qt.Key.Key_Space),
+                    (hastextselection, event.matches(QtGui.QKeySequence.StandardKey.Copy)),
+                )
+                if any(widgetuses and iskey for widgetuses, iskey in keyowners):
                     event.accept()
                     return True
             return super().eventFilter(watched, event)
@@ -747,7 +760,9 @@ def start_application(
     class EditTracker(QtCore.QObject):
         """Keep the text field that the user confirmed last, and the time, in two properties of its window.
 
-        A plot that rejects the change of the field then marks the field, as a form of macOS does.
+        A plot that rejects the change of the field then marks the field, as a form of macOS does. The property holds
+        a weak reference, because a QObject in a property is a raw pointer. A read of that pointer after Qt deleted
+        the field crashed the process.
         """
 
         @t.override
@@ -763,7 +778,7 @@ def start_application(
             )
             if isinstance(watched, QtWidgets.QLineEdit) and confirms:
                 window = watched.window()
-                window.setProperty("lasteditedfield", watched)
+                window.setProperty("lasteditedfield", weakref.ref(watched))
                 window.setProperty("lastedittime", time.monotonic())
             return super().eventFilter(watched, event)
 
@@ -798,34 +813,31 @@ def get_edited_field(window: "QtCore.QObject") -> "QtWidgets.QLineEdit | None":
         return None
     from PySide6 import QtWidgets
 
-    field = window.property("lasteditedfield")
-    return field if isinstance(field, QtWidgets.QLineEdit) else None
+    fieldref = window.property("lasteditedfield")
+    field = fieldref() if isinstance(fieldref, weakref.ref) else None
+    return field if isinstance(field, QtWidgets.QLineEdit) and is_live(field) else None
 
 
-def mark_field_error(window: "QtCore.QObject", field: "QtWidgets.QLineEdit", message: str) -> None:
+def is_live(qobject: "QtCore.QObject") -> bool:
+    """Return True if Qt did not delete the object, e.g. a field of a subplot card that show_subplots replaced."""
+    import shiboken6
+
+    return shiboken6.isValid(qobject)
+
+
+def mark_field_error(field: "QtWidgets.QLineEdit", message: str) -> None:
     """Give the field a red border and the message beside it, as a form of macOS does."""
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    clear_field_error(window)
     field.setStyleSheet("QLineEdit { border: 2px solid firebrick; border-radius: 3px; }")
     QtWidgets.QToolTip.showText(field.mapToGlobal(QtCore.QPoint(0, field.height())), message, field)
-    window.setProperty("errorfield", field)
 
 
-def clear_field_error(window: "QtCore.QObject") -> None:
-    """Remove the mark of mark_field_error, e.g. after a plot that the command accepts."""
-    field = window.property("errorfield")
-    # each plot calls this function, thus a window with no mark returns before the imports
-    if field is None:
-        return
-    import shiboken6
-    from PySide6 import QtWidgets
-
-    # a new card of a subplot replaces its fields, and Qt then deletes the old field
-    if isinstance(field, QtWidgets.QLineEdit) and shiboken6.isValid(field):
+def clear_field_error(field: "QtWidgets.QLineEdit") -> None:
+    """Remove the mark of mark_field_error, unless Qt deleted the field."""
+    if is_live(field):
         field.setStyleSheet("")
-    window.setProperty("errorfield", None)
 
 
 def get_settings() -> "QtCore.QSettings":
@@ -927,7 +939,7 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
 
     macOS gives such an item to the application as a QFileOpenEvent, and not to a window. At the start, macOS also
     gives each path of the command line as such an event, and the first window already shows those paths. Thus the
-    filter ignores them.
+    filter ignores the first event of each of those paths. A later drop of the same path opens it as usual.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -946,7 +958,8 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
         def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
             if event.type() == QtCore.QEvent.Type.FileOpen and isinstance(event, QtGui.QFileOpenEvent):
                 path = event.file()
-                if str(Path(path).absolute()) in self.launchpaths:
+                if (absolutepath := str(Path(path).absolute())) in self.launchpaths:
+                    self.launchpaths.remove(absolutepath)
                     return True
                 activewindow = QtWidgets.QApplication.activeWindow()
                 handler = activewindow.property("drophandler") if activewindow is not None else None
@@ -1135,13 +1148,14 @@ def add_section(
         content.setVisible(checked)
         get_settings().setValue(settingkey, checked)
 
-    header.toggled.connect(set_open)
-    header.setChecked(isopen)
-    set_open(isopen)
     # the stretch at the end of the panel keeps each section, also Command and Python, below the last one
     index = panellayout.count() - 1
     panellayout.insertWidget(index, header)
+    # a widget with no parent shows as a window of its own, thus the content goes into the panel before set_open
     panellayout.insertWidget(index + 1, content)
+    header.toggled.connect(set_open)
+    header.setChecked(isopen)
+    set_open(isopen)
     return header, grid
 
 
@@ -1177,7 +1191,7 @@ def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidge
     return button
 
 
-def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QLayout":
+def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QVBoxLayout":
     """Return a layout that puts the widgets side by side from the left, and wraps the row in a narrow sidebar.
 
     A label, a checkbox, or a push button that follows a control starts a new group, e.g. a pair of a label and a
@@ -1192,10 +1206,10 @@ def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QLayou
         if index == 0 or (isinstance(widget, groupstarts) and not isinstance(widgets[index - 1], QtWidgets.QLabel)):
             groups.append([])
         groups[-1].append(widget)
-    rowlayout = make_flow_layout(spacing=ROW_SPACING, horizontalspacing=LABEL_GAP)
+    groupwidgets: list[QtWidgets.QWidget] = []
     for group in groups:
         if len(group) == 1:
-            rowlayout.addWidget(group[0])
+            groupwidgets.append(group[0])
             continue
         groupbox = QtWidgets.QWidget()
         grouplayout = QtWidgets.QHBoxLayout(groupbox)
@@ -1203,8 +1217,87 @@ def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QLayou
         grouplayout.setSpacing(ROW_SPACING)
         for widget in group:
             grouplayout.addWidget(widget)
-        rowlayout.addWidget(groupbox)
+        groupwidgets.append(groupbox)
+    rowlayout = QtWidgets.QVBoxLayout()
+    rowlayout.setContentsMargins(0, 0, 0, 0)
+    rowlayout.addWidget(get_wrap_row_class()(groupwidgets))
     return rowlayout
+
+
+def get_wrapped_lines(widths: "Sequence[int]", available: int, gap: int) -> list[list[int]]:
+    """Return the indices of the items on each line, for items of these widths on lines of the available width.
+
+    An item goes on a new line if the line is full. An item of no width, e.g. a hidden widget, takes no place and no
+    gap. A line holds one item at least, also when the item is wider than the line.
+    """
+    lines: list[list[int]] = [[]]
+    used = 0
+    for index, width in enumerate(widths):
+        if width > 0 and used > 0 and used + gap + width > available:
+            lines.append([])
+            used = 0
+        lines[-1].append(index)
+        if width > 0:
+            used += width if used == 0 else gap + width
+    return lines
+
+
+@cache
+def get_wrap_row_class() -> "Callable[[list[QtWidgets.QWidget]], QtWidgets.QWidget]":
+    """Return the class of the rows of make_row_layout, which takes the widget of each group.
+
+    A layout class of Python ran each time that Qt arranged the sidebar, e.g. at each step of a drag. Each call
+    waited for the worker thread, which held the GIL during a plot, thus a text change took 156 ms and not 7 ms. The
+    row puts its groups in layouts of Qt, and Python runs only when the width of the row changes.
+    """
+    import shiboken6
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class WrapRow(QtWidgets.QWidget):
+        """The groups of a row, on as many lines as the width of the row needs."""
+
+        def __init__(self, groups: "list[QtWidgets.QWidget]") -> None:
+            super().__init__()
+            self.groups = groups
+            self.lines: list[list[int]] = []
+            layout = QtWidgets.QVBoxLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(ROW_SPACING)
+            # the width of the widest group is the minimum width of the row. A wider line then wraps and does not
+            # widen the sidebar. A layout of Qt uses the minimum width of a widget if it has one, or its size hint
+            self.setMinimumWidth(
+                max((group.minimumWidth() or group.minimumSizeHint().width() for group in groups), default=1)
+            )
+            self.set_lines([list(range(len(groups)))])
+
+        def set_lines(self, lines: list[list[int]]) -> None:
+            layout = self.layout()
+            assert layout is not None
+            while (item := layout.takeAt(0)) is not None:
+                if (line := item.layout()) is not None:
+                    while line.takeAt(0) is not None:
+                        pass
+                    shiboken6.delete(line)
+            for indices in lines:
+                line = QtWidgets.QHBoxLayout()
+                line.setSpacing(LABEL_GAP)
+                for index in indices:
+                    line.addWidget(self.groups[index])
+                line.addStretch(1)
+                assert isinstance(layout, QtWidgets.QBoxLayout)
+                layout.addLayout(line)
+            self.lines = lines
+
+        @t.override
+        def resizeEvent(self, event: QtGui.QResizeEvent, /) -> None:
+            super().resizeEvent(event)
+            widths = [0 if group.isHidden() else group.sizeHint().width() for group in self.groups]
+            lines = get_wrapped_lines(widths, event.size().width(), LABEL_GAP)
+            if lines != self.lines:
+                self.set_lines(lines)
+
+    return WrapRow
 
 
 def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
@@ -1212,16 +1305,12 @@ def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidget
     grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
 
 
-def make_flow_layout(spacing: int = 4, horizontalspacing: int | None = None) -> "QtWidgets.QLayout":
+def make_flow_layout() -> "QtWidgets.QLayout":
     """Return a layout that puts its widgets side by side from the left, and starts a new row when a row is full.
 
     Qt has no such layout. A row of chips, e.g. the series of a subplot, then wraps to the width of the sidebar.
-    spacing is the space between the rows, and horizontalspacing is the space between two widgets of a row.
     """
-    layout = get_flow_layout_class()()
-    layout.setSpacing(spacing)
-    layout.setProperty("horizontalspacing", spacing if horizontalspacing is None else horizontalspacing)
-    return layout
+    return get_flow_layout_class()()
 
 
 @cache
@@ -1303,8 +1392,7 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
             A hidden widget takes no place. The items of a row share a vertical centre, thus a label stays level
             with the text of the control beside it.
             """
-            horizontalspacing = self.property("horizontalspacing")
-            gap = horizontalspacing if isinstance(horizontalspacing, int) else self.spacing()
+            gap = self.spacing()
             rows: list[list[tuple[QtWidgets.QLayoutItem, QtCore.QSize, int]]] = [[]]
             x = rect.x()
             for item in self.layoutitems:
@@ -2667,17 +2755,19 @@ def get_dark_plot_colours() -> tuple[str, str] | None:
 def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -> None:
     """Give a figure of the window the colours of Dark Mode.
 
-    The frames, the ticks, and the text take the colours of the window. A black line or a black text takes the
-    colour of the text, else it cannot show on the dark background. The other colours stay, e.g. the colours of the
-    series and of an image. The command saves a figure with its usual colours, because only the window calls this.
+    The frames, the ticks, and the text take the colours of the window. A black or dark grey line or text takes the
+    colour of the text, because a dark line or text does not show on the dark background. The other colours stay,
+    e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark red of sulphur, is not
+    grey, thus it stays. The command saves a figure with its usual colours, because only the window calls this.
     """
     import matplotlib.colors as mcolors
     from matplotlib.lines import Line2D
     from matplotlib.text import Text
 
-    def is_dark(colour: t.Any) -> bool:
+    def is_dark_grey(colour: "mplt.ColorType") -> bool:
         red, green, blue, alpha = mcolors.to_rgba(colour)
-        return alpha > 0.0 and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
+        isgrey = max(red, green, blue) - min(red, green, blue) < 0.1
+        return alpha > 0.0 and isgrey and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
 
     fig.patch.set_facecolor(background)
     for axis in fig.axes:
@@ -2689,10 +2779,10 @@ def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -
             legend.get_frame().set_facecolor(background)
             legend.get_frame().set_edgecolor(foreground)
     for text in fig.findobj(Text):
-        if isinstance(text, Text) and is_dark(text.get_color()):
+        if isinstance(text, Text) and is_dark_grey(text.get_color()):
             text.set_color(foreground)
     for line in fig.findobj(Line2D):
-        if isinstance(line, Line2D) and is_dark(line.get_color()):
+        if isinstance(line, Line2D) and is_dark_grey(line.get_color()):
             line.set_color(foreground)
 
 
@@ -2720,6 +2810,9 @@ def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
     dpi = int(dpivalues[0]) if dpivalues and dpivalues[0].isdecimal() else defaultdpi
     return tuple(row for row in rows if row[0] != "-dpi"), dpi
 
+
+# a GIF file shows on a screen, thus its frames take the resolution of a screen
+ANIMATION_DPI: t.Final = 100
 
 # the file types of Save Figure, with the tooltip of each
 EXPORT_FORMATS: t.Final = (
@@ -2763,15 +2856,17 @@ class FigureSizeModel(t.NamedTuple):
 def get_figure_size_model(fig: "mplfig.Figure", tokens: "Sequence[str]", defaultfigscale: float) -> FigureSizeModel:
     """Return the size model of the figure on the screen, which the command of tokens draws.
 
-    Each column of frames adds its width once, and each row adds its height once. A figure with no frame scales as a
-    whole.
+    The divider of make_frame_figure gives the margins of the labels a fixed size. Each column of frames adds its
+    width once, and each row adds its height once. A figure with a layout engine, e.g. a colour image with the
+    constrained layout, scales as a whole.
     """
     width, height = (float(value) for value in fig.get_size_inches())
     positions = [axis.get_position() for axis in fig.axes if axis.get_visible()]
     columns = {round(position.x0, 4): position.width for position in positions if position.width > 0.0}
     rows = {round(position.y0, 4): position.height for position in positions if position.height > 0.0}
-    framewidth = min(sum(columns.values()), 1.0) * width or width
-    frameheight = min(sum(rows.values()), 1.0) * height or height
+    scalesaswhole = fig.get_layout_engine() is not None
+    framewidth = width if scalesaswhole else min(sum(columns.values()), 1.0) * width or width
+    frameheight = height if scalesaswhole else min(sum(rows.values()), 1.0) * height or height
     scales = (get_token_float(tokens, "-figscale", defaultfigscale), get_token_float(tokens, "-figwidthscale", 1.0))
     return FigureSizeModel(figsize=(width, height), framesize=(framewidth, frameheight), scales=scales)
 
@@ -2810,12 +2905,17 @@ class ExportOptions(t.NamedTuple):
 
 
 def ask_export_options(
-    window: "QtWidgets.QWidget", dpi: int | None, sizemodel: FigureSizeModel, title: str = "Save Figure"
+    window: "QtWidgets.QWidget",
+    dpi: int,
+    sizemodel: FigureSizeModel,
+    *,
+    title: str = "Save Figure",
+    formats: bool = True,
 ) -> ExportOptions | None:
     """Ask for the file type, the resolution, and the size before the save panel, as the Export dialog of Keynote does.
 
-    Return the choices, or None if the user cancels. The settings keep the type for the next export. With no dpi, the
-    dialog asks only for the size, e.g. for an animation.
+    Return the choices, or None if the user cancels. The settings keep the type for the next export. With formats
+    False, the dialog asks only for the resolution and the size, e.g. for an animation.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -2832,12 +2932,12 @@ def ask_export_options(
     dpibox = QtWidgets.QSpinBox()
     dpibox.setRange(10, 2400)
     dpibox.setSingleStep(50)
-    dpibox.setValue(dpi or 0)
+    dpibox.setValue(dpi)
     dpibox.setSuffix(" dpi")
     dpibox.setToolTip("The resolution of a PNG file, and of a colour image in a PDF or an SVG file (-dpi)")
-    if dpi is not None:
+    if formats:
         form.addRow("Format:", segments)
-        form.addRow("Resolution:", dpibox)
+    form.addRow("Resolution:", dpibox)
     sizeboxes: list[QtWidgets.QDoubleSpinBox] = []
     for value, flag in zip(sizemodel.figsize, ("-figscale and -figwidthscale", "-figscale"), strict=True):
         box = QtWidgets.QDoubleSpinBox()
@@ -2863,15 +2963,23 @@ def ask_export_options(
     buttons.rejected.connect(dialog.reject)
     form.addRow(buttons)
     dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-    if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+    accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    # the window is the parent of the dialog, thus without this the window keeps each dialog until it closes
+    dialog.deleteLater()
+    if not accepted:
         return None
     suffix = suffixes[segments.currentIndex()]
-    if dpi is not None:
+    if formats:
         get_settings().setValue("exportformat", suffix)
-    size = (sizeboxes[0].value(), sizeboxes[1].value())
-    # the boxes round the size of the screen, thus an unchanged box keeps the scales of the command
-    unchanged = all(abs(new - old) < 0.006 for new, old in zip(size, sizemodel.figsize, strict=True))
-    return ExportOptions(suffix=suffix, dpi=dpibox.value(), scales=None if unchanged else sizemodel.get_scales(*size))
+    # a box rounds the size to 0.01 inches, thus the code keeps the exact size of a box that the user did not change
+    width, height = (
+        old if abs(box.value() - old) < 0.006 else box.value()
+        for box, old in zip(sizeboxes, sizemodel.figsize, strict=True)
+    )
+    unchanged = (width, height) == sizemodel.figsize
+    return ExportOptions(
+        suffix=suffix, dpi=dpibox.value(), scales=None if unchanged else sizemodel.get_scales(width, height)
+    )
 
 
 def export_animation(
@@ -2898,10 +3006,14 @@ def export_animation(
     if not frametokens:
         return
     sizemodel = get_figure_size_model(fig, frametokens[0], parser.get_default("figscale"))
-    options = ask_export_options(window, None, sizemodel, "Export Animation")
+    options = ask_export_options(window, ANIMATION_DPI, sizemodel, title="Export Animation", formats=False)
     if options is None:
         return
-    frametokens = [set_figure_scales(parser, tokens, options.scales) for tokens in frametokens]
+    # the default -dpi of a command suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
+    frametokens = [
+        [*remove_options(parser, set_figure_scales(parser, tokens, options.scales), {"dpi"}), "-dpi", str(options.dpi)]
+        for tokens in frametokens
+    ]
 
     if len(frametokens) > MAX_ANIMATION_FRAMES:
         answer = QtWidgets.QMessageBox.question(
@@ -3058,6 +3170,17 @@ class PlotViewer[ValuesT](t.Protocol):
     warning: str
 
 
+def changes_values[ValuesT](
+    values: ValuesT, current: ValuesT, keep_on_undo: "Callable[[ValuesT, ValuesT], ValuesT] | None"
+) -> bool:
+    """Return True if Undo or Redo to values gives values that differ from the current values.
+
+    keep_on_undo keeps the parts that the window sets, e.g. the width of the figure. Thus an entry that differs only
+    in those parts gives no step.
+    """
+    return (keep_on_undo(values, current) if keep_on_undo is not None else values) != current
+
+
 # the time of a plot before the spinner shows over the plot
 BUSY_MILLISECONDS: t.Final = 300
 
@@ -3112,8 +3235,11 @@ class DrawQueue[ValuesT]:
         self.undovalues: list[ValuesT] = []
         self.redovalues: list[ValuesT] = []
         self.lastchangetime = -math.inf
-        # the text field that gave the last change, which a rejection marks
+        # the text field that gave the change of requestedvalues, the text field that gave the plot in progress, and
+        # the text field that has the mark of a rejection. A rejection marks the field of its own plot
         self.editedfield: QtWidgets.QLineEdit | None = None
+        self.renderedfield: QtWidgets.QLineEdit | None = None
+        self.errorfield: QtWidgets.QLineEdit | None = None
         self.renderedvalues: ValuesT = viewer.values
         self.rendering: Future[Callable[[], str | None]] | None = None
         self.renderstart = 0.0
@@ -3127,6 +3253,8 @@ class DrawQueue[ValuesT]:
         self.taskfuture: Future[str | None] | None = None
         # True after Cancel Plot, until the plot in progress ends. The queue then discards that plot
         self.discardrendering = False
+        # the values before each change that waits for its plot, and the undo and redo lists before that change
+        self.pendinghistory: list[tuple[ValuesT, list[ValuesT], list[ValuesT]]] = []
         # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
         # the window thread checks the worker at each tick, because a Qt call from the worker thread is not safe
@@ -3148,6 +3276,10 @@ class DrawQueue[ValuesT]:
             # a handler that clamps a control to the old values must still move the control back
             self.show_values()
             return
+        # Cancel Plot returns to the history of the plot on the screen
+        if self.viewer.values == self.drawnvalues:
+            self.pendinghistory.clear()
+        self.pendinghistory.append((self.viewer.values, [*self.undovalues], [*self.redovalues]))
         if undoable:
             now = time.monotonic()
             # a drag of a slider or a repeated key gives many changes, and one step of Undo reverts all of them
@@ -3163,11 +3295,11 @@ class DrawQueue[ValuesT]:
 
     def can_undo(self) -> bool:
         """Return whether Undo has values that differ from the current values."""
-        return any(values != self.viewer.values for values in self.undovalues)
+        return any(changes_values(values, self.viewer.values, self.keep_on_undo) for values in self.undovalues)
 
     def can_redo(self) -> bool:
         """Return whether Redo has values that differ from the current values."""
-        return any(values != self.viewer.values for values in self.redovalues)
+        return any(changes_values(values, self.viewer.values, self.keep_on_undo) for values in self.redovalues)
 
     def undo(self) -> None:
         """Return to the values before the last change of the user."""
@@ -3183,10 +3315,13 @@ class DrawQueue[ValuesT]:
         The command can reject a change, and the viewer then keeps the old values. Such a change gives values in
         source that are the same as the current values, and a step of Undo skips them.
         """
-        while source and source[-1] == self.viewer.values:
+        while source and not changes_values(source[-1], self.viewer.values, self.keep_on_undo):
             source.pop()
         if not source:
             return
+        if self.viewer.values == self.drawnvalues:
+            self.pendinghistory.clear()
+        self.pendinghistory.append((self.viewer.values, [*self.undovalues], [*self.redovalues]))
         restored = source.pop()
         if self.keep_on_undo is not None:
             restored = self.keep_on_undo(restored, self.viewer.values)
@@ -3216,6 +3351,7 @@ class DrawQueue[ValuesT]:
         if values is None:
             return
         self.renderedvalues = values
+        self.renderedfield, self.editedfield = self.editedfield, None
         self.renderstart = time.perf_counter()
         self.statusbar.drawtime.setText("Plot in progress...")
         self.rendering = self.executor.submit(self.render, values)
@@ -3235,9 +3371,16 @@ class DrawQueue[ValuesT]:
         """
         if not self.is_busy():
             return
-        self.requestedvalues = None
+        self.requestedvalues, self.editedfield = None, None
         self.discardrendering = self.rendering is not None
         self.viewer.values = self.drawnvalues
+        # Cancel Plot also removes its changes from Undo and Redo
+        for values, undovalues, redovalues in reversed(self.pendinghistory):
+            if values == self.drawnvalues:
+                self.undovalues, self.redovalues = undovalues, redovalues
+                break
+        self.pendinghistory.clear()
+        self.lastchangetime = -math.inf
         self.busytimer.stop()
         set_plot_busy(self.window, busy=False)
         self.statusbar.drawtime.setText("Plot cancelled")
@@ -3271,7 +3414,7 @@ class DrawQueue[ValuesT]:
         """Show the complete plot of the worker thread, or the message of a rejection."""
         self.rendering = None
         if self.discardrendering:
-            self.discardrendering = False
+            self.discardrendering, self.renderedfield = False, None
             return
         try:
             message = rendering.result()()
@@ -3343,11 +3486,15 @@ class DrawQueue[ValuesT]:
         self.statusbar.readout.setText("")
         show_status_message(self.statusbar, message, self.viewer.warning)
         show_plot_banner(self.window, message)
-        if message is None:
-            clear_field_error(self.window)
-        elif self.editedfield is not None:
-            mark_field_error(self.window, self.editedfield, message)
-        self.editedfield = None
+        # show_values can replace the field of the plot, e.g. with a new card of a subplot, before the plot ends
+        field, self.renderedfield = self.renderedfield, None
+        rejectedfield = field if message is not None and field is not None and is_live(field) else None
+        if self.errorfield is not None and (message is None or rejectedfield is not None):
+            clear_field_error(self.errorfield)
+            self.errorfield = None
+        if rejectedfield is not None and message is not None:
+            mark_field_error(rejectedfield, message)
+            self.errorfield = rejectedfield
         self.show_values()
 
 
