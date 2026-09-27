@@ -81,6 +81,7 @@ from artistools.viewertools import make_play_button
 from artistools.viewertools import make_play_row
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
+from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_sidebar
@@ -1974,6 +1975,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
         can_select=lambda: True,
         on_menu=on_plot_menu,
+        show_tag=make_readout_tag(canvas),
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (

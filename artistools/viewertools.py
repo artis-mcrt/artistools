@@ -3087,12 +3087,14 @@ def connect_plot_mouse(
     can_select: "Callable[[], bool]",
     on_select_y: "Callable[[int, float, float], None] | None" = None,
     on_menu: "Callable[[int, t.Any], None] | None" = None,
+    show_tag: "Callable[[t.Any, str], None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
     on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. on_select_y
     receives the index of the frame and the two y values of a drag with the Shift key inside one frame. on_menu
-    receives the index of the frame and the matplotlib event of a click with the right button. matplotlib keeps the
+    receives the index of the frame and the matplotlib event of a click with the right button. show_tag receives the
+    matplotlib event and the readout, which is empty when the pointer leaves the frames. matplotlib keeps the
     connections in the figure. Call the returned function after the canvas receives a new figure.
     """
     # the data value and the pixel of the start of a drag, the span that shows it, and its frame
@@ -3130,9 +3132,10 @@ def connect_plot_mouse(
 
     def on_motion(event: t.Any) -> None:
         frameindex = get_frame_index(event)
-        readoutlabel.setText(
-            get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
-        )
+        readout = get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
+        readoutlabel.setText(readout)
+        if show_tag is not None:
+            show_tag(event, readout)
         if dragstart is None or dragspan is None or event.xdata is None or frameindex is None:
             return
         # the frames share the x axis but not the y axis, thus a y value of a different frame does not apply
@@ -3174,9 +3177,48 @@ def connect_plot_mouse(
         canvas.mpl_connect("button_press_event", on_press)
         canvas.mpl_connect("motion_notify_event", on_motion)
         canvas.mpl_connect("button_release_event", on_release)
+        if show_tag is not None:
+            canvas.mpl_connect("figure_leave_event", lambda event: show_tag(event, ""))
 
     connect_to_figure()
     return connect_to_figure
+
+
+def make_readout_tag(canvas: "FigureCanvasQTAgg") -> "Callable[[t.Any, str], None]":
+    """Return a function that shows a readout in a small tag next to the pointer on the canvas.
+
+    The function takes a matplotlib mouse event and the readout, and an empty readout hides the tag. Each part of the
+    readout goes on a line of its own. The tag goes to the other side of the pointer at the edge of the canvas.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    tag = QtWidgets.QLabel(canvas)
+    tag.setObjectName("readouttag")
+    tag.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    tag.setStyleSheet(
+        "QLabel#readouttag { background: palette(base); color: palette(text); border: 1px solid palette(mid);"
+        " border-radius: 4px; padding: 2px 5px; }"
+    )
+    tag.hide()
+    offset = 14
+
+    def show_tag(event: t.Any, readout: str) -> None:
+        if not readout or event.x is None:
+            tag.hide()
+            return
+        tag.setText("\n".join(readout.split("   ")))
+        tag.adjustSize()
+        # matplotlib gives the pixels of the screen from the bottom, and Qt places a widget in points from the top
+        ratio = canvas.device_pixel_ratio
+        x, y = event.x / ratio, canvas.height() - event.y / ratio
+        left = x + offset if x + offset + tag.width() <= canvas.width() else x - offset - tag.width()
+        top = y + offset if y + offset + tag.height() <= canvas.height() else y - offset - tag.height()
+        tag.move(max(0, round(left)), max(0, round(top)))
+        tag.show()
+        tag.raise_()
+
+    return show_tag
 
 
 def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
