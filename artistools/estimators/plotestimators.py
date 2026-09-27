@@ -391,6 +391,7 @@ def plot_init_abundances(
         ax.set_ylabel("Initial mass fraction")
         valuetype = "init_X_"
 
+    columnnames = set(estimators.collect_schema().names())
     plans = []
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -413,7 +414,9 @@ def plot_init_abundances(
             linelabel = "Fe group"
         else:
             linelabel = speciesstr
-            expr_yvalue = pl.col(f"{valuetype}{elsymbol}")
+            # an isotope, e.g. Fe52, has a column of its own, and an element takes the column of its symbol
+            speciescolumn = f"{valuetype}{speciesstr}"
+            expr_yvalue = pl.col(speciescolumn if speciescolumn in columnnames else f"{valuetype}{elsymbol}")
 
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
@@ -425,6 +428,28 @@ def plot_init_abundances(
         plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs))
 
     return plans
+
+
+def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl.Expr, int]:
+    """Return the mean charge of the ions of an element in a cell, and the highest charge of its ions.
+
+    The mean takes the number density of each ion as the weight, thus it is the charge for each nucleus.
+    """
+    elsymb = get_elsymbol(get_atomic_number(element))
+    if f"nnelement_{elsymb}" not in colnames:
+        msg = f"ERROR: No element data found for {element}"
+        raise ValueError(msg)
+
+    ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
+    if not ioncols:
+        msg = f"ERROR: No ion data found for {element}"
+        raise ValueError(msg)
+
+    ioncharges = [decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
+    expr_charge_per_nuc = pl.sum_horizontal([
+        ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
+    ]) / pl.col(f"nnelement_{elsymb}")
+    return expr_charge_per_nuc, max(ioncharges)
 
 
 def plot_average_ionisation(
@@ -444,20 +469,8 @@ def plot_average_ionisation(
 
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = get_elsymbol(atomic_number)
-        if f"nnelement_{elsymb}" not in colnames:
-            msg = f"ERROR: No element data found for {paramvalue}"
-            raise ValueError(msg)
-
-        ioncols = [col for col in colnames if col.startswith(f"nnion_{elsymb}_")]
-        if not ioncols:
-            msg = f"ERROR: No ion data found for {paramvalue}"
-            raise ValueError(msg)
-
-        ioncharges = [decode_roman_numeral(col.removeprefix(f"nnion_{elsymb}_")) - 1 for col in ioncols]
-        maxioncharge = max(maxioncharge, *ioncharges)
-        expr_charge_per_nuc = pl.sum_horizontal([
-            ioncharge * pl.col(ioncol) for ioncol, ioncharge in zip(ioncols, ioncharges, strict=True)
-        ]) / pl.col(f"nnelement_{elsymb}")
+        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
+        maxioncharge = max(maxioncharge, elementmaxcharge)
 
         dfplotdata = estimators.with_columns(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
@@ -805,10 +818,10 @@ def could_be_ion(plotvar: t.Any) -> bool:
     return get_iontuple(plotvar)[0] >= 1
 
 
-def default_plotitem_has_data(
+def get_default_plotitem_skip_reason(
     plotitems: t.Any, estimatorcolumns: Collection[str], modelpath: str | Path | None = None
-) -> bool:
-    """Return False if a plot item names an element that is missing from this model's estimators.
+) -> str | None:
+    """Return the reason that the default plot list leaves out a plot item for this model, or None to keep it.
 
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
@@ -817,28 +830,51 @@ def default_plotitem_has_data(
         # an estimator variable always wins over the element reading of its name, because several estimator names
         # are also element symbols (Te is tellurium, W is tungsten)
         if plotitems in estimatorcolumns:
-            return True
+            return None
 
         atomic_number = get_iontuple(plotitems)[0]
         if 1 <= atomic_number < len(get_elsymbolslist()):
-            return f"nnelement_{get_elsymbol(atomic_number)}" in estimatorcolumns
-        return True
+            elsymbol = get_elsymbol(atomic_number)
+            return None if f"nnelement_{elsymbol}" in estimatorcolumns else f"the estimators have no {elsymbol}"
+        return None
 
     if isinstance(plotitems, (list, tuple)):
         # initabundances/initmasses series read the input model file, not the estimators, so the element names in
         # those items say nothing about which estimator columns exist
         if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
-            return True
+            return None
 
         # averageexcitation reads the NLTE population files, which a model need not have written
         if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
             if firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
-                return False
-            return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems[1])
+                return "the run has no NLTE population files (nlte_*.out)"
+            plotitems = plotitems[1]
 
-        return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems)
+        return next(
+            (
+                reason
+                for item in plotitems
+                if (reason := get_default_plotitem_skip_reason(item, estimatorcolumns, modelpath)) is not None
+            ),
+            None,
+        )
 
-    return True
+    return None
+
+
+def get_model_default_plotlist(
+    estimatorcolumns: Collection[str], modelpath: str | Path | None
+) -> tuple[list[t.Any], list[tuple[t.Any, str]]]:
+    """Return the default plot items that apply to this model, and each other default item with the reason."""
+    plotlist: list[t.Any] = []
+    skippedplotlist: list[tuple[t.Any, str]] = []
+    for plotitems in get_default_plotlist():
+        reason = get_default_plotitem_skip_reason(plotitems, estimatorcolumns, modelpath)
+        if reason is None:
+            plotlist.append(plotitems)
+        else:
+            skippedplotlist.append((plotitems, reason))
+    return plotlist, skippedplotlist
 
 
 def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> list[t.Any]:
@@ -1074,18 +1110,14 @@ def plot_multi_ion_series(
     else:
         ax.set_ylabel(get_varname_formatted(seriestype))
 
-    def make_space_for_legend() -> None:
-        """Clip the bottom of a log axis to ten decades below the top, and lift the top for the legend."""
+    def clip_log_bottom() -> None:
+        """Clip the bottom of a log axis to ten decades below the top. set_legend gives the legend its room."""
         if ax.get_yscale() != "log":
             return
         ymin, ymax = ax.get_ylim()
-        ymin = max(ymin, ymax / 1e10)
-        ax.set_ylim(bottom=ymin)
-        new_ymax = ymax * 10 ** (0.1 * math.log10(ymax / ymin))
-        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-            ax.set_ylim(top=new_ymax)
+        ax.set_ylim(bottom=max(ymin, ymax / 1e10))
 
-    return plans, make_space_for_legend if plans else None
+    return plans, clip_log_bottom if plans else None
 
 
 def plot_series(
@@ -1172,11 +1204,20 @@ def get_xlist(
         statexprs["xmax"] = pl.col("xvalue").max()
     if args.xbins is None:
         statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+    if statexprs:
+        # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
+        statexprs["rowcount"] = pl.len()
 
     xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
+    # a selection with no rows has no minimum and no maximum, and the bins below need both
+    if xmin is None or xmax is None:
+        if xstats.get("rowcount"):
+            msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
+            raise ValueError(msg)
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
@@ -1253,9 +1294,31 @@ def get_xlist(
         .row(0, named=True)
     )
 
-    assert len(uniques["xvalue"]) > 0, "No data found for x-axis variable"
+    if not uniques["xvalue"]:
+        raise ValueError(get_no_rows_message(timestepslist, args))
 
     return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
+
+
+def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
+    """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
+
+    The code before the plot expands a range of cells and converts -xmin and -xmax. Thus the message gives the size
+    of the selection and not those values. A status line shows one line of the message.
+    """
+    parts: list[str] = []
+    if timestepslist:
+        parts.append(f"the timesteps {min(timestepslist)} to {max(timestepslist)}")
+    if args.modelgridindex is not None:
+        cells = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
+        parts.append(
+            f"the cells {', '.join(map(str, cells))}"
+            if len(cells) <= 3
+            else f"{len(cells)} cells from {min(cells)} to {max(cells)}"
+        )
+    if args.xmin is not None or args.xmax is not None:
+        parts.append("the x range of -xmin and -xmax")
+    return f"The estimators hold no row for {', '.join(parts)}" if parts else "The estimators hold no row"
 
 
 def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
@@ -1429,7 +1492,18 @@ def plot_subplot(
                 print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if showlegend:
-        set_legend(ax, args, loc="best", handlelength=2, frameon=False, numpoints=1, ncols=legend_ncols, markerscale=3)
+        set_legend(
+            ax,
+            args,
+            keeptop=ymax is not None,
+            keepbottom=ymin is not None,
+            loc="best",
+            handlelength=2,
+            frameon=False,
+            numpoints=1,
+            ncols=legend_ncols,
+            markerscale=3,
+        )
 
 
 def get_snapshot_timestrings(
@@ -1456,6 +1530,14 @@ def get_snapshot_timestrings(
     return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
 
+def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
+    """Return the number of rows and of columns of a figure of subplots, which fills each row from the left."""
+    if subplotsperrow < 1:
+        exit_with_error(f"-subplotsperrow {subplotsperrow} gives no column", "Give a number of 1 or more")
+    ncols = max(min(subplotsperrow, nsubplots), 1)
+    return math.ceil(nsubplots / ncols), ncols
+
+
 def draw_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1473,13 +1555,20 @@ def draw_figure(
     modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True, fig=fig)
-    axes = axesgrid[:, 0]
+    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow)
+    fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
+    axes = axesgrid.ravel()[: len(plotlist)]
+    for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
+        emptyaxis.set_visible(False)
 
     assert isinstance(axes, np.ndarray)
 
-    if not args.hidexlabel:
-        axes[-1].set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
+    # the lowest subplot of each column carries the x labels, also above an empty place of the last row
+    for index, ax in enumerate(axes):
+        if index + ncols >= len(axes):
+            ax.tick_params(axis="x", which="both", labelbottom=True)
+            if not args.hidexlabel:
+                ax.set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
@@ -1568,6 +1657,16 @@ class ImagePanel(t.NamedTuple):
     colourscale: str | None
     vmin: float | None
     vmax: float | None
+    # the position of the subplot in the plot list, which get_panel_axes_label names
+    subplotindex: int = 0
+    # the weight of each cell in the mean of a pixel, with the volume and the duration. None gives the volume and the
+    # duration alone, e.g. the number density of an element gives the mean charge of its nuclei
+    weightexpr: pl.Expr | None = None
+
+
+def get_panel_axes_label(subplotindex: int) -> str:
+    """Return the label of the axes of each panel of a subplot in a colour image, e.g. for the controls of a window."""
+    return f"subplot {subplotindex}"
 
 
 # a colour image shows a density or a fraction of it, and the other population types belong to a line
@@ -1614,13 +1713,14 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
     default plot list holds such series.
     """
     panels: list[ImagePanel] = []
-    for plotitems in plotlist:
+    for subplotindex, plotitems in enumerate(plotlist):
         directives: dict[str, t.Any] = {
             directive: plotitem[1]
             for plotitem in plotitems
             if not isinstance(plotitem, str | pl.Expr) and (directive := get_directive_name(plotitem[0])) is not None
         }
         columns: list[tuple[pl.Expr, str, str]] = []
+        weights: dict[str, pl.Expr] = {}
         for plotitem in plotitems:
             if isinstance(plotitem, pl.Expr):
                 colname = plotitem.meta.output_name()
@@ -1639,6 +1739,14 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
                 subplotpoptype = str(directives.get("ionpoptype", poptype))
                 columns += get_ion_panel_columns(plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns)
+            elif plotitem[0] == "averageionisation":
+                for element in plotitem[1]:
+                    elsymb = get_elsymbol(get_atomic_number(element))
+                    chargeexpr, _ = get_average_charge_expr(element, estimatorcolumns)
+                    colname = f"averageionisation_{elsymb}"
+                    columns.append((chargeexpr.alias(colname), colname, f"Average ion charge of {elsymb}"))
+                    # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
+                    weights[colname] = pl.col(f"nnelement_{elsymb}")
             else:
                 print_warning(f"a colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
 
@@ -1648,7 +1756,10 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
         colourscale = "linear" if yscale == "lin" else yscale
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
-        panels += [ImagePanel(colexpr, label, colourscale, vmin, vmax) for colexpr, _, label in columns]
+        panels += [
+            ImagePanel(colexpr, label, colourscale, vmin, vmax, subplotindex, weights.get(colname))
+            for colexpr, colname, label in columns
+        ]
 
     if not panels:
         exit_with_error(
@@ -1659,10 +1770,13 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
 
 
 def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
-    """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight."""
-    weight = pl.col("deltavol_deltat")
+    """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight.
+
+    A panel with a weightexpr takes the product of that weight with volume x time.
+    """
     means = []
     for panelindex, panel in enumerate(panels):
+        weight = pl.col("deltavol_deltat") * (panel.weightexpr if panel.weightexpr is not None else pl.lit(1.0))
         value = panel.colexpr.cast(pl.Float64)
         # a cell or a timestep with no value must not pull the mean to zero, and a NaN is not a null
         hasvalue = value.is_not_null() & value.is_not_nan()
@@ -1723,12 +1837,16 @@ def get_image_values(
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
-    With a sliceaxis, the estimators hold the cells of one plane of a 3D model, which is normal to that
-    axis. With no sliceaxis, the grid holds the average around the z axis. The grid then has a point at
-    each cylindrical radius and each z, as the reduction of a 3D model to 2D gives. A 2D model has this
-    grid already, and a 1D model gives the value of its shell at each point. An empty cell has no
-    estimators and gives NaN. Each value is the mean over the cells and the timesteps with volume x time
-    as the weight.
+    With a sliceaxis, a pixel takes the cells of the estimators with its indices on the two other axes. The estimators
+    of -slice hold the cells of one plane of a 3D model, which is normal to that axis. The estimators of -projection
+    hold each cell, thus a pixel is the mean of one line of cells.
+
+    With no sliceaxis, the grid holds the average around the z axis. A pixel then takes the cells of one ring of
+    cylindrical radius and one layer of z, as the reduction of a 3D model to 2D gives. A 2D model has this grid
+    already, and a 1D model gives the value of its shell at each point.
+
+    An empty cell has no estimators and gives NaN. Each value is the mean over the cells and the timesteps, and
+    get_panel_means gives the weight.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if modelmeta["dimensions"] == 1:
@@ -1809,8 +1927,7 @@ def draw_image_figure(
     grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
     isplane = plotaxis1 != "rcyl"
 
-    ncols = min(len(panels), 3)
-    nrows = math.ceil(len(panels) / ncols)
+    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
     # the image at each cylindrical radius has half the width of a plane
     panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
     figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
@@ -1835,6 +1952,7 @@ def draw_image_figure(
         edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
+        ax.set_label(get_panel_axes_label(panel.subplotindex))
         colourbar = fig.colorbar(image, ax=ax)
         colourbar.set_label(panel.label, fontsize=args.labelfontsize)
         # an empty cell has no value, and black sets it apart from the lowest colour of the scale
@@ -1854,8 +1972,11 @@ def draw_image_figure(
         ax.set_visible(False)
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
+    projection = args.projection
     strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
-    if not isplane and modelmeta["dimensions"] == 3:
+    if projection is not None:
+        strimage = f"mean along the {projection} axis"
+    elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
     print("  plotting " + figure_title.replace("\n", " "))
@@ -1863,8 +1984,8 @@ def draw_image_figure(
         fig.suptitle(figure_title)
 
     framefields: dict[str, int | str] = {
-        "kind": "slice" if isplane else "cylindrical",
-        "plane": get_slice_filetag(args) if isplane else "rz",
+        "kind": "projection" if projection is not None else "slice" if isplane else "cylindrical",
+        "plane": projection if projection is not None else get_slice_filetag(args) if isplane else "rz",
         "timestep": strtimestep,
         "timedays": strtimedays,
     }
@@ -2165,6 +2286,24 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="The full angle of the cone in degrees for -readonlymgi cone. The half angle is coneangle/2",
     )
 
+    parser.add_argument(
+        "-projection",
+        default=None,
+        choices=["x", "y", "z"],
+        help=(
+            "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. -projection z gives"
+            " an image in x and y. Each pixel is the mean over one line of cells along the axis, with the volume"
+            " times the timestep duration as the weight"
+        ),
+    )
+
+    parser.add_argument(
+        "-subplotsperrow",
+        type=int,
+        default=1,
+        help="The number of subplots in each row of the figure, or of the panels of a colour image",
+    )
+
 
 # -x with one of these variables gives a plot against time, and each other variable gives a snapshot
 TIME_XVARIABLES: t.Final = frozenset({"time", "timestep"})
@@ -2282,6 +2421,13 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     its axis. An argument that disagrees with the selection stops the command.
     """
     conditions: list[tuple[str, float, str]] = parse_slice_argument(args.slice) if args.slice is not None else []
+    projection = args.projection
+    if projection is not None:
+        if conditions:
+            exit_with_error("-projection and -slice select different cells", "Remove -projection or -slice")
+        if args.dimensionreduce == 1:
+            exit_with_error("-projection gives a colour image, thus -dimensionreduce 1 does not apply", "Remove one")
+        args.dimensionreduce = 2
     if conditions:
         # one condition is a plane, and two conditions are a line along the axis that stays
         slicedimensions = 2 if len(conditions) == 1 else 1
@@ -2296,12 +2442,13 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
         args.dimensionreduce = 1
 
     isimage = args.dimensionreduce == 2
-    args.sliceaxis = conditions[0][0] if isimage and conditions else None
+    # a projection groups the cells as a plane normal to its axis does, and it reads every cell of each line
+    args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
         return conditions
 
-    selection = "-slice" if conditions else "-dimensionreduce 2"
+    selection = "-projection" if projection else "-slice" if conditions else "-dimensionreduce 2"
     if args.readonlymgi or args.modelgridindex is not None:
         exit_with_error(
             f"{selection} selects the cells of the plot, thus -readonlymgi and -cell do not apply",
@@ -2428,7 +2575,7 @@ def get_default_plotlist() -> list[t.Any]:
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
-        ["rho", ["_yscale", "log"], ["_ymin", 1e-16]],
+        ["rho", ["_yscale", "log"]],
         ["TR", ["_yscale", "linear"]],  # , ["_ymin", 1000], ["_ymax", 15000]
         # ["Te"],
         # ["Te", "TR"],
@@ -2454,19 +2601,14 @@ def get_default_plotlist() -> list[t.Any]:
 def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str], modelpath: Path) -> list[list[t.Any]]:
     """Return the plot items of each subplot, with the aliases resolved and the directives at the end.
 
-    The default list names particular elements, thus a model that holds no such element loses those
-    items. A user who names an item always keeps it, thus an error in that name still stops the command.
+    The default list names particular elements and the NLTE populations, thus a model that holds no such data loses
+    those items. A user who names an item always keeps it, thus an error in that name still stops the command.
     """
     plotlist: list[t.Any] = args.plotlist
     if not plotlist:
-        plotlist = []
-        skippedplotlist: list[t.Any] = []
-        for plotitems in get_default_plotlist():
-            target = plotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
-            target.append(plotitems)
-
-        if skippedplotlist:
-            print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
+        plotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
+        for plotitems, reason in skippedplotlist:
+            print(f"Skipping the default subplot {plotitems}, because {reason}")
 
         if not plotlist:
             msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
@@ -2497,10 +2639,21 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
     panels: list[ImagePanel] = []
+    if args.projection is not None and modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"-projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Give -dimensionreduce 2 for the average around the z axis",
+        )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
-        panelcolumns = {name for panel in panels for name in panel.colexpr.meta.root_names()}
+        panelcolumns = {
+            name
+            for panel in panels
+            for expr in (panel.colexpr, panel.weightexpr)
+            if expr is not None
+            for name in expr.meta.root_names()
+        }
         estimators = estimators.select(
             cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
         )
@@ -2687,11 +2840,6 @@ def draw_plot(
     """
     modelpath, timesteps_included = resolve_plot_args(args)
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    if estimators.select(pl.len()).collect().item() == 0:
-        msg = f"The model has no estimators for the timesteps {timesteps_included[0]} to {timesteps_included[-1]}"
-        if args.modelgridindex is not None:
-            msg += f" and the cells {args.modelgridindex}"
-        raise ValueError(msg)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
@@ -2702,6 +2850,9 @@ def draw_plot(
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
     if args.dimensionreduce == 2:
+        # get_xlist checks the rows of a line plot, and an image reads the estimators without it
+        if estimators.select(pl.len()).collect().item() == 0:
+            raise ValueError(get_no_rows_message(timesteps_included, args))
         draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
     else:
         draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)

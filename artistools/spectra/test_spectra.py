@@ -1127,6 +1127,8 @@ def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> No
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
         at.spectra.plot(argsraw=[], specpath=[modelpath], timedays=300, outputfile=outputpath / "sp.pdf")
     assert {call.args[1] for call in mockyscale.call_args_list} == {"log"}
+    # the linear axis had a bottom of zero, which put the data of the log axis in a thin band at the top
+    assert all(call.args[0].get_ylim()[0] > 0.0 for call in mockyscale.call_args_list)
 
     # --logscaley replaces the default scale
     mockyscale.reset_mock()
@@ -1903,6 +1905,22 @@ def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
     assert np.allclose(specdata["f_lambda"].to_numpy(), np.array([1.0, 2.0, 3.0]) * (1 + redshift), atol=0.0)
 
 
+def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
+    """A normalised spectrum on a log axis keeps a margin above its peak of 1.
+
+    The default -ymax 1.10 of --normalised gave the room, and a log axis had no margin after its removal.
+    """
+    args = at.misc.parse_cli_args(
+        plotspectra.addargs, None, None, [str(modelpath), "-t", "300", "--normalised", "-yscale", "log"]
+    )
+    plotspectra.resolve_plot_args(args)
+    fig, axes, _, _ = plotspectra.make_plot(args)
+    fig.canvas.draw()
+    assert axes[0].get_yscale() == "log"
+    assert axes[0].get_ylim()[1] > 1.02
+    plt.close(fig)
+
+
 @mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
 def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
     """The velocity range arguments must reach the packet reader that selects the contributions."""
@@ -2579,8 +2597,10 @@ def test_interactive_option_rows() -> None:
         "list",
         "text",
     ]
-    # an option with no default needs a value from the user before the command can give it
-    assert viewertools.get_default_tokens(actions["-dpi"]) == ("250",)
+    # an option with no default needs a value from the user before the command can give it. Save Figure asks for
+    # -dpi, thus the table does not offer it
+    assert "-dpi" not in actions
+    assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
     assert viewertools.get_default_tokens(actions["-title"]) is None
 
 

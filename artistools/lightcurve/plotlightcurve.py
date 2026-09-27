@@ -798,10 +798,10 @@ def make_lightcurve_plot(
 
     assert plottedsomething, "No light curve was plotted"
 
-    set_legend(axis, args, loc="best", handlelength=2, frameon=args.legendframeon, numpoints=1)
+    set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
     if args.plotthermalisation:
         assert axistherm is not None
-        set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=args.legendframeon, numpoints=1)
+        set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=False, numpoints=1)
 
     # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
     # take a log scale. This follows the plot, because the drawn values give the answer
@@ -912,12 +912,10 @@ def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
 
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        set_legend(axis, args, loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend)
+        set_legend(axis, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend)
     else:
         assert isinstance(ax, mplax.Axes)
-        set_legend(
-            ax, args, loc=args.legendposition, frameon=args.legendframeon, ncol=args.ncolslegend, handlelength=0.7
-        )
+        set_legend(ax, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(
@@ -1577,7 +1575,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-ncolslegend", type=int, default=1, help="Number of columns in legend")
 
-    parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
+    # the old spelling of --legendframe, which addarg_nolegend adds
+    parser.add_argument("--legendframeon", dest="legendframe", action="store_true", help=argparse.SUPPRESS)
 
     addarg_labelfontsize(parser)
 

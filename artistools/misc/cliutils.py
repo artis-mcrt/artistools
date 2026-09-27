@@ -937,6 +937,11 @@ def addarg_nolegend(parser: argparse.ArgumentParser) -> None:
     arggroup(parser, "appearance").add_argument(
         "--nolegend", action="store_true", help="Suppress the legend from the plot"
     )
+    arggroup(parser, "appearance").add_argument(
+        "--legendframe",
+        action="store_true",
+        help="Draw the legend on a white background. The legend text then stays readable over the data",
+    )
 
 
 def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:

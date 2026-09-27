@@ -50,9 +50,12 @@ def get_profile_along_axis(dfmodel: pl.DataFrame, args: argparse.Namespace) -> p
     """Return the cells of the 3D model running along the chosen axis, nearest to the other two axes' origin."""
     print("Getting profile along axis")
 
-    argmin = dfmodel[f"pos_{args.other_axis2}_min"].abs().arg_min()
-    assert argmin is not None
-    position_closest_to_axis = dfmodel[f"pos_{args.other_axis2}_min"].item(argmin)
+    # Pick the middle cell by index. For an odd cell count, the edges at -dx/2 and +dx/2 have the same
+    # magnitude, and the float rounding can select the wrong one of the two.
+    middle_lower_edges = {}
+    for axis in (args.other_axis1, args.other_axis2):
+        loweredges = dfmodel[f"pos_{axis}_min"].unique().sort()
+        middle_lower_edges[axis] = loweredges.item(len(loweredges) // 2)
 
     # the innermost cell on the positive axis has pos_min == 0, thus the condition must keep it
     sliceaxis_cond = (
@@ -60,8 +63,8 @@ def get_profile_along_axis(dfmodel: pl.DataFrame, args: argparse.Namespace) -> p
     )
 
     return dfmodel.filter(
-        (pl.col(f"pos_{args.other_axis1}_min") == position_closest_to_axis)
-        & (pl.col(f"pos_{args.other_axis2}_min") == position_closest_to_axis)
+        (pl.col(f"pos_{args.other_axis1}_min") == middle_lower_edges[args.other_axis1])
+        & (pl.col(f"pos_{args.other_axis2}_min") == middle_lower_edges[args.other_axis2])
         & sliceaxis_cond
     )
 
