@@ -818,10 +818,10 @@ def could_be_ion(plotvar: t.Any) -> bool:
     return get_iontuple(plotvar)[0] >= 1
 
 
-def default_plotitem_has_data(
+def get_default_plotitem_skip_reason(
     plotitems: t.Any, estimatorcolumns: Collection[str], modelpath: str | Path | None = None
-) -> bool:
-    """Return False if a plot item names an element that is missing from this model's estimators.
+) -> str | None:
+    """Return the reason that the default plot list leaves out a plot item for this model, or None to keep it.
 
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
@@ -830,28 +830,51 @@ def default_plotitem_has_data(
         # an estimator variable always wins over the element reading of its name, because several estimator names
         # are also element symbols (Te is tellurium, W is tungsten)
         if plotitems in estimatorcolumns:
-            return True
+            return None
 
         atomic_number = get_iontuple(plotitems)[0]
         if 1 <= atomic_number < len(get_elsymbolslist()):
-            return f"nnelement_{get_elsymbol(atomic_number)}" in estimatorcolumns
-        return True
+            elsymbol = get_elsymbol(atomic_number)
+            return None if f"nnelement_{elsymbol}" in estimatorcolumns else f"the estimators have no {elsymbol}"
+        return None
 
     if isinstance(plotitems, (list, tuple)):
         # initabundances/initmasses series read the input model file, not the estimators, so the element names in
         # those items say nothing about which estimator columns exist
         if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
-            return True
+            return None
 
         # averageexcitation reads the NLTE population files, which a model need not have written
         if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
             if firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
-                return False
-            return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems[1])
+                return "the run has no NLTE population files (nlte_*.out)"
+            plotitems = plotitems[1]
 
-        return all(default_plotitem_has_data(item, estimatorcolumns, modelpath) for item in plotitems)
+        return next(
+            (
+                reason
+                for item in plotitems
+                if (reason := get_default_plotitem_skip_reason(item, estimatorcolumns, modelpath)) is not None
+            ),
+            None,
+        )
 
-    return True
+    return None
+
+
+def get_model_default_plotlist(
+    estimatorcolumns: Collection[str], modelpath: str | Path | None
+) -> tuple[list[t.Any], list[tuple[t.Any, str]]]:
+    """Return the default plot items that apply to this model, and each other default item with the reason."""
+    plotlist: list[t.Any] = []
+    skippedplotlist: list[tuple[t.Any, str]] = []
+    for plotitems in get_default_plotlist():
+        reason = get_default_plotitem_skip_reason(plotitems, estimatorcolumns, modelpath)
+        if reason is None:
+            plotlist.append(plotitems)
+        else:
+            skippedplotlist.append((plotitems, reason))
+    return plotlist, skippedplotlist
 
 
 def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> list[t.Any]:
@@ -2578,19 +2601,14 @@ def get_default_plotlist() -> list[t.Any]:
 def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str], modelpath: Path) -> list[list[t.Any]]:
     """Return the plot items of each subplot, with the aliases resolved and the directives at the end.
 
-    The default list names particular elements, thus a model that holds no such element loses those
-    items. A user who names an item always keeps it, thus an error in that name still stops the command.
+    The default list names particular elements and the NLTE populations, thus a model that holds no such data loses
+    those items. A user who names an item always keeps it, thus an error in that name still stops the command.
     """
     plotlist: list[t.Any] = args.plotlist
     if not plotlist:
-        plotlist = []
-        skippedplotlist: list[t.Any] = []
-        for plotitems in get_default_plotlist():
-            target = plotlist if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath) else skippedplotlist
-            target.append(plotitems)
-
-        if skippedplotlist:
-            print(f"Skipping default plots for elements that are not in this model: {skippedplotlist}")
+        plotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
+        for plotitems, reason in skippedplotlist:
+            print(f"Skipping the default subplot {plotitems}, because {reason}")
 
         if not plotlist:
             msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"

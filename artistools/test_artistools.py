@@ -1916,20 +1916,22 @@ def test_get_ion_tuple_rejects_missing_element() -> None:
 
 def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     """Te and W are estimator names as well as element symbols, so a real column must win over the element reading."""
-    from artistools.estimators.plotestimators import default_plotitem_has_data
+    from artistools.estimators.plotestimators import get_default_plotitem_skip_reason
 
     estimatorcolumns = ["timestep", "modelgridindex", "Te", "TR", "W", "nne", "rho", "nnelement_Fe"]
 
     for plotitem in (["Te"], ["W"], ["TR"], ["rho"], ["nne"], [["averageionisation", ["Fe"]]]):
-        assert default_plotitem_has_data(plotitem, estimatorcolumns), plotitem
+        assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns) is None, plotitem
 
     # an element that the model does not contain is still dropped
-    assert not default_plotitem_has_data([["averageionisation", ["Sr"]]], estimatorcolumns)
-    assert not default_plotitem_has_data([["populations", ["Sr I", "Sr II"]]], estimatorcolumns)
+    assert get_default_plotitem_skip_reason([["averageionisation", ["Sr"]]], estimatorcolumns) == (
+        "the estimators have no Sr"
+    )
+    assert get_default_plotitem_skip_reason([["populations", ["Sr I", "Sr II"]]], estimatorcolumns) is not None
 
     # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
-    assert default_plotitem_has_data([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns)
-    assert default_plotitem_has_data([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns)
+    assert get_default_plotitem_skip_reason([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns) is None
+    assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
 
 
 def test_write_lbol_edep(tmp_path: Path) -> None:

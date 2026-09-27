@@ -832,14 +832,19 @@ def test_estimator_averageexcitation_plot(mockplot: mock.MagicMock) -> None:
 
 
 def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
-    """The default plot list must drop averageexcitation for a model with no NLTE population files."""
-    from artistools.estimators.plotestimators import default_plotitem_has_data
+    """The default plot list must drop averageexcitation for a model with no NLTE population files.
+
+    The command then said that the model did not hold the element, although the model held Fe.
+    """
+    from artistools.estimators.plotestimators import get_default_plotitem_skip_reason
 
     plotitem = [["averageexcitation", ["Fe II"]]]
     estimatorcolumns = ["timestep", "modelgridindex", "Te", "nnelement_Fe"]
 
-    assert default_plotitem_has_data(plotitem, estimatorcolumns, modelpath)
-    assert not default_plotitem_has_data(plotitem, estimatorcolumns, tmp_path)
+    assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns, modelpath) is None
+    assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns, tmp_path) == (
+        "the run has no NLTE population files (nlte_*.out)"
+    )
 
 
 def test_get_elemcolor_is_stable_and_unbounded() -> None:
@@ -3205,6 +3210,11 @@ def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
     assert viewer.values.subplots == viewer.defaultsubplots
     assert "averageexcitation" in viewer.defaultsubplots[-1]
+    # the window hides the output of the command, thus the viewer keeps the reason for each left out subplot
+    assert viewer.skippeddefaults == (
+        "averageionisation Sr: the estimators have no Sr",
+        "populations Sr I Sr II Sr III Sr IV: the estimators have no Sr",
+    )
     first, *others = viewer.defaultsubplots
     assert viewer.get_plot_tokens()[: len(first)] == list(first)
     assert viewer.get_plot_tokens().count("-plot") == len(others)

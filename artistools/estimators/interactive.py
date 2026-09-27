@@ -29,14 +29,13 @@ from artistools.estimators.core import split_species_suffix
 from artistools.estimators.estimators_classic import read_classic_estimators_cached
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
-from artistools.estimators.plotestimators import default_plotitem_has_data
 from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
-from artistools.estimators.plotestimators import get_default_plotlist
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
 from artistools.estimators.plotestimators import get_layer_index
+from artistools.estimators.plotestimators import get_model_default_plotlist
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_subplot_grid
 from artistools.estimators.plotestimators import get_ylabel
@@ -359,6 +358,7 @@ class RunData(t.NamedTuple):
     cells: list[int]
     cellvelocities: dict[int, float]
     defaultsubplots: tuple[tuple[str, ...], ...]
+    skippeddefaults: tuple[str, ...]
 
 
 def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
@@ -386,6 +386,7 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
         .collect()
     )
     cells: list[int] = dfcells["modelgridindex"].to_list()
+    defaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
     return RunData(
         batchcaches=batchcaches,
         estimatorcolumns=tuple(estimatorcolumns),
@@ -393,10 +394,10 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
         cells=cells,
         cellvelocities=dict(zip(cells, dfcells["vel_r_mid"].to_list(), strict=True)),
         # the subplots of plotestimators for a command with no -plot, which the window shows first
-        defaultsubplots=tuple(
-            get_plotitem_tokens(plotitems)
-            for plotitems in get_default_plotlist()
-            if default_plotitem_has_data(plotitems, estimatorcolumns, modelpath)
+        defaultsubplots=tuple(get_plotitem_tokens(plotitems) for plotitems in defaultplotlist),
+        # the window hides the output of the command, which names each default subplot that the model cannot show
+        skippeddefaults=tuple(
+            f"{' '.join(get_plotitem_tokens(plotitems))}: {reason}" for plotitems, reason in skippedplotlist
         ),
     )
 
@@ -421,6 +422,7 @@ def set_run(viewer: "EstimatorViewer", run: RunData) -> None:
     viewer.cells = run.cells
     viewer.cellvelocities = run.cellvelocities
     viewer.defaultsubplots = run.defaultsubplots
+    viewer.skippeddefaults = run.skippeddefaults
 
 
 def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
@@ -799,6 +801,7 @@ class EstimatorViewer:
     cells: list[int]
     cellvelocities: dict[int, float]
     defaultsubplots: tuple[tuple[str, ...], ...]
+    skippeddefaults: tuple[str, ...]
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
@@ -1924,6 +1927,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
     subplotgrid.addLayout(newsubplotrow, 1, 0, 1, -1)
     subplotgrid.addWidget(newsuggestionsbox, 2, 0, 1, -1)
+    skippeddefaultslabel = QtWidgets.QLabel()
+    skippeddefaultslabel.setWordWrap(True)
+    skippeddefaultslabel.setEnabled(False)
+    subplotgrid.addWidget(skippeddefaultslabel, 3, 0, 1, -1)
 
     _, appearancegrid = add_section(panellayout, "Appearance")
     actionsbyflag = get_actions_by_flag(viewer.parser)
@@ -2459,6 +2466,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
+        skippeddefaultslabel.setText(
+            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.skippeddefaults)])
+        )
+        skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
         for widget in (optionheader, optioncontent):
             widget.setVisible(tableoffers or bool(get_table_rows(values.otheroptions)))
