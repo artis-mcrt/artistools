@@ -73,6 +73,7 @@ from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
@@ -82,6 +83,7 @@ from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
+from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -913,6 +915,8 @@ class EstimatorViewer:
         self.plotcolorbyion = False
         # the last warning of the last plot, which the status bar shows
         self.warning = ""
+        # the colours of the window in Dark Mode, which the window sets and the worker thread reads
+        self.darkcolours: tuple[str, str] | None = None
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -1088,6 +1092,8 @@ class EstimatorViewer:
             # the constrained layout of a colour image keeps the title inside the figure
             if not isimage:
                 make_room_for_title(fig)
+            if (darkcolours := self.darkcolours) is not None:
+                apply_dark_colours(fig, *darkcolours)
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
             plots.append(
                 RenderedPlot(
@@ -1775,6 +1781,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
     canvas = FigureCanvasQTAgg(viewer.fig)
+    viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
@@ -3054,6 +3061,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
+    def on_colour_scheme() -> None:
+        """Draw the plot again with the colours of the new appearance of the system, e.g. Dark Mode."""
+        viewer.darkcolours = get_dark_plot_colours()
+        queue.redraw()
+
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
             show_error(message)
@@ -3068,6 +3080,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
+        QtGui.QGuiApplication.styleHints().colorSchemeChanged.disconnect(on_colour_scheme)
         if queue.task is not None:
             print("The reload of the run continues to its end, and then the process ends")
         queue.close()
@@ -3098,6 +3111,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         open_folder=on_open_recent,
     )
     set_drop_handler(window, on_drop)
+    QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)

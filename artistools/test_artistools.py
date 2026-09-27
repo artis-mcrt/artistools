@@ -3568,6 +3568,32 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
     assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
 
 
+def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
+    """In Dark Mode, a black line and a black text take the colour of the text, and a coloured series keeps its colour.
+
+    A black line on the dark background of the window cannot show, and a series needs its colour for the legend.
+    """
+    import matplotlib.colors as mcolors
+    import matplotlib.figure as mplfig
+
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    blackline = axis.plot([0, 1], [0, 1], color="black", label="model")[0]
+    blueline = axis.plot([0, 1], [1, 0], color="tab:blue", label="reference")[0]
+    axis.set_xlabel("velocity")
+    legend = axis.legend()
+
+    viewertools.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
+
+    assert mcolors.same_color(blackline.get_color(), "#dddddd")
+    assert mcolors.same_color(blueline.get_color(), "tab:blue")
+    assert mcolors.same_color(axis.xaxis.label.get_color(), "#dddddd")
+    assert mcolors.same_color(axis.get_facecolor(), "#1e1e1e")
+    # the frame of the legend keeps its transparency
+    assert mcolors.to_hex(legend.get_frame().get_facecolor()) == "#1e1e1e"
+    assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())
+
+
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     """A worker thread hides the output of its plot, and the window thread still prints to the terminal.
 

@@ -47,6 +47,7 @@ from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
@@ -55,6 +56,7 @@ from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_changed_arguments
+from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -582,6 +584,8 @@ class SpectrumViewer:
         self.drewpreview = False
         # the window sets this before each plot that a slider drag gives, and the worker thread reads it
         self.dragging = False
+        # the colours of the window in Dark Mode, which the window sets and the worker thread reads
+        self.darkcolours: tuple[str, str] | None = None
         # the last warning of the last plot, which the status bar shows
         self.warning = ""
         # a window can change the size of the figure, thus the size of the frames stays here
@@ -798,6 +802,8 @@ class SpectrumViewer:
             dfalldata, _ = draw_plot(plotargs, axes, residualaxis)
             for axis in axes:
                 fix_title_position(axis)
+            if (darkcolours := self.darkcolours) is not None:
+                apply_dark_colours(fig, *darkcolours)
             plots.append(
                 RenderedSpectrum(
                     fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata, ispreview=ispreview
@@ -929,6 +935,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window = make_window(APPLICATION_NAME)
     window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
     canvas = FigureCanvasQTAgg(viewer.fig)
+    viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
@@ -1767,6 +1774,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
         )
 
+    def on_colour_scheme() -> None:
+        """Draw the plot again with the colours of the new appearance of the system, e.g. Dark Mode."""
+        viewer.darkcolours = get_dark_plot_colours()
+        queue.redraw()
+
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
             show_error(message)
@@ -1781,6 +1793,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
+        QtGui.QGuiApplication.styleHints().colorSchemeChanged.disconnect(on_colour_scheme)
         queue.close()
         # the list holds a reference to each open window, thus Python does not delete the window. A closed window
         # leaves the list
@@ -1806,6 +1819,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         open_folder=on_open_recent,
     )
     set_drop_handler(window, on_drop)
+    QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     modesegments.currentChanged.connect(on_time_mode)
     toolbar.previous.triggered.connect(lambda: on_arrow(-1))

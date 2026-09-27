@@ -736,7 +736,69 @@ def start_application(
 
     keyownerfilter = KeyOwnerFilter(app)
     app.installEventFilter(keyownerfilter)
+
+    class EditTracker(QtCore.QObject):
+        """Keep the text field that the user confirmed last, and the time, in two properties of its window.
+
+        A plot that rejects the change of the field then marks the field, as a form of macOS does.
+        """
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            isreturn = isinstance(event, QtGui.QKeyEvent) and event.key() in {
+                QtCore.Qt.Key.Key_Return,
+                QtCore.Qt.Key.Key_Enter,
+            }
+            confirms = (event.type() == QtCore.QEvent.Type.KeyPress and isreturn) or (
+                event.type() == QtCore.QEvent.Type.FocusOut
+                and isinstance(watched, QtWidgets.QLineEdit)
+                and watched.isModified()
+            )
+            if isinstance(watched, QtWidgets.QLineEdit) and confirms:
+                window = watched.window()
+                window.setProperty("lasteditedfield", watched)
+                window.setProperty("lastedittime", time.monotonic())
+            return super().eventFilter(watched, event)
+
+    app.installEventFilter(EditTracker(app))
     return app
+
+
+# a change that comes less than this time after the user confirmed a text field belongs to that field
+EDIT_SECONDS: t.Final = 1.0
+
+
+def get_edited_field(window: "QtCore.QObject") -> "QtWidgets.QLineEdit | None":
+    """Return the text field that the user confirmed just now in the window, or None."""
+    from PySide6 import QtWidgets
+
+    field, edittime = window.property("lasteditedfield"), window.property("lastedittime")
+    if isinstance(field, QtWidgets.QLineEdit) and isinstance(edittime, float):
+        return field if time.monotonic() - edittime < EDIT_SECONDS else None
+    return None
+
+
+def mark_field_error(window: "QtCore.QObject", field: "QtWidgets.QLineEdit", message: str) -> None:
+    """Give the field a red border and show the message beside it, as a form of macOS does for a bad value."""
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    clear_field_error(window)
+    field.setStyleSheet("QLineEdit { border: 2px solid firebrick; border-radius: 3px; }")
+    QtWidgets.QToolTip.showText(field.mapToGlobal(QtCore.QPoint(0, field.height())), message, field)
+    window.setProperty("errorfield", field)
+
+
+def clear_field_error(window: "QtCore.QObject") -> None:
+    """Remove the mark of mark_field_error, e.g. after a plot that the command accepts."""
+    import shiboken6
+    from PySide6 import QtWidgets
+
+    field = window.property("errorfield")
+    # a new card of a subplot replaces its fields, and Qt then deletes the old field
+    if isinstance(field, QtWidgets.QLineEdit) and shiboken6.isValid(field):
+        field.setStyleSheet("")
+    window.setProperty("errorfield", None)
 
 
 def get_settings() -> "QtCore.QSettings":
@@ -2016,6 +2078,58 @@ def toggle_toolbar(window: "QtWidgets.QMainWindow") -> None:
         toolbar.setVisible(not shown)
 
 
+def get_dark_plot_colours() -> tuple[str, str] | None:
+    """Return the background colour and the text colour of the window in Dark Mode, or None for a light plot.
+
+    The window thread calls this function, and a render in the worker thread receives the result. The setting
+    "darkplot" of the Settings window can keep the plot light.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    if not get_settings().value("darkplot", defaultValue=True, type=bool):
+        return None
+    if QtGui.QGuiApplication.styleHints().colorScheme() != QtCore.Qt.ColorScheme.Dark:
+        return None
+    palette = QtGui.QGuiApplication.palette()
+    return (
+        palette.color(QtGui.QPalette.ColorRole.Window).name(),
+        palette.color(QtGui.QPalette.ColorRole.WindowText).name(),
+    )
+
+
+def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -> None:
+    """Give a figure of the window the colours of Dark Mode.
+
+    The frames, the ticks, and the text take the colours of the window. A black line or a black text takes the
+    colour of the text, else it cannot show on the dark background. The other colours stay, e.g. the colours of the
+    series and of an image. The command saves a figure with its usual colours, because only the window calls this.
+    """
+    import matplotlib.colors as mcolors
+    from matplotlib.lines import Line2D
+    from matplotlib.text import Text
+
+    def is_dark(colour: t.Any) -> bool:
+        red, green, blue, alpha = mcolors.to_rgba(colour)
+        return alpha > 0.0 and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
+
+    fig.patch.set_facecolor(background)
+    for axis in fig.axes:
+        axis.set_facecolor(background)
+        for spine in axis.spines.values():
+            spine.set_edgecolor(foreground)
+        axis.tick_params(which="both", colors=foreground)
+        if (legend := axis.get_legend()) is not None:
+            legend.get_frame().set_facecolor(background)
+            legend.get_frame().set_edgecolor(foreground)
+    for text in fig.findobj(Text):
+        if isinstance(text, Text) and is_dark(text.get_color()):
+            text.set_color(foreground)
+    for line in fig.findobj(Line2D):
+        if isinstance(line, Line2D) and is_dark(line.get_color()):
+            line.set_color(foreground)
+
+
 def copy_figure(fig: "mplfig.Figure") -> None:
     """Put the figure on the clipboard as a PNG image, with the resolution of a printed page."""
     from PySide6 import QtGui
@@ -2211,6 +2325,8 @@ class DrawQueue[ValuesT]:
         self.undovalues: list[ValuesT] = []
         self.redovalues: list[ValuesT] = []
         self.lastchangetime = -math.inf
+        # the text field that gave the last change, which a rejection marks
+        self.editedfield: QtWidgets.QLineEdit | None = None
         self.executor: ThreadPoolExecutor | None = None
         self.rendertimer: QtCore.QTimer | None = None
         self.renderedvalues: ValuesT = viewer.values
@@ -2243,6 +2359,8 @@ class DrawQueue[ValuesT]:
             return
         if undoable:
             self.record_undo()
+        # the plot of the change comes later, and a rejection then marks the field that gave the change
+        self.editedfield = get_edited_field(self.window)
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
         self.redraw()
@@ -2435,6 +2553,11 @@ class DrawQueue[ValuesT]:
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
         show_status_message(self.statusbar, message, self.viewer.warning)
+        if message is None:
+            clear_field_error(self.window)
+        elif self.editedfield is not None:
+            mark_field_error(self.window, self.editedfield, message)
+        self.editedfield = None
         self.show_values()
 
 
