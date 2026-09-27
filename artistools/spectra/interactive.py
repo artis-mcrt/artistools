@@ -1892,6 +1892,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
+    def on_cancel_plot() -> None:
+        playbutton.setChecked(False)
+        queue.cancel()
+
     menucallbacks = {
         "Open Model…": on_open_model,
         "Save Figure…": on_save,
@@ -1903,12 +1907,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Copy Command": on_copy,
         "Copy Python": on_copy_python,
         "Play": playbutton.toggle,
+        "Cancel Plot": on_cancel_plot,
         "Keys and Mouse Actions": on_help,
     }
     add_menus(
         window,
         menucallbacks,
-        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo},
+        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo, "Cancel Plot": queue.is_busy},
         titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
         open_folder=on_open_recent,
     )

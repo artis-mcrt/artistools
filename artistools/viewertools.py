@@ -1536,6 +1536,7 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
         @t.override
         def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
             super().resizeEvent(event)
+            place_plot_overlays(self)
             self.on_resize()
 
     plotarea = PlotArea(on_resize)
@@ -1543,7 +1544,143 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
     plotlayout = QtWidgets.QVBoxLayout(plotarea)
     plotlayout.setContentsMargins(0, 0, 0, 0)
     plotlayout.addWidget(canvas, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+    # the banner shows the message of a rejected plot over the plot in the red of the status bar, and the spinner
+    # shows a slow plot
+    banner = QtWidgets.QLabel(plotarea)
+    banner.setObjectName("plotbanner")
+    banner.setWordWrap(True)
+    banner.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+    banner.setStyleSheet(
+        "QLabel#plotbanner { background: rgba(178, 34, 34, 225); color: white; border-radius: 8px; padding: 8px 14px; }"
+    )
+    banner.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    banner.hide()
+    hidetimer = QtCore.QTimer(banner)
+    hidetimer.setSingleShot(True)
+    hidetimer.setInterval(BANNER_MILLISECONDS)
+    hidetimer.timeout.connect(banner.hide)
+    spinner = get_spinner_class()(plotarea)
+    spinner.setObjectName("plotspinner")
+    spinner.hide()
     return plotarea
+
+
+# the time that the banner of a rejected plot stays over the plot. The status bar keeps the message
+BANNER_MILLISECONDS: t.Final = 5000
+
+
+def place_plot_overlays(plotarea: "QtWidgets.QWidget") -> None:
+    """Put the banner at the centre of the plot area, a third of the way down, and the spinner at its top right corner.
+
+    The title of the figure is at the top, thus the banner goes below it.
+    """
+    from PySide6 import QtWidgets
+
+    margin = 12
+    if (banner := plotarea.findChild(QtWidgets.QLabel, "plotbanner")) is not None:
+        # a label that wraps its text takes a narrow width from adjustSize, thus the width comes from the text
+        padding = 2 * 14 + 2
+        textwidth = banner.fontMetrics().horizontalAdvance(banner.text()) + padding
+        width = max(min(textwidth, plotarea.width() - 4 * margin), 100)
+        banner.resize(width, banner.heightForWidth(width))
+        banner.move((plotarea.width() - width) // 2, (plotarea.height() - banner.height()) // 3)
+        banner.raise_()
+    if (spinner := plotarea.findChild(QtWidgets.QWidget, "plotspinner")) is not None:
+        spinner.move(plotarea.width() - spinner.width() - margin, margin)
+        spinner.raise_()
+
+
+def show_plot_banner(window: "QtCore.QObject", message: str | None) -> None:
+    """Show the message of a rejected plot over the plot for a few seconds, or hide the banner if message is None."""
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    banner = window.findChild(QtWidgets.QLabel, "plotbanner")
+    if banner is None:
+        return
+    if message is None:
+        banner.hide()
+        return
+    banner.setText(message)
+    banner.show()
+    if (plotarea := banner.parentWidget()) is not None:
+        place_plot_overlays(plotarea)
+    if (hidetimer := banner.findChild(QtCore.QTimer)) is not None:
+        hidetimer.start()
+
+
+def set_plot_busy(window: "QtCore.QObject", *, busy: bool) -> None:
+    """Show or hide the spinner over the plot."""
+    from PySide6 import QtWidgets
+
+    spinner = window.findChild(QtWidgets.QWidget, "plotspinner")
+    if spinner is not None:
+        spinner.setVisible(busy)
+        if busy and (plotarea := spinner.parentWidget()) is not None:
+            place_plot_overlays(plotarea)
+
+
+@cache
+def get_spinner_class() -> "type[QtWidgets.QWidget]":
+    """Return the class of the spinner over the plot, which turns while it shows.
+
+    PySide keeps about 1.5 KB of memory for each class, thus the viewers make the class one time and not for each
+    window.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class Spinner(QtWidgets.QWidget):
+        """A circle of 12 spokes that turns, as the progress indicator of macOS."""
+
+        spokes: t.Final = 12
+
+        def __init__(self, parent: QtWidgets.QWidget) -> None:
+            super().__init__(parent)
+            self.setFixedSize(32, 32)
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            self.step = 0
+            self.timer = QtCore.QTimer(self)
+            self.timer.setInterval(80)
+            self.timer.timeout.connect(self.advance)
+
+        def advance(self) -> None:
+            self.step = (self.step + 1) % self.spokes
+            self.update()
+
+        @t.override
+        def showEvent(self, event: QtGui.QShowEvent, /) -> None:
+            super().showEvent(event)
+            self.timer.start()
+
+        @t.override
+        def hideEvent(self, event: QtGui.QHideEvent, /) -> None:
+            super().hideEvent(event)
+            self.timer.stop()
+
+        @t.override
+        def paintEvent(self, event: QtGui.QPaintEvent, /) -> None:
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            background = self.palette().color(QtGui.QPalette.ColorRole.Window)
+            background.setAlpha(210)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(background)
+            painter.drawRoundedRect(self.rect(), 8, 8)
+            colour = self.palette().color(QtGui.QPalette.ColorRole.WindowText)
+            painter.translate(self.width() / 2, self.height() / 2)
+            for spoke in range(self.spokes):
+                # the newest spoke is the darkest, and the others fade behind it
+                colour.setAlphaF(0.15 + 0.85 * ((spoke - self.step) % self.spokes) / (self.spokes - 1))
+                pen = QtGui.QPen(colour, 2.2)
+                pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                painter.setPen(pen)
+                painter.drawLine(QtCore.QPointF(0, 5), QtCore.QPointF(0, 10))
+                painter.rotate(360 / self.spokes)
+            painter.end()
+
+    return Spinner
 
 
 def fit_canvas(canvas: "FigureCanvasQTAgg", figsize: tuple[float, float], plotarea: "QtWidgets.QWidget") -> None:
@@ -2105,6 +2242,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         # macOS moves this item to the menu of the application
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),
+        ("View", "Cancel Plot", QtGui.QKeySequence("Ctrl+.")),
         ("View", "Hide Sidebar", QtGui.QKeySequence("Ctrl+Meta+S")),
         ("View", "Enter Full Screen", QtGui.QKeySequence(standardkey.FullScreen)),
         ("Window", "Minimize", QtGui.QKeySequence("Ctrl+M")),
@@ -2128,6 +2266,7 @@ MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
     "Play": "Play or pause",
+    "Cancel Plot": "Stop the wait for a slow plot, and keep the plot on the screen",
     "Hide Sidebar": "Hide or show the sidebar",
 })
 
@@ -2751,15 +2890,15 @@ def get_new_figwidthscale(
 
 
 class PlotViewer[ValuesT](t.Protocol):
-    """A viewer with the values of its controls, which draws the plot of new values or keeps the old values."""
+    """A viewer with the values of its controls and the last warning of its plot."""
 
     values: ValuesT
     # the last warning of the last plot, which the status bar shows. A user of the application sees no terminal
     warning: str
 
-    def change(self, values: ValuesT) -> str | None:
-        """Draw the plot of the values, or keep the old values and return the reason for the status line."""
-        ...
+
+# the time of a plot before the spinner shows over the plot
+BUSY_MILLISECONDS: t.Final = 300
 
 
 class DrawQueue[ValuesT]:
@@ -2769,7 +2908,7 @@ class DrawQueue[ValuesT]:
     last values that the user gave. viewer.values holds the last values that the user gave, and drawnvalues holds the
     values of the plot. If the command rejects new values, the viewer keeps the values of the plot.
 
-    With render, a worker thread draws each plot. The window then shows each new value of a drag at once.
+    A worker thread draws each plot. The window then shows each new value of a drag at once.
 
     The queue also keeps the values before each change of the user, thus Undo and Redo can return to them.
     """
@@ -2781,16 +2920,15 @@ class DrawQueue[ValuesT]:
         statusbar: StatusBar,
         show_values: "Callable[[], None]",
         after_draw: "Callable[[str | None], None]",
-        change: "Callable[[ValuesT], str | None] | None" = None,
+        render: "Callable[[ValuesT], Callable[[], str | None]]",
         get_drawkind: "Callable[[], str] | None" = None,
-        render: "Callable[[ValuesT], Callable[[], str | None]] | None" = None,
         keep_on_undo: "Callable[[ValuesT, ValuesT], ValuesT] | None" = None,
     ) -> None:
         """Make an empty queue. after_draw receives the message of each plot of the queue.
 
-        change draws the values of the queue in place of viewer.change, e.g. a preview. get_drawkind gives the name of
-        the last plot for the status bar, e.g. "Preview". render draws the plot of the values in a worker thread. It
-        returns the function that shows that plot in the window and gives the message of a rejection.
+        render draws the plot of the values in a worker thread. It returns the function that shows that plot in the
+        window and gives the message of a rejection. get_drawkind gives the name of the last plot for the status bar,
+        e.g. "Preview".
 
         keep_on_undo receives the values that Undo or Redo restores and the current values. It returns the restored
         values with the parts that the window sets and the user does not, e.g. the width of the figure.
@@ -2804,7 +2942,6 @@ class DrawQueue[ValuesT]:
         self.statusbar = statusbar
         self.show_values = show_values
         self.after_draw = after_draw
-        self.change = change or viewer.change
         self.get_drawkind = get_drawkind
         self.requestedvalues: ValuesT | None = None
         self.drawnvalues: ValuesT = viewer.values
@@ -2816,8 +2953,6 @@ class DrawQueue[ValuesT]:
         self.lastchangetime = -math.inf
         # the text field that gave the last change, which a rejection marks
         self.editedfield: QtWidgets.QLineEdit | None = None
-        self.executor: ThreadPoolExecutor | None = None
-        self.rendertimer: QtCore.QTimer | None = None
         self.renderedvalues: ValuesT = viewer.values
         self.rendering: Future[Callable[[], str | None]] | None = None
         self.renderstart = 0.0
@@ -2829,13 +2964,19 @@ class DrawQueue[ValuesT]:
         self.taskstatus = ""
         self.on_task_done: Callable[[str | None], None] | None = None
         self.taskfuture: Future[str | None] | None = None
-        if render is not None:
-            # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
-            self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
-            # the window thread checks the worker at each tick, because a Qt call from the worker thread is not safe
-            self.rendertimer = QtCore.QTimer(window)
-            self.rendertimer.setInterval(10)
-            self.rendertimer.timeout.connect(self.show_rendered)
+        # True after Cancel Plot, until the plot in progress ends. The queue then discards that plot
+        self.discardrendering = False
+        # one worker thread draws one plot at a time, and a drag during a plot waits for the end of that plot
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plot")
+        # the window thread checks the worker at each tick, because a Qt call from the worker thread is not safe
+        self.rendertimer = QtCore.QTimer(window)
+        self.rendertimer.setInterval(10)
+        self.rendertimer.timeout.connect(self.show_rendered)
+        # a fast plot shows no spinner, thus the spinner does not flash at each step of a drag
+        self.busytimer = QtCore.QTimer(window)
+        self.busytimer.setSingleShot(True)
+        self.busytimer.setInterval(BUSY_MILLISECONDS)
+        self.busytimer.timeout.connect(partial(set_plot_busy, window, busy=True))
 
     def apply(self, values: ValuesT, *, undoable: bool = True) -> None:
         """Show the new values now, and draw them when Qt has no other events. Only a change of the values draws a plot.
@@ -2847,21 +2988,17 @@ class DrawQueue[ValuesT]:
             self.show_values()
             return
         if undoable:
-            self.record_undo()
+            now = time.monotonic()
+            # a drag of a slider or a repeated key gives many changes, and one step of Undo reverts all of them
+            if not self.undovalues or now - self.lastchangetime > UNDO_MERGE_SECONDS:
+                self.undovalues = [*self.undovalues[-UNDO_LIMIT + 1 :], self.viewer.values]
+            self.lastchangetime = now
+            self.redovalues.clear()
         # the plot of the change comes later, and a rejection then marks the field that gave the change
         self.editedfield = get_edited_field(self.window)
         # each handler makes its values from viewer.values, thus a second change before the plot keeps the first
         self.viewer.values = values
         self.redraw()
-
-    def record_undo(self) -> None:
-        """Keep the current values for Undo, before a change of the user."""
-        now = time.monotonic()
-        # a drag of a slider or a repeated key gives many changes, and one step of Undo reverts all of them
-        if not self.undovalues or now - self.lastchangetime > UNDO_MERGE_SECONDS:
-            self.undovalues = [*self.undovalues[-UNDO_LIMIT + 1 :], self.viewer.values]
-        self.lastchangetime = now
-        self.redovalues.clear()
 
     def can_undo(self) -> bool:
         """Return whether Undo has values that differ from the current values."""
@@ -2908,25 +3045,42 @@ class DrawQueue[ValuesT]:
         self.show_values()
 
     def draw_requested(self) -> None:
-        """Draw the plot of the last values that the user gave."""
-        if self.executor is not None:
-            if self.rendering is None and self.task is None:
-                self.start_render()
-            return
-        values, self.requestedvalues = self.requestedvalues, None
-        if values is not None:
-            self.after_draw(self.draw(values, self.change))
+        """Start the plot of the last values that the user gave, unless the worker thread is busy."""
+        if self.rendering is None and self.task is None:
+            self.start_render()
 
     def start_render(self) -> None:
         """Start a plot of the last values that the user gave in the worker thread."""
         values, self.requestedvalues = self.requestedvalues, None
-        if values is None or self.executor is None or self.render is None or self.rendertimer is None:
+        if values is None:
             return
         self.renderedvalues = values
         self.renderstart = time.perf_counter()
         self.statusbar.drawtime.setText("Plot in progress...")
         self.rendering = self.executor.submit(self.render, values)
         self.rendertimer.start()
+        if not self.busytimer.isActive():
+            self.busytimer.start()
+
+    def is_busy(self) -> bool:
+        """Return True if a plot is in progress or waits, and Cancel Plot can stop the wait."""
+        return (self.rendering is not None and not self.discardrendering) or self.requestedvalues is not None
+
+    def cancel(self) -> None:
+        """Stop the wait for the plot in progress and for the plots that wait, and keep the plot on the screen.
+
+        A worker thread cannot stop, thus the plot in progress runs to its end, and the queue then discards it. The
+        controls show the values of the plot on the screen again.
+        """
+        if not self.is_busy():
+            return
+        self.requestedvalues = None
+        self.discardrendering = self.rendering is not None
+        self.viewer.values = self.drawnvalues
+        self.busytimer.stop()
+        set_plot_busy(self.window, busy=False)
+        self.statusbar.drawtime.setText("Plot cancelled")
+        self.show_values()
 
     def show_rendered(self) -> None:
         """Show the plot or the result of the task of the worker thread when it is complete.
@@ -2941,17 +3095,23 @@ class DrawQueue[ValuesT]:
             if not self.taskfuture.done():
                 return
             self.end_task(self.taskfuture)
-        if self.rendertimer is not None:
-            self.rendertimer.stop()
+        self.rendertimer.stop()
         # a task waits for the plot in progress, and the newer values of the user wait for the task
         if self.task is not None and self.taskfuture is None:
             self.start_task()
         elif self.task is None and self.requestedvalues is not None:
             self.start_render()
+        # the spinner stays during a drag, which starts a new plot at the end of each plot
+        if self.rendering is None and self.taskfuture is None:
+            self.busytimer.stop()
+            set_plot_busy(self.window, busy=False)
 
     def show_rendered_plot(self, rendering: "Future[Callable[[], str | None]]") -> None:
         """Show the complete plot of the worker thread, or the message of a rejection."""
         self.rendering = None
+        if self.discardrendering:
+            self.discardrendering = False
+            return
         try:
             message = rendering.result()()
         except Exception as exc:  # ruff:ignore[blind-except]
@@ -2977,9 +3137,6 @@ class DrawQueue[ValuesT]:
         """
         if self.task is not None:
             return False
-        if self.executor is None:
-            on_done(task())
-            return True
         self.task, self.taskstatus, self.on_task_done = task, statustext, on_done
         if self.rendering is None:
             self.start_task()
@@ -2987,11 +3144,13 @@ class DrawQueue[ValuesT]:
 
     def start_task(self) -> None:
         """Start the task of run_task in the worker thread."""
-        if self.task is None or self.executor is None or self.rendertimer is None:
+        if self.task is None:
             return
         self.statusbar.drawtime.setText(self.taskstatus)
         self.taskfuture = self.executor.submit(self.task)
         self.rendertimer.start()
+        if not self.busytimer.isActive():
+            self.busytimer.start()
 
     def end_task(self, taskfuture: "Future[str | None]") -> None:
         """Give the message of the complete task to the function of run_task."""
@@ -3012,27 +3171,7 @@ class DrawQueue[ValuesT]:
         A window calls this function when it closes. A plot or a task in progress runs to its end, and the process
         ends after it. Without this function, each plot that waits also runs before the process ends.
         """
-        if self.executor is not None:
-            self.executor.shutdown(wait=False, cancel_futures=True)
-
-    def draw(self, values: ValuesT, change: "Callable[[ValuesT], str | None]") -> str | None:
-        """Draw the plot of the values with change, and return the message of a rejection."""
-        from PySide6 import QtCore
-        from PySide6 import QtWidgets
-
-        # a plot can take seconds, thus the cursor and the status bar show the wait
-        with show_wait_cursor():
-            self.statusbar.drawtime.setText("Plot in progress...")
-            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-            starttime = time.perf_counter()
-            # change() keeps the values of the last plot when the command rejects the new values
-            self.viewer.values = self.drawnvalues
-            try:
-                message = change(values)
-            finally:
-                self.drawnvalues = self.viewer.values
-        self.show_plot_status(message, starttime)
-        return message
+        self.executor.shutdown(wait=False, cancel_futures=True)
 
     def show_plot_status(self, message: str | None, starttime: float) -> None:
         """Show the time of the plot that started at starttime, its message or its warning, and the values."""
@@ -3042,6 +3181,7 @@ class DrawQueue[ValuesT]:
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
         show_status_message(self.statusbar, message, self.viewer.warning)
+        show_plot_banner(self.window, message)
         if message is None:
             clear_field_error(self.window)
         elif self.editedfield is not None:

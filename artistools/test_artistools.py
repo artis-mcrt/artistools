@@ -3531,13 +3531,14 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     """
     # PySide6 is an optional dependency. CI does not install it for each Python version, and a CI machine with no
     # libEGL.so.1 raises an ImportError that is not a ModuleNotFoundError
-    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=5)
     showvalues = mock.Mock()
-    queue = viewertools.DrawQueue(mock.Mock(), viewer, mock.Mock(), showvalues, mock.Mock())
+    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=mock.Mock())
     queue.apply(5)
     showvalues.assert_called_once_with()
     assert queue.requestedvalues is None, "unchanged values must draw no plot"
+    queue.close()
 
 
 def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() -> None:
@@ -3547,9 +3548,8 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
     """
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=1)
-    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock())
-    # a queue with no worker draws in the window thread with a wait cursor, which needs a QGuiApplication. The test
-    # needs no plot, and a timer of a plot that stays in the process crashed a later test of this worker
+    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    # the test needs no plot, and a timer of a plot that stays in the process crashed a later test of this worker
     with mock.patch.object(queue, "redraw"):
         # a drag gives a new value at each movement of the mouse
         for values in (2, 3, 4):
@@ -3569,6 +3569,7 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
         queue.apply(8, undoable=False)
         queue.undo()
         assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
+    queue.close()
 
 
 def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
@@ -3645,6 +3646,53 @@ def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytes
     worker.join()
     assert plotoutput.getvalue() == "a line of the plot\n"
     assert terminal.getvalue() == "a line of the window\n"
+
+
+def test_viewer_cancel_discards_the_plot_in_progress() -> None:
+    """Cancel Plot keeps the plot on the screen, and the plot in progress does not replace it when it ends.
+
+    A change after Cancel Plot waits for the end of the discarded plot, and then the queue draws it.
+    """
+    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    shown: list[int] = []
+
+    def render(values: int) -> "Callable[[], str | None]":
+        time.sleep(0.3)
+
+        def show() -> str | None:
+            shown.append(values)
+            return None
+
+        return show
+
+    viewer = mock.Mock(values=0, warning="")
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    queue.apply(1)
+    app.processEvents()
+    assert queue.is_busy()
+    queue.cancel()
+    assert viewer.values == 0, "the controls must show the values of the plot on the screen"
+    assert not queue.is_busy()
+    wait_for_plots()
+    assert not shown, "the discarded plot must not replace the plot on the screen"
+    queue.apply(2)
+    app.processEvents()
+    queue.cancel()
+    queue.apply(3)
+    wait_for_plots()
+    assert shown == [3]
+    assert queue.drawnvalues == viewer.values == 3
+    queue.close()
 
 
 def test_viewer_queue_draws_in_a_worker_thread() -> None:
