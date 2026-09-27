@@ -1507,11 +1507,6 @@ def get_snapshot_timestrings(
     return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
 
-def get_default_subplots_per_row(*, isimage: bool) -> int:
-    """Return the number of subplots in each row with no -subplotsperrow. A colour image puts 3 panels in a row."""
-    return 3 if isimage else 1
-
-
 def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
     """Return the number of rows and of columns of a figure of subplots, which fills each row from the left."""
     if subplotsperrow < 1:
@@ -1537,7 +1532,7 @@ def draw_figure(
     modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow or get_default_subplots_per_row(isimage=False))
+    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow)
     fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
     axes = axesgrid.ravel()[: len(plotlist)]
     for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
@@ -1905,7 +1900,7 @@ def draw_image_figure(
     grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
     isplane = plotaxis1 != "rcyl"
 
-    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow or get_default_subplots_per_row(isimage=True))
+    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
     # the image at each cylindrical radius has half the width of a plane
     panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
     figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
@@ -2264,11 +2259,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-subplotsperrow",
         type=int,
-        default=None,
-        help=(
-            "The number of subplots in each row of the figure. The default is 1 for a plot against -x, and 3 for the"
-            " panels of a colour image"
-        ),
+        default=1,
+        help="The number of subplots in each row of the figure, or of the panels of a colour image",
     )
 
 

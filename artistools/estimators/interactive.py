@@ -33,7 +33,6 @@ from artistools.estimators.plotestimators import default_plotitem_has_data
 from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_plotlist
-from artistools.estimators.plotestimators import get_default_subplots_per_row
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
@@ -652,7 +651,7 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
 
 
 def get_subplots_per_row(rows: OptionRows) -> int:
-    """Return the number of subplots in each row of a plot against -x, which -subplotsperrow gives, or 1."""
+    """Return the number of subplots or image panels in each row, which -subplotsperrow gives, or 1."""
     values = get_row_values(rows, "-subplotsperrow")
     return max(int(values[0]), 1) if values and values[0].isdecimal() else 1
 
@@ -1887,8 +1886,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     figscalebox.setSingleStep(0.1)
     figscalebox.setDecimals(2)
     figscalebox.setToolTip(helptexts.get("figscale", ""))
-    # the box shows the default of plotestimators when the command gives no option: 1 for a plot against -x, and 3 for
-    # the panels of a colour image
     subplotsperrowbox = QtWidgets.QSpinBox()
     subplotsperrowbox.setRange(1, 12)
     subplotsperrowbox.setToolTip(helptexts.get("subplotsperrow", ""))
@@ -2357,11 +2354,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         with contextlib.suppress(ValueError):
             figscale = get_row_values(rows, "-figscale") or (str(viewer.parser.get_default("figscale")),)
             set_spin_value(figscalebox, float(figscale[0]))
-        defaultperrow = get_default_subplots_per_row(isimage=geometrymode in {"plane", "average"})
-        with contextlib.suppress(ValueError):
-            set_spin_value(
-                subplotsperrowbox, int((get_row_values(rows, "-subplotsperrow") or (str(defaultperrow),))[0])
-            )
+        set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
@@ -2569,8 +2562,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply_rows({"-figscale": None if isdefault else (format(figscale, "g"),)})
 
     def on_subplotsperrow(count: int) -> None:
-        isimage = get_geometry_mode(viewer.values) in {"plane", "average"}
-        isdefault = count == get_default_subplots_per_row(isimage=isimage)
+        isdefault = count == viewer.parser.get_default("subplotsperrow")
         apply_rows({"-subplotsperrow": None if isdefault else (str(count),)})
 
     def on_xvariable() -> None:
