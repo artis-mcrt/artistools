@@ -1814,8 +1814,10 @@ def get_image_values(
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
-    With a sliceaxis, the estimators hold the cells of one plane of a 3D model, which is normal to that
-    axis. With no sliceaxis, the grid holds the average around the z axis. The grid then has a point at
+    With a sliceaxis, a pixel takes the cells of the estimators with its indices on the two other axes. The estimators
+    of -slice hold the cells of one plane of a 3D model, which is normal to that axis, and the estimators of
+    -projection hold each cell, thus a pixel is the mean of one line of cells. With no sliceaxis, the grid holds the
+    average around the z axis. The grid then has a point at
     each cylindrical radius and each z, as the reduction of a 3D model to 2D gives. A 2D model has this
     grid already, and a 1D model gives the value of its shell at each point. An empty cell has no
     estimators and gives NaN. Each value is the mean over the cells and the timesteps with volume x time
@@ -1945,8 +1947,11 @@ def draw_image_figure(
         ax.set_visible(False)
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
+    projection = getattr(args, "projection", None)
     strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
-    if not isplane and modelmeta["dimensions"] == 3:
+    if projection is not None:
+        strimage = f"mean along the {projection} axis"
+    elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
     print("  plotting " + figure_title.replace("\n", " "))
@@ -1954,8 +1959,8 @@ def draw_image_figure(
         fig.suptitle(figure_title)
 
     framefields: dict[str, int | str] = {
-        "kind": "slice" if isplane else "cylindrical",
-        "plane": get_slice_filetag(args) if isplane else "rz",
+        "kind": "projection" if projection is not None else "slice" if isplane else "cylindrical",
+        "plane": projection if projection is not None else get_slice_filetag(args) if isplane else "rz",
         "timestep": strtimestep,
         "timedays": strtimedays,
     }
@@ -2257,6 +2262,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "-projection",
+        default=None,
+        choices=["x", "y", "z"],
+        help=(
+            "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. -projection z gives"
+            " an image in x and y. Each pixel is the mean over one line of cells along the axis, with the volume"
+            " times the timestep duration as the weight"
+        ),
+    )
+
+    parser.add_argument(
         "-subplotsperrow",
         type=int,
         default=1,
@@ -2380,6 +2396,13 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     its axis. An argument that disagrees with the selection stops the command.
     """
     conditions: list[tuple[str, float, str]] = parse_slice_argument(args.slice) if args.slice is not None else []
+    projection = getattr(args, "projection", None)
+    if projection is not None:
+        if conditions:
+            exit_with_error("-projection and -slice select different cells", "Remove -projection or -slice")
+        if args.dimensionreduce == 1:
+            exit_with_error("-projection gives a colour image, thus -dimensionreduce 1 does not apply", "Remove one")
+        args.dimensionreduce = 2
     if conditions:
         # one condition is a plane, and two conditions are a line along the axis that stays
         slicedimensions = 2 if len(conditions) == 1 else 1
@@ -2394,12 +2417,13 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
         args.dimensionreduce = 1
 
     isimage = args.dimensionreduce == 2
-    args.sliceaxis = conditions[0][0] if isimage and conditions else None
+    # a projection groups the cells as a plane normal to its axis does, and it reads every cell of each line
+    args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
         return conditions
 
-    selection = "-slice" if conditions else "-dimensionreduce 2"
+    selection = "-projection" if projection else "-slice" if conditions else "-dimensionreduce 2"
     if args.readonlymgi or args.modelgridindex is not None:
         exit_with_error(
             f"{selection} selects the cells of the plot, thus -readonlymgi and -cell do not apply",
@@ -2595,6 +2619,11 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
 
     panels: list[ImagePanel] = []
+    if getattr(args, "projection", None) is not None and modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"-projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Give -dimensionreduce 2 for the average around the z axis",
+        )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators

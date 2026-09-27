@@ -3685,6 +3685,10 @@ def test_interactive_geometry_modes_draw() -> None:
         "The line of cells along the x axis with -0.03859c ≤ y < -0.01929c and 0.07717c ≤ z < 0.09647c, against v_x."
     )
     assert "r = √(x² + y²)" in describe("average")
+    assert describe("projection").startswith(
+        "The mean along the z axis, as an image in x and y. Each pixel is one line of cells along z, and its sides"
+        " are 0.01929c wide."
+    )
     assert "√(r² + z²)" in describe("average", dimensions=1)
     assert not describe("all")
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
@@ -3702,6 +3706,19 @@ def test_interactive_geometry_modes_draw() -> None:
     assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
     viewer1d = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
     assert viewer1d.change(interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
+
+    # a projection averages each line of cells along its axis, thus it needs a 3D model and no -slice
+    projection = dc.replace(viewer.values, otheroptions=(("-projection", ("y",)),))
+    assert viewer.change(projection) is None
+    assert interactive.get_geometry_mode(viewer.values) == "projection"
+    assert [frame.get_xlabel() for frame in interactive.get_plot_frames(viewer.fig)] == ["v$_x$ [$c$]"]
+    rejected = viewer.change(dc.replace(projection, otheroptions=(("-projection", ("y",)), ("-slice", ("xy",)))))
+    assert rejected is not None
+    assert "-slice" in rejected
+    onedprojection = dc.replace(viewer1d.values, otheroptions=(("-projection", ("z",)),))
+    message = viewer1d.change(onedprojection)
+    assert message is not None
+    assert "needs a 3D model" in message
 
 
 def test_interactive_smoothing_and_section_rows() -> None:

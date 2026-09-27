@@ -171,6 +171,7 @@ SECTION_DESTS: t.Final = frozenset({
     "nolegend",
     "notitle",
     "readonlymgi",
+    "projection",
     "slice",
     "subplotsperrow",
 })
@@ -184,10 +185,14 @@ GEOMETRY_MODES: t.Final = MappingProxyType({
     "plane": "A 2D plane slice of cells as an image (-slice)",
     "line": "A line of cells along an axis (-slice)",
     "average": "The mean over the azimuth around the z axis as an image (-dimensionreduce 2)",
+    "projection": "The mean along an axis of each line of cells as an image (-projection)",
 })
 
+# the modes whose plot is a colour image of a snapshot
+IMAGE_MODES: t.Final = frozenset({"plane", "average", "projection"})
+
 # the rows of the option table that a mode of the geometry sets
-GEOMETRY_FLAGS: t.Final = ("-slice", "-dimensionreduce", "-readonlymgi", "-axis", "-coneangle")
+GEOMETRY_FLAGS: t.Final = ("-slice", "-dimensionreduce", "-projection", "-readonlymgi", "-axis", "-coneangle")
 
 # the planes of -slice through the origin, by the axis that is normal to the plane
 PLANE_OF_NORMAL: t.Final = MappingProxyType({"z": "xy", "y": "xz", "x": "yz"})
@@ -455,7 +460,7 @@ def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | No
 def get_geometry_choices(dimensions: int) -> list[str]:
     """Return the keys in GEOMETRY_MODES that a model can plot.
 
-    A 1D or a 2D model has no axes, planes, or lines, but it has the average around the z axis.
+    A 1D or a 2D model has no axes, planes, lines, or projections, but it has the average around the z axis.
     """
     return [mode for mode in GEOMETRY_MODES if dimensions == 3 or mode in {"all", "cells", "average"}]
 
@@ -465,6 +470,8 @@ def get_geometry_mode(values: "ControlValues") -> str:
     rows = values.otheroptions
     if slicevalues := get_row_values(rows, "-slice"):
         return "line" if "," in slicevalues[0] else "plane"
+    if get_row_values(rows, "-projection"):
+        return "projection"
     if get_row_values(rows, "-dimensionreduce") == ("2",):
         return "average"
     if readonlymgi := get_row_values(rows, "-readonlymgi"):
@@ -608,6 +615,15 @@ def get_geometry_description(
         lineaxis = get_line_axis(slicetext)
         bounds = " and ".join(get_layer_bounds(name, conditions[name], modelmeta) for name in sorted(conditions))
         return f"The line of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
+    if mode == "projection":
+        projectionaxis = (get_row_values(values.otheroptions, "-projection") or ("z",))[0]
+        first, second = (other for other in "xyz" if other != projectionaxis)
+        width = format_velocity(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
+        return (
+            f"The mean along the {projectionaxis} axis, as an image in {first} and {second}. Each pixel is one line"
+            f" of cells along {projectionaxis}, and its sides are {width} wide. The weight of a cell is its volume"
+            " times the timestep duration."
+        )
     if mode == "average":
         dimensions = int(modelmeta["dimensions"])
         if dimensions == 1:
@@ -632,6 +648,7 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
     keptaxis = get_row_values(rows, "-axis") if mode in {"alongaxis", "cone"} else None
     keptcone = get_row_values(rows, "-coneangle") if mode == "cone" else None
     oldslice = (get_row_values(rows, "-slice") or ("",))[0]
+    oldprojection = get_row_values(rows, "-projection") or ("z",)
     changes: dict[str, tuple[str, ...] | None] = dict.fromkeys(GEOMETRY_FLAGS)
     changes |= {"-axis": keptaxis, "-coneangle": keptcone}
     if mode in {"alongaxis", "cone"}:
@@ -642,10 +659,12 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
         changes["-slice"] = (oldslice if "," in oldslice else "z=0,y=0",)
     elif mode == "average":
         changes["-dimensionreduce"] = ("2",)
+    elif mode == "projection":
+        changes["-projection"] = oldprojection
     cells = (values.cells or (str(viewer.cells[0]) if viewer.cells else "")) if mode == "cells" else ""
     newrows = set_row_values(rows, changes)
     newvalues = replace_option_rows(viewer, dc.replace(values, cells=cells), newrows)
-    if mode in {"plane", "average"}:
+    if mode in IMAGE_MODES:
         return viewer.set_xvariable(newvalues, viewer.get_default_xvariable(newrows, timegiven=True))
     return newvalues
 
@@ -1770,6 +1789,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     planeatlabel = QtWidgets.QLabel()
     planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, planeatlabel, offsetedit])
     lineparameters = make_parameter_row([QtWidgets.QLabel("Line along"), lineaxisbox])
+    projectionaxisbox = QtWidgets.QComboBox()
+    projectionaxisbox.addItems(["x", "y", "z"])
+    projectionaxisbox.setToolTip(helptexts.get("projection", ""))
+    projectionparameters = make_parameter_row([QtWidgets.QLabel("Mean along"), projectionaxisbox])
     add_row(cellgrid, 0, [geometrybox])
     cellgrid.addWidget(cellnamelabel, 1, 0)
     cellgrid.addWidget(cellslider, 1, 1)
@@ -1779,7 +1802,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     geometrydescription = QtWidgets.QLabel()
     geometrydescription.setWordWrap(True)
     geometrydescription.setEnabled(False)
-    for row, widget in enumerate((axisparameters, planeparameters, lineparameters, geometrydescription), start=3):
+    parameterrows = (axisparameters, planeparameters, lineparameters, projectionparameters, geometrydescription)
+    for row, widget in enumerate(parameterrows, start=3):
         cellgrid.addWidget(widget, row, 0, 1, -1)
 
     _, xgrid = add_section(panellayout, "Horizontal axis")
@@ -1939,6 +1963,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         coneanglebox,
         planebox,
         lineaxisbox,
+        projectionaxisbox,
         smoothingbox,
         smoothinglengthbox,
         smoothingorderbox,
@@ -2246,7 +2271,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         nonlocal shownnewkey, pendingfocus
         subplots, columns = viewer.values.subplots, viewer.estimatorcolumns
         subplottypes = get_subplot_types(columns, viewer.nltetypes)
-        isimage = get_geometry_mode(viewer.values) in {"plane", "average"}
+        isimage = get_geometry_mode(viewer.values) in IMAGE_MODES
         focuswidget = QtWidgets.QApplication.focusWidget()
         focus, pendingfocus = pendingfocus, None
         for row, subplot in enumerate(subplots):
@@ -2317,6 +2342,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         slicetext = (get_row_values(rows, "-slice") or ("",))[0]
         planeparameters.setVisible(geometrymode == "plane")
         lineparameters.setVisible(geometrymode == "line")
+        projectionparameters.setVisible(geometrymode == "projection")
+        projectionaxisbox.setCurrentText((get_row_values(rows, "-projection") or ("z",))[0])
         plane, offset = get_slice_parts(slicetext)
         planebox.setCurrentText(plane)
         coneangletext = (get_row_values(rows, "-coneangle") or (str(viewer.parser.get_default("coneangle")),))[0]
@@ -2517,6 +2544,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_plane() -> None:
         offsetedit.setModified(False)
         apply_rows({"-slice": (get_slice_text(planebox.currentText(), offsetedit.text()),)})
+
+    def on_projectionaxis(axis: str) -> None:
+        apply_rows({"-projection": (axis,)})
 
     def on_lineaxis(index: int) -> None:
         axis = str(lineaxisbox.itemData(index))
@@ -2883,6 +2913,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     planebox.textActivated.connect(on_plane)
     offsetedit.editingFinished.connect(on_plane)
     lineaxisbox.activated.connect(on_lineaxis)
+    projectionaxisbox.textActivated.connect(on_projectionaxis)
     smoothingbox.activated.connect(on_smoothing_mode)
     smoothinglengthbox.valueChanged.connect(on_smoothing_length)
     smoothingorderbox.valueChanged.connect(on_smoothing_order)
