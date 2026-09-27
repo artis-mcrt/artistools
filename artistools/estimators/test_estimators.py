@@ -3201,6 +3201,32 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
 
+def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
+    """The Python code that the viewer shows must draw the same data as the viewer.
+
+    The code groups the names of a type of series, also for a list of ions with no type. A directive becomes a pair with
+    an underscore, and the value of ymin= becomes a number.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = (("Te", "TR", "yscale=linear", "ymin=1000"), ("Fe II", "Fe III"), ("populations", "Ni II"))
+    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
+    assert viewer.change(newvalues) is None
+    code = interactive.get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns)
+    assert '["Te", "TR", ["_yscale", "linear"], ["_ymin", 1000]],' in code
+    assert '[["populations", ["Fe II", "Fe III"]]],' in code
+
+    savedfigures: list[mplfig.Figure] = []
+
+    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
+        savedfigures.append(fig)
+
+    outputfile = tmp_path / "estimators.pdf"
+    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
+        exec(code.replace("main(\n", f"main(\n    outputfile={str(outputfile)!r},\n", 1), {})  # ruff:ignore[exec-builtin]
+    [savedfigure] = savedfigures
+    assert_same_lines(viewer.fig, savedfigure)
+
+
 def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
 

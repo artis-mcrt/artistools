@@ -67,16 +67,18 @@ from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
+from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_command
+from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_actions_by_flag
+from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -85,6 +87,7 @@ from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import get_table_actions
 from artistools.viewertools import make_central_splitter
@@ -101,6 +104,7 @@ from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
+from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
@@ -1137,6 +1141,58 @@ def get_item_directive(item: str) -> str | None:
     return directive if equals and directive in DIRECTIVES else None
 
 
+def get_python_code(
+    parser: argparse.ArgumentParser, tokens: "Sequence[str]", estimatorcolumns: "Collection[str]"
+) -> str:
+    """Return the Python code that draws the plot of the command, with the plot list in the form of main.
+
+    The code gives each argument that differs from its default, as the command does.
+    """
+    args = parse_command_tokens(parser, tokens)
+    if args is None:
+        return "# plotestimators rejects the command"
+    resolve_positional_args(args)
+    changed = get_changed_arguments(parser, args, skip={"plotitems", "plotlist"})
+    modelpath = {"modelpath": changed.pop("modelpath")} if "modelpath" in changed else {}
+    plotlist = [get_python_plotitems(subplot, estimatorcolumns) for subplot in args.plotlist or []]
+    return get_python_call(
+        "at.estimators.plotestimators.main", {**modelpath, **changed, **({"plotlist": plotlist} if plotlist else {})}
+    )
+
+
+def get_python_number(text: str) -> float | str:
+    """Return the number that a directive value gives, e.g. 1e-16 for "1e-16", or the text if it gives none."""
+    with contextlib.suppress(ValueError):
+        return int(text)
+    with contextlib.suppress(ValueError):
+        if math.isfinite(number := float(text)):
+            return number
+    return text
+
+
+def get_python_plotitems(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[t.Any]:
+    """Return a subplot in the form of an item of the plotlist of main.
+
+    A type of series groups its names, e.g. [["populations", ["Fe II", "Fe III"]]], and a directive follows the
+    names, e.g. ["_ymin", 1e-16].
+    """
+    names = get_subplot_names(subplot)
+    seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
+    # a list of ions with no type is a populations subplot, and its names hold no type
+    series: list[t.Any] = (
+        names if seriestype is None else [[seriestype, names[1:] if names[0] == seriestype else names]]
+    )
+    directives = [
+        [
+            f"_{directive}",
+            get_python_number(item.partition("=")[2]) if directive in {"ymin", "ymax"} else item.partition("=")[2],
+        ]
+        for item in subplot
+        if (directive := get_item_directive(item)) is not None
+    ]
+    return [*series, *directives]
+
+
 def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str | None]") -> tuple[str, ...]:
     """Return the items of a subplot with these directives in place of their old values. None removes a directive."""
     kept = [item for item in subplot if get_item_directive(item) not in directives]
@@ -1990,6 +2046,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
+    pythontext, pythoncopybutton = add_copy_box(
+        panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
+    )
     statusbar = make_status_bar(window)
     # the first plot came before the status bar, and a user of the application sees no terminal
     show_status_message(statusbar, None, viewer.warning)
@@ -2476,6 +2535,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for widget in (optionheader, optioncontent):
             widget.setVisible(tableoffers or bool(get_table_rows(values.otheroptions)))
         set_command_text(commandtext, viewer.get_command())
+        set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
 
     def after_draw(message: str | None) -> None:
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
@@ -2798,8 +2858,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else "")))
 
     def on_copy() -> None:
-        copy_command(viewer.get_command())
+        copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
+
+    def on_copy_python() -> None:
+        copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
+        show_status_note(statusbar, "Copied the Python code")
 
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
@@ -3005,6 +3069,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
     copybutton.clicked.connect(on_copy)
+    pythoncopybutton.clicked.connect(on_copy_python)
     statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(

@@ -9,6 +9,7 @@ quickly and PySide6 is an optional dependency.
 import argparse
 import contextlib
 import io
+import json
 import math
 import re
 import shlex
@@ -27,6 +28,7 @@ from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
+from artistools.misc import separate_trailing_folders
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -1315,19 +1317,31 @@ def add_command_section(
     panellayout: "QtWidgets.QVBoxLayout",
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
     """Add the command at the bottom of the panel, and return its text box and its Copy button."""
+    panellayout.addStretch(1)
+    return add_copy_box(
+        panellayout, "Command", f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})"
+    )
+
+
+def add_copy_box(
+    panellayout: "QtWidgets.QVBoxLayout", title: str, copytooltip: str, *, maxlines: int = 8, wraplines: bool = True
+) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
+    """Add a section with a read-only box of text and a Copy button, and return the box and the button.
+
+    The box shows up to maxlines lines, and a longer text scrolls. Code keeps its lines without a wrap.
+    """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    panellayout.addStretch(1)
-    _, commandgrid = add_section(panellayout, "Command")
-    # the command text takes the width, and the Copy button keeps its size at the right
-    commandgrid.setColumnStretch(0, 1)
-    commandgrid.setColumnStretch(1, 0)
+    _, grid = add_section(panellayout, title)
+    # the text takes the width, and the Copy button keeps its size at the right
+    grid.setColumnStretch(0, 1)
+    grid.setColumnStretch(1, 0)
 
     # the instance of the box holds no reference to the window. PySide keeps each class, thus the class must hold none
     class CommandBox(QtWidgets.QPlainTextEdit):
-        """The box of the command, which fits its height to the wrapped lines when its width changes."""
+        """The box of the text, which fits its height to the wrapped lines when its width changes."""
 
         @t.override
         def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
@@ -1335,20 +1349,70 @@ def add_command_section(
             if event.size().width() != event.oldSize().width():
                 fit_command_box(self)
 
-    commandtext = CommandBox()
-    commandtext.setReadOnly(True)
-    commandtext.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-    fit_command_box(commandtext)
+    textbox = CommandBox()
+    textbox.setProperty("maxlines", maxlines)
+    if not wraplines:
+        textbox.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+    textbox.setReadOnly(True)
+    textbox.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+    fit_command_box(textbox)
     copybutton = QtWidgets.QPushButton("Copy")
-    copybutton.setToolTip(f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})")
-    commandgrid.addWidget(commandtext, 0, 0)
-    commandgrid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
-    return commandtext, copybutton
+    copybutton.setToolTip(copytooltip)
+    grid.addWidget(textbox, 0, 0)
+    grid.addWidget(copybutton, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
+    return textbox, copybutton
 
 
-# the command box shows between these numbers of lines, and a longer command scrolls inside the box
+def parse_command_tokens(parser: argparse.ArgumentParser, tokens: "Sequence[str]") -> argparse.Namespace | None:
+    """Return the arguments of the tokens of a command, or None if the parser rejects them.
+
+    The plot of the same tokens fails too, and the status line then gives the reason.
+    """
+    try:
+        return parser.parse_args(separate_trailing_folders(tokens))
+    except SystemExit:
+        return None
+
+
+def get_changed_arguments(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, skip: "Collection[str]" = ()
+) -> dict[str, t.Any]:
+    """Return each argument that differs from its default, in the order of the parser."""
+    return {dest: value for dest, value in vars(args).items() if dest not in skip and value != parser.get_default(dest)}
+
+
+# a list that is longer than this on one line gives one item on each line
+PYTHON_LINE_LENGTH: t.Final = 100
+
+
+def format_python_value(value: t.Any, indent: int) -> str:
+    """Return the Python text of a value of an argument. A list that is too long for one line gives one item a line."""
+    if isinstance(value, Path):
+        value = str(value)
+    if isinstance(value, str):
+        # the JSON text of a string is also a Python string, and it has the double quotes of the usual Python style
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        opening, closing = ("(", ")") if isinstance(value, tuple) else ("[", "]")
+        items = [format_python_value(item, indent + 4) for item in value]
+        onetuple = "," if isinstance(value, tuple) and len(items) == 1 else ""
+        oneline = f"{opening}{', '.join(items)}{onetuple}{closing}"
+        if indent + len(oneline) <= PYTHON_LINE_LENGTH:
+            return oneline
+        itemlines = "".join(f"{' ' * (indent + 4)}{item},\n" for item in items)
+        return f"{opening}\n{itemlines}{' ' * indent}{closing}"
+    return repr(value)
+
+
+def get_python_call(functionname: str, kwargs: "Mapping[str, t.Any]") -> str:
+    """Return the Python code that calls the main function of a command with these keyword arguments."""
+    arguments = "".join(f"    {name}={format_python_value(value, 4)},\n" for name, value in kwargs.items())
+    call = f"{functionname}(\n{arguments})" if arguments else f"{functionname}()"
+    return f"import artistools as at\n\n{call}"
+
+
+# a box of text shows at least this number of lines
 MIN_COMMAND_LINES: t.Final = 3
-MAX_COMMAND_LINES: t.Final = 8
 
 
 def set_command_text(commandtext: "QtWidgets.QPlainTextEdit", command: str) -> None:
@@ -1364,14 +1428,19 @@ def fit_command_box(commandtext: "QtWidgets.QPlainTextEdit") -> None:
     The layout of the document gives the wrapped lines at the width of the box. The rectangle of each block is a few
     pixels taller than its lines, and the box needs those pixels, else it scrolls.
     """
+    from PySide6 import QtWidgets
+
     document = commandtext.document()
     layout = document.documentLayout()
     textlines = math.ceil(layout.documentSize().height())
     textheight = sum(
         layout.blockBoundingRect(document.findBlockByNumber(i)).height() for i in range(document.blockCount())
     )
-    shownlines = min(max(textlines, MIN_COMMAND_LINES), MAX_COMMAND_LINES)
+    shownlines = min(max(textlines, MIN_COMMAND_LINES), int(commandtext.property("maxlines")))
     boxheight = textheight + (shownlines - textlines) * commandtext.fontMetrics().lineSpacing()
+    # a box with no wrap shows a horizontal scroll bar for a long line, and the bar must not cover the last line
+    if commandtext.lineWrapMode() == QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap:
+        boxheight += commandtext.horizontalScrollBar().sizeHint().height()
     commandtext.setFixedHeight(math.ceil(boxheight + 2 * document.documentMargin() + 2 * commandtext.frameWidth()))
 
 
@@ -1498,12 +1567,12 @@ def add_menus(window: "QtWidgets.QMainWindow", callbacks: "Mapping[str, Callable
         action.triggered.connect(callbacks[text])
 
 
-def copy_command(command: str) -> None:
-    """Print the command, and put it on the clipboard."""
+def copy_text(text: str) -> None:
+    """Print the text, e.g. the command, and put it on the clipboard."""
     from PySide6 import QtWidgets
 
-    print(command)
-    QtWidgets.QApplication.clipboard().setText(command)
+    print(text)
+    QtWidgets.QApplication.clipboard().setText(text)
 
 
 def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:

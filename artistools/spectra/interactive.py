@@ -39,15 +39,17 @@ from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
 from artistools.spectra.plotspectra import resolve_plot_args
 from artistools.viewertools import add_command_section
+from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_command
+from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -56,6 +58,7 @@ from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_option_table
@@ -69,6 +72,7 @@ from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
+from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
@@ -391,6 +395,14 @@ def check_viewer_args(args: argparse.Namespace) -> None:
             f"-stokesparam {args.stokesparam}": "/" in args.stokesparam,
         },
     )
+
+
+def get_python_code(parser: argparse.ArgumentParser, tokens: "Sequence[str]") -> str:
+    """Return the Python code that draws the plot of the command, with each argument that differs from its default."""
+    args = parse_command_tokens(parser, tokens)
+    if args is None:
+        return "# plotspectra rejects the command"
+    return get_python_call("at.spectra.plotspectra.main", get_changed_arguments(parser, args))
 
 
 class SpectrumViewer:
@@ -1096,6 +1108,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
+    pythontext, pythoncopybutton = add_copy_box(
+        panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
+    )
     statusbar = make_status_bar(window)
     # the first plot came before the status bar, and a user of the application sees no terminal
     show_status_message(statusbar, None, viewer.warning)
@@ -1317,6 +1332,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             referencelist.addItems(list(values.references))
         set_option_rows(values.otheroptions)
         set_command_text(commandtext, viewer.get_command())
+        set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
         show_rejections()
         for blocker in blockers:
             blocker.unblock()
@@ -1586,8 +1602,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(dc.replace(viewer.values, references=references))
 
     def on_copy() -> None:
-        copy_command(viewer.get_command())
+        copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
+
+    def on_copy_python() -> None:
+        copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
+        show_status_note(statusbar, "Copied the Python code")
 
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
@@ -1656,6 +1676,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     addbutton.clicked.connect(on_add_reference)
     removebutton.clicked.connect(on_remove_reference)
     copybutton.clicked.connect(on_copy)
+    pythoncopybutton.clicked.connect(on_copy_python)
     statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
     connect_plot_mouse(
