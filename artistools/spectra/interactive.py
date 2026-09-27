@@ -65,6 +65,7 @@ from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
+from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
@@ -196,7 +197,8 @@ class ControlValues:
     directionbins: tuple[int, ...]
     usedegrees: bool
     fixedionlist: tuple[str, ...]
-    references: tuple[str, ...]
+    # the paths of the ARTIS models and the reference spectra, in the order of the command
+    spectra: tuple[str, ...]
     figwidthscale: float
     otheroptions: OptionRows
 
@@ -343,6 +345,20 @@ def get_reference_token(filename: str) -> str:
     return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
 
 
+# plotspectra reads the model in the working folder when the command gives no path
+DEFAULT_SPECTRA: t.Final = (".",)
+
+
+def get_spectrum_item_text(path: str) -> str:
+    """Return the text of a path in the list of spectra: the kind and the full path.
+
+    The list shortens a long path in the middle, thus the text keeps the start and the end of the path.
+    """
+    if path_is_reference_spectrum(path):
+        return f"Reference: {(find_reference_spectrum_file_or_none(path) or Path(path)).absolute()}"
+    return f"Model: {Path(path).absolute()}"
+
+
 def get_direction_kind(args: argparse.Namespace) -> str:
     """Return the kind of viewing direction of the arguments, in the form of ControlValues.directionkind."""
     if args.plotvspecpol:
@@ -466,8 +482,8 @@ class SpectrumViewer:
         pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
         otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
         # the order of the paths gives the -label and the style of each series, thus the paths keep their order
-        self.startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
-        self.modelpathtokens = [path for path in self.startpaths if not path_is_reference_spectrum(path)]
+        startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
+        self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
         self.parser = parser
 
         # a range of one timestep is a single time, and a plot with no time starts in the middle of the run
@@ -522,7 +538,7 @@ class SpectrumViewer:
             directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
             usedegrees=bool(args.usedegrees),
             fixedionlist=tuple(args.fixedionlist or ()),
-            references=tuple(path for path in self.startpaths if path_is_reference_spectrum(path)),
+            spectra=tuple(startpaths) or DEFAULT_SPECTRA,
             figwidthscale=args.figwidthscale,
             otheroptions=otheroptions,
         )
@@ -632,11 +648,8 @@ class SpectrumViewer:
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["-fixedionlist", *values.fixedionlist]
-        # a reference that the user added goes after the paths of the command line
-        paths = [
-            *(path for path in self.startpaths if path in self.modelpathtokens or path in values.references),
-            *(path for path in values.references if path not in self.startpaths),
-        ]
+        # a command with no path reads the model in the working folder, thus that model needs no path
+        paths = [] if values.spectra == DEFAULT_SPECTRA else list(values.spectra)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
 
     def get_command(self) -> str:
@@ -1085,18 +1098,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
 
-    _, referencegrid = add_section(panellayout, "Reference spectra")
-    referencelist = QtWidgets.QListWidget()
-    referencelist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-    referencelist.setFixedHeight(4 * referencelist.fontMetrics().lineSpacing() + 12)
-    referencelist.setToolTip(
-        "The observed spectra of the plot. The command gives a file from the reference data of artistools by its"
-        " name alone."
+    _, spectragrid = add_section(panellayout, "Spectra")
+    spectralist = QtWidgets.QListWidget()
+    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+    spectralist.setFixedHeight(4 * spectralist.fontMetrics().lineSpacing() + 12)
+    # a long path shows its start and its end, and the width of the box sets the length
+    spectralist.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)
+    spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    spectralist.setToolTip(
+        "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
+        " -label and the style of each series. The command gives a file from the reference data of artistools by"
+        " its name alone."
     )
-    addbutton, removebutton = QtWidgets.QPushButton("Add..."), QtWidgets.QPushButton("Remove")
-    referencegrid.addWidget(referencelist, 0, 0, 1, 2)
-    referencegrid.addWidget(addbutton, 1, 0)
-    referencegrid.addWidget(removebutton, 1, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+    addmodelbutton = QtWidgets.QPushButton("Add model...")
+    addmodelbutton.setToolTip("Add the folder of an ARTIS run")
+    addreferencebutton = QtWidgets.QPushButton("Add reference...")
+    addreferencebutton.setToolTip("Add a file of an observed spectrum")
+    removebutton = QtWidgets.QPushButton("Remove")
+    removebutton.setToolTip("Remove the selected spectra. The plot keeps one ARTIS model at least")
+    spectragrid.addWidget(spectralist, 0, 0, 1, -1)
+    spectragrid.addLayout(make_row_layout([addmodelbutton, addreferencebutton, removebutton]), 1, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     _, optiongrid = add_section(panellayout, "Other options")
 
@@ -1223,7 +1244,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values.showemission,
             values.showabsorption,
             values.groupby,
-            values.references,
+            values.spectra,
             bool(values.deltax or values.deltalogx),
             values.yvariable,
             values.directionkind,
@@ -1327,9 +1348,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_direction_choices(values.directionkind, values.usedegrees)
         directionbox.setCurrentIndex(directionbox.findData(values.directionbins[0]) if values.directionbins else -1)
         directionbox.setEnabled(bool(values.directionkind))
-        if [referencelist.item(index).text() for index in range(referencelist.count())] != list(values.references):
-            referencelist.clear()
-            referencelist.addItems(list(values.references))
+        shownspectra = [
+            spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())
+        ]
+        if shownspectra != list(values.spectra):
+            spectralist.clear()
+            for path in values.spectra:
+                item = QtWidgets.QListWidgetItem(get_spectrum_item_text(path))
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
+                item.setToolTip(item.text())
+                spectralist.addItem(item)
         set_option_rows(values.otheroptions)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1590,16 +1618,32 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         apply(dc.replace(viewer.values, fixedionlist=series))
 
+    def add_spectra(paths: "Sequence[str]") -> None:
+        spectra = viewer.values.spectra
+        apply(dc.replace(viewer.values, spectra=(*spectra, *(path for path in paths if path not in spectra))))
+
+    def on_add_model() -> None:
+        startfolder = Path(viewer.runfolders[0]).absolute().parent
+        folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Add an ARTIS model", str(startfolder))
+        if not folder:
+            return
+        if not get_artis_run_folders([Path(folder)]):
+            show_error(f"{folder} is not the folder of an ARTIS run, which holds input.txt and spec.out")
+            return
+        add_spectra([folder])
+
     def on_add_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
-        names = [get_reference_token(filename) for filename in filenames]
-        references = (*viewer.values.references, *(name for name in names if name not in viewer.values.references))
-        apply(dc.replace(viewer.values, references=references))
+        add_spectra([get_reference_token(filename) for filename in filenames])
 
-    def on_remove_reference() -> None:
-        selected = {item.text() for item in referencelist.selectedItems()}
-        references = tuple(name for name in viewer.values.references if name not in selected)
-        apply(dc.replace(viewer.values, references=references))
+    def on_remove_spectra() -> None:
+        selected = {item.data(QtCore.Qt.ItemDataRole.UserRole) for item in spectralist.selectedItems()}
+        spectra = tuple(path for path in viewer.values.spectra if path not in selected)
+        # the time controls read the timesteps of a run, thus the plot needs an ARTIS model
+        if not get_artis_run_folders([Path(path) for path in spectra]):
+            show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
+            return
+        apply(dc.replace(viewer.values, spectra=spectra))
 
     def on_copy() -> None:
         copy_text(viewer.get_command())
@@ -1673,8 +1717,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionkindbox.currentIndexChanged.connect(on_direction)
     directionbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
-    addbutton.clicked.connect(on_add_reference)
-    removebutton.clicked.connect(on_remove_reference)
+    addmodelbutton.clicked.connect(on_add_model)
+    addreferencebutton.clicked.connect(on_add_reference)
+    removebutton.clicked.connect(on_remove_spectra)
     copybutton.clicked.connect(on_copy)
     pythoncopybutton.clicked.connect(on_copy_python)
     statusbar.helpbutton.clicked.connect(on_help)

@@ -2199,11 +2199,32 @@ def test_interactive_xunit_and_references() -> None:
     assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
 
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
-    assert viewer.change(dc.replace(inhertz, references=(reference,))) is None
+    assert viewer.change(dc.replace(inhertz, spectra=(*inhertz.spectra, reference))) is None
     tokens = shlex.split(viewer.get_command())[2:]
     assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
     assert "-xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
+
+
+def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The list of spectra holds each ARTIS model and each reference, also the model of the working folder.
+
+    A command with no path reads the model of the working folder, thus the list shows that model first and the
+    command still gives no path. A model that the user adds reaches the command and the plot.
+    """
+    monkeypatch.chdir(modelpath)
+    viewer = make_headless_viewer(["-t", "300", "--interactive"])
+    assert viewer.values.spectra == (".",)
+    assert interactive.get_spectrum_item_text(".") == f"Model: {modelpath.absolute()}"
+    assert shlex.split(viewer.get_command())[2:4] == ["-t", "300"]
+
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    # the second model is the same run, because the other test runs do not cover 300 days
+    spectra = (*viewer.values.spectra, str(modelpath), reference)
+    assert viewer.change(dc.replace(viewer.values, spectra=spectra)) is None
+    assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
+    assert len(viewer.axes[0].get_lines()) == 3
+    assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
 
 
 def test_interactive_paths_keep_their_place() -> None:
