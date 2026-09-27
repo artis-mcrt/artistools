@@ -89,6 +89,7 @@ from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
+from artistools.viewertools import get_flag_label
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
@@ -1965,6 +1966,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xbox.setToolTip(helptexts.get("x", ""))
     xminedit, xmaxedit, xbinsedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     xminlabel, xmaxlabel = QtWidgets.QLabel("-xmin"), QtWidgets.QLabel("-xmax")
+    # show_values adds the unit to the text, thus the tooltip gives the flag here
+    xminlabel.setToolTip("-xmin")
+    xmaxlabel.setToolTip("-xmax")
     zoomtip = " Drag across a plot to select a range. Double-click a plot to show the range of the data."
     for edit in (xminedit, xmaxedit):
         edit.setFixedWidth(100)
@@ -1978,9 +1982,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xbinsedit.setValidator(QtGui.QRegularExpressionValidator(QtCore.QRegularExpression(r"(-?\d+)?"), xbinsedit))
     xbinsedit.setToolTip(helptexts.get("xbins", ""))
     markerscheck = QtWidgets.QCheckBox("--markers")
-    markerscheck.setToolTip(helptexts.get("markers", ""))
     colorbyioncheck = QtWidgets.QCheckBox("--colorbyion")
-    colorbyioncheck.setToolTip(helptexts.get("colorbyion", ""))
+    # show_values adds a note to the text of these checkboxes, thus the tooltip gives the flag here
+    markerscheck.setToolTip(f"{helptexts.get('markers', '')} (--markers)")
+    colorbyioncheck.setToolTip(f"{helptexts.get('colorbyion', '')} (--colorbyion)")
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
@@ -2646,8 +2651,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
-        xminlabel.setText(f"-xmin{xunit}")
-        xmaxlabel.setText(f"-xmax{xunit}")
+        xminlabel.setText(f"{get_flag_label('-xmin')}{xunit}")
+        xmaxlabel.setText(f"{get_flag_label('-xmax')}{xunit}")
         axisisbeta = viewer.xlimitscale != 1.0
         unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
@@ -2662,15 +2667,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         else:
             xbinsedit.setPlaceholderText("auto: no bins" if viewer.plotxbins is None else f"auto: {viewer.plotxbins}")
         markerscheck.setChecked(values.markers)
-        markerscheck.setText(
-            "--markers (on for -xbins 0)" if viewer.plotmarkers and not values.markers else "--markers"
-        )
+        markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
+        markerscheck.setText(get_flag_label("--markers") + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
-        colorbyioncheck.setText(
-            "--colorbyion (on for automatic bins)"
-            if viewer.plotcolorbyion and not values.colorbyion
-            else "--colorbyion"
-        )
+        colorbyionnote = " (on for automatic bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
+        colorbyioncheck.setText(get_flag_label("--colorbyion") + colorbyionnote)
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
         skippeddefaultslabel.setText(

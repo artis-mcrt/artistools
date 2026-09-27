@@ -2529,6 +2529,12 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
     reopencheck.toggled.connect(partial(settings.setValue, "reopenwindows"))
     form.addRow(reopencheck)
 
+    flagcheck = QtWidgets.QCheckBox("Label the controls with the flags of the command, e.g. --showemission")
+    flagcheck.setToolTip("A new window shows the change. The tooltip of a control always gives its flag.")
+    flagcheck.setChecked(get_bool_setting("flaglabels", default=False))
+    flagcheck.toggled.connect(partial(settings.setValue, "flaglabels"))
+    form.addRow(flagcheck)
+
     for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
         box = QtWidgets.QDoubleSpinBox()
         # the box shows the text "Default", which is wider than a number
@@ -3383,6 +3389,66 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     return parts
 
 
+# the readable text of the label or the checkbox of each flag. The tooltip then gives the flag, and the setting
+# "flaglabels" shows the flags in place of these texts
+FLAG_LABELS: t.Final = MappingProxyType({
+    "--colorbyion": "Colour by ion",
+    "--frompackets": "From packets",
+    "--hidenetspectrum": "Hide net spectrum",
+    "--hideother": "Hide Other",
+    "--hidexlabel": "Hide x label",
+    "--legendframe": "Legend frame",
+    "--logscalex": "Log x",
+    "--markers": "Markers",
+    "--nolegend": "Hide legend",
+    "--normalised": "Normalise",
+    "--nostack": "Unstacked",
+    "--notitle": "Hide title",
+    "--showabsorption": "Show absorption",
+    "--showemission": "Show emission",
+    "--use_thermalemissiontype": "Thermal emission type",
+    "--usedegrees": "Degrees",
+    "-axis": "Axis",
+    "-cell": "Cells",
+    "-figscale": "Figure scale",
+    "-groupby": "Group by",
+    "-labelfontsize": "Font size",
+    "-maxseriescount": "Max series",
+    "-subplotsperrow": "Subplots per row",
+    "-x": "x variable",
+    "-xbins": "x bins",
+    "-xmax": "x max",
+    "-xmin": "x min",
+    "-xunit": "x unit",
+    "-ymax": "y max",
+    "-ymin": "y min",
+    "-yscale": "y scale",
+    "-yvariable": "y variable",
+})
+
+
+def get_flag_label(flag: str) -> str:
+    """Return the text of the control of a flag: a readable text, or the flag if the settings ask for the flags."""
+    return flag if get_bool_setting("flaglabels", default=False) else FLAG_LABELS.get(flag, flag)
+
+
+def show_flag_labels(window: "QtWidgets.QWidget") -> None:
+    """Give each label and each checkbox of a flag its readable text, and add the flag to its tooltip."""
+    from PySide6 import QtWidgets
+
+    widgets: list[QtWidgets.QLabel | QtWidgets.QCheckBox] = [
+        *window.findChildren(QtWidgets.QLabel),
+        *window.findChildren(QtWidgets.QCheckBox),
+    ]
+    for widget in widgets:
+        flag = widget.text()
+        if (text := get_flag_label(flag)) != flag:
+            widget.setText(text)
+            tooltip = widget.toolTip()
+            if not tooltip.endswith(f"({flag})"):
+                widget.setToolTip(f"{tooltip} ({flag})" if tooltip else flag)
+
+
 def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], on_screen: "Callable[[], None]") -> None:
     """Give the window the size of the last window of the viewer, or a first size, and show it.
 
@@ -3393,6 +3459,7 @@ def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], o
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
+    show_flag_labels(window)
     splitter = window.centralWidget()
     assert isinstance(splitter, QtWidgets.QSplitter)
     geometrykey, splitterkey = get_window_setting_keys(window)
