@@ -3548,24 +3548,27 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=1)
     queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock())
-    # a drag gives a new value at each movement of the mouse
-    for values in (2, 3, 4):
-        queue.apply(values)
-    # the user stops for a time that is longer than the merge time
-    queue.lastchangetime -= 10.0 * viewertools.UNDO_MERGE_SECONDS
-    queue.apply(5)
-    # the command rejected 5, thus the viewer kept the values of the last plot
-    viewer.values = 4
+    # a queue with no worker draws in the window thread with a wait cursor, which needs a QGuiApplication. The test
+    # needs no plot, and a timer of a plot that stays in the process crashed a later test of this worker
+    with mock.patch.object(queue, "redraw"):
+        # a drag gives a new value at each movement of the mouse
+        for values in (2, 3, 4):
+            queue.apply(values)
+        # the user stops for a time that is longer than the merge time
+        queue.lastchangetime -= 10.0 * viewertools.UNDO_MERGE_SECONDS
+        queue.apply(5)
+        # the command rejected 5, thus the viewer kept the values of the last plot
+        viewer.values = 4
 
-    queue.undo()
-    assert viewer.values == 1
-    queue.redo()
-    assert viewer.values == 4
-    queue.apply(7)
-    assert not queue.can_redo(), "a new change must remove the steps of Redo"
-    queue.apply(8, undoable=False)
-    queue.undo()
-    assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
+        queue.undo()
+        assert viewer.values == 1
+        queue.redo()
+        assert viewer.values == 4
+        queue.apply(7)
+        assert not queue.can_redo(), "a new change must remove the steps of Redo"
+        queue.apply(8, undoable=False)
+        queue.undo()
+        assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
 
 
 def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
