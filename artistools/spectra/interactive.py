@@ -64,16 +64,17 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
-from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_row_layout
+from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
+from artistools.viewertools import make_toolbar
 from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
@@ -957,32 +958,27 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     nvalid = len(viewer.validtimesteps)
 
     _, timegrid = add_section(panellayout, "Time")
-    snapbutton = QtWidgets.QRadioButton("Snap to timesteps")
-    continuousbutton = QtWidgets.QRadioButton("Continuous (--notimeclamp)")
-    snapbutton.setToolTip("The time range holds whole timesteps, as plotspectra reads them by default")
-    continuousbutton.setToolTip(helptexts.get("notimeclamp", ""))
-    modebuttons = QtWidgets.QButtonGroup(window)
-    for button in (snapbutton, continuousbutton):
-        modebuttons.addButton(button)
-    modelayout = QtWidgets.QHBoxLayout()
-    modelayout.addWidget(snapbutton)
-    modelayout.addWidget(continuousbutton)
-    modelayout.addStretch(1)
-    timegrid.addLayout(modelayout, 0, 0, 1, 3)
+    # the index of a segment: 0 snaps the time range to whole timesteps, and 1 gives --notimeclamp
+    modesegments = make_segmented_control(
+        ["Snap to Timesteps", "Continuous"],
+        [
+            "The time range holds whole timesteps, as plotspectra reads them by default",
+            f"--notimeclamp: {helptexts.get('notimeclamp', '')}",
+        ],
+    )
+    timegrid.addWidget(modesegments, 0, 0, 1, 3, QtCore.Qt.AlignmentFlag.AlignLeft)
     timeslider, widthslider = make_slider(), make_slider()
     timeedit, widthedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     widthlabel = QtWidgets.QLabel()
     timestepslabel = QtWidgets.QLabel()
-    playbutton = QtWidgets.QPushButton("Play")
-    playbutton.setCheckable(True)
-    playbutton.setToolTip(
-        "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
+    toolbar = make_toolbar(
+        window, "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
     )
-    fpsbox = make_fps_box()
+    playbutton, fpsbox = toolbar.play, toolbar.fpsbox
     timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
     widthtip = (
         'The width of the time range. The Up key and the Down key change the width by one timestep. With "Snap to'
-        ' timesteps", the width is a count of timesteps.'
+        ' Timesteps", the width is a count of timesteps.'
     )
     for row, (label, slider, edit, tip) in enumerate(
         [(QtWidgets.QLabel("Time [d]"), timeslider, timeedit, timetip), (widthlabel, widthslider, widthedit, widthtip)],
@@ -994,8 +990,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(label, row, 0)
         timegrid.addWidget(slider, row, 1)
         timegrid.addWidget(edit, row, 2)
-    timegrid.addWidget(timestepslabel, 3, 0, 1, 2)
-    timegrid.addLayout(make_row_layout([QtWidgets.QLabel("FPS:"), fpsbox, playbutton]), 3, 2)
+    timegrid.addWidget(timestepslabel, 3, 0, 1, -1)
 
     xheader, xgrid = add_section(panellayout, "")
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
@@ -1177,8 +1172,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
-        snapbutton,
-        continuousbutton,
+        modesegments,
         timeslider,
         widthslider,
         xrangeslider,
@@ -1328,7 +1322,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             set_xunit_ranges()
         if values.notimeclamp != slidermode:
             set_time_mode()
-        (continuousbutton if values.notimeclamp else snapbutton).setChecked(True)
+        modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
+        toolbar.previous.setEnabled(viewer.step_time(-1) is not None)
+        toolbar.next.setEnabled(viewer.step_time(1) is not None)
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthslider.setValue(to_position(values.width, 0.0, widthmax))
@@ -1471,13 +1467,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_time_mode() -> None:
         values = viewer.values
-        if continuousbutton.isChecked() and not values.notimeclamp:
+        if modesegments.currentIndex() == 1 and not values.notimeclamp:
             apply(
                 dc.replace(
                     values, notimeclamp=True, centre=float(f"{values.centre:.4g}"), width=float(f"{values.width:.3g}")
                 )
             )
-        elif snapbutton.isChecked() and values.notimeclamp:
+        elif modesegments.currentIndex() == 0 and values.notimeclamp:
             apply(viewer.snap(values, *viewer.get_selection(values)))
 
     def on_time(position: int) -> None:
@@ -1775,7 +1771,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
     )
 
-    modebuttons.buttonToggled.connect(on_time_mode)
+    modesegments.currentChanged.connect(on_time_mode)
+    toolbar.previous.triggered.connect(lambda: on_arrow(-1))
+    toolbar.next.triggered.connect(lambda: on_arrow(1))
+    toolbar.save.triggered.connect(on_save)
+    toolbar.copyfigure.triggered.connect(on_copy_figure)
+    toolbar.copycommand.triggered.connect(on_copy)
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
     timeedit.editingFinished.connect(on_timeedit)

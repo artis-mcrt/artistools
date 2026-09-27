@@ -749,6 +749,8 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
             geometrykey, splitterkey = get_window_setting_keys(self)
             settings = get_settings()
             settings.setValue(geometrykey, self.saveGeometry())
+            # the state of the window holds whether the toolbar shows
+            settings.setValue(f"{self.objectName()}/state", self.saveState())
             splitter = self.centralWidget()
             if isinstance(splitter, QtWidgets.QSplitter):
                 settings.setValue(splitterkey, splitter.saveState())
@@ -1286,6 +1288,7 @@ def make_option_table(
         removebutton.setText("✕")
         removebutton.setAutoRaise(True)
         removebutton.setToolTip(f"Remove {flag} from the command")
+        removebutton.setAccessibleName(f"Remove {flag}")
         removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
         layout.addWidget(removebutton)
         editor.setToolTip(helptexts.get(action.dest, ""))
@@ -1476,6 +1479,104 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
     playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
 
 
+def get_theme_icon(
+    themeicon: "QtGui.QIcon.ThemeIcon", fallback: "QtWidgets.QStyle.StandardPixmap | None"
+) -> "QtGui.QIcon":
+    """Return the icon of the platform, e.g. an SF Symbol on macOS, or the icon of the Qt style if it has none.
+
+    With no fallback, the result can be an empty icon, and a tool button then shows its text.
+    """
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    icon = QtGui.QIcon.fromTheme(themeicon)
+    if icon.isNull() and fallback is not None:
+        return QtWidgets.QApplication.style().standardIcon(fallback)
+    return icon
+
+
+def make_segmented_control(labels: "Sequence[str]", tooltips: "Sequence[str]") -> "QtWidgets.QTabBar":
+    """Return a control of side-by-side segments, one of which is selected, e.g. two modes of the time.
+
+    The macOS style of Qt draws a tab bar as a segmented control, which the apps of macOS use for a choice of modes.
+    """
+    from PySide6 import QtWidgets
+
+    segments = QtWidgets.QTabBar()
+    segments.setDrawBase(False)
+    segments.setExpanding(False)
+    for index, (label, tooltip) in enumerate(zip(labels, tooltips, strict=True)):
+        segments.addTab(label)
+        segments.setTabToolTip(index, tooltip)
+    return segments
+
+
+class ViewerToolbar(t.NamedTuple):
+    """The toolbar of a window: the steps of the time, Play, the frame rate, and the export actions."""
+
+    previous: "QtGui.QAction"
+    play: "QtGui.QAction"
+    next: "QtGui.QAction"
+    fpsbox: "QtWidgets.QDoubleSpinBox"
+    save: "QtGui.QAction"
+    copyfigure: "QtGui.QAction"
+    copycommand: "QtGui.QAction"
+
+
+def make_toolbar(window: "QtWidgets.QMainWindow", playtooltip: str) -> ViewerToolbar:
+    """Add the toolbar at the top of the window, as the apps of macOS have, and return its actions.
+
+    The toolbar holds the actions that a user takes often, thus they stay in view while the sidebar scrolls. The
+    Play action is checkable, and its icon shows Pause while Play runs.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    themeicon, pixmap = QtGui.QIcon.ThemeIcon, QtWidgets.QStyle.StandardPixmap
+    toolbar = window.addToolBar("Toolbar")
+    # the state of the window names the toolbar, thus the next window keeps the choice of Hide Toolbar
+    toolbar.setObjectName("toolbar")
+    toolbar.setMovable(False)
+    toolbar.setFloatable(False)
+    toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
+    window.setUnifiedTitleAndToolBarOnMac(True)
+
+    previous = toolbar.addAction(get_theme_icon(themeicon.MediaSkipBackward, pixmap.SP_MediaSkipBackward), "Previous")
+    previous.setToolTip("Move the time to the previous timestep (Left key)")
+    playicon = get_theme_icon(themeicon.MediaPlaybackStart, pixmap.SP_MediaPlay)
+    pauseicon = get_theme_icon(themeicon.MediaPlaybackPause, pixmap.SP_MediaPause)
+    play = toolbar.addAction(playicon, "Play")
+    play.setCheckable(True)
+    play.setToolTip(playtooltip)
+
+    def show_play_state(checked: bool) -> None:
+        play.setIcon(pauseicon if checked else playicon)
+
+    play.toggled.connect(show_play_state)
+    nextaction = toolbar.addAction(get_theme_icon(themeicon.MediaSkipForward, pixmap.SP_MediaSkipForward), "Next")
+    nextaction.setToolTip("Move the time to the next timestep (Right key)")
+    fpsbox = make_fps_box()
+    toolbar.addWidget(QtWidgets.QLabel(" FPS: "))
+    toolbar.addWidget(fpsbox)
+    toolbar.addSeparator()
+    save = toolbar.addAction(get_theme_icon(themeicon.DocumentSave, pixmap.SP_DialogSaveButton), "Save Figure…")
+    save.setToolTip("Save the figure of the command in a file (Save Figure…)")
+    copyfigure = toolbar.addAction(get_theme_icon(themeicon.EditCopy, None), "Copy Figure")
+    copyfigure.setToolTip("Copy the figure as an image")
+    copycommand = toolbar.addAction("Copy Command")
+    copycommand.setToolTip("Copy the command of the plot")
+    return ViewerToolbar(
+        previous=previous,
+        play=play,
+        next=nextaction,
+        fpsbox=fpsbox,
+        save=save,
+        copyfigure=copyfigure,
+        copycommand=copycommand,
+    )
+
+
 def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
     """Return the box of the frame rate of Play, with up and down buttons."""
     from PySide6 import QtWidgets
@@ -1533,6 +1634,7 @@ def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
     helpbutton = QtWidgets.QToolButton()
     helpbutton.setText("?")
     helpbutton.setToolTip("Show the keys and the mouse actions of the window (?)")
+    helpbutton.setAccessibleName("Keys and Mouse Actions")
     statusbar.addWidget(messagelabel, stretch=1)
     for widget in (readoutlabel, drawtimelabel, helpbutton):
         statusbar.addPermanentWidget(widget)
@@ -2327,6 +2429,8 @@ def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], o
     settings = get_settings()
     geometry = settings.value(geometrykey)
     splitterstate = settings.value(splitterkey)
+    if isinstance(windowstate := settings.value(f"{window.objectName()}/state"), QtCore.QByteArray):
+        window.restoreState(windowstate)
     if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
         if isinstance(splitterstate, QtCore.QByteArray):
             splitter.restoreState(splitterstate)
