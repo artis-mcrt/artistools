@@ -54,6 +54,7 @@ from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
+from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_bool_setting
@@ -1782,6 +1783,28 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
 
+    def get_animation_values() -> list[ControlValues]:
+        """Return the values of each step of Play, from the first valid timestep to the last."""
+        values = viewer.values
+        if values.notimeclamp:
+            # a continuous range keeps its width and moves its middle to the middle of each timestep
+            return [
+                viewer.clamp_time(dc.replace(values, centre=float(f"{viewer.tmids[timestep]:.4g}")))
+                for timestep in viewer.validtimesteps
+            ]
+        firstpos, lastpos = viewer.get_selection_positions()
+        count = lastpos - firstpos
+        return [
+            viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count])
+            for start in range(len(viewer.validtimesteps) - count)
+        ]
+
+    def on_export_animation() -> None:
+        from artistools.spectra.plotspectra import main as plotspectra_main
+
+        frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
+        export_animation(window, queue, statusbar, plotspectra_main, "plotspectra", frametokens, fpsbox.value())
+
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
             show_error(message)
@@ -1805,6 +1828,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     menucallbacks = {
         "Open Model…": on_open_model,
         "Save Figure…": on_save,
+        "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Undo": on_undo,
         "Redo": on_redo,

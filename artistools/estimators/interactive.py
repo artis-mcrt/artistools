@@ -80,6 +80,7 @@ from artistools.viewertools import copy_figure
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
+from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import get_actions_by_flag
@@ -3068,6 +3069,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
 
+    def get_animation_values() -> list[ControlValues]:
+        """Return the values of each step of Play: each timestep of a snapshot, or each cell of a plot against time."""
+        values = viewer.values
+        if is_evolution(values):
+            # -cell does not select the cells of some plots, e.g. of a plane
+            if not viewer.cells or not cells_apply(values):
+                return [values]
+            return [dc.replace(values, cells=str(cell)) for cell in viewer.cells]
+        firstpos, lastpos = viewer.get_selection_positions(values)
+        count = lastpos - firstpos + 1
+        return [
+            viewer.select_timesteps(values, start, count) for start in range(len(viewer.validtimesteps) - count + 1)
+        ]
+
+    def on_export_animation() -> None:
+        from artistools.estimators.plotestimators import main as plotestimators_main
+
+        frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
+        export_animation(window, queue, statusbar, plotestimators_main, "plotestimators", frametokens, fpsbox.value())
+
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
             show_error(message)
@@ -3096,6 +3117,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Open Model…": on_open_model,
         "Reload Data": on_reload,
         "Save Figure…": on_save,
+        "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Undo": queue.undo,
         "Redo": queue.redo,

@@ -3788,23 +3788,24 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         savedtokens.append(list(argsraw))
         Path(argsraw[-1]).write_text("figure", encoding="utf-8")
 
-    def accept_proposal(*args: object) -> tuple[object, bool]:
-        return args[3], True
-
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
-        filename = str(tmp_path / f"plot.{suffix}")
+        filename = str(tmp_path / "plot")
+
+        def accept_proposal(_window: object, proposeddpi: int, suffix: str = suffix) -> tuple[str, int]:
+            return suffix, proposeddpi
+
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
-            mock.patch("PySide6.QtWidgets.QInputDialog.getInt", side_effect=accept_proposal) as getint,
+            mock.patch.object(viewertools, "ask_export_options", side_effect=accept_proposal),
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewertools.save_figure_of_command(
                 mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, 250
             )
-        assert getint.call_count == (1 if suffix == "png" else 0)
-        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", filename]
-        statusbar.message.setText.assert_called_with(f"Saved {filename}")
+        # a name with no suffix takes the suffix of the type that the dialog selected
+        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
+        statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:

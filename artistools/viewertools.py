@@ -30,6 +30,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
+from artistools.misc import write_gif
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -78,6 +79,9 @@ SLIDER_STEPS: t.Final = 1000
 
 # the first width of the sidebar. The user can drag the handle between the plot and the sidebar
 SIDEBAR_WIDTH: t.Final = 600
+
+# Export Animation asks before it runs the command for more frames than this
+MAX_ANIMATION_FRAMES: t.Final = 200
 
 # the resolution of Copy Figure, in dots per inch
 COPY_FIGURE_DPI: t.Final = 300
@@ -1871,6 +1875,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("File", "Open Model…", QtGui.QKeySequence(standardkey.Open)),
         ("File", "Reload Data", QtGui.QKeySequence(standardkey.Refresh)),
         ("File", "Save Figure…", QtGui.QKeySequence(standardkey.Save)),
+        ("File", "Export Animation…", QtGui.QKeySequence("Ctrl+Shift+E")),
         ("File", "Close Window", QtGui.QKeySequence(standardkey.Close)),
         ("Edit", "Undo", QtGui.QKeySequence(standardkey.Undo)),
         ("Edit", "Redo", QtGui.QKeySequence(standardkey.Redo)),
@@ -1894,6 +1899,7 @@ MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Open Model…": "Open a model in a new window",
     "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
     "Save Figure…": "Run the command to save the figure",
+    "Export Animation…": "Save a GIF file of the steps of Play",
     "Undo": "Undo the last change",
     "Redo": "Redo the change that Undo removed",
     "Copy Figure": "Copy the figure as an image",
@@ -2245,6 +2251,112 @@ def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
     return tuple(row for row in rows if row[0] != "-dpi"), dpi
 
 
+# the file types of Save Figure, with the tooltip of each
+EXPORT_FORMATS: t.Final = (
+    ("pdf", "A vector file, for a paper. A colour image in it takes the resolution"),
+    ("png", "An image with the resolution, e.g. for a slide"),
+    ("svg", "A vector file, e.g. for a web page. A colour image in it takes the resolution"),
+)
+
+
+def ask_export_options(window: "QtWidgets.QWidget", dpi: int) -> tuple[str, int] | None:
+    """Ask for the type of the file and the resolution, as the Export dialog of Keynote does before the save panel.
+
+    Return the suffix of the type and the resolution in dots per inch, or None if the user cancels. The settings keep
+    the type for the next export.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    dialog = QtWidgets.QDialog(window)
+    dialog.setWindowTitle("Save Figure")
+    form = QtWidgets.QFormLayout(dialog)
+    segments = make_segmented_control(
+        [suffix.upper() for suffix, _ in EXPORT_FORMATS], [tooltip for _, tooltip in EXPORT_FORMATS]
+    )
+    suffixes = [suffix for suffix, _ in EXPORT_FORMATS]
+    lastsuffix = str(get_settings().value("exportformat", "pdf"))
+    segments.setCurrentIndex(suffixes.index(lastsuffix) if lastsuffix in suffixes else 0)
+    form.addRow("Format:", segments)
+    dpibox = QtWidgets.QSpinBox()
+    dpibox.setRange(10, 2400)
+    dpibox.setSingleStep(50)
+    dpibox.setValue(dpi)
+    dpibox.setSuffix(" dpi")
+    dpibox.setToolTip("The resolution of a PNG file, and of a colour image in a PDF or an SVG file (-dpi)")
+    form.addRow("Resolution:", dpibox)
+    buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+    nextbutton = buttons.addButton("Next…", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+    nextbutton.setDefault(True)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    form.addRow(buttons)
+    dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+    if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        return None
+    suffix = suffixes[segments.currentIndex()]
+    get_settings().setValue("exportformat", suffix)
+    return suffix, dpibox.value()
+
+
+def export_animation(
+    window: "QtWidgets.QWidget",
+    queue: "DrawQueue[t.Any]",
+    statusbar: StatusBar,
+    commandmain: "Callable[..., None]",
+    commandname: str,
+    frametokens: "Sequence[Sequence[str]]",
+    fps: float,
+) -> None:
+    """Save a GIF file of the steps of Play, with one run of the command for each frame, as Save Figure does.
+
+    The worker thread runs the command for each frame and joins the frames, thus the window stays responsive. The
+    GIF shows each frame for 1/fps seconds.
+    """
+    import tempfile
+
+    from PySide6 import QtWidgets
+
+    if len(frametokens) > MAX_ANIMATION_FRAMES:
+        answer = QtWidgets.QMessageBox.question(
+            window,
+            "Export Animation",
+            f"The animation has {len(frametokens)} frames, and each frame runs the command. Continue?",
+        )
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+    filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+        window, "Export the animation", str(Path.cwd() / f"{commandname}.gif"), "GIF (*.gif)"
+    )
+    if not filename:
+        return
+    if not Path(filename).suffix:
+        filename += ".gif"
+
+    def export() -> str | None:
+        with tempfile.TemporaryDirectory() as folder:
+            framepaths: list[Path] = []
+            for index, tokens in enumerate(frametokens):
+                framepath = Path(folder) / f"frame{index:04d}.png"
+                commandmain(argsraw=[*tokens, "-o", str(framepath)])
+                if not framepath.is_file():
+                    return f"The command wrote no frame for {shlex.join(tokens)}"
+                framepaths.append(framepath)
+            write_gif(filename, framepaths, duration=1000.0 / fps)
+        return None
+
+    def show_result(message: str | None) -> None:
+        if message is not None:
+            show_status_message(statusbar, f"The viewer did not export the animation: {message}", "")
+        else:
+            show_status_note(statusbar, f"Saved {filename}, with {len(frametokens)} frames")
+
+    if not queue.run_task(
+        lambda: run_command_step(export), f"Export of {len(frametokens)} frames in progress...", show_result
+    ):
+        show_status_message(statusbar, "A different task is in progress. Export the animation after it", "")
+
+
 def save_figure_of_command(
     window: "QtWidgets.QWidget",
     statusbar: StatusBar,
@@ -2265,21 +2377,17 @@ def save_figure_of_command(
     """
     from PySide6 import QtWidgets
 
-    filename, selectedfilter = QtWidgets.QFileDialog.getSaveFileName(
-        window, "Save the figure", str(Path.cwd() / f"{commandname}.pdf"), "PDF (*.pdf);;PNG (*.png);;SVG (*.svg)"
+    options = ask_export_options(window, dpi)
+    if options is None:
+        return
+    suffix, dpi = options
+    filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+        window, "Save the figure", str(Path.cwd() / f"{commandname}.{suffix}"), f"{suffix.upper()} (*.{suffix})"
     )
     if not filename:
         return
     if not Path(filename).suffix:
-        # a filter such as "PNG (*.png)" names the suffix
-        suffixmatch = re.search(r"\*(\.\w+)", selectedfilter)
-        filename += suffixmatch.group(1) if suffixmatch else ".pdf"
-    if Path(filename).suffix.lower() == ".png":
-        dpi, accepted = QtWidgets.QInputDialog.getInt(
-            window, "Save the figure", "Resolution of the PNG file [dots per inch]:", dpi, 10, 2400, 50
-        )
-        if not accepted:
-            return
+        filename += f".{suffix}"
     savetokens = [*plottokens, *([] if dpi == defaultdpi else ["-dpi", str(dpi)]), "-o", filename]
 
     def save() -> str | None:
