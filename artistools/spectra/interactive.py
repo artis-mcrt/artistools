@@ -6,6 +6,7 @@ import dataclasses as dc
 import math
 import shlex
 import typing as t
+from functools import partial
 from pathlib import Path
 
 import matplotlib.figure as mplfig
@@ -1132,7 +1133,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(bingrid, 0, [frompacketscheck, binmodebox, binwidthbox])
 
     _, directiongrid = add_section(panellayout, "Viewing direction")
-    directionkindbox, directionbox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+    directionkindbox = QtWidgets.QComboBox()
     for directionkind, directionkindtext, dest in (
         ("", "All directions", ""),
         ("bin", "-plotviewingangle", "plotviewingangle"),
@@ -1145,11 +1146,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             directionkindbox.setItemData(
                 directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
             )
-    directionbox.setToolTip("The direction bin of the plot, or the observer of the virtual packets")
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
     add_row(directiongrid, 0, [directionkindbox, usedegreescheck])
-    # the label of a direction bin is long, thus the box of the direction bins takes the full width of the sidebar
+    # the plot can show several directions at once, thus each direction bin has a checkbox. The list scrolls, and the
+    # label of a bin is long, thus the list takes the full width of the sidebar
+    directionbox = QtWidgets.QScrollArea()
+    directionbox.setWidgetResizable(True)
+    directionbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    directionbox.setToolTip("The direction bins of the plot, or the observers of the virtual packets")
+    directionchecks: dict[int, QtWidgets.QCheckBox] = {}
     directiongrid.addWidget(directionbox, 1, 0, 1, -1)
     # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
     directionchoices: dict[tuple[str, bool], list[tuple[int, str]]] = {}
@@ -1232,7 +1238,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         hideothercheck,
         thermalcheck,
         directionkindbox,
-        directionbox,
         usedegreescheck,
     ]
 
@@ -1272,15 +1277,32 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         binwidthbox.setRange(low, high)
         binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
 
-    def show_direction_choices(directionkind: str, usedegrees: bool) -> None:
-        """Fill the box of the direction bins with the bins of a kind of viewing direction."""
+    def show_direction_choices(directionkind: str, usedegrees: bool) -> bool:
+        """Fill the list of the direction bins with a checkbox for each bin of a kind of viewing direction.
+
+        Return whether the list is new.
+        """
         nonlocal shownchoices
         if (directionkind, usedegrees) == shownchoices:
-            return
-        directionbox.clear()
+            return False
+        checklist = QtWidgets.QWidget()
+        checklayout = QtWidgets.QVBoxLayout(checklist)
+        checklayout.setContentsMargins(6, 4, 6, 4)
+        checklayout.setSpacing(2)
+        directionchecks.clear()
         for dirbin, label in get_direction_choices_of_kind(directionkind, usedegrees):
-            directionbox.addItem(f"{dirbin}: {label}", dirbin)
+            check = QtWidgets.QCheckBox(f"{dirbin}: {label}")
+            check.toggled.connect(on_direction)
+            checklayout.addWidget(check)
+            directionchecks[dirbin] = check
+        checklayout.addStretch(1)
+        # the list shows up to 6 bins, and a longer list scrolls
+        shownbins = min(max(len(directionchecks), 1), 6)
+        lineheight = max(check.sizeHint().height() for check in directionchecks.values()) if directionchecks else 20
+        directionbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
+        directionbox.setWidget(checklist)
         shownchoices = (directionkind, usedegrees)
+        return True
 
     def get_direction_choices_of_kind(directionkind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if not directionkind:
@@ -1415,8 +1437,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
         usedegreescheck.setChecked(values.usedegrees)
         usedegreescheck.setEnabled(bool(values.directionkind))
-        show_direction_choices(values.directionkind, values.usedegrees)
-        directionbox.setCurrentIndex(directionbox.findData(values.directionbins[0]) if values.directionbins else -1)
+        isnewlist = show_direction_choices(values.directionkind, values.usedegrees)
+        for dirbin, check in directionchecks.items():
+            with QtCore.QSignalBlocker(check):
+                check.setChecked(dirbin in values.directionbins)
+        # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
+        if isnewlist and (firstcheck := directionchecks.get(values.directionbins[0] if values.directionbins else -1)):
+            QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
         # all the directions have no bin to select, thus the list of the bins shows only for a kind of direction
         directionbox.setVisible(bool(values.directionkind))
         shownspectra = [
@@ -1709,10 +1736,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         usedegrees = usedegreescheck.isChecked()
         dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees)]
         if directionkind == viewer.values.directionkind:
-            directionbins = (directionbox.currentData(),) if directionkind else ()
+            directionbins = tuple(dirbin for dirbin, check in directionchecks.items() if check.isChecked())
+            if directionkind and not directionbins:
+                show_error("A kind of viewing direction needs one direction bin at least")
+                return
         else:
-            # a new kind keeps the direction bin if that kind has the same bin
-            directionbins = tuple(dirbin for dirbin in viewer.values.directionbins[:1] if dirbin in dirbins) or tuple(
+            # a new kind keeps each direction bin that the kind also has
+            directionbins = tuple(dirbin for dirbin in viewer.values.directionbins if dirbin in dirbins) or tuple(
                 dirbins[:1]
             )
         values = dc.replace(
@@ -1927,7 +1957,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     yvariablebox.currentTextChanged.connect(on_axes)
     normalisedcheck.toggled.connect(on_axes)
     directionkindbox.currentIndexChanged.connect(on_direction)
-    directionbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
     addmodelbutton.clicked.connect(on_add_model)
     openreferencebutton.clicked.connect(on_open_reference)

@@ -226,7 +226,9 @@ def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float,
     # the costheta bins are ordered by ascending cos θ from -1. to 1.,
     # which means that they are in descending order of theta from π to 0
     # i.e. costhetabins[0] is the θ=π or -Z axis direction
-    costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
+    # np.arange gives -1.1e-16 in place of 0 at the middle edge, and the label then read "-0.0 ≤ cos θ". The rounded
+    # edge is -0.0, and the addition of 0.0 gives 0.0
+    costhetabins_lower = np.round(np.arange(-1.0, 1.0, 2.0 / ncosthetabins), 12) + 0.0
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
         thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
