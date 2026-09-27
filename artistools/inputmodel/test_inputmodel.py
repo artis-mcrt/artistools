@@ -2316,6 +2316,31 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
     assert np.allclose(dfpos["vel_r_max_kmps"], dfneg["vel_r_max_kmps"], rtol=1e-6)
 
 
+def test_profile_along_axis_takes_the_middle_cell_by_index() -> None:
+    """For an odd cell count, the profile takes the middle cell of each other axis, also after a float rounding.
+
+    The function took the lower edge with the smallest magnitude. The rounding of -dx/2 and +dx/2 then
+    selected the cells from +dx/2 to 3dx/2, which do not hold the axis.
+    """
+    from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
+
+    loweredges = [-1.5, -0.5000001, 0.4999999]
+    dfmodel = pl.DataFrame(
+        [
+            {"pos_x_min": x, "pos_y_min": y, "pos_z_min": z}
+            for z, y, x in itertools.product(loweredges, loweredges, loweredges)
+        ],
+        schema=dict.fromkeys(("pos_x_min", "pos_y_min", "pos_z_min"), pl.Float32),
+    )
+    args = argparse.Namespace(sliceaxis="z", other_axis1="x", other_axis2="y", positive_axis=False)
+
+    dfprofile = get_profile_along_axis(dfmodel, args)
+
+    assert dfprofile.height == 2
+    assert np.allclose(dfprofile["pos_x_min"], -0.5, rtol=1e-6)
+    assert np.allclose(dfprofile["pos_y_min"], -0.5, rtol=1e-6)
+
+
 def test_from_e2e_model_interpolation_weights_of_an_empty_cell() -> None:
     """A cell that both models leave empty gets a weight of zero for each model, and not a NaN.
 
