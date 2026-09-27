@@ -3192,20 +3192,20 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
 
-def test_interactive_default_subplots_give_no_plot_option(tmp_path: Path) -> None:
-    """The default subplots of plotestimators need no -plot, and the same subplots as -plot draw the same figure.
+def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
+    """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
 
-    The viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16". The command with these
-    tokens must draw the figure of the command with no -plot.
+    The command left out the default subplots, thus it depended on the default of the version of plotestimators. The
+    viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16".
     """
     viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
     assert viewer.values.subplots == viewer.defaultsubplots
     assert "averageexcitation" in viewer.defaultsubplots[-1]
-    assert "-plot" not in viewer.get_plot_tokens()
-
     first, *others = viewer.defaultsubplots
-    explicittokens = [*first, str(modelpath), "-timestep", "50", *(token for s in others for token in ("-plot", *s))]
-    assert_same_lines(viewer.fig, get_command_figure(explicittokens, tmp_path / "estimators.pdf"))
+    assert viewer.get_plot_tokens()[: len(first)] == list(first)
+    assert viewer.get_plot_tokens().count("-plot") == len(others)
+
+    assert_same_lines(viewer.fig, get_command_figure([str(modelpath), "-timestep", "50"], tmp_path / "estimators.pdf"))
 
 
 def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
@@ -3670,15 +3670,15 @@ def test_interactive_geometry_modes_draw() -> None:
         return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
 
     assert describe("alongaxis") == (
-        "The column of cells along the -y axis with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and -0.09647c ≤ y < 0."
+        "The line of cells along the -y axis with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and -0.09647c ≤ y < 0."
     )
     assert "-y ≥ √(x² + z²) / tan 15°" in describe("cone")
-    assert describe("plane") == "The layer of cells with 0 ≤ z < 0.01929c, as an image in x and y."
+    assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
     # a position between two edges selects the layer that holds it, in the unit of the position
-    assert describe("plane", "z=0.02c").startswith("The layer of cells with 0.01929c ≤ z < 0.03859c")
-    assert describe("plane", "y=5000km/s").startswith("The layer of cells with 0 ≤ y < 5784.04 km/s")
+    assert describe("plane", "z=0.02c").startswith("The 2D plane slice of cells with 0.01929c ≤ z < 0.03859c")
+    assert describe("plane", "y=5000km/s").startswith("The 2D plane slice of cells with 0 ≤ y < 5784.04 km/s")
     assert describe("line", "z=0.1c,y=-0.02c") == (
-        "The row of cells along the x axis with -0.03859c ≤ y < -0.01929c and 0.07717c ≤ z < 0.09647c, against v_x."
+        "The line of cells along the x axis with -0.03859c ≤ y < -0.01929c and 0.07717c ≤ z < 0.09647c, against v_x."
     )
     assert "r = √(x² + y²)" in describe("average")
     assert "√(r² + z²)" in describe("average", dimensions=1)

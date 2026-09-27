@@ -177,10 +177,10 @@ SECTION_DESTS: t.Final = frozenset({
 GEOMETRY_MODES: t.Final = MappingProxyType({
     "all": "All the cells",
     "cells": "Selected cells (-cell)",
-    "alongaxis": "A column of cells along an axis (-readonlymgi alongaxis)",
+    "alongaxis": "A line of cells along an axis (-readonlymgi alongaxis)",
     "cone": "The cells in a cone around an axis (-readonlymgi cone)",
-    "plane": "A layer of cells as an image (-slice)",
-    "line": "A row of cells along an axis (-slice)",
+    "plane": "A 2D plane slice of cells as an image (-slice)",
+    "line": "A line of cells along an axis (-slice)",
     "average": "The mean over the azimuth around the z axis as an image (-dimensionreduce 2)",
 })
 
@@ -385,7 +385,7 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
         validtimesteps=validtimesteps,
         cells=cells,
         cellvelocities=dict(zip(cells, dfcells["vel_r_mid"].to_list(), strict=True)),
-        # the command omits -plot if the subplots are the default subplots of plotestimators
+        # the subplots of plotestimators for a command with no -plot, which the window shows first
         defaultsubplots=tuple(
             get_plotitem_tokens(plotitems)
             for plotitems in get_default_plotlist()
@@ -540,9 +540,9 @@ def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDAr
 
 
 def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, t.Any]") -> str:
-    """Return the edges of the layer of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
+    """Return the edges of the plane slice of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
 
-    plotestimators reads this layer for -slice. The edges take the unit of the position, and a position with no unit
+    plotestimators reads this plane slice for -slice. The edges take the unit of the position, and a position with no unit
     takes c. A position that is not a velocity gives the condition on the edges of the cells.
     """
     # plotestimators imports the spectra package in its function too, because the CLI must start quickly
@@ -587,7 +587,7 @@ def get_geometry_description(
                 axisrange = f"{format_velocity(float(axisedges[0]), 'c')} ≤ {name} < {format_velocity(end, 'c')}"
             lowertext, uppertext = format_velocity(lower, "c"), format_velocity(upper, "c")
             return (
-                f"The column of cells along the {axis} axis with {lowertext} ≤ {first} < {uppertext},"
+                f"The line of cells along the {axis} axis with {lowertext} ≤ {first} < {uppertext},"
                 f" {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
             )
         halfangle = format(coneangle / 2.0, "g")
@@ -600,12 +600,12 @@ def get_geometry_description(
         plane, offset = get_slice_parts(slicetext)
         normal = next(normalaxis for normalaxis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
         bounds = get_layer_bounds(normal, offset or "0", modelmeta)
-        return f"The layer of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
+        return f"The 2D plane slice of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
     if mode == "line":
         conditions = get_slice_conditions(slicetext)
         lineaxis = get_line_axis(slicetext)
         bounds = " and ".join(get_layer_bounds(name, conditions[name], modelmeta) for name in sorted(conditions))
-        return f"The row of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
+        return f"The line of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
     if mode == "average":
         dimensions = int(modelmeta["dimensions"])
         if dimensions == 1:
@@ -866,11 +866,13 @@ class EstimatorViewer:
         """Return the plotestimators arguments of the values, or of the current values if the caller gives none.
 
         The first subplot comes before the folder, e.g. "Te TR mymodel", and each other subplot follows -plot at the
-        end. A -plot takes each word up to the next flag, thus nothing can follow the last -plot.
+        end. A -plot takes each word up to the next flag, thus nothing can follow the last -plot. The command gives
+        each subplot also when the subplots are the default of plotestimators. The command then states the plot in
+        full, and a later change of the default does not change it.
         """
         if values is None:
             values = self.values
-        subplots = () if values.subplots == self.defaultsubplots else values.subplots
+        subplots = values.subplots
         tokens = [*(subplots[0] if subplots else ()), *([self.modeltoken] if self.modeltoken else [])]
         timetokens = self.get_time_tokens(values)
         tokens += timetokens
@@ -1711,8 +1713,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     for mode in get_geometry_choices(viewer.dimensions):
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
-        "The cells that the plot reads. x, y, and z are the velocity coordinates of the model grid. A layer and the"
-        " mean over the azimuth give a colour image of a snapshot."
+        "The cells that the plot reads. x, y, and z are the velocity coordinates of the model grid. A 2D plane slice"
+        " and the mean over the azimuth give a colour image of a snapshot."
     )
     cellslider = make_slider()
     cellslider.setToolTip("Select one cell. The Page Up key and the Page Down key select the adjacent cell.")
@@ -1840,7 +1842,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     addsubplotbutton = QtWidgets.QPushButton("Add subplot")
     addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
-    defaultbutton.setToolTip("Show the default subplots of plotestimators, which the command gives with no -plot")
+    defaultbutton.setToolTip("Show the default subplots of plotestimators for this model")
     newsubplotrow = QtWidgets.QHBoxLayout()
     newsubplotrow.addWidget(newsubplotedit, 1)
     newsubplotrow.addWidget(addsubplotbutton)
