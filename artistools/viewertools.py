@@ -1470,9 +1470,10 @@ def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
     from PySide6 import QtWidgets
 
     fpsbox = QtWidgets.QDoubleSpinBox()
-    fpsbox.setRange(0.2, 60.0)
+    # the minimum is one step, thus the up and down buttons keep each value on the steps of 0.5
+    fpsbox.setRange(0.5, 60.0)
     fpsbox.setDecimals(1)
-    fpsbox.setSingleStep(1.0)
+    fpsbox.setSingleStep(0.5)
     fpsbox.setValue(DEFAULT_PLAY_FPS)
     fpsbox.setToolTip(
         "The frames per second of Play. A plot that takes longer than one frame gives a lower rate. After the last"
