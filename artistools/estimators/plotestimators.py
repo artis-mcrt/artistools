@@ -1497,6 +1497,14 @@ def get_snapshot_timestrings(
     return strtimestep, f"{timelow_days:.2f}d-{timehigh_days:.2f}d"
 
 
+def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
+    """Return the number of rows and of columns of a figure of subplots, which fills each row from the left."""
+    if subplotsperrow < 1:
+        exit_with_error(f"-subplotsperrow {subplotsperrow} gives no column", "Give a number of 1 or more")
+    ncols = max(min(subplotsperrow, nsubplots), 1)
+    return math.ceil(nsubplots / ncols), ncols
+
+
 def draw_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1514,13 +1522,20 @@ def draw_figure(
     modelname = get_model_name(modelpath)
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    fig, axesgrid = make_frame_figure(args, rows=len(plotlist), aspect=0.468, sharex=True, fig=fig)
-    axes = axesgrid[:, 0]
+    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow or 1)
+    fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
+    axes = axesgrid.ravel()[: len(plotlist)]
+    for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
+        emptyaxis.set_visible(False)
 
     assert isinstance(axes, np.ndarray)
 
-    if not args.hidexlabel:
-        axes[-1].set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
+    # the lowest subplot of each column carries the x labels, also above an empty place of the last row
+    for index, ax in enumerate(axes):
+        if index + ncols >= len(axes):
+            ax.tick_params(axis="x", which="both", labelbottom=True)
+            if not args.hidexlabel:
+                ax.set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
 
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
@@ -1857,8 +1872,7 @@ def draw_image_figure(
     grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
     isplane = plotaxis1 != "rcyl"
 
-    ncols = min(len(panels), 3)
-    nrows = math.ceil(len(panels) / ncols)
+    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow or 3)
     # the image at each cylindrical radius has half the width of a plane
     panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
     figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
@@ -2212,6 +2226,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=30.0,
         help="The full angle of the cone in degrees for -readonlymgi cone. The half angle is coneangle/2",
+    )
+
+    parser.add_argument(
+        "-subplotsperrow",
+        type=int,
+        default=None,
+        help=(
+            "The number of subplots in each row of the figure. The default is 1 for a plot against -x, and 3 for the"
+            " panels of a colour image"
+        ),
     )
 
 

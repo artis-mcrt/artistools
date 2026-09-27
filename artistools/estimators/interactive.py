@@ -38,6 +38,7 @@ from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
 from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_panel_axes_label
+from artistools.estimators.plotestimators import get_subplot_grid
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
 from artistools.estimators.plotestimators import is_seriestype
@@ -171,6 +172,7 @@ SECTION_DESTS: t.Final = frozenset({
     "notitle",
     "readonlymgi",
     "slice",
+    "subplotsperrow",
 })
 
 # the ways to select the cells of the plot, by the key of the selector of the window
@@ -648,6 +650,12 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
     return newvalues
 
 
+def get_subplots_per_row(rows: OptionRows) -> int:
+    """Return the number of subplots in each row of a plot against -x, which -subplotsperrow gives, or 1."""
+    values = get_row_values(rows, "-subplotsperrow")
+    return max(int(values[0]), 1) if values and values[0].isdecimal() else 1
+
+
 def get_smoothing(rows: OptionRows) -> tuple[str, tuple[int, ...]]:
     """Return the key in SMOOTHING_MODES of the smoothing of the rows, and its numbers."""
     if (savgol := get_row_values(rows, "-filtersavgol")) and all(value.lstrip("-").isdecimal() for value in savgol):
@@ -1066,7 +1074,9 @@ class EstimatorViewer:
 
         A colour image takes the constrained layout, thus the width of all the figure follows -figwidthscale.
         """
-        marginwidth = 0.0 if self.isimage else LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
+        # each column of subplots shows its own y labels, thus a column after the first adds the width of a label
+        ncols = get_subplot_grid(len(self.values.subplots), get_subplots_per_row(self.values.otheroptions))[1]
+        marginwidth = 0.0 if self.isimage else ncols * LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
         return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
     def get_xlimit_text(self, xdata: float) -> str:
@@ -1876,12 +1886,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     figscalebox.setSingleStep(0.1)
     figscalebox.setDecimals(2)
     figscalebox.setToolTip(helptexts.get("figscale", ""))
-    for box in (fontsizebox, figscalebox):
+    subplotsperrowbox = QtWidgets.QSpinBox()
+    subplotsperrowbox.setRange(0, 12)
+    # auto gives no option, and plotestimators then takes 1 for a plot against -x and 3 for a colour image
+    subplotsperrowbox.setSpecialValueText("auto")
+    subplotsperrowbox.setToolTip(helptexts.get("subplotsperrow", ""))
+    for box in (fontsizebox, figscalebox, subplotsperrowbox):
         box.setKeyboardTracking(False)
     add_row(appearancegrid, 0, list(appearancechecks.values()))
     add_row(
         appearancegrid, 1, [QtWidgets.QLabel("-labelfontsize"), fontsizebox, QtWidgets.QLabel("-figscale"), figscalebox]
     )
+    add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
     optionheader, optiongrid = add_section(panellayout, "Other options")
     optioncontent = optiongrid.parentWidget()
@@ -1930,6 +1946,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         smoothingorderbox,
         fontsizebox,
         figscalebox,
+        subplotsperrowbox,
         *appearancechecks.values(),
     ]
 
@@ -2339,6 +2356,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         with contextlib.suppress(ValueError):
             figscale = get_row_values(rows, "-figscale") or (str(viewer.parser.get_default("figscale")),)
             set_spin_value(figscalebox, float(figscale[0]))
+        with contextlib.suppress(ValueError):
+            set_spin_value(subplotsperrowbox, int((get_row_values(rows, "-subplotsperrow") or ("0",))[0]))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
@@ -2544,6 +2563,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_figscale(figscale: float) -> None:
         isdefault = math.isclose(figscale, viewer.parser.get_default("figscale"))
         apply_rows({"-figscale": None if isdefault else (format(figscale, "g"),)})
+
+    def on_subplotsperrow(count: int) -> None:
+        apply_rows({"-subplotsperrow": (str(count),) if count > 0 else None})
 
     def on_xvariable() -> None:
         if xvariable := xbox.currentText().strip():
@@ -2870,6 +2892,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         check.toggled.connect(partial(on_appearance_check, flag))
     fontsizebox.valueChanged.connect(on_fontsize)
     figscalebox.valueChanged.connect(on_figscale)
+    subplotsperrowbox.valueChanged.connect(on_subplotsperrow)
     xbox.activated.connect(on_xvariable)
     if (xlineedit := xbox.lineEdit()) is not None:
         xlineedit.editingFinished.connect(on_xvariable)

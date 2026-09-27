@@ -3757,6 +3757,24 @@ def test_interactive_level_populations() -> None:
     assert set(plotestimators.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
 
 
+def test_subplots_per_row_fill_each_row() -> None:
+    """-subplotsperrow puts the subplots in rows from the left, and the lowest subplot of each column has x labels.
+
+    A column whose last place is empty takes its x labels on the subplot above that place.
+    """
+    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
+    subplots = (("Te",), ("TR",), ("nne",))
+    for count, expectedcolumns in ((None, 1), (2, 2), (5, 3)):
+        rows = () if count is None else (("-subplotsperrow", (str(count),)),)
+        assert viewer.change(dc.replace(viewer.values, subplots=subplots, otheroptions=rows)) is None, count
+        frames = interactive.get_plot_frames(viewer.fig)
+        assert len(frames) == 3
+        lefts = sorted({round(frame.get_position().x0, 6) for frame in frames})
+        assert len(lefts) == expectedcolumns, count
+        haslabel = [bool(frame.get_xlabel()) for frame in frames]
+        assert haslabel == [index + expectedcolumns >= 3 for index in range(3)], count
+
+
 def test_interactive_image_panels_name_their_subplot() -> None:
     """Each panel of a colour image names its subplot, thus Fix max finds the colour scale of each subplot.
 
