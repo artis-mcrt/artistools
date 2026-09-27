@@ -3660,15 +3660,26 @@ def test_interactive_geometry_modes_draw() -> None:
     assert interactive.get_line_label("x", "z=0.1c,y=0") == "x (y=0, z=0.1c)"
     assert interactive.get_line_label("z", "z=0.1c,y=0") == "z (x=y=0)"
 
-    # the text below the controls gives the set of cells in the terms of the model grid
-    def describe(mode: str, dimensions: int = 3) -> str:
+    # the text below the controls gives the range of each coordinate that the selected cells cover. The test model
+    # has 10 cells on each axis from -0.09647c to 0.09647c, thus each cell is 0.01929c wide
+    def describe(mode: str, slicetext: str | None = None, dimensions: int = 3) -> str:
         values = interactive.set_geometry_mode(viewer, viewer.values, mode)
-        return interactive.get_geometry_description(values, dimensions, "-y", 30.0)
+        if slicetext is not None:
+            values = dc.replace(values, otheroptions=(("-slice", (slicetext,)),))
+        modelmeta = viewer.modelmeta | {"dimensions": dimensions}
+        return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
 
-    assert describe("alongaxis").startswith("The column of cells along the -y axis: x_min = z_min = e and y_min < 0.")
+    assert describe("alongaxis") == (
+        "The column of cells along the -y axis with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and -0.09647c ≤ y < 0."
+    )
     assert "-y ≥ √(x² + z²) / tan 15°" in describe("cone")
-    assert describe("plane").startswith("The layer of cells with z_min ≤ 0 < z_max")
-    assert "y_min ≤ 0 < y_max and z_min ≤ 0 < z_max, against v_x" in describe("line")
+    assert describe("plane") == "The layer of cells with 0 ≤ z < 0.01929c, as an image in x and y."
+    # a position between two edges selects the layer that holds it, in the unit of the position
+    assert describe("plane", "z=0.02c").startswith("The layer of cells with 0.01929c ≤ z < 0.03859c")
+    assert describe("plane", "y=5000km/s").startswith("The layer of cells with 0 ≤ y < 5784.04 km/s")
+    assert describe("line", "z=0.1c,y=-0.02c") == (
+        "The row of cells along the x axis with -0.03859c ≤ y < -0.01929c and 0.07717c ≤ z < 0.09647c, against v_x."
+    )
     assert "r = √(x² + y²)" in describe("average")
     assert "√(r² + z²)" in describe("average", dimensions=1)
     assert not describe("all")

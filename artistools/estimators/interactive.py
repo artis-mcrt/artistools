@@ -36,6 +36,7 @@ from artistools.estimators.plotestimators import get_default_plotlist
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
+from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
@@ -523,12 +524,49 @@ def get_slice_conditions(slicetext: str) -> dict[str, str]:
     return conditions
 
 
-def get_geometry_description(values: "ControlValues", dimensions: int, axis: str, coneangle: float) -> str:
+def format_velocity(velocity_cmps: float, unit: str) -> str:
+    """Return a velocity in the unit of the user, "c" or "kmps", with the digits that the edge of a cell needs."""
+    if velocity_cmps == 0.0:
+        return "0"
+    return f"{velocity_cmps / C_cm_per_s:.4g}c" if unit == "c" else f"{velocity_cmps / km_to_cm:.6g} km/s"
+
+
+def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDArray[np.float64]":
+    """Return the edges of the cells of a 3D model on one axis [cm/s], from -vmax to vmax."""
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    edges = np.linspace(-vmax_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]) + 1)
+    # the middle edge of an even number of cells lies at zero, and the arithmetic leaves a rounding error there
+    return np.where(np.abs(edges) < 1e-9 * vmax_cmps, 0.0, edges)
+
+
+def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, t.Any]") -> str:
+    """Return the edges of the layer of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
+
+    plotestimators reads this layer for -slice. The edges take the unit of the position, and a position with no unit
+    takes c. A position that is not a velocity gives the condition on the edges of the cells.
+    """
+    # plotestimators imports the spectra package in its function too, because the CLI must start quickly
+    from artistools.spectra import parse_velocity_argument
+
+    try:
+        velocity_kmps, unit = parse_velocity_argument(positiontext)
+    except argparse.ArgumentTypeError:
+        return f"{axisname}_min ≤ {positiontext} < {axisname}_max"
+    if not positiontext.strip().lower().endswith("km/s"):
+        unit = "c"
+    edges = get_cell_edges(axisname, modelmeta)
+    index = get_layer_index(velocity_kmps * km_to_cm, float(edges[-1]), len(edges) - 1)
+    return f"{format_velocity(edges[index], unit)} ≤ {axisname} < {format_velocity(edges[index + 1], unit)}"
+
+
+def get_geometry_description(
+    values: "ControlValues", modelmeta: "Mapping[str, t.Any]", axis: str, coneangle: float
+) -> str:
     """Return the cells that the plot reads in the terms of the model grid, or an empty text for all or listed cells.
 
-    x, y, and z are the velocity coordinates of the grid. A cell edge is the lower or the upper edge of a cell on one
-    axis, e.g. z_min. plotestimators selects the same cells. axis and coneangle are the values of -axis and
-    -coneangle.
+    x, y, and z are the velocity coordinates of the grid. The edges of the cells come from the grid of the model,
+    thus the text gives the range of each coordinate that the selected cells cover. plotestimators selects the same
+    cells. axis and coneangle are the values of -axis and -coneangle.
     """
     mode = get_geometry_mode(values)
     slicetext = (get_row_values(values.otheroptions, "-slice") or ("",))[0]
@@ -536,10 +574,21 @@ def get_geometry_description(values: "ControlValues", dimensions: int, axis: str
         sign, name = axis[0], axis[1]
         first, second = (other for other in "xyz" if other != name)
         if mode == "alongaxis":
-            side = "≥ 0" if sign == "+" else "< 0"
+            # plotestimators takes the lower edge nearest to 0 on the second axis for both of the other axes
+            secondedges = get_cell_edges(second, modelmeta)
+            lower = float(secondedges[np.argmin(np.abs(secondedges[:-1]))])
+            upper = lower + float(secondedges[1] - secondedges[0])
+            axisedges = get_cell_edges(name, modelmeta)
+            if sign == "+":
+                start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
+                axisrange = f"{format_velocity(start, 'c')} ≤ {name} < {format_velocity(float(axisedges[-1]), 'c')}"
+            else:
+                end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
+                axisrange = f"{format_velocity(float(axisedges[0]), 'c')} ≤ {name} < {format_velocity(end, 'c')}"
+            lowertext, uppertext = format_velocity(lower, "c"), format_velocity(upper, "c")
             return (
-                f"The column of cells along the {axis} axis: {first}_min = {second}_min = e and {name}_min {side}. "
-                "e is the lower cell edge nearest to 0."
+                f"The column of cells along the {axis} axis with {lowertext} ≤ {first} < {uppertext},"
+                f" {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
             )
         halfangle = format(coneangle / 2.0, "g")
         signedname = name if sign == "+" else f"-{name}"
@@ -550,14 +599,15 @@ def get_geometry_description(values: "ControlValues", dimensions: int, axis: str
     if mode == "plane":
         plane, offset = get_slice_parts(slicetext)
         normal = next(normalaxis for normalaxis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
-        position = offset or "0"
-        return f"The layer of cells with {normal}_min ≤ {position} < {normal}_max, as an image in {plane[0]} and {plane[1]}."
+        bounds = get_layer_bounds(normal, offset or "0", modelmeta)
+        return f"The layer of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
     if mode == "line":
         conditions = get_slice_conditions(slicetext)
         lineaxis = get_line_axis(slicetext)
-        bounds = " and ".join(f"{name}_min ≤ {conditions[name]} < {name}_max" for name in sorted(conditions))
+        bounds = " and ".join(get_layer_bounds(name, conditions[name], modelmeta) for name in sorted(conditions))
         return f"The row of cells along the {lineaxis} axis with {bounds}, against v_{lineaxis}."
     if mode == "average":
+        dimensions = int(modelmeta["dimensions"])
         if dimensions == 1:
             return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
         if dimensions == 2:
@@ -727,7 +777,9 @@ class EstimatorViewer:
         self.sectionflags = frozenset(
             flag for flag, action in get_actions_by_flag(parser).items() if action.dest in SECTION_DESTS
         )
-        self.dimensions = int(get_modeldata(self.modelpath)[1]["dimensions"])
+        # the size of the grid, which gives the edges of the cells that a selection of the window reads
+        self.modelmeta: dict[str, t.Any] = get_modeldata(self.modelpath)[1]
+        self.dimensions = int(self.modelmeta["dimensions"])
         # the types of series that the run can plot from its NLTE populations. Only a 1D model gives the width in
         # velocity of each shell for the population for each unit of velocity
         self.nltetypes: tuple[str, ...] = (
@@ -2254,7 +2306,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         axistext = (get_row_values(rows, "-axis") or (viewer.parser.get_default("axis"),))[0]
         description = ""
         with contextlib.suppress(ValueError):
-            description = get_geometry_description(values, viewer.dimensions, axistext, float(coneangletext))
+            description = get_geometry_description(values, viewer.modelmeta, axistext, float(coneangletext))
         geometrydescription.setText(description)
         geometrydescription.setVisible(bool(description))
         normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
