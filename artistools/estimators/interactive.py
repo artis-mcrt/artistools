@@ -103,6 +103,7 @@ from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_fps_box
+from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
@@ -1699,15 +1700,11 @@ def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWi
     chip = QtWidgets.QFrame()
     chip.setObjectName("chip")
     layout = QtWidgets.QHBoxLayout(chip)
-    layout.setContentsMargins(8, 0, 0, 0)
+    layout.setContentsMargins(8, 1, 2, 1)
     layout.setSpacing(0)
     label = QtWidgets.QLabel(text)
     label.setToolTip(tooltip)
-    removebutton = QtWidgets.QToolButton()
-    removebutton.setText("✕")
-    removebutton.setAutoRaise(True)
-    removebutton.setToolTip(f"Remove {text} from the subplot")
-    removebutton.setAccessibleName(f"Remove {text}")
+    removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
     layout.addWidget(removebutton)
@@ -2191,11 +2188,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             ("▼", "Move the subplot down", partial(on_move_subplot, row, 1), row < len(viewer.values.subplots) - 1),
             ("✕", "Delete the subplot", partial(on_delete_subplot, row), True),
         ):
-            button = QtWidgets.QToolButton()
-            button.setText(text)
-            button.setAutoRaise(True)
-            button.setToolTip(tooltip)
-            button.setAccessibleName(tooltip)
+            button = make_glyph_button(text, tooltip, tooltip)
             button.setEnabled(enabled)
             button.clicked.connect(callback)
             header.addWidget(button)
@@ -2239,10 +2232,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             " ymin=1e-16 also goes here."
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
-        listbutton = QtWidgets.QToolButton()
-        listbutton.setText("▾")
-        listbutton.setToolTip("Show each name that the subplot can take")
-        listbutton.setAccessibleName("Show All Names")
+        listbutton = make_glyph_button("▾", "Show each name that the subplot can take", "Show All Names")
         listbutton.clicked.connect(partial(show_all_choices, addedit))
         addrow = QtWidgets.QHBoxLayout()
         addrow.addWidget(addedit, 1)

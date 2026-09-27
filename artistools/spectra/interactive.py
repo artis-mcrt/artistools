@@ -95,6 +95,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
 from artistools.viewertools import reopen_session_windows
+from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
@@ -1099,6 +1100,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     emissionoptions = QtWidgets.QWidget()
     emissionoptionslayout = QtWidgets.QVBoxLayout(emissionoptions)
     emissionoptionslayout.setContentsMargins(0, 0, 0, 0)
+    emissionoptionslayout.setSpacing(ROW_SPACING)
     emissionoptionslayout.addLayout(
         make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
     )

@@ -1120,9 +1120,11 @@ def add_section(
     header.setFont(font)
     content = QtWidgets.QWidget()
     grid = QtWidgets.QGridLayout(content)
-    # a small space between the rows and the sections keeps more of the controls in view
-    grid.setContentsMargins(8, 2, 0, 6)
-    grid.setVerticalSpacing(4)
+    # the space under the content of a section is larger than the space between its rows, thus each section stays a
+    # group of its own
+    grid.setContentsMargins(12, 2, 4, 12)
+    grid.setVerticalSpacing(ROW_SPACING)
+    grid.setHorizontalSpacing(8)
     grid.setColumnStretch(1, 1)
     settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
     isopen = get_bool_setting(settingkey, default=title not in CLOSED_SECTIONS)
@@ -1154,12 +1156,45 @@ def set_section_shown(header: "QtWidgets.QToolButton", grid: "QtWidgets.QGridLay
         content.setVisible(shown and header.isChecked())
 
 
-def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":
-    """Return a layout that puts the widgets side by side from the left."""
+# a button that shows one symbol, e.g. ✕ or ▲, has no frame, and a light background shows under the pointer, as the
+# small buttons of the apps of macOS have. The grey with an alpha suits the light and the dark appearance
+GLYPH_BUTTON_STYLE: t.Final = (
+    "QToolButton { border: none; background: transparent; padding: 1px 4px; border-radius: 4px; }"
+    " QToolButton:hover { background: rgba(128, 128, 128, 60); }"
+    " QToolButton:pressed { background: rgba(128, 128, 128, 110); }"
+)
+
+# the space between the rows of a section, and the space in front of a group, e.g. a label, that follows a control
+ROW_SPACING: t.Final = 6
+LABEL_GAP: t.Final = 12
+
+
+def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
+    """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame."""
     from PySide6 import QtWidgets
 
+    button = QtWidgets.QToolButton()
+    button.setText(glyph)
+    button.setStyleSheet(GLYPH_BUTTON_STYLE)
+    button.setToolTip(tooltip)
+    button.setAccessibleName(accessiblename)
+    return button
+
+
+def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":
+    """Return a layout that puts the widgets side by side from the left.
+
+    A label, a checkbox, or a push button that follows a control starts a new group, e.g. a pair of a label and a
+    control. A wider space goes in front of it, thus the groups stay apart.
+    """
+    from PySide6 import QtWidgets
+
+    groupstarts = QtWidgets.QLabel | QtWidgets.QCheckBox | QtWidgets.QPushButton
     rowlayout = QtWidgets.QHBoxLayout()
-    for widget in widgets:
+    rowlayout.setSpacing(ROW_SPACING)
+    for index, widget in enumerate(widgets):
+        if index > 0 and isinstance(widget, groupstarts) and not isinstance(widgets[index - 1], QtWidgets.QLabel):
+            rowlayout.addSpacing(LABEL_GAP - ROW_SPACING)
         rowlayout.addWidget(widget)
     rowlayout.addStretch(1)
     return rowlayout
@@ -1622,11 +1657,7 @@ def make_option_table(
             for field in fields:
                 field.editingFinished.connect(on_fields)
 
-        removebutton = QtWidgets.QToolButton()
-        removebutton.setText("✕")
-        removebutton.setAutoRaise(True)
-        removebutton.setToolTip(f"Remove {flag} from the command")
-        removebutton.setAccessibleName(f"Remove {flag}")
+        removebutton = make_glyph_button("✕", f"Remove {flag} from the command", f"Remove {flag}")
         removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
         layout.addWidget(removebutton)
         editor.setToolTip(helptexts.get(action.dest, ""))
@@ -2378,7 +2409,7 @@ def add_sidebar_search(
     resultsbox.hide()
     searchbox = QtWidgets.QWidget()
     searchlayout = QtWidgets.QVBoxLayout(searchbox)
-    searchlayout.setContentsMargins(8, 6, 8, 2)
+    searchlayout.setContentsMargins(8, 8, 8, 4)
     searchlayout.addWidget(searchedit)
     searchlayout.addWidget(resultsbox)
     if (sidebarlayout := sidebar.layout()) is not None and isinstance(sidebarlayout, QtWidgets.QVBoxLayout):
