@@ -1007,6 +1007,8 @@ def make_range_slider(
             pixel = event.position().x()
             midpixel = sum(self.get_pixel(position) for position in self.positions) / 2.0
             self.draghandle = 0 if pixel < midpixel else 1
+            # a window reads this property, e.g. to draw a fast preview during a drag
+            self.setProperty("dragging", self.draghandle is not None)
             self.move_handle(pixel)
 
         @t.override
@@ -1017,6 +1019,7 @@ def make_range_slider(
         @t.override
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
             self.draghandle = None
+            self.setProperty("dragging", self.draghandle is not None)
 
         def move_handle(self, pixel: float) -> None:
             if self.draghandle is None:

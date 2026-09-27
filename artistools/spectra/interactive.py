@@ -156,7 +156,7 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "output_spectra",
 })
 
-# the time after the last change of a control, before the full plot replaces the preview
+# the time after the last preview, or after the release of the slider, before the full plot replaces the preview
 FULL_DRAW_MILLISECONDS: t.Final = 250
 
 
@@ -1413,9 +1413,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
             start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
+    def is_slider_dragged() -> bool:
+        """Return whether the user drags a slider. Only a drag draws a preview, because a drag gives many plots."""
+        return timeslider.isSliderDown() or widthslider.isSliderDown() or bool(xrangeslider.property("dragging"))
+
     def change_with_preview(values: ControlValues) -> str | None:
-        # each frame of Play is a full plot, because the frame stays in view until the next step
-        return viewer.change(values, preview=not playbutton.isChecked())
+        return viewer.change(values, preview=is_slider_dragged())
 
     def get_drawkind() -> str:
         return "Preview" if viewer.drewpreview else "Plot"
@@ -1435,8 +1438,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def draw_full() -> None:
         """Replace the preview with the plot of all the packets."""
-        # a change in the queue, or the Play button, draws a new preview and starts this timer again
+        # a change in the queue, or a step of Play, draws a new plot in place of the preview
         if queue.requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
+            return
+        # the drag can give more previews, thus the full plot waits until the user releases the slider
+        if is_slider_dragged():
+            fulldrawtimer.start()
             return
         queue.draw(queue.drawnvalues, viewer.change)
 
