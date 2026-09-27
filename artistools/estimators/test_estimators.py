@@ -3989,3 +3989,16 @@ def test_interactive_x_variable_with_no_value_names_the_variable() -> None:
     message = viewer.change(dc.replace(viewer.values, x="tmid_days_prevtimestep", first=first, last=first))
     assert message is not None
     assert "tmid_days_prevtimestep has no value" in message
+
+
+def test_variable_menu_groups_the_columns() -> None:
+    """The menu of the variables gives the temperatures first, then the other variables, then a submenu per family.
+
+    A species column belongs to a subplot of its series type, and a column of the grid is not a variable.
+    """
+    columns = ("timestep", "modelgridindex", "Te", "TR", "nne", "rho", "heating_ff", "heating_bf", "nnion_Fe_II")
+    groups = interactive.get_variable_menu_groups(columns)
+    assert groups[:2] == (("", ("Te", "TR")), ("", ("nne", "rho")))
+    assert len(groups) == 3
+    assert groups[2][0].endswith("(heating_…)")
+    assert groups[2][1] == ("heating_bf", "heating_ff")

@@ -20,9 +20,11 @@ from artistools.atomic import get_ionstring
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
+from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.core import split_species_suffix
@@ -1334,6 +1336,37 @@ def get_variable_choices(estimatorcolumns: tuple[str, ...]) -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=4)
+def get_variable_menu_groups(estimatorcolumns: tuple[str, ...]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return the groups of the menu of the variables, as pairs of a title and the columns of the group.
+
+    The first group holds the temperatures, and the second group holds the other variables of one column. They have
+    no title, thus the menu shows them at its top. Each family of columns with a shared start, e.g. heating_,
+    gives a submenu. A species column goes to a subplot of its series type, thus the menu leaves it out.
+    """
+    prefixes = sorted(PREFIX_GROUPS, key=len, reverse=True)
+    temperatures: list[str] = []
+    plain: list[str] = []
+    families: dict[str, list[str]] = {}
+    for column in sorted(estimatorcolumns, key=str.lower):
+        if column in BOOKKEEPING_COLUMNS or split_species_suffix(column) is not None:
+            continue
+        if prefix := next((prefix for prefix in prefixes if column.startswith(prefix)), None):
+            families.setdefault(prefix, []).append(column)
+        elif get_ylabel(column).strip() == "Temperature [K]":
+            temperatures.append(column)
+        else:
+            plain.append(column)
+    return (
+        ("", tuple(temperatures)),
+        ("", tuple(plain)),
+        *(
+            (f"{PREFIX_GROUPS[prefix].capitalize()} ({prefix}…)", tuple(families[prefix]))
+            for prefix in sorted(families)
+        ),
+    )
+
+
+@lru_cache(maxsize=4)
 def get_variables_of_ylabels(estimatorcolumns: tuple[str, ...]) -> "Mapping[str, tuple[str, ...]]":
     """Return the columns that suit a series of their own, by the label of their y axis."""
     variables: dict[str, list[str]] = {}
@@ -2283,7 +2316,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
         listbutton = make_glyph_button("▾", "Show each name that the subplot can take", "Show All Names")
-        listbutton.clicked.connect(partial(show_all_choices, addedit))
+        if currenttype == VARIABLES_TYPE:
+            listbutton.clicked.connect(partial(show_variable_menu, row, listbutton))
+        else:
+            listbutton.clicked.connect(partial(show_all_choices, addedit))
         addrow = QtWidgets.QHBoxLayout()
         addrow.addWidget(addedit, 1)
         addrow.addWidget(listbutton)
@@ -2388,6 +2424,30 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             run_command_step(lambda: names.extend(get_level_names(viewer.modelpath, timestep, cell)))
             levelnamescache.append(names)
         return levelnamescache[0]
+
+    def show_variable_menu(row: int, button: QtWidgets.QToolButton) -> None:
+        """Show a menu of the variables in groups, with the units of each variable at the right.
+
+        A variable that the subplot shows has a check mark, and the menu does not offer it again.
+        """
+        names = set(get_subplot_names(viewer.values.subplots[row]))
+        menu = QtWidgets.QMenu(button)
+        for title, columns in get_variable_menu_groups(tuple(viewer.estimatorcolumns)):
+            if not columns:
+                continue
+            # a line separates the groups at the top, and the submenus stay together below them
+            if not menu.isEmpty() and not (title and menu.actions()[-1].menu() is not None):
+                menu.addSeparator()
+            target = menu.addMenu(title) if title else menu
+            for column in columns:
+                # the text after a tab goes to the right edge of the menu, as a shortcut does
+                action = target.addAction(f"{column}\t{format_units(column).strip()}")
+                action.setCheckable(True)
+                action.setChecked(column in names)
+                action.setEnabled(column not in names)
+                action.triggered.connect(partial(add_item, row, column))
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+        menu.deleteLater()
 
     def show_all_choices(edit: QtWidgets.QLineEdit) -> None:
         if (completer := edit.completer()) is not None:
