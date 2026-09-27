@@ -1086,7 +1086,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         " series with -fixedionlist."
     )
     add_row(emissiongrid, 0, [emissioncheck, absorptioncheck, nostackcheck])
-    add_row(emissiongrid, 1, [QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
     hidenetcheck = QtWidgets.QCheckBox("--hidenetspectrum")
     hideothercheck = QtWidgets.QCheckBox("--hideother")
     thermalcheck = QtWidgets.QCheckBox("--use_thermalemissiontype")
@@ -1096,7 +1095,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         (thermalcheck, "use_thermalemissiontype"),
     ):
         widget.setToolTip(helptexts.get(dest, ""))
-    add_row(emissiongrid, 2, [hidenetcheck, hideothercheck, thermalcheck])
+    # these rows apply only to an emission or absorption plot, thus they show only for such a plot
+    emissionoptions = QtWidgets.QWidget()
+    emissionoptionslayout = QtWidgets.QVBoxLayout(emissionoptions)
+    emissionoptionslayout.setContentsMargins(0, 0, 0, 0)
+    emissionoptionslayout.addLayout(
+        make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
+    )
+    emissionoptionslayout.addLayout(make_row_layout([hidenetcheck, hideothercheck, thermalcheck]))
+    emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
     _, bingrid = add_section(panellayout, "Bins of the packet spectrum")
     # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
@@ -1152,7 +1159,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     _, spectragrid = add_section(panellayout, "Spectra")
     spectralist = QtWidgets.QListWidget()
     spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-    spectralist.setFixedHeight(4 * spectralist.fontMetrics().lineSpacing() + 12)
     # a long path shows its start and its end, and the width of the box sets the length
     spectralist.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)
     spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1386,9 +1392,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         absorptioncheck.setChecked(values.showabsorption)
         groupbybox.setCurrentText(values.groupby or viewer.defaultgroupby)
         countbox.setValue(values.maxseriescount)
-        # these options apply only to an emission or absorption plot, and a disabled control keeps its place
-        for widget in (countlabel, countbox, nostackcheck, lockbutton):
-            widget.setEnabled(values.showemission or values.showabsorption)
+        emissionoptions.setVisible(values.showemission or values.showabsorption)
+        nostackcheck.setEnabled(values.showemission or values.showabsorption)
         nostackcheck.setChecked(values.nostack)
         lockbutton.setChecked(bool(values.fixedionlist))
         lockbutton.setText(f"Lock Series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock Series")
@@ -1405,14 +1410,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         hidenetcheck.setChecked(values.hidenetspectrum)
         hideothercheck.setChecked(values.hideother)
         thermalcheck.setChecked(values.usethermalemissiontype)
-        for widget in (hidenetcheck, hideothercheck, thermalcheck):
-            widget.setEnabled(values.showemission or values.showabsorption)
         directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
         usedegreescheck.setChecked(values.usedegrees)
         usedegreescheck.setEnabled(bool(values.directionkind))
         show_direction_choices(values.directionkind, values.usedegrees)
         directionbox.setCurrentIndex(directionbox.findData(values.directionbins[0]) if values.directionbins else -1)
-        directionbox.setEnabled(bool(values.directionkind))
+        # all the directions have no bin to select, thus the list of the bins shows only for a kind of direction
+        directionbox.setVisible(bool(values.directionkind))
         shownspectra = [
             spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())
         ]
@@ -1423,6 +1427,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
                 item.setToolTip(item.text())
                 spectralist.addItem(item)
+            # the list has the height of its spectra, from 2 to 4 lines, and a longer list scrolls
+            shownlines = min(max(spectralist.count(), 2), 4)
+            spectralist.setFixedHeight(shownlines * spectralist.fontMetrics().lineSpacing() + 12)
         set_option_rows(values.otheroptions)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))

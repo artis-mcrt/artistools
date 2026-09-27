@@ -1138,8 +1138,10 @@ def add_section(
     set_open(isopen)
     # the search field of the sidebar finds each section by its heading
     header.setProperty("sectioncontent", content)
-    panellayout.addWidget(header)
-    panellayout.addWidget(content)
+    # the stretch at the end of the panel keeps each section, also Command and Python, below the last one
+    index = panellayout.count() - 1
+    panellayout.insertWidget(index, header)
+    panellayout.insertWidget(index + 1, content)
     return header, grid
 
 
@@ -1402,6 +1404,8 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     panel = QtWidgets.QWidget()
     panellayout = QtWidgets.QVBoxLayout(panel)
     panellayout.setSpacing(2)
+    # add_section puts each section before this stretch, thus the empty space stays at the end
+    panellayout.addStretch(1)
     panelscroll = QtWidgets.QScrollArea()
     panelscroll.setWidget(panel)
     panelscroll.setWidgetResizable(True)
@@ -1680,8 +1684,7 @@ def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWi
 def add_command_section(
     panellayout: "QtWidgets.QVBoxLayout",
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
-    """Add the command at the bottom of the panel, and return its text box and its Copy button."""
-    panellayout.addStretch(1)
+    """Add the command after the sections of the panel, and return its text box and its Copy button."""
     return add_copy_box(
         panellayout, "Command", f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})"
     )

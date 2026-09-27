@@ -1942,7 +1942,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         edit.setFixedWidth(100)
         edit.setPlaceholderText("auto")
     # a field takes each value of -xbins, e.g. a negative value for the automatic bins
-    xbinsedit.setFixedWidth(80)
+    # the placeholder gives the bins of the plot, e.g. "auto: no bins", and the field shows it in full
+    xbinsedit.setFixedWidth(110)
     xbinsedit.setPlaceholderText("default")
     # an empty field removes -xbins. QIntValidator gives the Intermediate state for an empty text, and the field
     # then sends no editingFinished signal
