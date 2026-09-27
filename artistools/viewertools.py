@@ -799,23 +799,55 @@ def show_wait_cursor() -> "Generator[None]":
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-def add_section(panellayout: "QtWidgets.QVBoxLayout", title: str) -> "tuple[QtWidgets.QLabel, QtWidgets.QGridLayout]":
-    """Add a section with a heading and a grid for its controls to the panel of the window."""
+# a section with one of these titles starts closed, because a user needs it less often than the plot controls
+CLOSED_SECTIONS: t.Final = frozenset({"Other options", "Command", "Python"})
+
+
+def add_section(
+    panellayout: "QtWidgets.QVBoxLayout", title: str, key: str | None = None
+) -> "tuple[QtWidgets.QToolButton, QtWidgets.QGridLayout]":
+    """Add a section with a heading and a grid for its controls to the panel of the window.
+
+    A click on the heading closes or opens the section, as a disclosure triangle does in the inspector of Keynote. The
+    settings keep the state of each section by its key, which is the title if the caller gives no key.
+    """
+    from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    header = QtWidgets.QLabel(title)
-    font = header.font()
-    font.setBold(True)
-    header.setFont(font)
+    header = QtWidgets.QToolButton()
+    header.setText(title)
+    header.setCheckable(True)
+    header.setAutoRaise(True)
+    header.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    header.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
     content = QtWidgets.QWidget()
     grid = QtWidgets.QGridLayout(content)
     # a small space between the rows and the sections keeps more of the controls in view
     grid.setContentsMargins(8, 2, 0, 6)
     grid.setVerticalSpacing(4)
     grid.setColumnStretch(1, 1)
+    settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
+    isopen = bool(get_settings().value(settingkey, title not in CLOSED_SECTIONS, type=bool))
+
+    def set_open(checked: bool) -> None:
+        header.setArrowType(QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow)
+        header.setToolTip(f"{'Close' if checked else 'Open'} the section")
+        content.setVisible(checked)
+        get_settings().setValue(settingkey, checked)
+
+    header.toggled.connect(set_open)
+    header.setChecked(isopen)
+    set_open(isopen)
     panellayout.addWidget(header)
     panellayout.addWidget(content)
     return header, grid
+
+
+def set_section_shown(header: "QtWidgets.QToolButton", grid: "QtWidgets.QGridLayout", *, shown: bool) -> None:
+    """Show or hide a section of add_section. A closed section that shows keeps its controls hidden."""
+    header.setVisible(shown)
+    if (content := grid.parentWidget()) is not None:
+        content.setVisible(shown and header.isChecked())
 
 
 def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":

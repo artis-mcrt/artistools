@@ -992,7 +992,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(edit, row, 2)
     timegrid.addWidget(timestepslabel, 3, 0, 1, -1)
 
-    xheader, xgrid = add_section(panellayout, "")
+    xheader, xgrid = add_section(panellayout, "", key="x axis")
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."

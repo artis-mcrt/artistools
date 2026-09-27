@@ -115,6 +115,7 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_search_completion
+from artistools.viewertools import set_section_shown
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
@@ -2025,8 +2026,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
     optionheader, optiongrid = add_section(panellayout, "Other options")
-    optioncontent = optiongrid.parentWidget()
-    assert optioncontent is not None
     # the sections of the window set each option that the table offered. The table thus shows only the rows of an
     # option that no section sets, e.g. of a new option of plotestimators
     tableoffers = bool(
@@ -2547,8 +2546,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
-        for widget in (optionheader, optioncontent):
-            widget.setVisible(tableoffers or bool(get_table_rows(values.otheroptions)))
+        set_section_shown(optionheader, optiongrid, shown=tableoffers or bool(get_table_rows(values.otheroptions)))
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
 
