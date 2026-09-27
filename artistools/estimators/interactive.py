@@ -1153,6 +1153,9 @@ def get_python_code(
         return "# plotestimators rejects the command"
     resolve_positional_args(args)
     changed = get_changed_arguments(parser, args, skip={"plotitems", "plotlist"})
+    # -timestep reads text, because it also takes a range such as "10-12". main takes one timestep as an int
+    if isinstance(timestep := changed.get("timestep"), str) and timestep.isascii() and timestep.isdecimal():
+        changed["timestep"] = int(timestep)
     modelpath = {"modelpath": changed.pop("modelpath")} if "modelpath" in changed else {}
     plotlist = [get_python_plotitems(subplot, estimatorcolumns) for subplot in args.plotlist or []]
     return get_python_call(

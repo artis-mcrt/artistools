@@ -3214,6 +3214,9 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     code = interactive.get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns)
     assert '["Te", "TR", ["_yscale", "linear"], ["_ymin", 1000]],' in code
     assert '[["populations", ["Fe II", "Fe III"]]],' in code
+    assert 'timestep="10-12",' in code
+    onetimestepcode = interactive.get_python_code(viewer.parser, ["Te", "-timestep", "11"], viewer.estimatorcolumns)
+    assert "timestep=11," in onetimestepcode
 
     savedfigures: list[mplfig.Figure] = []
 
