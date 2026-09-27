@@ -1226,7 +1226,6 @@ def get_xlist(
     if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
-        args.colorbyion = True
 
     if args.xbins is not None and args.xbins < 0:
         xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
@@ -1245,6 +1244,9 @@ def get_xlist(
                 args.xbins = 25
 
     if args.xbins:
+        # the ions of an element have one colour and a different dash, and a shaded area or a marker of a bin has no
+        # dash. Thus each ion of a plot with bins takes a colour of its own
+        args.colorbyion = True
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
         # a range of zero width gives equal edges, and cut() gives an error for equal breaks.
@@ -2225,7 +2227,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
-        "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"
+        "--colorbyion",
+        action="store_true",
+        help="Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this",
     )
 
     parser.add_argument(

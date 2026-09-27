@@ -3441,7 +3441,11 @@ def test_interactive_converts_stale_batches_in_a_child_process() -> None:
 
 
 def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
-    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion."""
+    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion.
+
+    -xbins N also draws a shaded area for each bin, and the area has no dash to separate the ions of an element. It
+    turned --colorbyion on only for automatic bins. -xbins 0 draws the points alone, and it keeps the colours.
+    """
     viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert viewer.plotxbins is not None
     assert viewer.plotxbins > 3
@@ -3449,6 +3453,8 @@ def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
     assert not viewer.values.colorbyion
     assert viewer.change(dc.replace(viewer.values, xbins="8")) is None
     assert viewer.plotxbins == 8
+    assert viewer.plotcolorbyion
+    assert viewer.change(dc.replace(viewer.values, xbins="0")) is None
     assert not viewer.plotcolorbyion
     assert interactive.get_xunit_text(1.0, "velocity") == " [km/s]"
     assert interactive.get_xunit_text(1.0, "Te") == " [K]"

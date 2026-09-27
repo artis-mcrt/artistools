@@ -2676,7 +2676,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
         markerscheck.setText(get_flag_label("--markers") + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
-        colorbyionnote = " (on for automatic bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
+        colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
         colorbyioncheck.setText(get_flag_label("--colorbyion") + colorbyionnote)
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
