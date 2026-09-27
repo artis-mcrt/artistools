@@ -176,26 +176,9 @@ CONTROLLED_DESTS: t.Final = frozenset({
 # these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
 OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
 
-# a section of the window sets these options. Their rows stay in the command, but the option table does not show or
-# offer them. The window reads the run in the format of --classicartis when it opens, thus that row also stays
-SECTION_DESTS: t.Final = frozenset({
-    "axis",
-    "classicartis",
-    "coneangle",
-    "dimensionreduce",
-    "figscale",
-    "filtermovingavg",
-    "filtersavgol",
-    "hidexlabel",
-    "labelfontsize",
-    "legendframe",
-    "nolegend",
-    "notitle",
-    "readonlymgi",
-    "projection",
-    "slice",
-    "subplotsperrow",
-})
+# the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
+# table neither shows nor offers this row, and the row stays in the command
+RUN_DESTS: t.Final = frozenset({"classicartis"})
 
 # the ways to select the cells of the plot, by the key of the selector of the window
 GEOMETRY_MODES: t.Final = MappingProxyType({
@@ -849,9 +832,9 @@ class EstimatorViewer:
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
         set_run(self, read_run(self.modelpath, args, len(self.tmids)))
-        # a section of the window sets the rows of these flags, and the option table does not show them
-        self.sectionflags = frozenset(
-            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in SECTION_DESTS
+        # the option table does not show the rows of these flags, see RUN_DESTS
+        self.runflags = frozenset(
+            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in RUN_DESTS
         )
         # the size of the grid, which gives the edges of the cells that a selection of the window reads
         self.modelmeta: dict[str, t.Any] = get_modeldata(self.modelpath)[1]
@@ -2057,21 +2040,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
     optionheader, optiongrid = add_section(panellayout, "Other options")
-    # the sections of the window set each option that the table offered. The table thus shows only the rows of an
-    # option that no section sets, e.g. of a new option of plotestimators
-    tableoffers = bool(
-        get_table_actions(viewer.parser, CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS)
-    )
+    # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
+    # each option of the command there. A section and the table show the same rows
+    tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | RUN_DESTS
+    tableoffers = bool(get_table_actions(viewer.parser, tablehiddendests))
 
     def get_table_rows(rows: OptionRows) -> OptionRows:
-        """Return the rows that the option table shows, which are the rows that no section sets."""
-        return tuple(row for row in rows if row[0] not in viewer.sectionflags)
+        """Return the rows that the option table shows, which are all the rows except those of RUN_DESTS."""
+        return tuple(row for row in rows if row[0] not in viewer.runflags)
 
     def on_option_rows(rows: OptionRows) -> None:
-        sectionrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.sectionflags)
-        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *sectionrows)))
+        runrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.runflags)
+        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *runrows)))
 
-    tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS
     optiontable, set_option_rows = make_option_table(
         window, viewer.parser, tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows
     )

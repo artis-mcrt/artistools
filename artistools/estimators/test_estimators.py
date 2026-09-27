@@ -3800,13 +3800,15 @@ def test_interactive_smoothing_and_section_rows() -> None:
         "--interactive",
     ])
     assert {"-dpi", "--verbose"} <= set(viewer.get_plot_tokens())
-    assert "--verbose" not in viewer.sectionflags
+    assert "--verbose" not in viewer.runflags
     for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
         rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))
         assert interactive.get_smoothing(rows) == (mode, numbers)
         assert viewer.change(dc.replace(viewer.values, otheroptions=(*rows, ("--notitle", ())))) is None
     assert "--notitle" in viewer.get_plot_tokens()
-    assert "--notitle" in viewer.sectionflags
+    # the option table shows the rows that a section sets too, and only the row of --classicartis stays out
+    assert "--notitle" not in viewer.runflags
+    assert viewer.runflags == {"--classicartis"}
 
 
 def test_interactive_level_populations() -> None:
