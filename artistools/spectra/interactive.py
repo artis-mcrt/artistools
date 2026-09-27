@@ -22,7 +22,6 @@ from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
-from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.packets.core import RANKS_PER_BATCH
@@ -51,13 +50,14 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_figure
+from artistools.viewertools import copy_figure_of_command
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_bool_setting
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
@@ -71,7 +71,6 @@ from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
-from artistools.viewertools import handle_file_open_events
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_fps_box
@@ -95,22 +94,22 @@ from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
-from artistools.viewertools import reopen_session_windows
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools import run_viewer_application
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_window_document
+from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
 from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
-from artistools.viewertools import start_application
 from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
@@ -366,6 +365,16 @@ def get_reference_token(filename: str) -> str:
 
 # plotspectra reads the model in the working folder when the command gives no path
 DEFAULT_SPECTRA: t.Final = (".",)
+
+
+def get_spectrum_path(path: str) -> Path:
+    """Return the full path of the folder or the file of a spectrum, e.g. of "." or of a name of a reference spectrum.
+
+    Two spellings of one spectrum, e.g. "." and the full path of the working folder, then give the same path.
+    """
+    if path_is_reference_spectrum(path):
+        return (find_reference_spectrum_file_or_none(path) or Path(path)).resolve()
+    return Path(path).resolve()
 
 
 def get_spectrum_item_text(path: str) -> str:
@@ -782,12 +791,12 @@ class SpectrumViewer:
 
         return run_command_step(check, echo=False)
 
-    def draw(self, *, quiet: bool = True, preview: bool = False) -> str | None:
+    def draw(self, *, quiet: bool = True) -> str | None:
         """Draw the plot of the values, and return the reason for the status line if plotspectra rejects it.
 
         The terminal shows the whole error, and the status line shows its first line.
         """
-        return self.render(self.values, quiet=quiet, preview=preview)()
+        return self.render(self.values, quiet=quiet)()
 
     def render(self, values: ControlValues, *, quiet: bool = True, preview: bool = False) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
@@ -840,14 +849,9 @@ class SpectrumViewer:
             if message is not None:
                 return message
             plot = plots[0]
-            canvas = self.fig.canvas
-            plot.fig.set_canvas(canvas)
-            canvas.figure = plot.fig
+            self.figsize = show_figure_in_canvas(self.fig, plot.fig)
             self.fig, self.axes, self.residualaxis = plot.fig, plot.axes, plot.residualaxis
             self.dfalldata, self.drewpreview = plot.dfalldata, plot.ispreview
-            figwidth, figheight = plot.fig.get_size_inches()
-            self.figsize = (float(figwidth), float(figheight))
-            canvas.draw_idle()
             return None
 
         return show_plot
@@ -923,26 +927,17 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
     ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
     ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
-    ("<b>Space</b>", "Play or pause"),
     ("<b>Drag</b> across the plot", "Select the x range"),
     ("<b>Double-click</b> the plot", "Get the default x range"),
 )
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes."""
-    app = start_application(APPLICATION_NAME, get_icon_curve(), ("public.folder", "public.data"))
-    # the list holds a reference to each window, thus Python keeps the window while it is open
-    windows: list[QtWidgets.QMainWindow] = []
+    """Open the window of the viewer, and print the command of the last plot when the window closes.
 
-    def open_dock_folder(folder: str) -> None:
-        if (message := open_model_folder(folder, open_window, windows)) is not None:
-            print_error(message)
-
-    handle_file_open_events(app, open_dock_folder)
-    open_window(tokens, windows)
-    reopen_session_windows(open_window, windows)
-    app.exec()
+    The Dock icon also takes a file, e.g. a reference spectrum, which the active window adds to its spectra.
+    """
+    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
@@ -958,9 +953,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
     # a command with no path reads the model of the working folder
-    modelnames = [Path(path).absolute().name for path in viewer.modelpathtokens] or [
-        viewer.runfolders[0].absolute().name
-    ]
+    modelnames = [Path(path).resolve().name for path in viewer.modelpathtokens] or [viewer.runfolders[0].resolve().name]
     set_window_document(window, viewer.runfolders[0], ", ".join(modelnames))
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
@@ -1652,7 +1645,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(values, undoable=False)
 
     def on_play(checked: bool) -> None:
-        playbutton.setText("Pause" if checked else "Play")
         if checked:
             play_step()
         elif viewer.drewpreview:
@@ -1818,8 +1810,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(viewer.clamp_time(values) if values.notimeclamp else viewer.snap(values, *viewer.get_selection(values)))
 
     def add_spectra(paths: "Sequence[str]") -> None:
+        """Add each spectrum whose full path the list does not hold yet, e.g. "." for the working folder."""
         spectra = viewer.values.spectra
-        apply_spectra((*spectra, *(path for path in paths if path not in spectra)))
+        shown = {get_spectrum_path(path) for path in spectra}
+        newpaths: list[str] = []
+        for path in paths:
+            if (fullpath := get_spectrum_path(path)) not in shown:
+                shown.add(fullpath)
+                newpaths.append(path)
+        if not newpaths:
+            show_error("The list of spectra already holds each of these spectra")
+            return
+        apply_spectra((*spectra, *newpaths))
 
     def on_add_model() -> None:
         startfolder = Path(viewer.runfolders[0]).absolute().parent
@@ -1864,8 +1866,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_status_note(statusbar, "Copied the command")
 
     def on_copy_figure() -> None:
-        copy_figure(viewer.fig)
-        show_status_note(statusbar, "Copied the figure")
+        from artistools.spectra.plotspectra import main as plotspectra_main
+
+        copy_figure_of_command(queue, statusbar, plotspectra_main, viewer.parser, viewer.get_plot_tokens())
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1887,47 +1890,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(
-            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menutexts)
         )
 
-    def draw_with_new_colours() -> None:
-        viewer.darkcolours = get_dark_plot_colours()
-        queue.redraw()
-
-    def on_colour_scheme() -> None:
-        """Draw the plot again with the colours of the new appearance, e.g. Dark Mode.
-
-        Qt gives the new palette after the signal, thus the plot waits until Qt has no other events.
-        """
-        QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
-
-    def get_animation_values() -> list[ControlValues]:
-        """Return the values of each step of Play, from the first valid timestep to the last."""
+    def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
+        """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each."""
         values = viewer.values
-        if values.notimeclamp:
-            # a continuous range keeps its width and moves its middle to the middle of each timestep
-            return [
-                viewer.clamp_time(dc.replace(values, centre=float(f"{viewer.tmids[timestep]:.4g}")))
-                for timestep in viewer.validtimesteps
-            ]
+        validtimesteps = list(viewer.validtimesteps)
         firstpos, lastpos = viewer.get_selection_positions()
         count = lastpos - firstpos
-        return [
-            viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count])
-            for start in range(len(viewer.validtimesteps) - count)
-        ]
+
+        def get_frame_tokens(index: int) -> list[str]:
+            if values.notimeclamp:
+                # a continuous range keeps its width and moves its middle to the middle of each timestep
+                centre = float(f"{viewer.tmids[validtimesteps[index]]:.4g}")
+                return viewer.get_plot_tokens(viewer.clamp_time(dc.replace(values, centre=centre)))
+            return viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
+
+        return (len(validtimesteps) if values.notimeclamp else len(validtimesteps) - count), get_frame_tokens
 
     def on_export_animation() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
         export_animation(
             window,
             queue,
             statusbar,
             plotspectra_main,
             "plotspectra",
-            frametokens,
+            get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
             viewer.fig,
@@ -1957,15 +1948,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
-        QtGui.QGuiApplication.styleHints().colorSchemeChanged.disconnect(on_colour_scheme)
         queue.close()
         # the list holds a reference to each open window, thus Python does not delete the window. A closed window
         # leaves the list
         windows.remove(window)
-
-    def on_cancel_plot() -> None:
-        playbutton.setChecked(False)
-        queue.cancel()
 
     menucallbacks = {
         "Open Model…": on_open_model,
@@ -1977,19 +1963,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Copy Figure": on_copy_figure,
         "Copy Command": on_copy,
         "Copy Python": on_copy_python,
-        "Play": playbutton.toggle,
-        "Cancel Plot": on_cancel_plot,
         "Keys and Mouse Actions": on_help,
     }
-    add_menus(
-        window,
-        menucallbacks,
-        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo, "Cancel Plot": queue.is_busy},
-        titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
-        open_folder=on_open_recent,
-    )
+    menutexts = add_menus(window, menucallbacks, queue, playbutton, open_folder=on_open_recent)
     set_drop_handler(window, on_drop)
-    window.setProperty("settingshandler", on_colour_scheme)
+    follow_colour_scheme(window, viewer, queue)
 
     # the window keeps its command at a quit, and the next start opens the window again
     def get_session_tokens() -> list[str]:
@@ -1998,7 +1976,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return [str(Path.cwd()), *tokens] if viewer.values.spectra == DEFAULT_SPECTRA else tokens
 
     window.setProperty("sessiontokens", get_session_tokens)
-    QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     modesegments.currentChanged.connect(on_time_mode)
     previousbutton.clicked.connect(lambda: on_arrow(-1))

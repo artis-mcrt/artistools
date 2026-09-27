@@ -144,6 +144,11 @@ PREFIX_GROUPS: Mapping[str, str] = MappingProxyType({
 })
 
 
+def get_prefix_group(colname: str) -> str | None:
+    """Return the start of the family of PREFIX_GROUPS that holds the column, e.g. "heating_", or None."""
+    return next((prefix for prefix in sorted(PREFIX_GROUPS, key=len, reverse=True) if colname.startswith(prefix)), None)
+
+
 def get_variable(name: str) -> VariableInfo:
     """Return the record of a variable, or an empty record when the table does not name it."""
     return VARIABLES.get(name.rstrip("_").removesuffix("_prevtimestep"), VariableInfo())
@@ -307,11 +312,10 @@ def summarise_columns(columns: Collection[str], *, fullnuclides: bool = False) -
     families: dict[str, list[str]] = defaultdict(list)
     groups: dict[str, list[str]] = defaultdict(list)
     plain: list[str] = []
-    prefixes = sorted(PREFIX_GROUPS, key=len, reverse=True)
     for colname in columns:
         if split := split_species_suffix(colname):
             families[split[0]].append(split[1])
-        elif prefix := next((name for name in prefixes if colname.startswith(name)), None):
+        elif prefix := get_prefix_group(colname):
             groups[prefix].append(colname.removeprefix(prefix))
         else:
             plain.append(colname)

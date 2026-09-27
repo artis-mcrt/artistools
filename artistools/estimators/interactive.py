@@ -22,6 +22,7 @@ from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
+from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import PREFIX_GROUPS
@@ -60,7 +61,6 @@ from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
-from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
@@ -78,13 +78,14 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_figure
+from artistools.viewertools import copy_figure_of_command
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
@@ -99,8 +100,6 @@ from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
-from artistools.viewertools import get_table_actions
-from artistools.viewertools import handle_file_open_events
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_drag_header
@@ -126,23 +125,22 @@ from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
-from artistools.viewertools import reopen_session_windows
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools import run_viewer_application
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_search_completion
-from artistools.viewertools import set_section_shown
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
+from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
-from artistools.viewertools import start_application
 from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
@@ -1116,13 +1114,8 @@ class EstimatorViewer:
             plot = plots[0]
             fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
             self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion
-            canvas = self.fig.canvas
-            fig.set_canvas(canvas)
-            canvas.figure = fig
+            self.figsize = show_figure_in_canvas(self.fig, fig)
             self.fig = fig
-            figwidth, figheight = fig.get_size_inches()
-            self.figsize = (float(figwidth), float(figheight))
-            canvas.draw_idle()
             return None
 
         return show_plot
@@ -1347,14 +1340,13 @@ def get_variable_menu_groups(estimatorcolumns: tuple[str, ...]) -> tuple[tuple[s
     no title, thus the menu shows them at its top. Each family of columns with a shared start, e.g. heating_,
     gives a submenu. A species column goes to a subplot of its series type, thus the menu leaves it out.
     """
-    prefixes = sorted(PREFIX_GROUPS, key=len, reverse=True)
     temperatures: list[str] = []
     plain: list[str] = []
     families: dict[str, list[str]] = {}
     for column in sorted(estimatorcolumns, key=str.lower):
         if column in BOOKKEEPING_COLUMNS or split_species_suffix(column) is not None:
             continue
-        if prefix := next((prefix for prefix in prefixes if column.startswith(prefix)), None):
+        if prefix := get_prefix_group(column):
             families.setdefault(prefix, []).append(column)
         elif get_ylabel(column).strip() == "Temperature [K]":
             temperatures.append(column)
@@ -1747,6 +1739,7 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
     " QToolButton#suggestion:hover { border-style: solid; }"
     " QFrame#dropline { background: palette(highlight); border: none; }"
+    " QWidget#dragheader:focus { border: 2px solid palette(highlight); border-radius: 4px; }"
 )
 
 
@@ -1816,23 +1809,13 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Shift-drag</b> up or down a subplot", "Select the y range of the subplot (ymin= and ymax=)"),
     ("<b>Double-click</b> a plot", "Show the x range of the data"),
     ("<b>Right-click</b> a subplot", "Show the menu of the subplot, e.g. the y scale"),
+    ("<b>Alt-Up</b>, <b>Alt-Down</b> on the header of a subplot", "Move the subplot up or down (Option on a Mac)"),
 )
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
     """Open the window of the viewer, and print the command of the last plot when the window closes."""
-    app = start_application(APPLICATION_NAME, get_icon_curve())
-    # the list holds a reference to each window, thus Python keeps the window while it is open
-    windows: list[QtWidgets.QMainWindow] = []
-
-    def open_dock_folder(folder: str) -> None:
-        if (message := open_model_folder(folder, open_window, windows)) is not None:
-            print_error(message)
-
-    handle_file_open_events(app, open_dock_folder)
-    open_window(tokens, windows)
-    reopen_session_windows(open_window, windows)
-    app.exec()
+    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens)
 
 
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
@@ -1846,7 +1829,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
-    set_window_document(window, viewer.modelpath, viewer.modelpath.absolute().name)
+    set_window_document(window, viewer.modelpath, viewer.modelpath.resolve().name)
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
@@ -2133,11 +2116,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
-    optionheader, optiongrid = add_section(panellayout, "Other options")
+    _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
     tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | RUN_DESTS
-    tableoffers = bool(get_table_actions(viewer.parser, tablehiddendests))
 
     def get_table_rows(rows: OptionRows) -> OptionRows:
         """Return the rows that the option table shows, which are all the rows except those of RUN_DESTS."""
@@ -2281,8 +2263,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         disclosure.setToolTip("Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot")
         disclosure.setAccessibleName("Expand" if iscollapsed else "Collapse")
         disclosure.clicked.connect(partial(on_collapse_subplot, row))
-        header = make_drag_header(partial(on_drag_subplot, row), partial(on_drop_subplot, row))
-        header.setToolTip("Drag the header to move the subplot")
+        header = make_drag_header(
+            partial(on_drag_subplot, row), partial(on_drop_subplot, row), partial(on_move_key, row)
+        )
+        header.setToolTip("Drag the header to move the subplot. Alt-Up and Alt-Down (Option on a Mac) also move it.")
         headerlayout = QtWidgets.QHBoxLayout(header)
         headerlayout.setContentsMargins(0, 0, 0, 0)
         headerlayout.addWidget(disclosure)
@@ -2728,7 +2712,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
-        set_section_shown(optionheader, optiongrid, shown=tableoffers or bool(get_table_rows(values.otheroptions)))
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
 
@@ -2846,7 +2829,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(values, undoable=False)
 
     def on_play(checked: bool) -> None:
-        playbutton.setText("Pause" if checked else "Play")
         if checked:
             play_step()
 
@@ -3063,6 +3045,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             order.insert(newrow, order.pop(row))
             apply_subplot_order(order)
 
+    def on_move_key(row: int, step: int) -> None:
+        """Move the subplot one row up or down, and keep the focus on its header for the next key."""
+        nonlocal pendingfocus
+        if 0 <= row + step < len(viewer.values.subplots):
+            pendingfocus = (row + step, "dragheader")
+            move_subplot(row, row + step)
+
     def on_collapse_subplot(row: int) -> None:
         collapsedrows.symmetric_difference_update({row})
         show_subplots()
@@ -3153,8 +3142,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_status_note(statusbar, "Copied the command")
 
     def on_copy_figure() -> None:
-        copy_figure(viewer.fig)
-        show_status_note(statusbar, "Copied the figure")
+        from artistools.estimators.plotestimators import main as plotestimators_main
+
+        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, viewer.get_plot_tokens())
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
@@ -3200,7 +3190,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(
-            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menutexts)
         )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
@@ -3312,42 +3302,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    def draw_with_new_colours() -> None:
-        viewer.darkcolours = get_dark_plot_colours()
-        queue.redraw()
+    def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
+        """Return the count of the steps of Play and the command of each step.
 
-    def on_colour_scheme() -> None:
-        """Draw the plot again with the colours of the new appearance, e.g. Dark Mode.
-
-        Qt gives the new palette after the signal, thus the plot waits until Qt has no other events.
+        For a snapshot, each step shows the next timestep. For a plot against time, each step shows the next cell.
         """
-        QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
-
-    def get_animation_values() -> list[ControlValues]:
-        """Return the values of each step of Play: each timestep of a snapshot, or each cell of a plot against time."""
         values = viewer.values
         if is_evolution(values):
+            cells = list(viewer.cells)
             # -cell does not select the cells of some plots, e.g. of a plane
-            if not viewer.cells or not cells_apply(values):
-                return [values]
-            return [dc.replace(values, cells=str(cell)) for cell in viewer.cells]
+            if not cells or not cells_apply(values):
+                return 1, lambda _index: viewer.get_plot_tokens(values)
+            return len(cells), lambda index: viewer.get_plot_tokens(dc.replace(values, cells=str(cells[index])))
         firstpos, lastpos = viewer.get_selection_positions(values)
         count = lastpos - firstpos + 1
-        return [
-            viewer.select_timesteps(values, start, count) for start in range(len(viewer.validtimesteps) - count + 1)
-        ]
+        return (
+            len(viewer.validtimesteps) - count + 1,
+            lambda index: viewer.get_plot_tokens(viewer.select_timesteps(values, index, count)),
+        )
 
     def on_export_animation() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
         export_animation(
             window,
             queue,
             statusbar,
             plotestimators_main,
             "plotestimators",
-            frametokens,
+            get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
             viewer.fig,
@@ -3367,7 +3350,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_closed() -> None:
         print(viewer.get_command())
-        QtGui.QGuiApplication.styleHints().colorSchemeChanged.disconnect(on_colour_scheme)
         if queue.task is not None:
             print("The reload of the run continues to its end, and then the process ends")
         queue.close()
@@ -3377,34 +3359,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    def on_cancel_plot() -> None:
-        playbutton.setChecked(False)
-        queue.cancel()
-
     menucallbacks = {
         "Open Model…": on_open_model,
         "Reload Data": on_reload,
         "Save Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
-        "Undo": queue.undo,
-        "Redo": queue.redo,
         "Copy Figure": on_copy_figure,
         "Copy Command": on_copy,
         "Copy Python": on_copy_python,
-        "Play": playbutton.toggle,
-        "Cancel Plot": on_cancel_plot,
         "Keys and Mouse Actions": on_help,
     }
-    add_menus(
-        window,
-        menucallbacks,
-        enabled={"Undo": queue.can_undo, "Redo": queue.can_redo, "Cancel Plot": queue.is_busy},
-        titles={"Play": lambda: "Pause" if playbutton.isChecked() else "Play"},
-        open_folder=on_open_recent,
-    )
+    menutexts = add_menus(window, menucallbacks, queue, playbutton, open_folder=on_open_recent)
     set_drop_handler(window, on_drop)
-    window.setProperty("settingshandler", on_colour_scheme)
+    follow_colour_scheme(window, viewer, queue)
 
     # the window keeps its command at a quit, and the next start opens the window again
     def get_session_tokens() -> list[str]:
@@ -3413,7 +3381,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return viewer.get_plot_tokens(modeltoken=viewer.modeltoken or str(Path.cwd()))
 
     window.setProperty("sessiontokens", get_session_tokens)
-    QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)

@@ -2747,3 +2747,13 @@ def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> N
     assert viewer.timebounds[0] > widestart
     firsttime = viewer.move_to_end(last=False)
     assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
+
+
+def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two spellings of one spectrum give the same path, thus the list of spectra does not show it two times.
+
+    A drop of the working folder added it again next to ".", and the plot then drew the same run two times.
+    """
+    monkeypatch.chdir(modelpath)
+    assert interactive.get_spectrum_path(".") == interactive.get_spectrum_path(str(modelpath.absolute()))
+    assert interactive.get_spectrum_path(".") != interactive.get_spectrum_path(str(modelpath.parent))

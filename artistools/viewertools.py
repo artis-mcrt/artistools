@@ -708,8 +708,38 @@ def start_application(
         QtCore.Qt.Key.Key_PageDown,
     }
 
-    class KeyOwnerFilter(QtCore.QObject):
-        """Give a key to the widget with the focus when that widget uses the key, and not to a window shortcut.
+    class ApplicationFilter(QtCore.QObject):
+        """Handle the events of the application that the windows need, in one filter.
+
+        Qt calls an application filter for each event of each object. A worker thread holds the GIL during a plot,
+        and each call of Python then waits for it. Thus the application has one filter and not one for each task:
+
+        - give a key to the widget with the focus when that widget uses the key, and not to a window shortcut;
+        - keep the text field that the user confirmed last, for the mark of a rejected change;
+        - record the time of a quit;
+        - give a path from the Dock icon to the handler of handle_file_open_events.
+        """
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            eventtype = event.type()
+            if eventtype == QtCore.QEvent.Type.ShortcutOverride:
+                if isinstance(event, QtGui.QKeyEvent) and widget_uses_key(event):
+                    event.accept()
+                    return True
+            elif eventtype in {QtCore.QEvent.Type.KeyPress, QtCore.QEvent.Type.FocusOut}:
+                keep_edited_field(watched, event)
+            elif eventtype == QtCore.QEvent.Type.Quit:
+                app.setProperty("quittime", time.monotonic())
+            elif eventtype == QtCore.QEvent.Type.FileOpen:
+                handler = app.property("fileopenhandler")
+                if isinstance(event, QtGui.QFileOpenEvent) and callable(handler):
+                    handler(event.file())
+                    return True
+            return super().eventFilter(watched, event)
+
+    def widget_uses_key(event: QtGui.QKeyEvent) -> bool:
+        """Return True if the widget with the focus uses the key, e.g. the Up key of a spin box.
 
         These widgets use the keys, but the shortcuts of the window took the keys from them:
 
@@ -724,80 +754,46 @@ def start_application(
         For example, the Up key in -maxseriescount made the time range wider, and the Copy key in the Command box
         copied the figure.
         """
+        focuswidget = QtWidgets.QApplication.focusWidget()
+        # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
+        usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
+            focuswidget,
+            QtWidgets.QAbstractSpinBox | QtWidgets.QComboBox | QtWidgets.QAbstractSlider | QtWidgets.QAbstractItemView,
+        )
+        usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
+        hastextselection = (
+            isinstance(focuswidget, QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
+            and focuswidget.textCursor().hasSelection()
+        ) or (isinstance(focuswidget, QtWidgets.QLineEdit) and focuswidget.hasSelectedText())
+        key = event.key()
+        keyowners = (
+            (usesarrows, key in arrowkeys),
+            (usesspace, key == QtCore.Qt.Key.Key_Space),
+            (hastextselection, event.matches(QtGui.QKeySequence.StandardKey.Copy)),
+        )
+        return any(widgetuses and iskey for widgetuses, iskey in keyowners)
 
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if event.type() == QtCore.QEvent.Type.ShortcutOverride and isinstance(event, QtGui.QKeyEvent):
-                focuswidget = QtWidgets.QApplication.focusWidget()
-                # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
-                usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
-                    focuswidget,
-                    QtWidgets.QAbstractSpinBox
-                    | QtWidgets.QComboBox
-                    | QtWidgets.QAbstractSlider
-                    | QtWidgets.QAbstractItemView,
-                )
-                usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
-                hastextselection = (
-                    isinstance(focuswidget, QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
-                    and focuswidget.textCursor().hasSelection()
-                ) or (isinstance(focuswidget, QtWidgets.QLineEdit) and focuswidget.hasSelectedText())
-                key = event.key()
-                keyowners = (
-                    (usesarrows, key in arrowkeys),
-                    (usesspace, key == QtCore.Qt.Key.Key_Space),
-                    (hastextselection, event.matches(QtGui.QKeySequence.StandardKey.Copy)),
-                )
-                if any(widgetuses and iskey for widgetuses, iskey in keyowners):
-                    event.accept()
-                    return True
-            return super().eventFilter(watched, event)
-
-    keyownerfilter = KeyOwnerFilter(app)
-    app.installEventFilter(keyownerfilter)
-    apply_appearance()
-
-    class EditTracker(QtCore.QObject):
+    def keep_edited_field(watched: QtCore.QObject, event: QtCore.QEvent) -> None:
         """Keep the text field that the user confirmed last, and the time, in two properties of its window.
 
         A plot that rejects the change of the field then marks the field, as a form of macOS does. The property holds
         a weak reference, because a QObject in a property is a raw pointer. A read of that pointer after Qt deleted
         the field crashed the process.
         """
+        if not isinstance(watched, QtWidgets.QLineEdit):
+            return
+        isreturn = isinstance(event, QtGui.QKeyEvent) and event.key() in {
+            QtCore.Qt.Key.Key_Return,
+            QtCore.Qt.Key.Key_Enter,
+        }
+        confirms = isreturn if event.type() == QtCore.QEvent.Type.KeyPress else watched.isModified()
+        if confirms:
+            window = watched.window()
+            window.setProperty("lasteditedfield", weakref.ref(watched))
+            window.setProperty("lastedittime", time.monotonic())
 
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            isreturn = isinstance(event, QtGui.QKeyEvent) and event.key() in {
-                QtCore.Qt.Key.Key_Return,
-                QtCore.Qt.Key.Key_Enter,
-            }
-            confirms = (event.type() == QtCore.QEvent.Type.KeyPress and isreturn) or (
-                event.type() == QtCore.QEvent.Type.FocusOut
-                and isinstance(watched, QtWidgets.QLineEdit)
-                and watched.isModified()
-            )
-            if isinstance(watched, QtWidgets.QLineEdit) and confirms:
-                window = watched.window()
-                window.setProperty("lasteditedfield", weakref.ref(watched))
-                window.setProperty("lastedittime", time.monotonic())
-            return super().eventFilter(watched, event)
-
-    app.installEventFilter(EditTracker(app))
-
-    class QuitTracker(QtCore.QObject):
-        """Record the time of a quit before Qt closes the windows, e.g. after Quit in the menu of macOS.
-
-        A window that closes during a quit keeps its command for the next start, and a window that the user closes
-        does not.
-        """
-
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if event.type() == QtCore.QEvent.Type.Quit and (app := QtWidgets.QApplication.instance()) is not None:
-                app.setProperty("quittime", time.monotonic())
-            return super().eventFilter(watched, event)
-
-    app.installEventFilter(QuitTracker(app))
+    app.installEventFilter(ApplicationFilter(app))
+    apply_appearance()
     return app
 
 
@@ -941,36 +937,23 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
     gives each path of the command line as such an event, and the first window already shows those paths. Thus the
     filter ignores the first event of each of those paths. A later drop of the same path opens it as usual.
     """
-    from PySide6 import QtCore
-    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    # the instance holds open_folder, and the class holds no reference to it, as for PlotArea
-    class FileOpenFilter(QtCore.QObject):
-        """Receive the QFileOpenEvent of the application."""
+    launchpaths = {str(Path(argument).absolute()) for argument in sys.orig_argv}
 
-        def __init__(self, parent: QtCore.QObject, open_folder: "Callable[[str], None]") -> None:
-            super().__init__(parent)
-            self.open_folder = open_folder
-            self.launchpaths = {str(Path(argument).absolute()) for argument in sys.orig_argv}
+    def open_path(path: str) -> None:
+        if (absolutepath := str(Path(path).absolute())) in launchpaths:
+            launchpaths.remove(absolutepath)
+            return
+        activewindow = QtWidgets.QApplication.activeWindow()
+        handler = activewindow.property("drophandler") if activewindow is not None else None
+        if Path(path).is_dir() or not callable(handler):
+            open_folder(path)
+        else:
+            handler([path])
 
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if event.type() == QtCore.QEvent.Type.FileOpen and isinstance(event, QtGui.QFileOpenEvent):
-                path = event.file()
-                if (absolutepath := str(Path(path).absolute())) in self.launchpaths:
-                    self.launchpaths.remove(absolutepath)
-                    return True
-                activewindow = QtWidgets.QApplication.activeWindow()
-                handler = activewindow.property("drophandler") if activewindow is not None else None
-                if Path(path).is_dir() or not callable(handler):
-                    self.open_folder(path)
-                else:
-                    handler([path])
-                return True
-            return super().eventFilter(watched, event)
-
-    app.installEventFilter(FileOpenFilter(app, open_folder))
+    # the filter of start_application receives the event and gives the path to this function
+    app.setProperty("fileopenhandler", open_path)
 
 
 # File > Open Recent shows this number of models
@@ -991,7 +974,8 @@ def get_recent_models() -> list[str]:
 
 def add_recent_model(folder: Path | str) -> None:
     """Put the folder of a model at the start of the recent models of File > Open Recent."""
-    path = str(Path(folder).absolute())
+    # resolve() gives ".." the real name of its folder, thus two spellings of one folder give one entry in the list
+    path = str(Path(folder).resolve())
     recent = [path, *(other for other in get_recent_models() if other != path)][:RECENT_LIMIT]
     get_settings().setValue(get_recent_setting_key(), recent)
 
@@ -1039,22 +1023,58 @@ def reopen_session_windows(
     """Open the windows of the last session, as the apps of macOS do, and keep the first window in front.
 
     A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
-    because each window fits it to its own size. An error of a window goes to the terminal.
+    because each window fits it to its own size. An error of a window goes to the terminal. Each window opens after
+    the event loop runs again, thus the first window can draw and take input while the others read their runs.
     """
+    from PySide6 import QtCore
+
     shown = [
         remove_figwidthscale(get_absolute_tokens(window.property("sessiontokens")()))
         for window in windows
         if callable(window.property("sessiontokens"))
     ]
+    pending = [tokens for tokens in take_session_windows() if remove_figwidthscale(tokens) not in shown]
     firstwindows = list(windows)
-    for tokens in take_session_windows():
-        if remove_figwidthscale(tokens) in shown:
-            continue
-        message = run_command_step(lambda tokens=tokens: open_window(tokens, windows), quiet=False)
+
+    def open_next_window() -> None:
+        if not pending:
+            for window in firstwindows:
+                if is_live(window):
+                    activate_window(window)
+            return
+        tokens = pending.pop(0)
+        message = run_command_step(lambda: open_window(tokens, windows), quiet=False)
         if message is not None:
             print_error(f"The viewer cannot open the window of the last session: {message}")
-    for window in firstwindows:
-        activate_window(window)
+        QtCore.QTimer.singleShot(0, open_next_window)
+
+    if pending:
+        QtCore.QTimer.singleShot(0, open_next_window)
+
+
+def run_viewer_application(
+    applicationname: str,
+    iconcurve: "npt.NDArray[np.float64]",
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    tokens: "Sequence[str]",
+    documenttypes: "Sequence[str]" = ("public.folder",),
+) -> None:
+    """Open a viewer window for the tokens and the windows of the last session, then run until the user quits.
+
+    A folder from the Dock icon opens in a new window, and its errors go to the terminal.
+    """
+    app = start_application(applicationname, iconcurve, documenttypes)
+    # the list holds a reference to each window, thus Python keeps the window while it is open
+    windows: list[QtWidgets.QMainWindow] = []
+
+    def open_dock_folder(folder: str) -> None:
+        if (message := open_model_folder(folder, open_window, windows)) is not None:
+            print_error(message)
+
+    handle_file_open_events(app, open_dock_folder)
+    open_window(tokens, windows)
+    reopen_session_windows(open_window, windows)
+    app.exec()
 
 
 def remove_figwidthscale(tokens: "Sequence[str]") -> list[str]:
@@ -1157,13 +1177,6 @@ def add_section(
     header.setChecked(isopen)
     set_open(isopen)
     return header, grid
-
-
-def set_section_shown(header: "QtWidgets.QToolButton", grid: "QtWidgets.QGridLayout", *, shown: bool) -> None:
-    """Show or hide a section of add_section. A closed section that shows keeps its controls hidden."""
-    header.setVisible(shown)
-    if (content := grid.parentWidget()) is not None:
-        content.setVisible(shown and header.isChecked())
 
 
 # a button that shows one symbol, e.g. ✕ or ▲, has no frame, and a light background shows under the pointer, as the
@@ -1419,16 +1432,27 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
 
 
 def make_drag_header(
-    on_drag: "Callable[[QtCore.QPoint], None]", on_drop: "Callable[[QtCore.QPoint], None]"
+    on_drag: "Callable[[QtCore.QPoint], None]",
+    on_drop: "Callable[[QtCore.QPoint], None]",
+    on_move: "Callable[[int], None]",
 ) -> "QtWidgets.QWidget":
     """Return a header that the user can drag, e.g. to move a card to a new place in a list.
 
     During a drag, on_drag receives each position of the pointer on the screen. on_drop receives the last position.
-    A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label.
+    A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label. The
+    header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
+    user of the keyboard can then move the card too. The object name "dragheader" selects the header in a style sheet.
     """
+    from PySide6 import QtCore
+
     header = get_drag_header_class()()
+    header.setObjectName("dragheader")
+    header.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+    # a style sheet can draw the border of the focus only on a widget with a styled background
+    header.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
     header.setProperty("on_drag", on_drag)
     header.setProperty("on_drop", on_drop)
+    header.setProperty("on_move", on_move)
     return header
 
 
@@ -1475,6 +1499,16 @@ def get_drag_header_class() -> "type[QtWidgets.QWidget]":
                 self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
             if self.dragging:
                 self.send("on_drag", position)
+
+        @t.override
+        def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
+            steps = {QtCore.Qt.Key.Key_Up: -1, QtCore.Qt.Key.Key_Down: 1}
+            holdsalt = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.AltModifier)
+            if holdsalt and event.key() in steps and callable(callback := self.property("on_move")):
+                callback(steps[QtCore.Qt.Key(event.key())])
+                event.accept()
+            else:
+                super().keyPressEvent(event)
 
         @t.override
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent, /) -> None:
@@ -2172,23 +2206,16 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
     playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
 
 
-def get_icon(
-    symbol: str, themeicon: "QtGui.QIcon.ThemeIcon | None", fallback: "QtWidgets.QStyle.StandardPixmap | None"
-) -> "QtGui.QIcon":
-    """Return the SF Symbol of the name on macOS, else the icon of the theme, else the icon of the Qt style.
+def get_icon(symbol: str, themeicon: "QtGui.QIcon.ThemeIcon") -> "QtGui.QIcon":
+    """Return the SF Symbol of the name on macOS, else the icon of the theme.
 
     Qt gives an SF Symbol for its name on macOS. The result can be an empty icon, and a tool button then shows its
     text.
     """
     from PySide6 import QtGui
-    from PySide6 import QtWidgets
 
     icon = QtGui.QIcon.fromTheme(symbol) if sys.platform == "darwin" else QtGui.QIcon()
-    if icon.isNull() and themeicon is not None:
-        icon = QtGui.QIcon.fromTheme(themeicon)
-    if icon.isNull() and fallback is not None:
-        icon = QtWidgets.QApplication.style().standardIcon(fallback)
-    return icon
+    return QtGui.QIcon.fromTheme(themeicon) if icon.isNull() else icon
 
 
 def make_segmented_control(labels: "Sequence[str]", tooltips: "Sequence[str]") -> "QtWidgets.QTabBar":
@@ -2214,11 +2241,11 @@ def make_step_button(*, forward: bool) -> "QtWidgets.QToolButton":
 
     button = QtWidgets.QToolButton()
     if forward:
-        icon = get_icon("forward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipForward, None)
+        icon = get_icon("forward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipForward)
         button.setToolTip("Move the time to the next timestep (Right key)")
         button.setAccessibleName("Next Timestep")
     else:
-        icon = get_icon("backward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipBackward, None)
+        icon = get_icon("backward.end.fill", QtGui.QIcon.ThemeIcon.MediaSkipBackward)
         button.setToolTip("Move the time to the previous timestep (Left key)")
         button.setAccessibleName("Previous Timestep")
     button.setIcon(icon)
@@ -2234,8 +2261,8 @@ def make_play_button(tooltip: str) -> "QtWidgets.QToolButton":
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    playicon = get_icon("play.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackStart, None)
-    pauseicon = get_icon("pause.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackPause, None)
+    playicon = get_icon("play.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackStart)
+    pauseicon = get_icon("pause.fill", QtGui.QIcon.ThemeIcon.MediaPlaybackPause)
     play = QtWidgets.QToolButton()
     play.setCheckable(True)
     play.setText("Play")
@@ -2245,6 +2272,7 @@ def make_play_button(tooltip: str) -> "QtWidgets.QToolButton":
 
     def show_play_state(checked: bool) -> None:
         play.setIcon(pauseicon if checked else playicon)
+        play.setText("Pause" if checked else "Play")
 
     play.toggled.connect(show_play_state)
     return play
@@ -2400,13 +2428,15 @@ def get_keyboard_help(keyrows: "Sequence[tuple[str, str]]", menuitems: "Collecti
     the texts of the menu items of the viewer, as add_menus receives them, and the table gives the shortcut of each.
     """
     shortcuts = get_menu_shortcut_texts()
+    # a viewer row replaces the menu row with the same keys, because it has more text, e.g. Space for Play
+    viewerkeys = {keys for keys, _ in keyrows}
     rows = [
         *keyrows,
         # every window has the sidebar, and add_menus gives its item
         *(
             (f"<b>{shortcuts[text]}</b>", helptext)
             for text, helptext in MENU_HELPTEXTS.items()
-            if text in menuitems or text == "Hide Sidebar"
+            if (text in menuitems or text == "Hide Sidebar") and f"<b>{shortcuts[text]}</b>" not in viewerkeys
         ),
         (f"<b>{shortcuts['Keys and Mouse Actions']}</b>", "Show this list"),
     ]
@@ -2430,27 +2460,44 @@ def get_menu_shortcut_texts() -> dict[str, str]:
 def add_menus(
     window: "QtWidgets.QMainWindow",
     callbacks: "Mapping[str, Callable[[], object]]",
-    enabled: "Mapping[str, Callable[[], bool]]",
-    titles: "Mapping[str, Callable[[], str]]",
+    queue: "DrawQueue[t.Any]",
+    playbutton: "QtWidgets.QAbstractButton",
     open_folder: "Callable[[str], object]",
-) -> None:
-    """Add the menus File, Edit, View, Window, and Help.
+) -> list[str]:
+    """Add the menus File, Edit, View, Window, and Help, and return the text of each item.
 
     callbacks gives the function of each item by the text of get_menu_items. A viewer omits an item that it does not
-    support, e.g. Reload Data. This function gives the items of the sidebar, the full screen, and the
-    window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
-    Pause for Play. File > Open Recent gives a recent model to open_folder.
+    support, e.g. Reload Data. This function gives the items of the sidebar, the full screen, and the window. The
+    queue gives Undo, Redo, and Cancel Plot, unless callbacks gives them, and playbutton gives Play. File > Open
+    Recent gives a recent model to open_folder.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
+
+    def cancel_plot() -> None:
+        playbutton.setChecked(False)
+        queue.cancel()
+
+    enabled: dict[str, Callable[[], bool]] = {
+        "Undo": queue.can_undo,
+        "Redo": queue.can_redo,
+        "Cancel Plot": queue.is_busy,
+    }
+    titles: dict[str, Callable[[], str]] = {"Play": playbutton.text}
+    plotcallbacks: dict[str, Callable[[], object]] = {
+        "Undo": queue.undo,
+        "Redo": queue.redo,
+        "Play": playbutton.toggle,
+        "Cancel Plot": cancel_plot,
+    }
 
     windowcallbacks: dict[str, Callable[[], object]] = {
         "Hide Sidebar": lambda: toggle_sidebar(window),
         "Enter Full Screen": lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen(),
         "Minimize": window.showMinimized,
         "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
-        "Settings…": lambda: show_settings_window(window),
+        "Settings…": show_settings_window,
         "artistools Help": lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(HELP_URL)),
         "About": lambda: show_about(window),
     }
@@ -2458,7 +2505,7 @@ def add_menus(
         "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
         "Enter Full Screen": lambda: "Exit Full Screen" if window.isFullScreen() else "Enter Full Screen",
     }
-    allcallbacks = {**windowcallbacks, **callbacks}
+    allcallbacks = {**windowcallbacks, **plotcallbacks, **callbacks}
     alltitles = {**windowtitles, **titles}
     menubar = window.menuBar()
     menus = {name: menubar.addMenu(name) for name in ("File", "Edit", "View", "Window", "Help")}
@@ -2513,6 +2560,7 @@ def add_menus(
         menu.aboutToShow.connect(update_items)
         menu.aboutToHide.connect(enable_all)
     windowmenu.aboutToShow.connect(update_window_list)
+    return list(actions)
 
 
 def add_recent_menu(filemenu: "QtWidgets.QMenu", open_folder: "Callable[[str], object]") -> None:
@@ -2585,11 +2633,12 @@ def set_window_document(window: "QtWidgets.QMainWindow", folder: Path, title: st
     window.setWindowFilePath(str(folder.absolute()))
 
 
-def show_settings_window(parent: "QtWidgets.QWidget") -> None:
+def show_settings_window() -> None:
     """Show the Settings window of the viewers, or bring it to the front if it is open.
 
     A change applies at once and the settings keep it, as in the Settings windows of macOS. Each viewer window
-    receives a change of the colours of the plot through its property "settingshandler".
+    receives a change of the colours of the plot through its property "settingshandler". The Settings window belongs
+    to all the viewer windows, thus it has no parent, and it stays open when a viewer window closes.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -2599,7 +2648,11 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
             activate_window(widget)
             return
     settings = get_settings()
-    dialog = QtWidgets.QDialog(parent)
+    dialog = QtWidgets.QDialog()
+    # Python deletes a window with no parent and no reference, thus the application holds one until the window closes
+    if (app := QtWidgets.QApplication.instance()) is not None:
+        app.setProperty("settingswindow", lambda: dialog)
+        dialog.destroyed.connect(lambda: app.setProperty("settingswindow", None))
     dialog.setObjectName("settings")
     dialog.setWindowTitle("Settings")
     dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -2786,14 +2839,79 @@ def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -
             line.set_color(foreground)
 
 
-def copy_figure(fig: "mplfig.Figure") -> None:
-    """Put the figure on the clipboard as a PNG image, with the resolution of a printed page."""
+def copy_figure_of_command(
+    queue: "DrawQueue[t.Any]",
+    statusbar: StatusBar,
+    commandmain: "Callable[..., None]",
+    parser: "SuggestingArgumentParser",
+    plottokens: "Sequence[str]",
+) -> None:
+    """Put the figure of the command on the clipboard as a PNG image, with the resolution of a printed page.
+
+    The command draws the figure, as for Save Figure. Thus the image has the usual colours and no empty margin, also
+    when the window shows the plot in Dark Mode. The worker thread runs the command, thus the window accepts input.
+    """
+    import tempfile
+
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=COPY_FIGURE_DPI)
-    QtWidgets.QApplication.clipboard().setImage(QtGui.QImage.fromData(buffer.getvalue()))
+    tokens = [*remove_options(parser, plottokens, {"dpi"}), "-dpi", str(COPY_FIGURE_DPI)]
+    images: list[bytes] = []
+
+    def draw_image() -> str | None:
+        with tempfile.TemporaryDirectory() as folder:
+            imagepath = Path(folder) / "figure.png"
+            commandmain(argsraw=[*tokens, "-o", str(imagepath)])
+            if not imagepath.is_file():
+                return "The command wrote no image"
+            images.append(imagepath.read_bytes())
+        return None
+
+    def show_result(message: str | None) -> None:
+        if message is not None or not images:
+            show_status_message(statusbar, f"The viewer did not copy the figure: {message}", "")
+            return
+        QtWidgets.QApplication.clipboard().setImage(QtGui.QImage.fromData(images[0]))
+        show_status_note(statusbar, "Copied the figure")
+
+    if not queue.run_task(lambda: run_command_step(draw_image), "Copy of the figure in progress...", show_result):
+        show_status_message(statusbar, "A different task is in progress. Copy the figure after it", "")
+
+
+def follow_colour_scheme(
+    window: "QtWidgets.QMainWindow", viewer: "PlotViewer[t.Any]", queue: "DrawQueue[t.Any]"
+) -> None:
+    """Draw the plot again with the colours of each new appearance, e.g. Dark Mode, or of a change in Settings.
+
+    Qt gives the new palette after the signal, thus the plot waits until Qt has no other events. The Settings window
+    reaches each window through its property "settingshandler".
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    def draw_with_new_colours() -> None:
+        viewer.darkcolours = get_dark_plot_colours()
+        queue.redraw()
+
+    def on_colour_scheme() -> None:
+        QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
+
+    stylehints = QtGui.QGuiApplication.styleHints()
+    window.setProperty("settingshandler", on_colour_scheme)
+    stylehints.colorSchemeChanged.connect(on_colour_scheme)
+    # the signal of the application stays after the window closes, thus the window removes its handler
+    window.destroyed.connect(lambda: stylehints.colorSchemeChanged.disconnect(on_colour_scheme))
+
+
+def show_figure_in_canvas(oldfig: "mplfig.Figure", newfig: "mplfig.Figure") -> tuple[float, float]:
+    """Show a figure of the worker thread in the canvas of the window, and return the size of the figure in inches."""
+    canvas = oldfig.canvas
+    newfig.set_canvas(canvas)
+    canvas.figure = newfig
+    canvas.draw_idle()
+    figwidth, figheight = newfig.get_size_inches()
+    return float(figwidth), float(figheight)
 
 
 def copy_text(text: str) -> None:
@@ -2988,41 +3106,37 @@ def export_animation(
     statusbar: StatusBar,
     commandmain: "Callable[..., None]",
     commandname: str,
-    frametokens: "Sequence[Sequence[str]]",
+    frames: "tuple[int, Callable[[int], list[str]]]",
     fps: float,
     parser: "SuggestingArgumentParser",
     fig: "mplfig.Figure",
 ) -> None:
     """Save a GIF file of the steps of Play, with one run of the command for each frame.
 
-    Each frame comes from the command, as for Save Figure. The worker thread runs the command for each frame and
-    joins the frames, thus the window stays responsive. The GIF shows each frame for 1/fps seconds. A dialog first
-    asks for the size of the frames, and fig gives the size on the screen.
+    frames gives the count of the frames and a function that gives the command of a frame by its index. The worker
+    thread makes the command of each frame, runs it, and joins the frames, thus the window accepts input. A plot
+    against time can have a frame for each of 125 000 cells, and a list of their commands took seconds. The GIF shows
+    each frame for 1/fps seconds. A dialog first asks for the size, and fig gives the size on the screen.
     """
     import tempfile
 
     from PySide6 import QtWidgets
 
-    if not frametokens:
+    framecount, get_frametokens = frames
+    if framecount == 0:
         return
-    sizemodel = get_figure_size_model(fig, frametokens[0], parser.get_default("figscale"))
-    options = ask_export_options(window, ANIMATION_DPI, sizemodel, title="Export Animation", formats=False)
-    if options is None:
-        return
-    # the default -dpi of a command suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
-    frametokens = [
-        [*remove_options(parser, set_figure_scales(parser, tokens, options.scales), {"dpi"}), "-dpi", str(options.dpi)]
-        for tokens in frametokens
-    ]
-
-    if len(frametokens) > MAX_ANIMATION_FRAMES:
+    if framecount > MAX_ANIMATION_FRAMES:
         answer = QtWidgets.QMessageBox.question(
             window,
             "Export Animation",
-            f"The animation has {len(frametokens)} frames, and each frame runs the command. Continue?",
+            f"The animation has {framecount} frames, and each frame runs the command. Continue?",
         )
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
+    sizemodel = get_figure_size_model(fig, get_frametokens(0), parser.get_default("figscale"))
+    options = ask_export_options(window, ANIMATION_DPI, sizemodel, title="Export Animation", formats=False)
+    if options is None:
+        return
     filename, _ = QtWidgets.QFileDialog.getSaveFileName(
         window, "Export the animation", str(Path.cwd() / f"{commandname}.gif"), "GIF (*.gif)"
     )
@@ -3034,7 +3148,10 @@ def export_animation(
     def export() -> str | None:
         with tempfile.TemporaryDirectory() as folder:
             framepaths: list[Path] = []
-            for index, tokens in enumerate(frametokens):
+            for index in range(framecount):
+                scaledtokens = set_figure_scales(parser, get_frametokens(index), options.scales)
+                # the default -dpi suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
+                tokens = [*remove_options(parser, scaledtokens, {"dpi"}), "-dpi", str(options.dpi)]
                 framepath = Path(folder) / f"frame{index:04d}.png"
                 commandmain(argsraw=[*tokens, "-o", str(framepath)])
                 if not framepath.is_file():
@@ -3047,10 +3164,10 @@ def export_animation(
         if message is not None:
             show_status_message(statusbar, f"The viewer did not export the animation: {message}", "")
         else:
-            show_status_note(statusbar, f"Saved {filename}, with {len(frametokens)} frames")
+            show_status_note(statusbar, f"Saved {filename}, with {framecount} frames")
 
     if not queue.run_task(
-        lambda: run_command_step(export), f"Export of {len(frametokens)} frames in progress...", show_result
+        lambda: run_command_step(export), f"Export of {framecount} frames in progress...", show_result
     ):
         show_status_message(statusbar, "A different task is in progress. Export the animation after it", "")
 
@@ -3163,11 +3280,13 @@ def get_new_figwidthscale(
 
 
 class PlotViewer[ValuesT](t.Protocol):
-    """A viewer with the values of its controls and the last warning of its plot."""
+    """A viewer with the values of its controls, the last warning of its plot, and the colours of Dark Mode."""
 
     values: ValuesT
     # the last warning of the last plot, which the status bar shows. A user of the application sees no terminal
     warning: str
+    # the background and the foreground of the plot in Dark Mode, or None for the usual colours
+    darkcolours: tuple[str, str] | None
 
 
 def changes_values[ValuesT](
@@ -3427,7 +3546,7 @@ class DrawQueue[ValuesT]:
         # newer values of the user stay, and the next plot draws them
         if self.requestedvalues is None:
             self.viewer.values = self.drawnvalues
-        self.show_plot_status(message, self.renderstart)
+        self.show_plot_status(message)
         self.after_draw(message)
 
     def run_task(
@@ -3477,13 +3596,14 @@ class DrawQueue[ValuesT]:
         """
         self.executor.shutdown(wait=False, cancel_futures=True)
 
-    def show_plot_status(self, message: str | None, starttime: float) -> None:
-        """Show the time of the plot that started at starttime, its message or its warning, and the values."""
+    def show_plot_status(self, message: str | None) -> None:
+        """Show the time of the plot that ended, its message or its warning, and the values."""
         drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
-        self.plotseconds = time.perf_counter() - starttime
+        self.plotseconds = time.perf_counter() - self.renderstart
         self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
+        hide_readout_tag(self.window)
         show_status_message(self.statusbar, message, self.viewer.warning)
         show_plot_banner(self.window, message)
         # show_values can replace the field of the plot, e.g. with a new card of a subplot, before the plot ends
@@ -3669,6 +3789,14 @@ def make_readout_tag(canvas: "FigureCanvasQTAgg") -> "Callable[[t.Any, str], Non
     return show_tag
 
 
+def hide_readout_tag(window: "QtCore.QObject") -> None:
+    """Hide the tag of make_readout_tag, which holds the values of the old plot until the mouse moves again."""
+    from PySide6 import QtWidgets
+
+    if (tag := window.findChild(QtWidgets.QLabel, "readouttag")) is not None:
+        tag.hide()
+
+
 def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     """Return the value at x of each labelled line of the axes, as "label: value".
 
@@ -3747,7 +3875,8 @@ def show_flag_labels(window: "QtWidgets.QWidget") -> None:
         if (text := get_flag_label(flag)) != flag:
             widget.setText(text)
             tooltip = widget.toolTip()
-            if not tooltip.endswith(f"({flag})"):
+            # a label whose text changes later, e.g. -xmin with a unit, already gives the flag in its tooltip
+            if tooltip != flag and not tooltip.endswith(f"({flag})"):
                 widget.setToolTip(f"{tooltip} ({flag})" if tooltip else flag)
 
 
