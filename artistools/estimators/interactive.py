@@ -494,6 +494,24 @@ def get_line_axis(slicetext: str) -> str:
     return next((axis for axis in "xyz" if axis not in conditionaxes), "x")
 
 
+def get_line_label(axis: str, slicetext: str) -> str:
+    """Return the text of a line along an axis in the line box, e.g. "x (y=z=0)".
+
+    The line of slicetext shows its own positions, e.g. "x (y=0, z=0.1c)". A line along a different axis goes through
+    the origin.
+    """
+    others = [other for other in "xyz" if other != axis]
+    positions = dict.fromkeys(others, "0")
+    if "," in slicetext and get_line_axis(slicetext) == axis:
+        for condition in slicetext.lower().split(","):
+            name, _, position = (part.strip() for part in condition.partition("="))
+            if name in positions and position:
+                positions[name] = position
+    first, second = (positions[other] for other in others)
+    conditions = f"{others[0]}={others[1]}={first}" if first == second else f"{others[0]}={first}, {others[1]}={second}"
+    return f"{axis} ({conditions})"
+
+
 def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: str) -> "ControlValues":
     """Return the values with a new selection of the cells.
 
@@ -1612,8 +1630,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "The velocity of the plane along the axis that is normal to it, e.g. -0.2c, or 5000km/s. Empty gives 0."
     )
     lineaxisbox = QtWidgets.QComboBox()
-    lineaxisbox.addItems(["x", "y", "z"])
-    lineaxisbox.setToolTip("The axis of the line through the origin")
+    for axis in "xyz":
+        lineaxisbox.addItem(get_line_label(axis, ""), axis)
+    lineaxisbox.setToolTip("The axis of the line. The positions on the other two axes follow it")
 
     def make_parameter_row(widgets: "Sequence[QtWidgets.QWidget]") -> QtWidgets.QWidget:
         row = QtWidgets.QWidget()
@@ -2144,7 +2163,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         plane, offset = get_slice_parts(slicetext)
         planebox.setCurrentText(plane)
         set_edit_text(offsetedit, offset)
-        lineaxisbox.setCurrentText(get_line_axis(slicetext))
+        for index, axis in enumerate("xyz"):
+            lineaxisbox.setItemText(index, get_line_label(axis, slicetext))
+        lineaxisbox.setCurrentIndex(lineaxisbox.findData(get_line_axis(slicetext)))
         smoothingmode, _ = get_smoothing(rows)
         smoothingbox.setCurrentIndex(max(smoothingbox.findData(smoothingmode), 0))
         for widget in (smoothinglengthlabel, smoothinglengthbox):
@@ -2330,8 +2351,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         offsetedit.setModified(False)
         apply_rows({"-slice": (get_slice_text(planebox.currentText(), offsetedit.text()),)})
 
-    def on_lineaxis(axis: str) -> None:
-        apply_rows({"-slice": (",".join(f"{other}=0" for other in "zyx" if other != axis),)})
+    def on_lineaxis(index: int) -> None:
+        axis = str(lineaxisbox.itemData(index))
+        # a pick of the current axis keeps the positions of the line
+        if axis != get_line_axis((get_row_values(viewer.values.otheroptions, "-slice") or ("",))[0]):
+            apply_rows({"-slice": (",".join(f"{other}=0" for other in "zyx" if other != axis),)})
 
     def get_smoothing_numbers() -> tuple[int, int]:
         """Return the length and the order of the smoothing of the values, or the first numbers of the boxes."""
@@ -2672,7 +2696,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     coneanglebox.valueChanged.connect(on_coneangle)
     planebox.textActivated.connect(on_plane)
     offsetedit.editingFinished.connect(on_plane)
-    lineaxisbox.textActivated.connect(on_lineaxis)
+    lineaxisbox.activated.connect(on_lineaxis)
     smoothingbox.activated.connect(on_smoothing_mode)
     smoothinglengthbox.valueChanged.connect(on_smoothing_length)
     smoothingorderbox.valueChanged.connect(on_smoothing_order)

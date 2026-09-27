@@ -3652,6 +3652,9 @@ def test_interactive_geometry_modes_draw() -> None:
     assert interactive.get_slice_parts(" z = 0.1c ") == ("xy", "0.1c")
     assert interactive.get_slice_text("xz", "5000km/s") == "y=5000km/s"
     assert interactive.get_line_axis("z=0,y=0") == "x"
+    assert interactive.get_line_label("x", "z=0,y=0") == "x (y=z=0)"
+    assert interactive.get_line_label("x", "z=0.1c,y=0") == "x (y=0, z=0.1c)"
+    assert interactive.get_line_label("z", "z=0.1c,y=0") == "z (x=y=0)"
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
     assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
