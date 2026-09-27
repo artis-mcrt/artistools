@@ -1313,6 +1313,15 @@ def set_search_completion(completer: "QtWidgets.QCompleter") -> None:
     completer.setMaxVisibleItems(15)
 
 
+def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWidgets.QCompleter":
+    """Return a completer that finds each name that holds the typed text, e.g. "ion" finds averageionisation."""
+    from PySide6 import QtWidgets
+
+    completer = QtWidgets.QCompleter(list(names), parent)
+    set_search_completion(completer)
+    return completer
+
+
 def add_command_section(
     panellayout: "QtWidgets.QVBoxLayout",
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":

@@ -91,6 +91,7 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import get_table_actions
 from artistools.viewertools import make_central_splitter
+from artistools.viewertools import make_completer
 from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
@@ -1665,15 +1666,6 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
     " QToolButton#suggestion:hover { border-style: solid; }"
 )
-
-
-def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWidgets.QCompleter":
-    """Return a completer that finds each name that holds the typed text, e.g. "ion" finds averageionisation."""
-    from PySide6 import QtWidgets
-
-    completer = QtWidgets.QCompleter(list(names), parent)
-    set_search_completion(completer)
-    return completer
 
 
 def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWidgets.QFrame":

@@ -2227,6 +2227,18 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
 
 
+def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
+    """Each name that the reference field offers names a spectrum that plotspectra finds by that name.
+
+    The folder holds compressed files and metadata files with no data file, which plotspectra cannot read by
+    their own names.
+    """
+    names = interactive.get_reference_spectrum_names()
+    assert "AT2017gfo_ENGRAVE_v1.0_XSHOOTER_MJD-57983.969_Phase+1.43d.dat" in names
+    assert not any(name.endswith((".meta.yml", ".xz", ".gz", ".zst")) for name in names)
+    assert all(plotspectra.find_reference_spectrum_file_or_none(name) is not None for name in names)
+
+
 def test_interactive_paths_keep_their_place() -> None:
     """Each path of the command stays a path and keeps its place, also a path after an option.
 

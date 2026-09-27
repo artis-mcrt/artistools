@@ -21,6 +21,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import separate_trailing_folders
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
@@ -61,6 +62,7 @@ from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
+from artistools.viewertools import make_completer
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -357,6 +359,23 @@ def get_spectrum_item_text(path: str) -> str:
     if path_is_reference_spectrum(path):
         return f"Reference: {(find_reference_spectrum_file_or_none(path) or Path(path)).absolute()}"
     return f"Model: {Path(path).absolute()}"
+
+
+def get_reference_spectrum_names() -> list[str]:
+    """Return the names of the reference spectra in the data of artistools, without the suffix of a compressed file.
+
+    plotspectra finds a compressed file by the name without the suffix. A metadata file with no data file beside it
+    gives no name, because plotspectra has no spectrum to read.
+    """
+    from artistools.commands import get_path
+
+    folder = get_path("artistools_dir") / "data" / "refspectra"
+    names = {
+        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
+        for path in folder.iterdir()
+        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
+    }
+    return sorted(names, key=str.lower)
 
 
 def get_direction_kind(args: argparse.Namespace) -> str:
@@ -1112,12 +1131,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     addmodelbutton = QtWidgets.QPushButton("Add model...")
     addmodelbutton.setToolTip("Add the folder of an ARTIS run")
-    addreferencebutton = QtWidgets.QPushButton("Add reference...")
-    addreferencebutton.setToolTip("Add a file of an observed spectrum")
     removebutton = QtWidgets.QPushButton("Remove")
     removebutton.setToolTip("Remove the selected spectra. The plot keeps one ARTIS model at least")
+    referenceedit = QtWidgets.QLineEdit()
+    referenceedit.setPlaceholderText("Add a reference spectrum, e.g. AT2017gfo")
+    referenceedit.setToolTip(
+        "Type part of the name of a reference spectrum in the data of artistools, then press Return. A name of a file"
+        " in the working folder also works."
+    )
+    referencecompleter = make_completer(get_reference_spectrum_names(), referenceedit)
+    referenceedit.setCompleter(referencecompleter)
+    openreferencebutton = QtWidgets.QPushButton("Open...")
+    openreferencebutton.setToolTip("Add the file of a reference spectrum from a folder")
+    referencerow = QtWidgets.QHBoxLayout()
+    referencerow.addWidget(referenceedit, 1)
+    referencerow.addWidget(openreferencebutton)
     spectragrid.addWidget(spectralist, 0, 0, 1, -1)
-    spectragrid.addLayout(make_row_layout([addmodelbutton, addreferencebutton, removebutton]), 1, 0, 1, -1)
+    spectragrid.addLayout(make_row_layout([addmodelbutton, removebutton]), 1, 0, 1, -1)
+    spectragrid.addLayout(referencerow, 2, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     _, optiongrid = add_section(panellayout, "Other options")
 
@@ -1632,9 +1663,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         add_spectra([folder])
 
-    def on_add_reference() -> None:
+    def on_open_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
         add_spectra([get_reference_token(filename) for filename in filenames])
+
+    def add_reference_name(name: str) -> None:
+        name = name.strip()
+        if not name:
+            return
+        if find_reference_spectrum_file_or_none(name) is None:
+            show_error(f"No reference spectrum {name} is in the working folder or in the reference data of artistools")
+            return
+        referenceedit.clear()
+        add_spectra([name])
+
+    def on_complete_reference(name: str) -> None:
+        # the completer puts the name in the field after this handler, thus clear the field after the event
+        QtCore.QTimer.singleShot(0, referenceedit.clear)
+        add_reference_name(name)
 
     def on_remove_spectra() -> None:
         selected = {item.data(QtCore.Qt.ItemDataRole.UserRole) for item in spectralist.selectedItems()}
@@ -1718,7 +1764,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
     addmodelbutton.clicked.connect(on_add_model)
-    addreferencebutton.clicked.connect(on_add_reference)
+    openreferencebutton.clicked.connect(on_open_reference)
+    referencecompleter.activated.connect(on_complete_reference)
+    referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
     removebutton.clicked.connect(on_remove_spectra)
     copybutton.clicked.connect(on_copy)
     pythoncopybutton.clicked.connect(on_copy_python)
