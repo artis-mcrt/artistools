@@ -1177,22 +1177,33 @@ def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidge
     return button
 
 
-def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QHBoxLayout":
-    """Return a layout that puts the widgets side by side from the left.
+def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QLayout":
+    """Return a layout that puts the widgets side by side from the left, and wraps the row in a narrow sidebar.
 
     A label, a checkbox, or a push button that follows a control starts a new group, e.g. a pair of a label and a
-    control. A wider space goes in front of it, thus the groups stay apart.
+    control. A wider space goes in front of it, thus the groups stay apart. A group stays on one line, and the next
+    group goes to a new line if the line is full.
     """
     from PySide6 import QtWidgets
 
     groupstarts = QtWidgets.QLabel | QtWidgets.QCheckBox | QtWidgets.QPushButton
-    rowlayout = QtWidgets.QHBoxLayout()
-    rowlayout.setSpacing(ROW_SPACING)
+    groups: list[list[QtWidgets.QWidget]] = []
     for index, widget in enumerate(widgets):
-        if index > 0 and isinstance(widget, groupstarts) and not isinstance(widgets[index - 1], QtWidgets.QLabel):
-            rowlayout.addSpacing(LABEL_GAP - ROW_SPACING)
-        rowlayout.addWidget(widget)
-    rowlayout.addStretch(1)
+        if index == 0 or (isinstance(widget, groupstarts) and not isinstance(widgets[index - 1], QtWidgets.QLabel)):
+            groups.append([])
+        groups[-1].append(widget)
+    rowlayout = make_flow_layout(spacing=ROW_SPACING, horizontalspacing=LABEL_GAP)
+    for group in groups:
+        if len(group) == 1:
+            rowlayout.addWidget(group[0])
+            continue
+        groupbox = QtWidgets.QWidget()
+        grouplayout = QtWidgets.QHBoxLayout(groupbox)
+        grouplayout.setContentsMargins(0, 0, 0, 0)
+        grouplayout.setSpacing(ROW_SPACING)
+        for widget in group:
+            grouplayout.addWidget(widget)
+        rowlayout.addWidget(groupbox)
     return rowlayout
 
 
@@ -1201,12 +1212,16 @@ def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidget
     grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
 
 
-def make_flow_layout() -> "QtWidgets.QLayout":
+def make_flow_layout(spacing: int = 4, horizontalspacing: int | None = None) -> "QtWidgets.QLayout":
     """Return a layout that puts its widgets side by side from the left, and starts a new row when a row is full.
 
     Qt has no such layout. A row of chips, e.g. the series of a subplot, then wraps to the width of the sidebar.
+    spacing is the space between the rows, and horizontalspacing is the space between two widgets of a row.
     """
-    return get_flow_layout_class()()
+    layout = get_flow_layout_class()()
+    layout.setSpacing(spacing)
+    layout.setProperty("horizontalspacing", spacing if horizontalspacing is None else horizontalspacing)
+    return layout
 
 
 @cache
@@ -1283,17 +1298,34 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
             return size
 
         def arrange(self, rect: QtCore.QRect, *, move: bool) -> int:
-            """Put each item in its place inside rect if move is True, and return the height that the rows take."""
-            x, y, rowheight = rect.x(), rect.y(), 0
+            """Put each item in its place inside rect if move is True, and return the height that the rows take.
+
+            A hidden widget takes no place. The items of a row share a vertical centre, thus a label stays level
+            with the text of the control beside it.
+            """
+            horizontalspacing = self.property("horizontalspacing")
+            gap = horizontalspacing if isinstance(horizontalspacing, int) else self.spacing()
+            rows: list[list[tuple[QtWidgets.QLayoutItem, QtCore.QSize, int]]] = [[]]
+            x = rect.x()
             for item in self.layoutitems:
                 hint = item.sizeHint()
-                if x + hint.width() > rect.right() + 1 and rowheight > 0:
-                    x, y, rowheight = rect.x(), y + rowheight + self.spacing(), 0
+                if item.isEmpty() or hint.isEmpty():
+                    continue
+                # an item wider than the row shrinks to the row, but not below its minimum width
+                hint.setWidth(max(min(hint.width(), rect.width()), item.minimumSize().width()))
+                if x + hint.width() > rect.right() + 1 and rows[-1]:
+                    rows.append([])
+                    x = rect.x()
+                rows[-1].append((item, hint, x))
+                x += hint.width() + gap
+            y = rect.y()
+            for row in rows:
+                rowheight = max((hint.height() for _, hint, _ in row), default=0)
                 if move:
-                    item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
-                x += hint.width() + self.spacing()
-                rowheight = max(rowheight, hint.height())
-            return y + rowheight - rect.y()
+                    for item, hint, itemx in row:
+                        item.setGeometry(QtCore.QRect(QtCore.QPoint(itemx, y + (rowheight - hint.height()) // 2), hint))
+                y += rowheight + self.spacing()
+            return max(y - self.spacing() - rect.y(), 0)
 
     return FlowLayout
 
@@ -2148,6 +2180,8 @@ def make_play_row(
         steps.addWidget(button)
     row = QtWidgets.QHBoxLayout()
     row.addLayout(steps)
+    # a narrow sidebar puts the text of the label on two lines
+    label.setWordWrap(True)
     row.addWidget(label, 1)
     row.addWidget(QtWidgets.QLabel("FPS:"))
     row.addWidget(fpsbox)

@@ -1889,6 +1889,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, cellgrid = add_section(panellayout, "Cells")
     geometrybox = QtWidgets.QComboBox()
+    # the box fills the width of the sidebar, and a narrow sidebar cuts its long texts
+    geometrybox.setMinimumWidth(120)
     for mode in get_geometry_choices(viewer.dimensions):
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
@@ -1990,6 +1992,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
     smoothingbox = QtWidgets.QComboBox()
+    smoothingbox.setMinimumWidth(120)
     for mode, modetext in SMOOTHING_MODES.items():
         smoothingbox.addItem(modetext, mode)
     smoothingbox.setToolTip("Smooth the line of each series")
@@ -2238,6 +2241,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else ""
         )
         quantity.setEnabled(False)
+        # a narrow sidebar cuts the text of the header and the type, and the buttons of the header stay in view
+        quantity.setMinimumWidth(1)
+        typebox.setMinimumWidth(100)
         disclosure = QtWidgets.QToolButton()
         disclosure.setArrowType(QtCore.Qt.ArrowType.RightArrow if iscollapsed else QtCore.Qt.ArrowType.DownArrow)
         disclosure.setStyleSheet("QToolButton { border: none; }")
