@@ -1111,6 +1111,8 @@ def add_section(
     header.toggled.connect(set_open)
     header.setChecked(isopen)
     set_open(isopen)
+    # the search field of the sidebar finds each section by its heading
+    header.setProperty("sectioncontent", content)
     panellayout.addWidget(header)
     panellayout.addWidget(content)
     return header, grid
@@ -1118,6 +1120,8 @@ def add_section(
 
 def set_section_shown(header: "QtWidgets.QToolButton", grid: "QtWidgets.QGridLayout", *, shown: bool) -> None:
     """Show or hide a section of add_section. A closed section that shows keeps its controls hidden."""
+    # the search field of the sidebar shows only the sections that the window shows
+    header.setProperty("sectionshown", shown)
     header.setVisible(shown)
     if (content := grid.parentWidget()) is not None:
         content.setVisible(shown and header.isChecked())
@@ -1442,8 +1446,8 @@ def make_option_table(
     hiddendests: "Collection[str]",
     rows: OptionRows,
     on_rows: "Callable[[OptionRows], None]",
-) -> "tuple[QtWidgets.QTableWidget, Callable[[OptionRows], None]]":
-    """Return a table of the options that no other control of the window sets, and a function that shows new rows.
+) -> "tuple[QtWidgets.QTableWidget, Callable[[OptionRows], None], Callable[[str], None]]":
+    """Return a table of the options that no other control sets, and the functions that show rows and add an option.
 
     The table has a list of the options that the user can search, and a control that matches the type of each
     option. on_rows receives the rows that have all their values after each change. The function that shows new
@@ -1620,8 +1624,12 @@ def make_option_table(
             optionrows[:] = list(newrows)
             show_option_rows()
 
+    def add_option(flag: str) -> None:
+        """Add a row of the option at the end of the table, e.g. from the search field of the sidebar."""
+        set_option(len(optionrows), flag)
+
     show_option_rows()
-    return optiontable, set_rows
+    return optiontable, set_rows, add_option
 
 
 def set_search_completion(completer: "QtWidgets.QCompleter") -> None:
@@ -1966,6 +1974,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Copy Figure", QtGui.QKeySequence(standardkey.Copy)),
         ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
+        ("Edit", "Find", QtGui.QKeySequence(standardkey.Find)),
         # macOS moves this item to the menu of the application
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),
@@ -1990,6 +1999,7 @@ MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
     "Play": "Play or pause",
+    "Find": "Search the controls and the options of the sidebar",
     "Hide Sidebar": "Hide or show the sidebar",
 })
 
@@ -2052,6 +2062,7 @@ def add_menus(
         "Minimize": window.showMinimized,
         "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
         "Settings…": lambda: show_settings_window(window),
+        "Find": lambda: focus_sidebar_search(window),
     }
     windowtitles: dict[str, Callable[[], str]] = {
         "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
@@ -2207,6 +2218,131 @@ def add_default_options(parser: "SuggestingArgumentParser", tokens: "Sequence[st
         if value > 0.0 and flag in actions and actions[flag].dest not in givendests:
             added += [flag, format(value, "g")]
     return [*added, *tokens]
+
+
+def focus_sidebar_search(window: "QtWidgets.QMainWindow") -> None:
+    """Give the keyboard to the search field of the sidebar, and show the sidebar if it is hidden."""
+    from PySide6 import QtWidgets
+
+    if is_sidebar_hidden(window):
+        toggle_sidebar(window)
+    if (searchedit := window.findChild(QtWidgets.QLineEdit, "sidebarsearch")) is not None:
+        searchedit.setFocus()
+        searchedit.selectAll()
+
+
+# the search field of the sidebar shows this number of options of the command at most
+MAX_SEARCH_OPTIONS: t.Final = 8
+
+
+def add_sidebar_search(
+    sidebar: "QtWidgets.QWidget",
+    panellayout: "QtWidgets.QVBoxLayout",
+    parser: argparse.ArgumentParser,
+    hiddendests: "Collection[str]",
+    add_option: "Callable[[str], None]",
+) -> None:
+    """Add a search field above the sections of the sidebar, as the Settings app of macOS has.
+
+    The text shows only the sections with a control that holds it, e.g. in a label or a tooltip, and opens them. Each
+    option of the command that holds the text shows as a button below the field, and a click adds the option to the
+    table of the other options.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    searchedit = QtWidgets.QLineEdit()
+    searchedit.setObjectName("sidebarsearch")
+    searchedit.setPlaceholderText("Search")
+    searchedit.setClearButtonEnabled(True)
+    searchedit.setToolTip(
+        f"Show the controls and the options of the command that hold the text ({get_menu_shortcut_texts()['Find']})"
+    )
+    resultsbox = QtWidgets.QWidget()
+    resultslayout = make_flow_layout()
+    resultsbox.setLayout(resultslayout)
+    resultsbox.hide()
+    searchbox = QtWidgets.QWidget()
+    searchlayout = QtWidgets.QVBoxLayout(searchbox)
+    searchlayout.setContentsMargins(8, 6, 8, 2)
+    searchlayout.addWidget(searchedit)
+    searchlayout.addWidget(resultsbox)
+    if (sidebarlayout := sidebar.layout()) is not None and isinstance(sidebarlayout, QtWidgets.QVBoxLayout):
+        sidebarlayout.insertWidget(0, searchbox)
+    tableactions = get_table_actions(parser, hiddendests)
+    helptexts = get_helptexts(parser)
+
+    def get_sections() -> "list[tuple[QtWidgets.QToolButton, QtWidgets.QWidget]]":
+        sections: list[tuple[QtWidgets.QToolButton, QtWidgets.QWidget]] = []
+        for index in range(panellayout.count()):
+            item = panellayout.itemAt(index)
+            header = item.widget() if item is not None else None
+            if isinstance(header, QtWidgets.QToolButton) and isinstance(
+                content := header.property("sectioncontent"), QtWidgets.QWidget
+            ):
+                sections.append((header, content))
+        return sections
+
+    def get_texts(content: "QtWidgets.QWidget") -> list[str]:
+        texts: list[str] = []
+        for child in [content, *content.findChildren(QtWidgets.QWidget)]:
+            texts.append(child.toolTip())
+            if isinstance(child, QtWidgets.QLabel | QtWidgets.QAbstractButton):
+                texts.append(child.text())
+            elif isinstance(child, QtWidgets.QLineEdit):
+                texts.append(child.placeholderText())
+            elif isinstance(child, QtWidgets.QComboBox):
+                texts.extend(child.itemText(index) for index in range(child.count()))
+        return texts
+
+    def on_add_option(flag: str) -> None:
+        searchedit.clear()
+        add_option(flag)
+        for header, _ in get_sections():
+            if header.text() == "Other options":
+                header.setChecked(True)
+
+    def on_search(text: str) -> None:
+        query = text.strip().lower()
+        for header, content in get_sections():
+            shown = header.property("sectionshown") is not False
+            if not query:
+                header.setVisible(shown)
+                content.setVisible(shown and header.isChecked())
+                continue
+            matches = shown and (
+                query in header.text().lower() or any(query in text.lower() for text in get_texts(content))
+            )
+            header.setVisible(matches)
+            content.setVisible(matches)
+        while (item := resultslayout.takeAt(0)) is not None:
+            if (widget := item.widget()) is not None:
+                # Qt deletes the button after the event, and the button must not show until then
+                widget.hide()
+                widget.deleteLater()
+        matchingactions = [
+            action
+            for action in tableactions
+            if query
+            and (
+                any(query in flag.lower() for flag in action.option_strings)
+                or query in helptexts.get(action.dest, "").lower()
+            )
+        ][:MAX_SEARCH_OPTIONS]
+        for action in matchingactions:
+            flag = action.option_strings[0]
+            button = QtWidgets.QToolButton()
+            button.setText(f"+ {flag}")
+            button.setToolTip(f"Add {flag} to the other options. {helptexts.get(action.dest, '')}")
+            button.clicked.connect(partial(on_add_option, flag))
+            resultslayout.addWidget(button)
+        resultsbox.setVisible(bool(matchingactions))
+
+    searchedit.textChanged.connect(on_search)
+    QtGui.QShortcut(
+        QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), searchedit, context=QtCore.Qt.ShortcutContext.WidgetShortcut
+    ).activated.connect(searchedit.clear)
 
 
 def activate_window(window: "QtWidgets.QWidget") -> None:
