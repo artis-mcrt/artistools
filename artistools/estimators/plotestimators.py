@@ -2526,7 +2526,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
         )
         dfselectedcells = get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
-        print(f"Getting mgi lying within a cone around {args.axis} axis")
+        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
         lzmodel, modelmeta = get_modeldata(modelpath)
         # the cone selection reads the mid-point positions, which are derived columns
         lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)

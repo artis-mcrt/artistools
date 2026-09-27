@@ -3716,11 +3716,13 @@ def test_interactive_geometry_modes_draw() -> None:
         "The half line of cells from the centre along the -y axis, with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and"
         " -0.09647c ≤ y < 0."
     )
-    assert describe("cone") == "The cells whose centre lies within 15° of the -y axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
+    assert describe("cone") == (
+        "The cells whose centre lies within 15° of the -y half-axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
+    )
     # 1 / tan 90° is not 0 in floating point, thus the cone of 180° leaves out the central plane
     values180 = interactive.set_geometry_mode(viewer, viewer.values, "cone")
     assert interactive.get_geometry_description(values180, viewer.modelmeta, "+z", 180.0) == (
-        "The cells in front of the +z axis: z_c > 0, and the cell at the centre."
+        "The cells on the side of the +z half-axis: z_c > 0, and the cell at the centre."
     )
     assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
     # a position between two edges selects the layer that holds it, in the unit of the position

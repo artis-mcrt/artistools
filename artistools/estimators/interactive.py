@@ -202,7 +202,7 @@ GEOMETRY_MODES: t.Final = MappingProxyType({
     "all": "The cells inside the sphere of radius v_max",
     "cells": "Selected cells (-cell)",
     "alongaxis": "A half line of cells from the centre along an axis (-readonlymgi alongaxis)",
-    "cone": "The cells in a cone around an axis (-readonlymgi cone)",
+    "cone": "The cells in a cone around a half-axis (-readonlymgi cone)",
     "plane": "A 2D plane slice of cells as an image (-slice)",
     "line": "A full line of cells through the grid along an axis (-slice)",
     "average": "The mean over rings around the z axis as an image (-dimensionreduce 2)",
@@ -647,9 +647,9 @@ def get_geometry_description(
         signedname = f"{name}_c" if sign == "+" else f"-{name}_c"
         if math.isclose(halfangle, 90.0):
             # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
-            return f"The cells in front of the {axis} axis: {signedname} > 0, and the cell at the centre."
+            return f"The cells on the side of the {axis} half-axis: {signedname} > 0, and the cell at the centre."
         return (
-            f"The cells whose centre lies within {halfangle:g}° of the {axis} axis:"
+            f"The cells whose centre lies within {halfangle:g}° of the {axis} half-axis:"
             f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
         )
     if mode == "plane":
