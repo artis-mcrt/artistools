@@ -98,6 +98,7 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import set_window_document
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
@@ -940,7 +941,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
-    window.setWindowTitle(f"{APPLICATION_NAME} {' '.join(Path(path).name for path in viewer.modelpathtokens)}")
+    # a command with no path reads the model of the working folder
+    modelnames = [Path(path).absolute().name for path in viewer.modelpathtokens] or [
+        viewer.runfolders[0].absolute().name
+    ]
+    set_window_document(window, viewer.runfolders[0], ", ".join(modelnames))
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
@@ -1182,7 +1187,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    add_sidebar_search(sidebar, panellayout, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, add_option)
+    add_sidebar_search(
+        toolbar.search, sidebar, panellayout, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, add_option
+    )
     commandtext, copybutton = add_command_section(panellayout)
     pythontext, pythoncopybutton = add_copy_box(
         panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
@@ -1382,7 +1389,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             widget.setEnabled(values.showemission or values.showabsorption)
         nostackcheck.setChecked(values.nostack)
         lockbutton.setChecked(bool(values.fixedionlist))
-        lockbutton.setText(f"Lock series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock series")
+        lockbutton.setText(f"Lock Series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock Series")
         binmode = "deltax" if values.deltax else "deltalogx" if values.deltalogx else ""
         binmodebox.setCurrentIndex(binmodebox.findData(binmode))
         if binmode:
@@ -1782,10 +1789,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
         )
 
-    def on_colour_scheme() -> None:
-        """Draw the plot again with the colours of the new appearance of the system, e.g. Dark Mode."""
+    def draw_with_new_colours() -> None:
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
+
+    def on_colour_scheme() -> None:
+        """Draw the plot again with the colours of the new appearance, e.g. Dark Mode.
+
+        Qt gives the new palette after the signal, thus the plot waits until Qt has no other events.
+        """
+        QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
 
     def get_animation_values() -> list[ControlValues]:
         """Return the values of each step of Play, from the first valid timestep to the last."""
@@ -1808,6 +1821,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         frametokens = [viewer.get_plot_tokens(values) for values in get_animation_values()]
         export_animation(window, queue, statusbar, plotspectra_main, "plotspectra", frametokens, fpsbox.value())
+
+    def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
+        """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
+        menu = QtWidgets.QMenu(window)
+        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
+        menu.addAction("Export Animation…").triggered.connect(on_export_animation)
+        menu.exec(QtGui.QCursor.pos())
+        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
+        menu.deleteLater()
 
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
@@ -1861,6 +1884,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     toolbar.save.triggered.connect(on_save)
     toolbar.copyfigure.triggered.connect(on_copy_figure)
     toolbar.copycommand.triggered.connect(on_copy)
+    toolbar.exportanimation.triggered.connect(on_export_animation)
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
     timeedit.editingFinished.connect(on_timeedit)
@@ -1909,6 +1933,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_select=set_xlimits,
         on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
         can_select=lambda: True,
+        on_menu=on_plot_menu,
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (

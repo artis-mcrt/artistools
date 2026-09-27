@@ -128,6 +128,7 @@ from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_section_shown
 from artistools.viewertools import set_spin_value
+from artistools.viewertools import set_window_document
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
@@ -1785,7 +1786,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
-    window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
+    set_window_document(window, viewer.modelpath, viewer.modelpath.absolute().name)
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
@@ -2070,7 +2071,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         window, viewer.parser, tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    add_sidebar_search(sidebar, panellayout, viewer.parser, tablehiddendests, add_option)
+    add_sidebar_search(toolbar.search, sidebar, panellayout, viewer.parser, tablehiddendests, add_option)
     commandtext, copybutton = add_command_section(panellayout)
     pythontext, pythoncopybutton = add_copy_box(
         panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
@@ -3032,7 +3033,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             set_directives(row, {"ymin": ymin, "ymax": ymax})
 
     def on_menu(frameindex: int, event: t.Any) -> None:
-        """Show the menu of a subplot: the y scale, the y range, and the plot of a cell or of a snapshot."""
+        """Show the menu of a subplot: the y scale, the y range, the plot of a cell or of a snapshot, and the figure."""
         if not plot_shows_values():
             return
         menu = QtWidgets.QMenu(window)
@@ -3060,15 +3061,27 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             if viewer.values.cells:
                 cellsaction = menu.addAction(f"Plot Cells {viewer.values.cells} Against Time")
                 cellsaction.triggered.connect(lambda: apply(get_evolution_values(viewer, viewer.values.cells)))
+        # a context menu of a Mac app gives the actions on the object under the pointer, here the figure
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
+        menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    def on_colour_scheme() -> None:
-        """Draw the plot again with the colours of the new appearance of the system, e.g. Dark Mode."""
+    def draw_with_new_colours() -> None:
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
+
+    def on_colour_scheme() -> None:
+        """Draw the plot again with the colours of the new appearance, e.g. Dark Mode.
+
+        Qt gives the new palette after the signal, thus the plot waits until Qt has no other events.
+        """
+        QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
 
     def get_animation_values() -> list[ControlValues]:
         """Return the values of each step of Play: each timestep of a snapshot, or each cell of a plot against time."""
@@ -3156,6 +3169,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     toolbar.save.triggered.connect(on_save)
     toolbar.copyfigure.triggered.connect(on_copy_figure)
     toolbar.copycommand.triggered.connect(on_copy)
+    toolbar.exportanimation.triggered.connect(on_export_animation)
     cellslider.valueChanged.connect(on_cell)
     celledit.editingFinished.connect(on_celledit)
     geometrybox.activated.connect(on_geometry)

@@ -742,6 +742,26 @@ def start_application(
 
     keyownerfilter = KeyOwnerFilter(app)
     app.installEventFilter(keyownerfilter)
+    apply_appearance()
+
+    class InspectorSizer(QtCore.QObject):
+        """Give each control of the sidebar the small size of macOS, as the inspector of Keynote has.
+
+        The cards of the subplots come and go, thus the filter gives the size to each widget when Qt polishes it.
+        """
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            if event.type() == QtCore.QEvent.Type.Polish and isinstance(watched, QtWidgets.QWidget):
+                parent = watched.parentWidget()
+                while parent is not None and parent.objectName() != "inspector":
+                    parent = parent.parentWidget()
+                if parent is not None:
+                    watched.setAttribute(QtCore.Qt.WidgetAttribute.WA_MacSmallSize)
+            return super().eventFilter(watched, event)
+
+    if sys.platform == "darwin":
+        app.installEventFilter(InspectorSizer(app))
 
     class EditTracker(QtCore.QObject):
         """Keep the text field that the user confirmed last, and the time, in two properties of its window.
@@ -926,7 +946,9 @@ def set_drop_handler(window: "QtWidgets.QMainWindow", handler: "Callable[[list[s
 def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callable[[str], None]") -> None:
     """Open a folder from the Dock icon in a new window, and give a file to the active window.
 
-    macOS gives such an item to the application as a QFileOpenEvent, and not to a window.
+    macOS gives such an item to the application as a QFileOpenEvent, and not to a window. At the start, macOS also
+    gives each path of the command line as such an event, and the first window already shows those paths. Thus the
+    filter ignores them.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -939,11 +961,14 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
         def __init__(self, parent: QtCore.QObject, open_folder: "Callable[[str], None]") -> None:
             super().__init__(parent)
             self.open_folder = open_folder
+            self.launchpaths = {str(Path(argument).absolute()) for argument in sys.orig_argv}
 
         @t.override
         def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
             if event.type() == QtCore.QEvent.Type.FileOpen and isinstance(event, QtGui.QFileOpenEvent):
                 path = event.file()
+                if str(Path(path).absolute()) in self.launchpaths:
+                    return True
                 activewindow = QtWidgets.QApplication.activeWindow()
                 handler = activewindow.property("drophandler") if activewindow is not None else None
                 if Path(path).is_dir() or not callable(handler):
@@ -987,10 +1012,20 @@ def get_session_setting_key() -> str:
 
 
 def add_session_window(tokens: "Sequence[str]") -> None:
-    """Keep the command of a window that closes because the application quits."""
+    """Keep the command of a window that closes because the application quits.
+
+    Each path of the command that exists in the working folder becomes an absolute path, because the next start can
+    be in a different folder. A name of a reference file in the data of artistools stays a name.
+    """
     get_settings().setValue(
-        get_session_setting_key(), [*get_list_setting(get_session_setting_key()), json.dumps(list(tokens))]
+        get_session_setting_key(),
+        [*get_list_setting(get_session_setting_key()), json.dumps(get_absolute_tokens(tokens))],
     )
+
+
+def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
+    """Return the tokens of a command with an absolute path for each path that exists in the working folder."""
+    return [str(Path(word).absolute()) if not word.startswith("-") and Path(word).exists() else word for word in tokens]
 
 
 def take_session_windows() -> list[list[str]]:
@@ -1015,7 +1050,7 @@ def reopen_session_windows(
     because each window fits it to its own size. An error of a window goes to the terminal.
     """
     shown = [
-        remove_figwidthscale(window.property("sessiontokens")())
+        remove_figwidthscale(get_absolute_tokens(window.property("sessiontokens")()))
         for window in windows
         if callable(window.property("sessiontokens"))
     ]
@@ -1099,7 +1134,11 @@ def add_section(
     header.setCheckable(True)
     header.setAutoRaise(True)
     header.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    header.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
+    header.setStyleSheet("QToolButton { border: none; }")
+    # the macOS style gives a tool button a small font, and a heading takes the bold font of the application
+    font = QtWidgets.QApplication.font()
+    font.setBold(True)
+    header.setFont(font)
     content = QtWidgets.QWidget()
     grid = QtWidgets.QGridLayout(content)
     # a small space between the rows and the sections keeps more of the controls in view
@@ -1377,6 +1416,8 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     from PySide6 import QtWidgets
 
     sidebar = QtWidgets.QWidget()
+    # the controls in the sidebar take the small size of macOS, which start_application gives by this name
+    sidebar.setObjectName("inspector")
     # the handle of the splitter sets the width, and a narrower sidebar cuts the controls
     sidebar.setMinimumWidth(360)
     sidebarlayout = QtWidgets.QVBoxLayout(sidebar)
@@ -1799,19 +1840,22 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
     playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
 
 
-def get_theme_icon(
-    themeicon: "QtGui.QIcon.ThemeIcon", fallback: "QtWidgets.QStyle.StandardPixmap | None"
+def get_icon(
+    symbol: str, themeicon: "QtGui.QIcon.ThemeIcon | None", fallback: "QtWidgets.QStyle.StandardPixmap | None"
 ) -> "QtGui.QIcon":
-    """Return the icon of the platform, e.g. an SF Symbol, or the icon of the Qt style.
+    """Return the SF Symbol of the name on macOS, else the icon of the theme, else the icon of the Qt style.
 
-    With no fallback, the result can be an empty icon, and a tool button then shows its text.
+    Qt gives an SF Symbol for its name on macOS. The result can be an empty icon, and a tool button then shows its
+    text.
     """
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    icon = QtGui.QIcon.fromTheme(themeicon)
+    icon = QtGui.QIcon.fromTheme(symbol) if sys.platform == "darwin" else QtGui.QIcon()
+    if icon.isNull() and themeicon is not None:
+        icon = QtGui.QIcon.fromTheme(themeicon)
     if icon.isNull() and fallback is not None:
-        return QtWidgets.QApplication.style().standardIcon(fallback)
+        icon = QtWidgets.QApplication.style().standardIcon(fallback)
     return icon
 
 
@@ -1832,22 +1876,25 @@ def make_segmented_control(labels: "Sequence[str]", tooltips: "Sequence[str]") -
 
 
 class ViewerToolbar(t.NamedTuple):
-    """The toolbar of a window: the steps of the time, Play, the frame rate, and the export actions."""
+    """The toolbar of a window: the steps of the time, Play, the frame rate, the export actions, and the search."""
 
     previous: "QtGui.QAction"
     play: "QtGui.QAction"
     next: "QtGui.QAction"
     fpsbox: "QtWidgets.QDoubleSpinBox"
     save: "QtGui.QAction"
+    exportanimation: "QtGui.QAction"
     copyfigure: "QtGui.QAction"
     copycommand: "QtGui.QAction"
+    search: "QtWidgets.QLineEdit"
 
 
 def make_toolbar(window: "QtWidgets.QMainWindow", playtooltip: str) -> ViewerToolbar:
     """Add the toolbar at the top of the window, as the apps of macOS have, and return its actions.
 
     The toolbar holds the actions that a user takes often, thus they stay in view while the sidebar scrolls. The
-    Play action is checkable, and its icon shows Pause while Play runs.
+    Play action is checkable, and its icon shows Pause while Play runs. The search field and the button of the
+    sidebar are at the trailing edge, as in Finder and Mail.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -1862,38 +1909,70 @@ def make_toolbar(window: "QtWidgets.QMainWindow", playtooltip: str) -> ViewerToo
     toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
     window.setUnifiedTitleAndToolBarOnMac(True)
 
-    previous = toolbar.addAction(get_theme_icon(themeicon.MediaSkipBackward, pixmap.SP_MediaSkipBackward), "Previous")
-    previous.setToolTip("Move the time to the previous timestep (Left key)")
-    playicon = get_theme_icon(themeicon.MediaPlaybackStart, pixmap.SP_MediaPlay)
-    pauseicon = get_theme_icon(themeicon.MediaPlaybackPause, pixmap.SP_MediaPause)
-    play = toolbar.addAction(playicon, "Play")
+    def add_action(text: str, icon: "QtGui.QIcon", tooltip: str) -> "QtGui.QAction":
+        action = toolbar.addAction(icon, text)
+        action.setToolTip(tooltip)
+        return action
+
+    previous = add_action(
+        "Previous",
+        get_icon("backward.end.fill", themeicon.MediaSkipBackward, pixmap.SP_MediaSkipBackward),
+        "Move the time to the previous timestep (Left key)",
+    )
+    playicon = get_icon("play.fill", themeicon.MediaPlaybackStart, pixmap.SP_MediaPlay)
+    pauseicon = get_icon("pause.fill", themeicon.MediaPlaybackPause, pixmap.SP_MediaPause)
+    play = add_action("Play", playicon, playtooltip)
     play.setCheckable(True)
-    play.setToolTip(playtooltip)
 
     def show_play_state(checked: bool) -> None:
         play.setIcon(pauseicon if checked else playicon)
 
     play.toggled.connect(show_play_state)
-    nextaction = toolbar.addAction(get_theme_icon(themeicon.MediaSkipForward, pixmap.SP_MediaSkipForward), "Next")
-    nextaction.setToolTip("Move the time to the next timestep (Right key)")
+    nextaction = add_action(
+        "Next",
+        get_icon("forward.end.fill", themeicon.MediaSkipForward, pixmap.SP_MediaSkipForward),
+        "Move the time to the next timestep (Right key)",
+    )
     fpsbox = make_fps_box()
     toolbar.addWidget(QtWidgets.QLabel(" FPS: "))
     toolbar.addWidget(fpsbox)
     toolbar.addSeparator()
-    save = toolbar.addAction(get_theme_icon(themeicon.DocumentSave, pixmap.SP_DialogSaveButton), "Save Figure…")
-    save.setToolTip("Save the figure of the command in a file (Save Figure…)")
-    copyfigure = toolbar.addAction(get_theme_icon(themeicon.EditCopy, None), "Copy Figure")
-    copyfigure.setToolTip("Copy the figure as an image")
-    copycommand = toolbar.addAction("Copy Command")
-    copycommand.setToolTip("Copy the command of the plot")
+    save = add_action(
+        "Save Figure…",
+        get_icon("square.and.arrow.down", themeicon.DocumentSave, pixmap.SP_DialogSaveButton),
+        "Save the figure of the command in a file",
+    )
+    exportanimation = add_action(
+        "Export Animation…", get_icon("film", None, None), "Save a GIF file of the steps of Play"
+    )
+    copyfigure = add_action("Copy Figure", get_icon("doc.on.doc", themeicon.EditCopy, None), "Copy the figure")
+    copycommand = add_action("Copy Command", get_icon("terminal", None, None), "Copy the command of the plot")
+
+    spacer = QtWidgets.QWidget()
+    spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+    toolbar.addWidget(spacer)
+    search = QtWidgets.QLineEdit()
+    search.setObjectName("sidebarsearch")
+    search.setPlaceholderText("Search")
+    search.setClearButtonEnabled(True)
+    search.setFixedWidth(220)
+    search.addAction(
+        get_icon("magnifyingglass", themeicon.SystemSearch, None), QtWidgets.QLineEdit.ActionPosition.LeadingPosition
+    )
+    toolbar.addWidget(search)
+    add_action(
+        "Hide Sidebar", get_icon("sidebar.right", None, None), "Hide or show the sidebar of the controls"
+    ).triggered.connect(lambda: toggle_sidebar(window))
     return ViewerToolbar(
         previous=previous,
         play=play,
         next=nextaction,
         fpsbox=fpsbox,
         save=save,
+        exportanimation=exportanimation,
         copyfigure=copyfigure,
         copycommand=copycommand,
+        search=search,
     )
 
 
@@ -1991,6 +2070,9 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Window", "Minimize", QtGui.QKeySequence("Ctrl+M")),
         ("Window", "Zoom", QtGui.QKeySequence()),
         ("Help", "Keys and Mouse Actions", QtGui.QKeySequence("?")),
+        ("Help", "artistools Help", QtGui.QKeySequence()),
+        # macOS moves this item to the menu of the application, with the name of the application
+        ("Help", "About", QtGui.QKeySequence()),
     ]
 
 
@@ -2059,6 +2141,7 @@ def add_menus(
     window. enabled tells whether an item can run, e.g. Undo, and titles gives the text of an item that changes, e.g.
     Pause for Play. File > Open Recent gives a recent model to open_folder.
     """
+    from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
@@ -2070,6 +2153,8 @@ def add_menus(
         "Zoom": lambda: window.showNormal() if window.isMaximized() else window.showMaximized(),
         "Settings…": lambda: show_settings_window(window),
         "Find": lambda: focus_sidebar_search(window),
+        "artistools Help": lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(HELP_URL)),
+        "About": lambda: show_about(window),
     }
     windowtitles: dict[str, Callable[[], str]] = {
         "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
@@ -2084,13 +2169,18 @@ def add_menus(
     menus = {name: menubar.addMenu(name) for name in ("File", "Edit", "View", "Window", "Help")}
     actions: dict[str, QtGui.QAction] = {}
     for menuname, text, keys in get_menu_items():
-        if text not in allcallbacks:
+        # macOS adds its own Enter Full Screen item to a menu with the title View
+        if text not in allcallbacks or (text == "Enter Full Screen" and sys.platform == "darwin"):
             continue
         action = menus[menuname].addAction(text)
         action.setShortcut(keys)
         action.triggered.connect(allcallbacks[text])
+        # the role of an application item puts Settings… in the menu of the application on macOS with this text.
+        # The role of Preferences gave the old text "Preferences..."
         if text == "Settings…":
-            action.setMenuRole(QtGui.QAction.MenuRole.PreferencesRole)
+            action.setMenuRole(QtGui.QAction.MenuRole.ApplicationSpecificRole)
+        elif text == "About":
+            action.setMenuRole(QtGui.QAction.MenuRole.AboutRole)
         actions[text] = action
         if text == "Open Model…":
             add_recent_menu(menus["File"], open_folder)
@@ -2149,6 +2239,57 @@ def add_recent_menu(filemenu: "QtWidgets.QMenu", open_folder: "Callable[[str], o
     recentmenu.aboutToShow.connect(show_recent_models)
 
 
+# the documentation of artistools, which Help > artistools Help opens
+HELP_URL: t.Final = "https://github.com/artis-mcrt/artistools#readme"
+
+# the choices of the appearance in the Settings window, as the Settings of macOS and Xcode name them
+APPEARANCES: t.Final = ("System", "Light", "Dark")
+
+
+def apply_appearance() -> None:
+    """Give the application the appearance of the Settings window: the appearance of the system, light, or dark.
+
+    A change gives the signal colorSchemeChanged, and each window then draws its plot again.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    schemes = {"Light": QtCore.Qt.ColorScheme.Light, "Dark": QtCore.Qt.ColorScheme.Dark}
+    appearance = str(get_settings().value("appearance", "System"))
+    QtGui.QGuiApplication.styleHints().setColorScheme(schemes.get(appearance, QtCore.Qt.ColorScheme.Unknown))
+
+
+def show_about(parent: "QtWidgets.QWidget") -> None:
+    """Show the About panel of the viewer: the name, the version of artistools, and the link to the source."""
+    import importlib.metadata
+
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    name = QtWidgets.QApplication.applicationDisplayName()
+    version = importlib.metadata.version("artistools")
+    about = QtWidgets.QMessageBox(parent)
+    about.setWindowTitle(f"About {name}")
+    about.setIconPixmap(QtWidgets.QApplication.windowIcon().pixmap(64, 64))
+    # macOS shows the text in bold and the informative text in a small regular font, as an About panel of a Mac app
+    about.setText(name)
+    about.setInformativeText(
+        f"artistools {version}<br>Qt {QtCore.qVersion()}, Python {sys.version.split()[0]}<br><br>"
+        '<a href="https://github.com/artis-mcrt/artistools">github.com/artis-mcrt/artistools</a>'
+    )
+    about.exec()
+
+
+def set_window_document(window: "QtWidgets.QMainWindow", folder: Path, title: str) -> None:
+    """Give the window the title of its model and the folder of the model as its file.
+
+    macOS then shows the icon of the folder in the title bar. A Command-click on the title shows the path, and a drag
+    of the icon gives the folder to a different app.
+    """
+    window.setWindowTitle(title)
+    window.setWindowFilePath(str(folder.absolute()))
+
+
 def show_settings_window(parent: "QtWidgets.QWidget") -> None:
     """Show the Settings window of the viewers, or bring it to the front if it is open.
 
@@ -2168,6 +2309,22 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
     dialog.setWindowTitle("Settings")
     dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
     form = QtWidgets.QFormLayout(dialog)
+    # a Settings window of macOS has the size of its content
+    form.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
+
+    appearancesegments = make_segmented_control(
+        list(APPEARANCES),
+        ["The appearance of macOS, light or dark", "A light window and plot", "A dark window and plot"],
+    )
+    appearance = str(settings.value("appearance", "System"))
+    appearancesegments.setCurrentIndex(APPEARANCES.index(appearance) if appearance in APPEARANCES else 0)
+
+    def on_appearance(index: int) -> None:
+        settings.setValue("appearance", APPEARANCES[index])
+        apply_appearance()
+
+    appearancesegments.currentChanged.connect(on_appearance)
+    form.addRow("Appearance:", appearancesegments)
 
     fpsbox = make_fps_box()
     fpsbox.setToolTip("The frames per second of Play in a new window")
@@ -2180,8 +2337,8 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
     previewcheck.toggled.connect(partial(settings.setValue, "dragpreview"))
     form.addRow(previewcheck)
 
-    darkcheck = QtWidgets.QCheckBox("Show the plot in the colours of Dark Mode")
-    darkcheck.setToolTip("A saved figure keeps its usual colours")
+    darkcheck = QtWidgets.QCheckBox("Show the plot in the colours of a dark appearance")
+    darkcheck.setToolTip("A saved figure keeps its usual colours. Without this choice, the plot stays light")
     darkcheck.setChecked(get_bool_setting("darkplot", default=True))
 
     def on_dark(checked: bool) -> None:
@@ -2201,6 +2358,8 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
 
     for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
         box = QtWidgets.QDoubleSpinBox()
+        # the box shows the text "Default", which is wider than a number
+        box.setMinimumWidth(100)
         box.setRange(0.0, maximum)
         box.setSingleStep(step)
         # the minimum of the box shows "Default", which gives no option
@@ -2243,13 +2402,14 @@ MAX_SEARCH_OPTIONS: t.Final = 8
 
 
 def add_sidebar_search(
+    searchedit: "QtWidgets.QLineEdit",
     sidebar: "QtWidgets.QWidget",
     panellayout: "QtWidgets.QVBoxLayout",
     parser: argparse.ArgumentParser,
     hiddendests: "Collection[str]",
     add_option: "Callable[[str], None]",
 ) -> None:
-    """Add a search field above the sections of the sidebar, as the Settings app of macOS has.
+    """Let the search field of the toolbar filter the sections of the sidebar, as the Settings app of macOS does.
 
     The text shows only the sections with a control that holds it, e.g. in a label or a tooltip, and opens them. Each
     option of the command that holds the text shows as a button below the field. A click on the button adds the
@@ -2259,24 +2419,17 @@ def add_sidebar_search(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    searchedit = QtWidgets.QLineEdit()
-    searchedit.setObjectName("sidebarsearch")
-    searchedit.setPlaceholderText("Search")
-    searchedit.setClearButtonEnabled(True)
     searchedit.setToolTip(
         f"Show the controls and the options of the command that hold the text ({get_menu_shortcut_texts()['Find']})"
     )
+    # the options of the command that match the text show above the sections
     resultsbox = QtWidgets.QWidget()
     resultslayout = make_flow_layout()
     resultsbox.setLayout(resultslayout)
+    resultsbox.setContentsMargins(8, 6, 8, 2)
     resultsbox.hide()
-    searchbox = QtWidgets.QWidget()
-    searchlayout = QtWidgets.QVBoxLayout(searchbox)
-    searchlayout.setContentsMargins(8, 6, 8, 2)
-    searchlayout.addWidget(searchedit)
-    searchlayout.addWidget(resultsbox)
     if (sidebarlayout := sidebar.layout()) is not None and isinstance(sidebarlayout, QtWidgets.QVBoxLayout):
-        sidebarlayout.insertWidget(0, searchbox)
+        sidebarlayout.insertWidget(0, resultsbox)
     tableactions = get_table_actions(parser, hiddendests)
     helptexts = get_helptexts(parser)
 
@@ -2312,6 +2465,10 @@ def add_sidebar_search(
 
     def on_search(text: str) -> None:
         query = text.strip().lower()
+        # the results show in the sidebar, thus a search shows a hidden sidebar
+        window = sidebar.window()
+        if query and isinstance(window, QtWidgets.QMainWindow) and is_sidebar_hidden(window):
+            toggle_sidebar(window)
         for header, content in get_sections():
             shown = header.property("sectionshown") is not False
             if not query:
@@ -2407,6 +2564,10 @@ def toggle_toolbar(window: "QtWidgets.QMainWindow") -> None:
         toolbar.setVisible(not shown)
 
 
+# the background and the text colour of a dark plot while the palette of the window is still light
+DARK_PLOT_COLOURS: t.Final = ("#323232", "#dfdfdf")
+
+
 def get_dark_plot_colours() -> tuple[str, str] | None:
     """Return the background colour and the text colour of the window in Dark Mode, or None for a light plot.
 
@@ -2421,10 +2582,11 @@ def get_dark_plot_colours() -> tuple[str, str] | None:
     if QtGui.QGuiApplication.styleHints().colorScheme() != QtCore.Qt.ColorScheme.Dark:
         return None
     palette = QtGui.QGuiApplication.palette()
-    return (
-        palette.color(QtGui.QPalette.ColorRole.Window).name(),
-        palette.color(QtGui.QPalette.ColorRole.WindowText).name(),
-    )
+    background = palette.color(QtGui.QPalette.ColorRole.Window)
+    # Qt gives the signal of a new colour scheme before it gives the new palette
+    if background.lightness() > 128:
+        return DARK_PLOT_COLOURS
+    return background.name(), palette.color(QtGui.QPalette.ColorRole.WindowText).name()
 
 
 def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -> None:
