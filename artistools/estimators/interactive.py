@@ -93,6 +93,7 @@ from artistools.viewertools import get_table_actions
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_flow_layout
+from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -106,7 +107,6 @@ from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
-from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
@@ -1764,7 +1764,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     windows.append(window)
 
     fittimer = make_timer(window, FIT_MILLISECONDS)
-    playtimer = make_timer(window, PLAY_MILLISECONDS)
+    playtimer = make_timer(window, 0)
 
     def on_resize() -> None:
         fit_canvas(canvas, viewer.figsize, plotarea)
@@ -1790,8 +1790,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     playbutton = QtWidgets.QPushButton("Play")
     playbutton.setCheckable(True)
     playbutton.setToolTip(
-        "Move a snapshot through the timesteps of the run, or move a plot against time through the cells (Space)"
+        "Move a snapshot through the timesteps of the run, or move a plot against time through the cells. After the"
+        " last step, Play starts again at the first step (Space)"
     )
+    fpsbox = make_fps_box()
     # a plot against time takes a range of timesteps, as the x range of plotspectra. A snapshot takes a time and a width
     trangebox = QtWidgets.QWidget()
     trangelayout = QtWidgets.QHBoxLayout(trangebox)
@@ -1825,7 +1827,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addWidget(widthlabel, 1, 0)
     timegrid.addWidget(widthslider, 1, 1, 1, 2)
     timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
-    timegrid.addWidget(playbutton, 2, 2)
+    timegrid.addLayout(make_row_layout([QtWidgets.QLabel("FPS:"), fpsbox, playbutton]), 2, 2)
 
     _, cellgrid = add_section(panellayout, "Cells")
     geometrybox = QtWidgets.QComboBox()
@@ -2542,7 +2544,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds)
+            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
     queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, render=viewer.render)
     apply = queue.apply
@@ -2611,11 +2613,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if (values := viewer.step_cell(step)) is not None:
             apply(values)
 
+    def get_play_values() -> ControlValues | None:
+        """Return the values of the next step of Play, or None if Play has no step.
+
+        After the last cell or the last timestep, Play starts again at the first one.
+        """
+        if not is_evolution(viewer.values):
+            return viewer.step_time(1) or viewer.move_to_end(last=False)
+        # -cell does not select the cells of some plots, e.g. of a plane
+        if not viewer.cells or not cells_apply(viewer.values):
+            return None
+        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.cells[0]))
+
     def play_step() -> None:
         if not playbutton.isChecked():
             return
-        values = viewer.step_cell(1) if is_evolution(viewer.values) else viewer.step_time(1)
-        if values is None:
+        values = get_play_values()
+        # a time range that covers every valid timestep, or a model of one cell, has no other step
+        if values is None or values == viewer.values:
             playbutton.setChecked(False)
             return
         apply(values)

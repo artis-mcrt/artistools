@@ -63,6 +63,7 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
+from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
@@ -76,7 +77,6 @@ from artistools.viewertools import make_window
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
-from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
@@ -926,7 +926,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     windows.append(window)
 
     fulldrawtimer = make_timer(window, FULL_DRAW_MILLISECONDS)
-    playtimer = make_timer(window, PLAY_MILLISECONDS)
+    playtimer = make_timer(window, 0)
     fittimer = make_timer(window, FIT_MILLISECONDS)
 
     def on_resize() -> None:
@@ -969,7 +969,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timestepslabel = QtWidgets.QLabel()
     playbutton = QtWidgets.QPushButton("Play")
     playbutton.setCheckable(True)
-    playbutton.setToolTip("Move the time through the valid timesteps of the run (Space)")
+    playbutton.setToolTip(
+        "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
+    )
+    fpsbox = make_fps_box()
     timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
     widthtip = (
         'The width of the time range. The Up key and the Down key change the width by one timestep. With "Snap to'
@@ -986,7 +989,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(slider, row, 1)
         timegrid.addWidget(edit, row, 2)
     timegrid.addWidget(timestepslabel, 3, 0, 1, 2)
-    timegrid.addWidget(playbutton, 3, 2)
+    timegrid.addLayout(make_row_layout([QtWidgets.QLabel("FPS:"), fpsbox, playbutton]), 3, 2)
 
     xheader, xgrid = add_section(panellayout, "")
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
@@ -1408,7 +1411,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds)
+            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
     def change_with_preview(values: ControlValues) -> str | None:
         return viewer.change(values, preview=True)
@@ -1508,7 +1511,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def play_step() -> None:
         if not playbutton.isChecked():
             return
-        if (values := viewer.step_time(1)) is None:
+        # after the last timestep, Play starts again at the first timestep
+        values = viewer.step_time(1) or viewer.move_to_end(last=False)
+        # a time range that covers every valid timestep has no other step
+        if values == viewer.values:
             playbutton.setChecked(False)
             return
         apply(values)

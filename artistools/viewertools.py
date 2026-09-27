@@ -77,8 +77,8 @@ SLIDER_STEPS: t.Final = 1000
 # the first width of the sidebar. The user can drag the handle between the plot and the sidebar
 SIDEBAR_WIDTH: t.Final = 600
 
-# the Play button waits for this time after each plot, thus the user can see each step
-PLAY_MILLISECONDS: t.Final = 150
+# the first frame rate of the Play button, in frames per second
+DEFAULT_PLAY_FPS: t.Final = 5.0
 
 
 def get_command_tokens(
@@ -1453,13 +1453,29 @@ def fit_command_box(commandtext: "QtWidgets.QPlainTextEdit") -> None:
     commandtext.setFixedHeight(math.ceil(boxheight + 2 * document.documentMargin() + 2 * commandtext.frameWidth()))
 
 
-def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float) -> None:
-    """Start the pause before the next step of Play.
+def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float) -> None:
+    """Start the pause before the next step of Play, thus a step takes 1/fps seconds.
 
-    The pause lets the user see each step. The old plot stays in view while the worker draws the next one, thus a
-    plot that took longer than the pause needs no pause.
+    The old plot stays in view while the worker draws the next one, thus the pause is the rest of the time of the step.
+    A plot that takes longer than 1/fps seconds gives a lower rate.
     """
-    playtimer.start(max(0, PLAY_MILLISECONDS - round(plotseconds * 1000.0)))
+    playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
+
+
+def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
+    """Return the box of the frame rate of Play, with up and down buttons."""
+    from PySide6 import QtWidgets
+
+    fpsbox = QtWidgets.QDoubleSpinBox()
+    fpsbox.setRange(0.2, 60.0)
+    fpsbox.setDecimals(1)
+    fpsbox.setSingleStep(1.0)
+    fpsbox.setValue(DEFAULT_PLAY_FPS)
+    fpsbox.setToolTip(
+        "The frames per second of Play. A plot that takes longer than one frame gives a lower rate. After the last"
+        " step, Play starts again at the first step."
+    )
+    return fpsbox
 
 
 class StatusBar(t.NamedTuple):
