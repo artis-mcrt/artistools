@@ -2277,7 +2277,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             QtWidgets.QLabel(f"{quantityname} max"),
             ymaxedit,
         ]
-        setrangebutton = QtWidgets.QPushButton("Set current min,max" if isimage else "Set current y min,max")
+        setrangebutton = QtWidgets.QPushButton("Set current range")
         setrangebutton.setToolTip(
             "Set the value min and max to the current range of the colour scale. The colours then keep their"
             " meaning at each timestep."
@@ -2286,7 +2286,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             " timestep."
         )
         setrangebutton.clicked.connect(partial(on_set_current_range, row))
-        yrangewidgets.append(setrangebutton)
+        autorangebutton = QtWidgets.QPushButton("Auto")
+        autorangebutton.setToolTip(
+            "Remove the value min and max, thus the colour scale follows the values of each timestep."
+            if isimage
+            else "Remove the y min and max, thus the y axis follows the data of each timestep."
+        )
+        autorangebutton.clicked.connect(partial(set_directives, row, {"ymin": None, "ymax": None}))
+        yrangewidgets += [setrangebutton, autorangebutton]
         cardlayout.addLayout(make_row_layout(yrangewidgets))
         return SubplotCard(
             key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit

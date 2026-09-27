@@ -3857,7 +3857,7 @@ def test_subplots_per_row_fill_each_row() -> None:
 
 
 def test_interactive_image_panels_name_their_subplot() -> None:
-    """Each panel of a colour image names its subplot, thus Set current min,max finds the colour scale of each subplot.
+    """Each panel of a colour image names its subplot, thus Set current range finds the colour scale of each subplot.
 
     A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
     """
