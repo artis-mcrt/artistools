@@ -765,6 +765,21 @@ def start_application(
             return super().eventFilter(watched, event)
 
     app.installEventFilter(EditTracker(app))
+
+    class QuitTracker(QtCore.QObject):
+        """Mark the application as quitting before Qt closes its windows, e.g. after Quit in the menu of macOS.
+
+        A window that closes during a quit keeps its command for the next start, and a window that the user closes
+        does not.
+        """
+
+        @t.override
+        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+            if event.type() == QtCore.QEvent.Type.Quit and (app := QtWidgets.QApplication.instance()) is not None:
+                app.setProperty("quittime", time.monotonic())
+            return super().eventFilter(watched, event)
+
+    app.installEventFilter(QuitTracker(app))
     return app
 
 
@@ -822,6 +837,15 @@ def get_float_setting(key: str, default: float) -> float:
     return value if isinstance(value, float) else default
 
 
+def get_list_setting(key: str) -> list[str]:
+    """Return a list of texts of the settings, or an empty list if the settings do not hold one."""
+    value = get_settings().value(key, [])
+    # the INI format of QSettings gives a list of one item as a string
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
 def get_bool_setting(key: str, *, default: bool) -> bool:
     """Return a choice of the settings, or the default if the settings do not hold one."""
     value = get_settings().value(key, defaultValue=default, type=bool)
@@ -870,6 +894,10 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
             settings.setValue(geometrykey, self.saveGeometry())
             # the state of the window holds whether the toolbar shows
             settings.setValue(f"{self.objectName()}/state", self.saveState())
+            app = QtWidgets.QApplication.instance()
+            isquitting = app is not None and app.property("quittime") is not None
+            if isquitting and callable(get_tokens := self.property("sessiontokens")):
+                add_session_window(get_tokens())
             splitter = self.centralWidget()
             if isinstance(splitter, QtWidgets.QSplitter):
                 settings.setValue(splitterkey, splitter.saveState())
@@ -934,11 +962,7 @@ def get_recent_setting_key() -> str:
 
 def get_recent_models() -> list[str]:
     """Return the folders of the models that the viewer opened last, the newest first."""
-    value = get_settings().value(get_recent_setting_key(), [])
-    # the INI format of QSettings gives a list of one item as a string
-    if isinstance(value, str):
-        return [value]
-    return [str(item) for item in value] if isinstance(value, list) else []
+    return get_list_setting(get_recent_setting_key())
 
 
 def add_recent_model(folder: Path | str) -> None:
@@ -946,6 +970,66 @@ def add_recent_model(folder: Path | str) -> None:
     path = str(Path(folder).absolute())
     recent = [path, *(other for other in get_recent_models() if other != path)][:RECENT_LIMIT]
     get_settings().setValue(get_recent_setting_key(), recent)
+
+
+def get_session_setting_key() -> str:
+    """Return the key of the settings that holds the commands of the windows that were open at the last quit."""
+    from PySide6 import QtWidgets
+
+    return f"{QtWidgets.QApplication.applicationDisplayName()}/session"
+
+
+def add_session_window(tokens: "Sequence[str]") -> None:
+    """Keep the command of a window that closes because the application quits."""
+    get_settings().setValue(
+        get_session_setting_key(), [*get_list_setting(get_session_setting_key()), json.dumps(list(tokens))]
+    )
+
+
+def take_session_windows() -> list[list[str]]:
+    """Return the commands of the windows that were open at the last quit, and remove them from the settings.
+
+    The setting "reopenwindows" of the Settings window can stop the reopen, and the list then is empty.
+    """
+    saved = get_list_setting(get_session_setting_key())
+    get_settings().remove(get_session_setting_key())
+    if not get_bool_setting("reopenwindows", default=True):
+        return []
+    return [[str(token) for token in json.loads(item)] for item in saved]
+
+
+def reopen_session_windows(
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    windows: "list[QtWidgets.QMainWindow]",
+) -> None:
+    """Open the windows that were open at the last quit, as the apps of macOS do, and keep the first window in front.
+
+    A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
+    because each window fits it to its own size. An error of a window goes to the terminal.
+    """
+    shown = [
+        remove_figwidthscale(window.property("sessiontokens")())
+        for window in windows
+        if callable(window.property("sessiontokens"))
+    ]
+    firstwindows = list(windows)
+    for tokens in take_session_windows():
+        if remove_figwidthscale(tokens) in shown:
+            continue
+        message = run_command_step(lambda tokens=tokens: open_window(tokens, windows), quiet=False)
+        if message is not None:
+            print_error(f"The viewer cannot open the window of the last session: {message}")
+    for window in firstwindows:
+        activate_window(window)
+
+
+def remove_figwidthscale(tokens: "Sequence[str]") -> list[str]:
+    """Return the tokens of a command without -figwidthscale and its value, which a window sets."""
+    return [
+        word
+        for index, word in enumerate(tokens)
+        if word != "-figwidthscale" and (index == 0 or tokens[index - 1] != "-figwidthscale")
+    ]
 
 
 def get_window_setting_keys(window: "QtWidgets.QMainWindow") -> tuple[str, str]:
@@ -2090,6 +2174,12 @@ def show_settings_window(parent: "QtWidgets.QWidget") -> None:
 
     darkcheck.toggled.connect(on_dark)
     form.addRow(darkcheck)
+
+    reopencheck = QtWidgets.QCheckBox("Reopen the windows of the last session at the start")
+    reopencheck.setToolTip("After Quit, the next start opens each window that was open, beside the new window")
+    reopencheck.setChecked(get_bool_setting("reopenwindows", default=True))
+    reopencheck.toggled.connect(partial(settings.setValue, "reopenwindows"))
+    form.addRow(reopencheck)
 
     for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
         box = QtWidgets.QDoubleSpinBox()

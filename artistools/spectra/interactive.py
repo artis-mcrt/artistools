@@ -90,6 +90,7 @@ from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
+from artistools.viewertools import reopen_session_windows
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import save_figure_of_command
@@ -922,6 +923,7 @@ def run_viewer(tokens: "Sequence[str]") -> None:
 
     handle_file_open_events(app, open_dock_folder)
     open_window(tokens, windows)
+    reopen_session_windows(open_window, windows)
     app.exec()
 
 
@@ -1847,6 +1849,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     set_drop_handler(window, on_drop)
     window.setProperty("settingshandler", on_colour_scheme)
+    # the window keeps its command at a quit, and the next start opens the window again
+    window.setProperty("sessiontokens", viewer.get_plot_tokens)
     QtGui.QGuiApplication.styleHints().colorSchemeChanged.connect(on_colour_scheme)
 
     modesegments.currentChanged.connect(on_time_mode)
