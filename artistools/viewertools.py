@@ -3368,6 +3368,11 @@ def changes_values[ValuesT](
 BUSY_MILLISECONDS: t.Final = 300
 
 
+def get_plot_time_text(plotseconds: float) -> str:
+    """Return the text of the status bar for the time of the last plot, or no text before the first plot."""
+    return f"Plot time: {plotseconds:.2f} s" if plotseconds > 0.0 else ""
+
+
 class DrawQueue[ValuesT]:
     """The plots of a window: a change shows its values at once, and the plot follows when Qt has no other events.
 
@@ -3532,8 +3537,8 @@ class DrawQueue[ValuesT]:
             return
         self.renderedvalues = values
         self.renderedfield, self.editedfield = self.editedfield, None
+        # the status bar keeps the time of the last plot, and the spinner over the plot shows the plot in progress
         self.renderstart = time.perf_counter()
-        self.statusbar.drawtime.setText("Plot in progress...")
         self.rendering = self.executor.submit(self.render, values)
         self.rendertimer.start()
         if not self.busytimer.isActive():
@@ -3640,7 +3645,8 @@ class DrawQueue[ValuesT]:
         """Give the message of the complete task to the function of run_task."""
         on_done = self.on_task_done
         self.task, self.taskfuture, self.on_task_done = None, None, None
-        self.statusbar.drawtime.setText("")
+        # the status of the task replaced the time of the last plot, thus that time shows again
+        self.statusbar.drawtime.setText(get_plot_time_text(self.plotseconds))
         try:
             message = taskfuture.result()
         except Exception as exc:  # ruff:ignore[blind-except]
@@ -3660,7 +3666,7 @@ class DrawQueue[ValuesT]:
     def show_plot_status(self, message: str | None) -> None:
         """Show the time of the plot that ended, its message or its warning, and the values."""
         self.plotseconds = time.perf_counter() - self.renderstart
-        self.statusbar.drawtime.setText(f"Plot time: {self.plotseconds:.2f} s")
+        self.statusbar.drawtime.setText(get_plot_time_text(self.plotseconds))
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
         hide_readout_tag(self.window)
