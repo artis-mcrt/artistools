@@ -3122,7 +3122,7 @@ def add_figure_section(
         formatbox.addItem(suffix.upper(), suffix)
         formatbox.setItemData(index, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     formatbox.setToolTip("The format of Copy Figure and Save Figure…")
-    resolutionlabel = QtWidgets.QLabel("Resolution")
+    resolutionlabel = QtWidgets.QLabel("Resolution:")
     dpibox = QtWidgets.QSpinBox()
     dpibox.setRange(10, 2400)
     dpibox.setSingleStep(50)
@@ -3151,7 +3151,7 @@ def add_figure_section(
     def on_format(index: int) -> None:
         set_figure_format(str(formatbox.itemData(index)))
 
-    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, resolutionlabel, dpibox, copybutton, savebutton])
+    add_row(grid, 0, [QtWidgets.QLabel("Format:"), formatbox, resolutionlabel, dpibox, copybutton, savebutton])
     show_format(get_figure_format())
     formatbox.currentIndexChanged.connect(on_format)
     window.setProperty("figureformathandler", show_format)
@@ -3888,7 +3888,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--notitle": "Hide title",
     "--showabsorption": "Show absorption",
     "--showemission": "Show emission",
-    "--use_thermalemissiontype": "Event:",
+    "--use_thermalemissiontype": "Event",
     "--usedegrees": "Degrees",
     "-axis": "Axis",
     "-cell": "Cells",
@@ -3920,7 +3920,8 @@ def show_flag_labels(window: "QtWidgets.QWidget") -> None:
     for widget in widgets:
         flag = widget.text()
         if (text := FLAG_LABELS.get(flag, flag)) != flag:
-            widget.setText(text)
+            # a label names the control after it and ends with a colon, as in Keynote. A checkbox has no colon
+            widget.setText(f"{text}:" if isinstance(widget, QtWidgets.QLabel) else text)
             tooltip = widget.toolTip()
             # a label whose text changes later, e.g. -xmin with a unit, already gives the flag in its tooltip
             if tooltip != flag and not tooltip.endswith(f"({flag})"):

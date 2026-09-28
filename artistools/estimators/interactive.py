@@ -1872,7 +1872,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit.setFixedWidth(110)
     timeedit.setToolTip("A time in days. The time range moves to the timestep that holds it.")
     # the width row has the same label and field as the width row of the spectrum viewer
-    widthlabel = QtWidgets.QLabel("Δ timesteps")
+    widthlabel = QtWidgets.QLabel("Δ timesteps:")
     widthedit = QtWidgets.QLineEdit()
     widthedit.setFixedWidth(110)
     widthedit.setToolTip("The number of timesteps of the time range. The Up key and the Down key change it.")
@@ -1898,7 +1898,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         trangelayout.addWidget(widget)
     # a step button moves the time range by one timestep, as the Left key and the Right key do
     previousbutton, nextbutton = make_step_button(forward=False), make_step_button(forward=True)
-    timegrid.addWidget(QtWidgets.QLabel("Time [d]"), 0, 0)
+    timegrid.addWidget(QtWidgets.QLabel("Time [d]:"), 0, 0)
     timegrid.addWidget(timeslider, 0, 1)
     timegrid.addWidget(timeedit, 0, 2)
     timegrid.addWidget(trangebox, 0, 1, 1, 2)
@@ -1928,7 +1928,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     axisbox = QtWidgets.QComboBox()
     axisbox.addItems(["+x", "-x", "+y", "-y", "+z", "-z"])
     axisbox.setToolTip(helptexts.get("axis", ""))
-    coneanglelabel = QtWidgets.QLabel("Full angle")
+    coneanglelabel = QtWidgets.QLabel("Full angle:")
     coneanglebox = QtWidgets.QDoubleSpinBox()
     coneanglebox.setRange(1.0, 180.0)
     coneanglebox.setSuffix("°")
@@ -1959,12 +1959,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     axisparameters = make_parameter_row([QtWidgets.QLabel("-axis"), axisbox, coneanglelabel, coneanglebox])
     # show_blocked_values names the axis that is normal to the plane, e.g. "at z ="
     planeatlabel = QtWidgets.QLabel()
-    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, planeatlabel, offsetedit])
-    lineparameters = make_parameter_row([QtWidgets.QLabel("Line along"), lineaxisbox])
+    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane:"), planebox, planeatlabel, offsetedit])
+    lineparameters = make_parameter_row([QtWidgets.QLabel("Line along:"), lineaxisbox])
     projectionaxisbox = QtWidgets.QComboBox()
     projectionaxisbox.addItems(["x", "y", "z"])
     projectionaxisbox.setToolTip(helptexts.get("projection", ""))
-    projectionparameters = make_parameter_row([QtWidgets.QLabel("Mean along"), projectionaxisbox])
+    projectionparameters = make_parameter_row([QtWidgets.QLabel("Mean along:"), projectionaxisbox])
     add_row(cellgrid, 0, [geometrybox])
     cellgrid.addWidget(cellnamelabel, 1, 0)
     cellgrid.addWidget(cellslider, 1, 1)
@@ -2016,7 +2016,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     for mode, modetext in SMOOTHING_MODES.items():
         smoothingbox.addItem(modetext, mode)
     smoothingbox.setToolTip("Smooth the line of each series")
-    smoothinglengthlabel, smoothingorderlabel = QtWidgets.QLabel("Length"), QtWidgets.QLabel("Order")
+    smoothinglengthlabel, smoothingorderlabel = QtWidgets.QLabel("Length:"), QtWidgets.QLabel("Order:")
     smoothinglengthbox, smoothingorderbox = QtWidgets.QSpinBox(), QtWidgets.QSpinBox()
     # show_blocked_values gives the length box its range and its step for the mode
     smoothinglengthbox.setRange(2, 999)
@@ -2029,7 +2029,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xgrid,
         3,
         [
-            QtWidgets.QLabel("Smoothing"),
+            QtWidgets.QLabel("Smoothing:"),
             smoothingbox,
             smoothinglengthlabel,
             smoothinglengthbox,
@@ -2395,7 +2395,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 f"The quantity of each ion of this subplot (ionpoptype=). {DEFAULT_POPTYPE} needs no directive.",
                 partial(on_directive_selector, row, "ionpoptype", DEFAULT_POPTYPE),
             )
-            cardlayout.addLayout(make_row_layout([QtWidgets.QLabel("Quantity"), poptypebox]))
+            cardlayout.addLayout(make_row_layout([QtWidgets.QLabel("Quantity:"), poptypebox]))
 
         yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
         for edit, directive in ((yminedit, "ymin"), (ymaxedit, "ymax")):
@@ -2431,11 +2431,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         quantityname = "value" if isimage else "y"
         cardlayout.addLayout(
             make_row_layout([
-                QtWidgets.QLabel(f"{quantityname} scale"),
+                QtWidgets.QLabel(f"{quantityname} scale:"),
                 yscalebox,
-                QtWidgets.QLabel("min"),
+                QtWidgets.QLabel("min:"),
                 yminedit,
-                QtWidgets.QLabel("max"),
+                QtWidgets.QLabel("max:"),
                 ymaxedit,
                 setrangebutton,
                 autorangebutton,
@@ -2657,7 +2657,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         geometrydescription.setText(description)
         geometrydescription.setVisible(bool(description))
         normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
-        planeatlabel.setText(f"at {normal} =")
+        planeatlabel.setText(f"at {normal}:")
         set_edit_text(offsetedit, offset)
         for index, axis in enumerate("xyz"):
             lineaxisbox.setItemText(index, get_line_label(axis, slicetext))
@@ -2696,8 +2696,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
-        xminlabel.setText(f"{FLAG_LABELS['-xmin']}{xunit}")
-        xmaxlabel.setText(f"{FLAG_LABELS['-xmax']}{xunit}")
+        xminlabel.setText(f"{FLAG_LABELS['-xmin']}{xunit}:")
+        xmaxlabel.setText(f"{FLAG_LABELS['-xmax']}{xunit}:")
         axisisbeta = viewer.xlimitscale != 1.0
         unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):

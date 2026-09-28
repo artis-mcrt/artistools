@@ -1133,7 +1133,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         ' Timesteps", the width is a count of timesteps.'
     )
     for row, (label, slider, edit, tip) in enumerate(
-        [(QtWidgets.QLabel("Time [d]"), timeslider, timeedit, timetip), (widthlabel, widthslider, widthedit, widthtip)],
+        [
+            (QtWidgets.QLabel("Time [d]:"), timeslider, timeedit, timetip),
+            (widthlabel, widthslider, widthedit, widthtip),
+        ],
         start=1,
     ):
         edit.setFixedWidth(110)
@@ -1200,7 +1203,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(
         axesgrid,
         2,
-        [QtWidgets.QLabel("Packets"), packetbox, QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck],
+        [QtWidgets.QLabel("Packets:"), packetbox, QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck],
     )
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
@@ -1505,7 +1508,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             widthslider.setRange(0, SLIDER_STEPS)
         else:
             widthslider.setRange(1, nvalid)
-        widthlabel.setText("Δt [d]" if continuous else "Δ timesteps")
+        widthlabel.setText("Δt [d]:" if continuous else "Δ timesteps:")
         slidermode = continuous
 
     # the test of each choice parses the arguments again, thus the code keeps one result for each set of options
