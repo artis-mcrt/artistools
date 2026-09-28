@@ -19,14 +19,12 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
-from artistools.misc import get_nprocs
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.packets.core import get_packets_textfilename
-from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -61,7 +59,6 @@ from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import follow_colour_scheme
-from artistools.viewertools import get_bool_setting
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_figure_format
@@ -75,7 +72,6 @@ from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
-from artistools.viewertools import get_settings
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
@@ -422,7 +418,6 @@ class RenderedSpectrum(t.NamedTuple):
     axes: "npt.NDArray[t.Any]"
     residualaxis: "mplax.Axes | None"
     dfalldata: pl.DataFrame
-    ispreview: bool
 
 
 def fix_title_position(axis: "mplax.Axes") -> None:
@@ -683,9 +678,6 @@ class SpectrumViewer:
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
-        self.drewpreview = False
-        # the window sets this before each plot that a slider drag gives, and the worker thread reads it
-        self.wantspreview = False
         # the colours of the window in Dark Mode, which the window sets and the worker thread reads
         self.darkcolours: tuple[str, str] | None = None
         # the last warning of the last plot, which the status bar shows
@@ -723,10 +715,6 @@ class SpectrumViewer:
             for timestep in range(len(tmids))
             if tstarts[timestep] >= self.timebounds[0] and tends[timestep] <= self.timebounds[1]
         ] or list(range(len(tmids)))
-        # a preview reads the packets of the first batch of ranks only. A run with one batch has no faster preview
-        self.previewmaxpacketfiles = (
-            RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in runfolders) else None
-        )
         self.hasgammaspectrum = has_gamma_spectrum(runfolders)
         # the direction controls read the first run, e.g. for the observers of -plotvspecpol
         self.directionkinds = get_direction_kinds(runfolders[0])
@@ -910,17 +898,12 @@ class SpectrumViewer:
         """
         return self.render(self.values, quiet=quiet)()
 
-    def render(self, values: ControlValues, *, quiet: bool = True, preview: bool = False) -> "Callable[[], str | None]":
+    def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
 
         The function returns the reason for the status line if plotspectra rejects the values, and the old plot then
         stays. A worker thread can run this method, because it changes nothing that the window reads. The function
         that it returns must run in the thread of the window.
-
-        A preview of a plot of the packets reads the first batch of ranks only. For the 20 batches of a kilonova run,
-        a range of 8 days took 0.12 s in place of 1.1 s. The flux stays correct, because the reader divides by the
-        number of ranks that it reads. The reader does not divide a count of packets, thus a plot of
-        -yvariable packetcount has no preview. The command in the window has no -maxpacketfiles for the preview.
         """
         plots: list[RenderedSpectrum] = []
 
@@ -930,15 +913,6 @@ class SpectrumViewer:
             check_viewer_args(plotargs)
             if (conflict := get_text_source_conflict(values, plotargs)) is not None:
                 return conflict
-            ispreview = bool(
-                preview
-                and plotargs.frompackets
-                and plotargs.maxpacketfiles is None
-                and plotargs.yvariable != "packetcount"
-                and self.previewmaxpacketfiles
-            )
-            if ispreview:
-                plotargs.maxpacketfiles = self.previewmaxpacketfiles
             if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
                 return "A different option of the command keeps the emission plot on"
             fig = mplfig.Figure()
@@ -952,11 +926,7 @@ class SpectrumViewer:
             # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
             # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
             fig.draw_without_rendering()
-            plots.append(
-                RenderedSpectrum(
-                    fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata, ispreview=ispreview
-                )
-            )
+            plots.append(RenderedSpectrum(fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata))
             return None
 
         message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
@@ -968,7 +938,7 @@ class SpectrumViewer:
             plot = plots[0]
             self.figsize = show_figure_in_canvas(self.fig, plot.fig)
             self.fig, self.axes, self.residualaxis = plot.fig, plot.axes, plot.residualaxis
-            self.dfalldata, self.drewpreview = plot.dfalldata, plot.ispreview
+            self.dfalldata = plot.dfalldata
             return None
 
         return show_plot
@@ -993,10 +963,10 @@ class SpectrumViewer:
         centre = min(max(values.centre, low), high)
         return values if centre == values.centre else dc.replace(values, centre=centre)
 
-    def change(self, values: ControlValues, *, preview: bool = False) -> str | None:
+    def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values and the old plot if plotspectra rejects them."""
         values = self.clamp_time(values)
-        message = self.render(values, preview=preview)()
+        message = self.render(values)()
         if message is None:
             self.values = values
         return message
@@ -1370,14 +1340,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     datasourcemodel = datasourcebox.model()
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
-    previewcheck = QtWidgets.QCheckBox("Low-packet preview while dragging")
-    previewtooltip = (
-        "While a slider moves, draw a preview from the first batch of ranks of the packets files. The full plot"
-        " follows each preview at once. A new window takes the last choice."
-    )
-    previewcheck.setChecked(get_bool_setting("dragpreview", default=True))
-    previewcheck.toggled.connect(partial(get_settings().setValue, "dragpreview"))
-    add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox, previewcheck])
+    add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     _, appearancegrid = add_section(panellayout, "Appearance")
     # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
@@ -1607,15 +1570,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"
         )
         datasourcebox.setCurrentIndex(datasourcebox.findData(values.datasource))
-        # only a plot of the packets files has a preview, and a run with one batch of ranks has no faster preview
-        previewcheck.setVisible(values.datasource == "packets" or (values.datasource == "auto" and reason is not None))
-        hasfasterpreview = viewer.previewmaxpacketfiles is not None
-        previewcheck.setEnabled(hasfasterpreview)
-        previewcheck.setToolTip(
-            previewtooltip
-            if hasfasterpreview
-            else "Each run has one batch of ranks, thus a preview reads all the packets and is not faster"
-        )
 
     def show_rejections() -> None:
         """Disable each choice that plotspectra rejects, and give the reason in its tooltip."""
@@ -1777,9 +1731,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axes[0].get_yscale()})")
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
-        # the full plot starts at once, also while the user holds the slider. A newer change of the user waits for it
-        if viewer.drewpreview:
-            draw_full()
         # a rejection occurs again at each step, thus a rejection stops the Play button
         if message is not None:
             playbutton.setChecked(False)
@@ -1787,40 +1738,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
             start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
-    def is_slider_dragged() -> bool:
-        """Return whether the user drags a slider. Only a drag draws a preview, because a drag gives many plots."""
-        return timeslider.isSliderDown() or widthslider.isSliderDown() or bool(xrangeslider.property("dragging"))
-
-    def render_plot(values: ControlValues) -> "Callable[[], str | None]":
-        # the worker thread runs this function, thus it reads the choice of the preview from the viewer
-        return viewer.render(values, preview=viewer.wantspreview)
-
-    def get_drawkind() -> str:
-        return "Preview" if viewer.drewpreview else "Plot"
-
     queue = DrawQueue(
-        window,
-        viewer,
-        statusbar,
-        show_values,
-        after_draw,
-        get_drawkind=get_drawkind,
-        render=render_plot,
-        keep_on_undo=keep_figwidthscale,
+        window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
-        """Give the queue the new values, and draw a preview if a slider drag gives them."""
-        viewer.wantspreview = previewcheck.isChecked() and is_slider_dragged()
+        """Give the queue the new values, with a time that the runs have."""
         queue.apply(viewer.clamp_time(values), undoable=undoable)
-
-    def on_undo() -> None:
-        viewer.wantspreview = False
-        queue.undo()
-
-    def on_redo() -> None:
-        viewer.wantspreview = False
-        queue.redo()
 
     def fit_figwidthscale() -> None:
         """Give the plot the -figwidthscale that fills the plot area."""
@@ -1832,14 +1756,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
 
     fittimer.timeout.connect(fit_figwidthscale)
-
-    def draw_full() -> None:
-        """Replace the preview with the plot of all the packets."""
-        # a change in the queue, or a step of Play, draws a new plot in place of the preview
-        if queue.requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
-            return
-        viewer.wantspreview = False
-        queue.redraw()
 
     def show_error(message: str) -> None:
         show_status_message(statusbar, message, "")
@@ -1926,8 +1842,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_play(checked: bool) -> None:
         if checked:
             play_step()
-        elif viewer.drewpreview:
-            draw_full()
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the values of the controls.
@@ -2281,8 +2195,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Save Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
-        "Undo": on_undo,
-        "Redo": on_redo,
+        "Undo": queue.undo,
+        "Redo": queue.redo,
         "Copy Figure": on_copy_figure,
         "Copy Command": on_copy,
         "Copy Python": on_copy_python,

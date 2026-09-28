@@ -2522,52 +2522,6 @@ def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() ->
     assert viewer.fig.canvas is oldfig.canvas, "the canvas of the window must show the new figure"
 
 
-def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
-    """A preview of a plot of the packets reads the first batch of ranks, and the command keeps all the packets."""
-    from artistools.packets.core import RANKS_PER_BATCH
-
-    getcontributions = plotspectra.get_flux_contributions_from_packets
-    # the test model has few ranks, thus a model of more than one batch comes from a patch of the rank count
-    with (
-        mock.patch.object(interactive, "get_nprocs", return_value=10 * RANKS_PER_BATCH),
-        mock.patch.object(plotspectra, "get_flux_contributions_from_packets", wraps=getcontributions) as mockget,
-    ):
-        viewer = make_headless_viewer([
-            str(modelpath_classic_3d),
-            "-t",
-            "4",
-            "--showemission",
-            "--frompackets",
-            "--interactive",
-        ])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert viewer.drewpreview
-        assert mockget.call_args.kwargs["maxpacketfiles"] == RANKS_PER_BATCH
-        assert "-maxpacketfiles" not in viewer.get_command()
-
-        assert viewer.change(viewer.values) is None
-        assert not viewer.drewpreview
-        assert mockget.call_args.kwargs["maxpacketfiles"] is None
-
-        # a plot of the spectrum files reads no packets, thus it has no faster preview
-        viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert not viewer.drewpreview
-
-        # the reader divides the flux by the number of ranks, but not a count of packets
-        viewer = make_headless_viewer([
-            str(modelpath_classic_3d),
-            "-t",
-            "4",
-            "--frompackets",
-            "-yvariable",
-            "packetcount",
-            "--interactive",
-        ])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert not viewer.drewpreview
-
-
 def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
     """An AssertionError of plotspectra is a rejection, and the viewer keeps the old values.
 

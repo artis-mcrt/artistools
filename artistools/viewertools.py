@@ -1731,8 +1731,6 @@ def make_range_slider(
             pixel = event.position().x()
             midpixel = sum(self.get_pixel(position) for position in self.positions) / 2.0
             self.draghandle = 0 if pixel < midpixel else 1
-            # a window reads this property, e.g. to draw a fast preview during a drag
-            self.setProperty("dragging", self.draghandle is not None)
             self.move_handle(pixel)
 
         @t.override
@@ -1743,7 +1741,6 @@ def make_range_slider(
         @t.override
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
             self.draghandle = None
-            self.setProperty("dragging", self.draghandle is not None)
 
         def move_handle(self, pixel: float) -> None:
             if self.draghandle is None:
@@ -3391,14 +3388,12 @@ class DrawQueue[ValuesT]:
         show_values: "Callable[[], None]",
         after_draw: "Callable[[str | None], None]",
         render: "Callable[[ValuesT], Callable[[], str | None]]",
-        get_drawkind: "Callable[[], str] | None" = None,
         keep_on_undo: "Callable[[ValuesT, ValuesT], ValuesT] | None" = None,
     ) -> None:
         """Make an empty queue. after_draw receives the message of each plot of the queue.
 
         render draws the plot of the values in a worker thread. It returns the function that shows that plot in the
-        window and gives the message of a rejection. get_drawkind gives the name of the last plot for the status bar,
-        e.g. "Preview".
+        window and gives the message of a rejection.
 
         keep_on_undo receives the values that Undo or Redo restores and the current values. It returns the restored
         values with the parts that the window sets and the user does not, e.g. the width of the figure.
@@ -3412,7 +3407,6 @@ class DrawQueue[ValuesT]:
         self.statusbar = statusbar
         self.show_values = show_values
         self.after_draw = after_draw
-        self.get_drawkind = get_drawkind
         self.requestedvalues: ValuesT | None = None
         self.drawnvalues: ValuesT = viewer.values
         self.render = render
@@ -3665,9 +3659,8 @@ class DrawQueue[ValuesT]:
 
     def show_plot_status(self, message: str | None) -> None:
         """Show the time of the plot that ended, its message or its warning, and the values."""
-        drawkind = self.get_drawkind() if self.get_drawkind is not None else "Plot"
         self.plotseconds = time.perf_counter() - self.renderstart
-        self.statusbar.drawtime.setText(f"{drawkind} time: {self.plotseconds:.2f} s")
+        self.statusbar.drawtime.setText(f"Plot time: {self.plotseconds:.2f} s")
         # the readout holds the values of the old plot until the mouse moves again
         self.statusbar.readout.setText("")
         hide_readout_tag(self.window)
