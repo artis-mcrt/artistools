@@ -1540,6 +1540,11 @@ def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
     return math.ceil(nsubplots / ncols), ncols
 
 
+# a figure of estimators often has several columns of subplots, and a frame of the full text width then gives
+# labels that are small beside the data. Each frame thus takes 0.7 of the size that -figscale gives
+SUBPLOT_FRAMESCALE: t.Final = 0.7
+
+
 def draw_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1558,7 +1563,9 @@ def draw_figure(
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
     nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow)
-    fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
+    fig, axesgrid = make_frame_figure(
+        args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, framescale=SUBPLOT_FRAMESCALE, fig=fig
+    )
     axes = axesgrid.ravel()[: len(plotlist)]
     for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
         emptyaxis.set_visible(False)
@@ -1931,8 +1938,9 @@ def draw_image_figure(
 
     nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
     # the image at each cylindrical radius has half the width of a plane
-    panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
-    figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
+    figscale = args.figscale * SUBPLOT_FRAMESCALE
+    panelwidth = (4.6 if isplane else 3.8) * figscale * (getattr(args, "figwidthscale", None) or 1.0)
+    figsize = (panelwidth * ncols, 4.2 * nrows * figscale)
     if fig is None:
         fig = plt.figure(figsize=figsize)
     else:

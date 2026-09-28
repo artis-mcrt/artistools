@@ -74,6 +74,7 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
+from artistools.viewertools import get_row_values
 from artistools.viewertools import get_settings
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
@@ -110,6 +111,7 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import set_row_values
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
@@ -1375,12 +1377,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     previewcheck.toggled.connect(partial(get_settings().setValue, "dragpreview"))
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox, previewcheck])
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
+    _, appearancegrid = add_section(panellayout, "Appearance")
+    # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
+    figscalebox = QtWidgets.QDoubleSpinBox()
+    figscalebox.setRange(0.1, 10.0)
+    figscalebox.setSingleStep(0.1)
+    figscalebox.setDecimals(2)
+    figscalebox.setKeyboardTracking(False)
+    figscalebox.setToolTip(helptexts.get("figscale", ""))
+    add_row(appearancegrid, 0, [QtWidgets.QLabel("-figscale"), figscalebox])
+    defaultfigscale: float = viewer.parser.get_default("figscale")
     defaultdpi: int = viewer.parser.get_default("dpi")
     figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows))
+
+    def on_figscale(figscale: float) -> None:
+        change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
+        on_option_rows(set_row_values(viewer.values.otheroptions, {"-figscale": change}))
 
     optiontable, set_option_rows = make_option_table(
         window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
@@ -1395,6 +1411,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
+        figscalebox,
         figuresection.dpibox,
         modesegments,
         packetbox,
@@ -1740,6 +1757,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_spectra(values.spectra)
         set_option_rows(values.otheroptions)
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
+        set_spin_value(
+            figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
+        )
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
         show_rejections()
@@ -2284,6 +2304,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     playbutton.toggled.connect(on_play)
     figuresection.copybutton.clicked.connect(on_copy_figure)
     figuresection.dpibox.valueChanged.connect(on_resolution)
+    figscalebox.valueChanged.connect(on_figscale)
     figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)

@@ -463,6 +463,24 @@ def get_option_tokens(flag: str, value: str) -> list[str]:
     return [f"{flag}={value}"] if value.startswith("-") else [flag, value]
 
 
+def get_row_values(rows: OptionRows, flag: str) -> tuple[str, ...] | None:
+    """Return the values of the row of an option, or None if the rows have no such option."""
+    return next((values for rowflag, values in rows if rowflag == flag), None)
+
+
+def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | None]") -> OptionRows:
+    """Return the rows with new values of some options, in their old places. None removes an option.
+
+    A new option goes after the other rows.
+    """
+    changed = [
+        (flag, changes.get(flag, values)) for flag, values in rows if not (flag in changes and changes[flag] is None)
+    ]
+    present = {flag for flag, _ in rows}
+    added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
+    return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
+
+
 def get_option_row_tokens(rows: OptionRows) -> list[str]:
     """Return the command tokens of the rows of the option table."""
     return [
@@ -3890,7 +3908,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "-cell": "Cells",
     "-figscale": "Figure scale",
     "-groupby": "Group by",
-    "-labelfontsize": "Font size",
+    "-labelfontsize": "Label size",
     "-maxseriescount": "Max series",
     "-subplotsperrow": "Subplots per row",
     "-x": "x variable",

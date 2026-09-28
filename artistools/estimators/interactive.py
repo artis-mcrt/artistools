@@ -101,6 +101,7 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
+from artistools.viewertools import get_row_values
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
@@ -134,6 +135,7 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import set_row_values
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
@@ -450,24 +452,6 @@ def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
     else:
         firstpos, lastpos = viewer.get_selection_positions()
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
-
-
-def get_row_values(rows: OptionRows, flag: str) -> tuple[str, ...] | None:
-    """Return the values of the row of an option, or None if the rows have no such option."""
-    return next((values for rowflag, values in rows if rowflag == flag), None)
-
-
-def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | None]") -> OptionRows:
-    """Return the rows with new values of some options, in their old places. None removes an option.
-
-    A new option goes after the other rows.
-    """
-    changed = [
-        (flag, changes.get(flag, values)) for flag, values in rows if not (flag in changes and changes[flag] is None)
-    ]
-    present = {flag for flag, _ in rows}
-    added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
-    return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
 
 
 def get_geometry_choices(dimensions: int) -> list[str]:
