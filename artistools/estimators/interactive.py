@@ -348,11 +348,8 @@ def is_evolution(values: ControlValues) -> bool:
 
 
 def get_time_text(tmids: "Sequence[float]", values: ControlValues) -> str:
-    """Return the text of the time field, which is the centre of the middle times of the range.
-
-    EstimatorViewer.select_centre reads the same centre, thus a Return in the field with no edit keeps the range.
-    """
-    return f"{(tmids[values.first] + tmids[values.last]) / 2.0:.4g}"
+    """Return the text of the time field: the centre of the middle times of the range, with two decimal places."""
+    return f"{(tmids[values.first] + tmids[values.last]) / 2.0:.2f}"
 
 
 def get_single_cell(cells: str) -> int | None:
@@ -2763,6 +2760,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_width(int(text))
 
     def on_timeedit() -> None:
+        # the field shows a rounded time, thus a Return in the field with no edit keeps the range
+        if not timeedit.isModified():
+            return
         # a later plot can show new text in the field only when the field has no edit of the user
         timeedit.setModified(False)
         try:

@@ -1708,13 +1708,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 set_edit_text(widthedit, f"{values.widthfraction:g}")
             else:
                 widthslider.setValue(to_position(values.width, 0.0, widthmax))
-                set_edit_text(widthedit, f"{values.width:g}")
+                set_edit_text(widthedit, f"{values.width:.2f}")
         else:
             first, last = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
             timeslider.setValue((first + last) // 2)
             widthslider.setValue(last - first + 1)
             set_edit_text(widthedit, str(last - first + 1))
-        set_edit_text(timeedit, f"{values.centre:.4g}")
+        set_edit_text(timeedit, f"{values.centre:.2f}")
         timestepslabel.setText(viewer.get_time_range_text())
         set_xrange_positions(
             *(
@@ -1878,22 +1878,27 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(viewer.snap(values, viewer.validtimesteps[first], viewer.validtimesteps[last]))
 
     def on_timeedit() -> None:
+        # a field shows a time with two decimal places, thus only a field that the user edited gives a new value, and
+        # a Return in a field with no edit keeps the time range
+        timeedited, widthedited = timeedit.isModified(), widthedit.isModified()
         # a later plot can show new text in the fields only when they have no edit of the user
         timeedit.setModified(False)
         widthedit.setModified(False)
+        if not (timeedited or widthedited):
+            return
         values = viewer.values
         try:
-            centre, width = float(timeedit.text()), float(widthedit.text())
+            centre = float(f"{float(timeedit.text()):.4g}") if timeedited else values.centre
+            width = float(widthedit.text()) if widthedited else None
         except ValueError:
             show_error("Give a number of days for the time, and a number for the width")
             return
         low, high = viewer.timebounds
         if not low <= centre <= high:
-            show_error(f"Give a time from {low:.4g} to {high:.4g} d")
+            show_error(f"Give a time from {low:.2f} to {high:.2f} d")
             return
         if values.notimeclamp:
-            centre = float(f"{centre:.4g}")
-            if values.widthmode == "timestep":
+            if values.widthmode == "timestep" or width is None:
                 newvalues = dc.replace(values, centre=centre)
             elif not float(f"{width:.3g}") > 0.0:
                 show_error("Give a width above 0. A continuous range of width 0 reads the whole timestep")
@@ -1903,7 +1908,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else:
                 newvalues = dc.replace(values, centre=centre, width=float(f"{width:.3g}"))
         else:
-            count = min(max(1, round(width)), nvalid)
+            firstpos, lastpos = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
+            count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), nvalid)
             start = get_nearest_range_start(
                 [viewer.tmids[timestep] for timestep in viewer.validtimesteps], centre, count
             )
