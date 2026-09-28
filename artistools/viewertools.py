@@ -1428,6 +1428,41 @@ def get_flow_layout_class() -> "type[QtWidgets.QLayout]":
     return FlowLayout
 
 
+def make_elided_label(text: str) -> "QtWidgets.QLabel":
+    """Return a label that shows the start and the end of its text, e.g. of a long path, in the width that it gets."""
+    label = get_elided_label_class()()
+    label.setProperty("fulltext", text)
+    label.setToolTip(text)
+    return label
+
+
+@cache
+def get_elided_label_class() -> "type[QtWidgets.QLabel]":
+    """Return the class of the labels of make_elided_label.
+
+    A QLabel shows its whole text or cuts its end. The class shortens the middle of the text at each change of its
+    width, thus Python runs only at a resize.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class ElidedLabel(QtWidgets.QLabel):
+        """A label with a text that ends in the middle with "…" if the label is too narrow for it."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
+
+        @t.override
+        def resizeEvent(self, event: QtGui.QResizeEvent, /) -> None:
+            super().resizeEvent(event)
+            fulltext = str(self.property("fulltext") or "")
+            self.setText(self.fontMetrics().elidedText(fulltext, QtCore.Qt.TextElideMode.ElideMiddle, self.width()))
+
+    return ElidedLabel
+
+
 def make_drag_header(
     on_drag: "Callable[[QtCore.QPoint], None]",
     on_drop: "Callable[[QtCore.QPoint], None]",

@@ -74,7 +74,9 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
+from artistools.viewertools import make_elided_label
 from artistools.viewertools import make_fps_box
+from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
@@ -1171,9 +1173,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, spectragrid = add_section(panellayout, "Spectra")
     spectralist = QtWidgets.QListWidget()
-    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-    # a long path shows its start and its end, and the width of the box sets the length
-    spectralist.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)
+    # the ✕ of each row removes its spectrum, thus the list has no selection
+    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+    # the widget of each row shows the text beside its ✕, thus the list draws no text of its own
     spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     spectralist.setToolTip(
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
@@ -1182,8 +1184,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     addmodelbutton = QtWidgets.QPushButton("Add Model…")
     addmodelbutton.setToolTip("Add the folder of an ARTIS run")
-    removebutton = QtWidgets.QPushButton("Remove")
-    removebutton.setToolTip("Remove the selected spectra. The plot keeps one ARTIS model at least")
     referenceedit = QtWidgets.QLineEdit()
     referenceedit.setPlaceholderText("Add a reference spectrum, e.g. AT2017gfo")
     referenceedit.setToolTip(
@@ -1194,12 +1194,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     referenceedit.setCompleter(referencecompleter)
     openreferencebutton = QtWidgets.QPushButton("Open…")
     openreferencebutton.setToolTip("Add the file of a reference spectrum from a folder")
-    referencerow = QtWidgets.QHBoxLayout()
-    referencerow.addWidget(referenceedit, 1)
-    referencerow.addWidget(openreferencebutton)
+    addrow = QtWidgets.QHBoxLayout()
+    addrow.addWidget(referenceedit, 1)
+    addrow.addWidget(openreferencebutton)
+    addrow.addWidget(addmodelbutton)
     spectragrid.addWidget(spectralist, 0, 0, 1, -1)
-    spectragrid.addLayout(make_row_layout([addmodelbutton, removebutton]), 1, 0, 1, -1)
-    spectragrid.addLayout(referencerow, 2, 0, 1, -1)
+    spectragrid.addLayout(addrow, 1, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     figuresection = add_figure_section(
         window, panellayout, split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1]
@@ -1396,6 +1396,39 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
+    def show_spectra(spectra: "Sequence[str]") -> None:
+        """Show a row for each spectrum, with a ✕ at the right end of the row that removes the spectrum."""
+        spectralist.clear()
+        models = [path for path in spectra if get_artis_run_folders([Path(path)])]
+        rowheight = spectralist.fontMetrics().lineSpacing() + 4
+        for path in spectra:
+            item = QtWidgets.QListWidgetItem()
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
+            name = Path(path).name or path
+            removebutton = make_glyph_button("✕", f"Remove {name} from the plot", f"Remove {name}")
+            if models == [path]:
+                removebutton.setEnabled(False)
+                removebutton.setToolTip("The plot needs one ARTIS model at least. Add a different model first")
+            # the new list replaces this row, thus the removal waits until the click ends
+            removebutton.clicked.connect(
+                partial(QtCore.QTimer.singleShot, 0, window, partial(on_remove_spectrum, path))
+            )
+            row = QtWidgets.QWidget()
+            rowlayout = QtWidgets.QHBoxLayout(row)
+            # a long path shows its start and its end, and the width of the box sets the length
+            rowlayout.setContentsMargins(4, 0, 2, 0)
+            rowlayout.addWidget(make_elided_label(get_spectrum_item_text(path)), 1)
+            rowlayout.addWidget(removebutton)
+            rowheight = max(rowheight, row.sizeHint().height())
+            spectralist.addItem(item)
+            spectralist.setItemWidget(item, row)
+        for index in range(spectralist.count()):
+            if (item := spectralist.item(index)) is not None:
+                item.setSizeHint(QtCore.QSize(0, rowheight))
+        # the list has the height of its spectra, from 2 to 4 rows, and a longer list scrolls
+        shownrows = min(max(spectralist.count(), 2), 4)
+        spectralist.setFixedHeight(shownrows * rowheight + 2 * spectralist.frameWidth() + 4)
+
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
@@ -1478,15 +1511,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())
         ]
         if shownspectra != list(values.spectra):
-            spectralist.clear()
-            for path in values.spectra:
-                item = QtWidgets.QListWidgetItem(get_spectrum_item_text(path))
-                item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-                item.setToolTip(item.text())
-                spectralist.addItem(item)
-            # the list has the height of its spectra, from 2 to 4 lines, and a longer list scrolls
-            shownlines = min(max(spectralist.count(), 2), 4)
-            spectralist.setFixedHeight(shownlines * spectralist.fontMetrics().lineSpacing() + 12)
+            show_spectra(values.spectra)
         set_option_rows(values.otheroptions)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1856,11 +1881,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         QtCore.QTimer.singleShot(0, referenceedit.clear)
         add_reference_name(name)
 
-    def on_remove_spectra() -> None:
-        selected = {item.data(QtCore.Qt.ItemDataRole.UserRole) for item in spectralist.selectedItems()}
-        spectra = tuple(path for path in viewer.values.spectra if path not in selected)
+    def on_remove_spectrum(path: str) -> None:
+        spectra = tuple(other for other in viewer.values.spectra if other != path)
         # the time controls read the timesteps of a run, thus the plot needs an ARTIS model
-        if not get_artis_run_folders([Path(path) for path in spectra]):
+        if not get_artis_run_folders([Path(other) for other in spectra]):
             show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
             return
         apply_spectra(spectra)
@@ -2025,7 +2049,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     openreferencebutton.clicked.connect(on_open_reference)
     referencecompleter.activated.connect(on_complete_reference)
     referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
-    removebutton.clicked.connect(on_remove_spectra)
     copybutton.clicked.connect(on_copy)
     pythoncopybutton.clicked.connect(on_copy_python)
     statusbar.helpbutton.clicked.connect(on_help)
