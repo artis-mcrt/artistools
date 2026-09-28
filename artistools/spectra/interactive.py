@@ -189,10 +189,9 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 type DataSource = t.Literal["auto", "text", "packets"]
 
 # the rule of the width of a continuous time range:
-# - "timestep" takes the width of the valid timestep with the middle nearest to the time;
 # - "dlogt" takes the width that gives ln(t_end / t_start) = dlogt, as the logarithmic timesteps of ARTIS do;
 # - "days" keeps the width in days.
-type WidthMode = t.Literal["timestep", "dlogt", "days"]
+type WidthMode = t.Literal["dlogt", "days"]
 
 
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
@@ -653,9 +652,9 @@ class SpectrumViewer:
             centre=centre,
             width=width,
             notimeclamp=bool(args.notimeclamp),
-            # a continuous range of the command keeps its width in days. A continuous single time takes the width of
-            # its timestep, because a width of 0 reads the whole timestep, which is the clamped range
-            widthmode="days" if width > 0.0 else "timestep",
+            # a continuous range of the command keeps its width in days. A continuous single time takes Δ ln t,
+            # because a width of 0 reads the whole timestep, which is the clamped range
+            widthmode="days" if width > 0.0 else "dlogt",
             dlogt=self.dlogt,
             gamma=bool(args.gamma),
             xmin=format(args.xmin, ".10g"),
@@ -983,15 +982,9 @@ class SpectrumViewer:
             return values
         low, high = self.timebounds
         centre = min(max(values.centre, low), high)
-        widthmode = "timestep" if values.widthmode == "days" and not values.width > 0.0 else values.widthmode
-        if widthmode == "timestep":
-            nearest = min(self.validtimesteps, key=lambda timestep: abs(self.tmids[timestep] - centre))
-            width = float(f"{self.twidths[nearest]:.4g}")
-        elif widthmode == "dlogt":
-            # this width gives (centre + width / 2) / (centre - width / 2) = exp(dlogt), and the start stays above 0
-            width = float(f"{2.0 * centre * math.tanh(values.dlogt / 2.0):.4g}")
-        else:
-            width = values.width
+        widthmode = "dlogt" if values.widthmode == "days" and not values.width > 0.0 else values.widthmode
+        # the width of Δ ln t gives (centre + width / 2) / (centre - width / 2) = exp(dlogt), and the start stays above 0
+        width = float(f"{2.0 * centre * math.tanh(values.dlogt / 2.0):.4g}") if widthmode == "dlogt" else values.width
         if (centre, width, widthmode) == (values.centre, values.width, values.widthmode):
             return values
         return dc.replace(values, centre=centre, width=width, widthmode=widthmode)
@@ -1128,14 +1121,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     widthmodebox = QtWidgets.QComboBox()
     for widthmode, widthmodetext, widthmodetip in (
         (
-            "timestep",
-            "From closest timestep",
-            (
-                "Δt is the width of the timestep with the middle nearest to the time. The start and the end of the"
-                " range stay continuous"
-            ),
-        ),
-        (
             "dlogt",
             "Δ ln t",
             (
@@ -1160,8 +1145,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
     widthtip = (
         'The width of the time range. With "Snap to Timesteps", the width is a count of timesteps. A continuous range'
-        " takes the rule of the box on the left: a width Δt in days, a width Δ ln t in ln t, or the width of the nearest"
-        " timestep. The Up key and the Down key change the width by one timestep."
+        " takes the rule of the box on the left: a width Δ ln t in ln t, or a width Δt in days."
+        " The Up key and the Down key change the width by one timestep."
     )
     for row, (label, slider, edit, tip) in enumerate(
         [
@@ -1705,9 +1690,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             gammaitem.setToolTip(gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files")
         previousbutton.setEnabled(viewer.step_time(-1) is not None)
         nextbutton.setEnabled(viewer.step_time(1) is not None)
-        widthbyrule = values.notimeclamp and values.widthmode == "timestep"
-        widthslider.setEnabled(not widthbyrule)
-        widthedit.setReadOnly(widthbyrule)
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthmodebox.setCurrentIndex(widthmodebox.findData(values.widthmode))
@@ -1841,7 +1823,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_time_mode() -> None:
         values = viewer.values
         if modesegments.currentIndex() == 1 and not values.notimeclamp:
-            # a snapped range of one timestep has a width of 0, and clamp_time then takes the width of that timestep
+            # a snapped range of one timestep has a width of 0, and clamp_time then takes the width of Δ ln t
             apply(
                 dc.replace(
                     values, notimeclamp=True, centre=float(f"{values.centre:.4g}"), width=float(f"{values.width:.3g}")
@@ -1902,7 +1884,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error(f"Give a time from {low:.2f} to {high:.2f} d")
             return
         if values.notimeclamp:
-            if values.widthmode == "timestep" or width is None:
+            if width is None:
                 newvalues = dc.replace(values, centre=centre)
             elif not float(f"{width:.3g}") > 0.0:
                 show_error("Give a width above 0. A continuous range of width 0 reads the whole timestep")

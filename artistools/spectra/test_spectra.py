@@ -2309,9 +2309,9 @@ def test_interactive_continuous_range_keeps_its_bounds() -> None:
     tokens = shlex.split(viewer.get_command())
     assert tokens[tokens.index("-t") + 1] == "299.5-301"
 
-    # a continuous single time takes the width of its timestep, because a width of 0 reads the whole timestep
+    # a continuous single time takes the width of Δ ln t, because a width of 0 reads the whole timestep
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
-    assert viewer.values.widthmode == "timestep"
+    assert viewer.values.widthmode == "dlogt"
     assert viewer.values.width > 0.0
 
 
@@ -2322,13 +2322,11 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     """
     viewer = make_headless_viewer([str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
     assert (viewer.values.widthmode, viewer.values.width) == ("days", 2.0)
-    # a width of 0 in days changes to the width of the nearest timestep
+    # a width of 0 in days changes to Δ ln t, which starts with the Δ ln t of each timestep of the logarithmic grid
     assert viewer.change(dc.replace(viewer.values, width=0.0)) is None
-    assert viewer.values.widthmode == "timestep"
-    nearest = min(viewer.validtimesteps, key=lambda timestep: abs(viewer.tmids[timestep] - viewer.values.centre))
-    assert viewer.values.width == float(f"{viewer.twidths[nearest]:.4g}")
-    # Δ ln t starts with the Δ ln t of each timestep of the logarithmic grid, and the width follows the time
+    assert viewer.values.widthmode == "dlogt"
     assert viewer.values.dlogt == pytest.approx(math.log(viewer.tends[0] / viewer.tstarts[0]), rel=1e-3)
+    # the width follows the time
     assert viewer.change(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)) is None
     low, high = (viewer.values.centre + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
     assert math.log(high / low) == pytest.approx(0.01, rel=1e-3)
@@ -2349,15 +2347,15 @@ def test_interactive_valid_timesteps() -> None:
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
 
-    # a continuous range at each end of the valid times takes the width of the nearest valid timestep, and
-    # plotspectra accepts it
+    # a continuous range at each end of the valid times keeps its Δ ln t, and plotspectra accepts it
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
     # each end starts from the values of the command, thus it does not keep the width mode of the other end
     base = viewer.values
-    for bound, timestep in ((validstart, viewer.validtimesteps[0]), (validend, viewer.validtimesteps[-1])):
+    for bound in (validstart, validend):
         assert viewer.change(dc.replace(base, centre=bound)) is None
         assert viewer.values.centre == bound
-        assert viewer.values.width == float(f"{viewer.twidths[timestep]:.4g}")
+        low, high = (bound + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
+        assert math.log(high / low) == pytest.approx(viewer.values.dlogt, rel=1e-3)
         assert viewer.change(dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
