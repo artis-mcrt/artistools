@@ -2262,19 +2262,14 @@ def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
 
 
 def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
-    """A tick at the very top or bottom of a log axis goes, and a tick well inside it stays."""
+    """A tick at the very top or bottom of a log axis goes, and every decade inside it stays."""
     _fig, ax = plt.subplots()
     ax.set_yscale("log")
     ax.set_ylim(1e-10, 1e3)
-
-    before = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
-    assert min(before) == pytest.approx(1e-10), "the test needs a tick at the lower end"
-
     at.plottools.prune_log_ticks(ax.yaxis)
 
     after = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
-    assert min(after) > 1e-10
-    assert set(after) == {loc for loc in before if loc > 1e-10}
+    assert after == pytest.approx([10.0**exponent for exponent in range(-9, 3)])
 
 
 def test_log_ticks_every_decade_on_a_short_axis() -> None:
@@ -2306,8 +2301,8 @@ def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
     """A log axis of few major ticks keeps them all, rather than end with too few to read."""
     from artistools.plottools import PrunedLogLocator
 
-    locator = PrunedLogLocator(minticks=99)
-    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator().tick_values(1e-30, 1e2))
+    locator = PrunedLogLocator(minticks=99, numticks=999)
+    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator(numticks=999).tick_values(1e-30, 1e2))
 
 
 def test_prune_log_ticks_follows_the_view() -> None:

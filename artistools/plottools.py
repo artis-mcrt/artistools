@@ -1378,25 +1378,25 @@ def plain_label(label: str) -> str:
     return re.sub(r"\\(?:mathrm|rm)\s*", "", label)
 
 
-def set_log_ticks_every_decade(axis: mplaxis.Axis) -> None:
+def set_log_ticks_every_decade(axis: mplaxis.Axis, *, prune: bool = False) -> None:
     """Give a log axis a major tick at each power of ten, and a minor tick at 2 to 9 of each decade.
 
     The default LogLocator counts the decades that fit the axis length. A short frame then labels
     every second decade, and the minor locator gives no ticks at all. A range below one decade can
-    hold no power of ten, thus the minor formatter then labels the minor ticks.
+    hold no power of ten, thus the minor formatter then labels the minor ticks. prune=True leaves out
+    the major ticks against either end, for a stacked subplot.
     """
     if axis.get_scale() != "log":
         return
 
-    axis.set_major_locator(mplticker.LogLocator(numticks=999))
+    axis.set_major_locator(PrunedLogLocator(numticks=999) if prune else mplticker.LogLocator(numticks=999))
     axis.set_minor_locator(mplticker.LogLocator(subs=tuple(range(2, 10)), numticks=999))
     axis.set_minor_formatter(mplticker.LogFormatterSciNotation(labelOnlyBase=False, minor_thresholds=(1.0, 0.4)))
 
 
 def prune_log_ticks(axis: mplaxis.Axis) -> None:
-    """Give a log axis a locator that leaves out the ticks against either end."""
-    if axis.get_scale() == "log":
-        axis.set_major_locator(PrunedLogLocator())
+    """Give a log axis a tick at each decade and the minor ticks, but leave out the ticks against either end."""
+    set_log_ticks_every_decade(axis, prune=True)
 
 
 def set_exponent_label(axis: mplax.Axes) -> None:
