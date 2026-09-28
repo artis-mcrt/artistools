@@ -2780,7 +2780,10 @@ def show_settings_window() -> None:
     form.addRow("Play in a new window [FPS]:", fpsbox)
 
     previewcheck = QtWidgets.QCheckBox("Draw a fast preview while a slider moves (plotspectra)")
-    previewcheck.setToolTip("The preview reads the first batch of ranks only, and the full plot follows the release")
+    previewcheck.setToolTip(
+        "The preview reads the first batch of ranks only. A drag draws it only when the full plot takes longer than"
+        f" {PREVIEW_SECONDS:g} s, and the full plot follows each preview at once"
+    )
     previewcheck.setChecked(get_bool_setting("dragpreview", default=True))
     previewcheck.toggled.connect(partial(settings.setValue, "dragpreview"))
     form.addRow(previewcheck)
@@ -3354,6 +3357,10 @@ def changes_values[ValuesT](
     """
     return (keep_on_undo(values, current) if keep_on_undo is not None else values) != current
 
+
+# a slider drag of the spectrum viewer draws a preview only when the full plot takes longer than this, e.g. for a long
+# time range of a large run
+PREVIEW_SECONDS: t.Final = 0.5
 
 # the time of a plot before the spinner shows over the plot
 BUSY_MILLISECONDS: t.Final = 300

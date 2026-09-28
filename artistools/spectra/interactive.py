@@ -100,6 +100,7 @@ from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import PREVIEW_SECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
@@ -185,8 +186,8 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "output_spectra",
 })
 
-# the time after the last preview, or after the release of the slider, before the full plot replaces the preview
-FULL_DRAW_MILLISECONDS: t.Final = 250
+# the shortest time range [d] of the estimate of the plot time, thus a range of zero days gives no division by zero
+MIN_TIMESPAN_DAYS: t.Final = 1e-3
 
 
 type DataSource = t.Literal["auto", "text", "packets"]
@@ -421,6 +422,7 @@ class RenderedSpectrum(t.NamedTuple):
     residualaxis: "mplax.Axes | None"
     dfalldata: pl.DataFrame
     ispreview: bool
+    readpackets: bool
 
 
 def fix_title_position(axis: "mplax.Axes") -> None:
@@ -686,8 +688,10 @@ class SpectrumViewer:
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
         self.drewpreview = False
+        # True if the last plot read the packets files, thus its time gives the time of a full plot of the packets
+        self.drewpackets = False
         # the window sets this before each plot that a slider drag gives, and the worker thread reads it
-        self.dragging = False
+        self.wantspreview = False
         # the colours of the window in Dark Mode, which the window sets and the worker thread reads
         self.darkcolours: tuple[str, str] | None = None
         # the last warning of the last plot, which the status bar shows
@@ -954,7 +958,12 @@ class SpectrumViewer:
             fig.draw_without_rendering()
             plots.append(
                 RenderedSpectrum(
-                    fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata, ispreview=ispreview
+                    fig=fig,
+                    axes=axes,
+                    residualaxis=residualaxis,
+                    dfalldata=dfalldata,
+                    ispreview=ispreview,
+                    readpackets=bool(plotargs.frompackets),
                 )
             )
             return None
@@ -968,7 +977,7 @@ class SpectrumViewer:
             plot = plots[0]
             self.figsize = show_figure_in_canvas(self.fig, plot.fig)
             self.fig, self.axes, self.residualaxis = plot.fig, plot.axes, plot.residualaxis
-            self.dfalldata, self.drewpreview = plot.dfalldata, plot.ispreview
+            self.dfalldata, self.drewpreview, self.drewpackets = plot.dfalldata, plot.ispreview, plot.readpackets
             return None
 
         return show_plot
@@ -1083,7 +1092,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     windows.append(window)
     add_recent_model(viewer.runfolders[0])
 
-    fulldrawtimer = make_timer(window, FULL_DRAW_MILLISECONDS)
     playtimer = make_timer(window, 0)
     fittimer = make_timer(window, FIT_MILLISECONDS)
 
@@ -1728,17 +1736,41 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
+    # the time [s] of the last full plot of the packets files and the length [d] of its time range, or None
+    fullplotcost: tuple[float, float] | None = None
+
+    def get_timespan_days(values: ControlValues) -> float:
+        """Return the length of the time range of the values, which sets the count of packets that a plot reads."""
+        if values.notimeclamp:
+            return max(values.width, MIN_TIMESPAN_DAYS)
+        first, last = viewer.get_selection(values)
+        return max(float(viewer.tends[last] - viewer.tstarts[first]), MIN_TIMESPAN_DAYS)
+
+    def needs_preview(values: ControlValues) -> bool:
+        """Return True if the full plot of the values takes longer than PREVIEW_SECONDS.
+
+        The time of the last full plot of the packets, scaled by the length of the time range, gives the estimate.
+        With no such plot, the drag draws a preview, because a preview is fast for any run.
+        """
+        if fullplotcost is None:
+            return True
+        seconds, timespan = fullplotcost
+        return seconds * get_timespan_days(values) / timespan > PREVIEW_SECONDS
+
     def after_draw(message: str | None) -> None:
+        nonlocal fullplotcost
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
+        if message is None and viewer.drewpackets and not viewer.drewpreview:
+            fullplotcost = (queue.plotseconds, get_timespan_days(queue.drawnvalues))
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
         if message is None and viewer.values.yscale == "auto" and plot_shows_values():
             yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axes[0].get_yscale()})")
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
-        # each change starts the timer again, thus the full plot follows after the last change
+        # the full plot starts at once, also while the user holds the slider. A newer change of the user waits for it
         if viewer.drewpreview:
-            fulldrawtimer.start()
+            draw_full()
         # a rejection occurs again at each step, thus a rejection stops the Play button
         if message is not None:
             playbutton.setChecked(False)
@@ -1751,8 +1783,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return timeslider.isSliderDown() or widthslider.isSliderDown() or bool(xrangeslider.property("dragging"))
 
     def render_plot(values: ControlValues) -> "Callable[[], str | None]":
-        # the worker thread runs this function, thus it reads the drag state from the viewer and not from a widget
-        return viewer.render(values, preview=viewer.dragging)
+        # the worker thread runs this function, thus it reads the choice of the preview from the viewer
+        return viewer.render(values, preview=viewer.wantspreview)
 
     def get_drawkind() -> str:
         return "Preview" if viewer.drewpreview else "Plot"
@@ -1778,15 +1810,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             dragpreview = None
         elif dragpreview is None:
             dragpreview = get_bool_setting("dragpreview", default=True)
-        viewer.dragging = bool(dragpreview)
-        queue.apply(viewer.clamp_time(values), undoable=undoable)
+        values = viewer.clamp_time(values)
+        viewer.wantspreview = bool(dragpreview) and needs_preview(values)
+        queue.apply(values, undoable=undoable)
 
     def on_undo() -> None:
-        viewer.dragging = False
+        viewer.wantspreview = False
         queue.undo()
 
     def on_redo() -> None:
-        viewer.dragging = False
+        viewer.wantspreview = False
         queue.redo()
 
     def fit_figwidthscale() -> None:
@@ -1805,14 +1838,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # a change in the queue, or a step of Play, draws a new plot in place of the preview
         if queue.requestedvalues is not None or playbutton.isChecked() or not viewer.drewpreview:
             return
-        # the drag can give more previews, thus the full plot waits until the user releases the slider
-        if is_slider_dragged():
-            fulldrawtimer.start()
-            return
-        viewer.dragging = False
+        viewer.wantspreview = False
         queue.redraw()
-
-    fulldrawtimer.timeout.connect(draw_full)
 
     def show_error(message: str) -> None:
         show_status_message(statusbar, message, "")
@@ -1900,7 +1927,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if checked:
             play_step()
         elif viewer.drewpreview:
-            fulldrawtimer.start()
+            draw_full()
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the values of the controls.
