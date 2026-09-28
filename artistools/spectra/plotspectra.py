@@ -2082,6 +2082,14 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give one time with -timedays. Run the command again for each other time",
         )
 
+    # a gamma packet comes from the decay of a nuclide, and ARTIS records no ion or line for it
+    if args.gamma and args.groupby in {"ion", "line"}:
+        exit_with_error(
+            f"a gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
+            f" {args.groupby}",
+            "Give -groupby nuc or -groupby nucmass",
+        )
+
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
     if args.showabsorption and args.groupby == "nuc":
         exit_with_error(

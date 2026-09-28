@@ -692,6 +692,28 @@ def test_spectraemissionplot_refuses_packets_with_no_emission_position(
     assert "does not accept" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("groupby", ["ion", "line"])
+def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], groupby: str
+) -> None:
+    """A gamma-ray spectrum stops with a message for -groupby ion and line, because a gamma packet has no ion.
+
+    The spectrum viewer offered these choices in the mode of the gamma packets, and the plot then failed.
+    """
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            gamma=True,
+            groupby=groupby,
+            outputfile=tmp_path / "gammaions.pdf",
+        )
+    assert f"does not accept -groupby {groupby}" in capsys.readouterr().err
+
+
 def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
     """A shell selection that holds no packet stops with a message when the plot is normalised."""
     with pytest.raises(SystemExit):

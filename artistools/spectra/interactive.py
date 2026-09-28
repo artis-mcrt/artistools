@@ -1448,6 +1448,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption."""
         values = viewer.values
         key = (
+            values.gamma,
             values.showemission,
             values.showabsorption,
             values.groupby,
