@@ -3967,13 +3967,12 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
 
-        options = viewertools.ExportOptions(suffix=suffix, dpi=dpi, scales=None)
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewertools.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, options
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, (suffix, dpi)
             )
         # a name with no suffix takes the suffix of the selected format
         assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
@@ -4003,15 +4002,14 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
 
     queue = mock.Mock(run_task=run_task)
     statusbar = mock.Mock()
-    options = viewertools.ExportOptions(suffix="svg", dpi=150, scales=None)
     with mock.patch.object(viewertools, "put_file_on_clipboard", return_value=None) as mockclipboard:
         viewertools.copy_figure_of_command(
-            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], options
+            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], ("svg", 150)
         )
     assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
     assert commands[0][-1].endswith("figure.svg")
     mockclipboard.assert_called_once_with(b"<svg/>", "svg")
-    statusbar.message.setText.assert_called_with("Copied the figure as SVG, with 150 dpi")
+    statusbar.message.setText.assert_called_with("Copied the figure as SVG")
 
 
 def test_viewer_row_wraps_its_groups() -> None:
@@ -4020,41 +4018,6 @@ def test_viewer_row_wraps_its_groups() -> None:
     assert viewertools.get_wrapped_lines([100, 0, 100], 212, 12) == [[0, 1, 2]]
     # a group wider than the line has a line of its own
     assert viewertools.get_wrapped_lines([50, 400, 50], 300, 12) == [[0], [1], [2]]
-
-
-def test_viewer_size_model_gives_the_scales_of_a_size() -> None:
-    """The Figure section finds the -figscale and the -figwidthscale that give a figure a new size.
-
-    The frames grow with the scales, and the margins of the labels keep their size. Thus a figure is not in proportion
-    to -figscale, and a proportional model gave a wrong size. A colour image of plotestimators has the constrained
-    layout, and all of it scales, but the model took the colour bar as the only frame.
-    """
-    from artistools.plottools import make_frame_figure
-
-    def make_figure(figscale: float, figwidthscale: float) -> mplfig.Figure:
-        args = argparse.Namespace(figscale=figscale, figwidthscale=figwidthscale)
-        # a figure of pyplot stays open after the test, thus the test gives an empty figure
-        fig, _ = make_frame_figure(args, rows=2, cols=2, sharey=True, fig=mplfig.Figure())
-        FigureCanvasAgg(fig).draw()
-        return fig
-
-    tokens = ["-figscale", "1.5", "-figwidthscale", "0.8"]
-    model = viewertools.get_figure_size_model(make_figure(1.5, 0.8), tokens, 1.0)
-    assert np.allclose(model.scales, (1.5, 0.8), rtol=1e-12, atol=0.0)
-    newfig = make_figure(0.9, 1.7)
-    newsize = tuple(float(value) for value in newfig.get_size_inches())
-    # make_frame_figure rounds the size of the figure to 0.01 inches
-    assert np.allclose(model.get_size(0.9, 1.7), newsize, rtol=1e-3, atol=0.0)
-    assert np.allclose(model.get_scales(*newsize), (0.9, 1.7), rtol=1e-3, atol=0.0)
-
-    # the size of a colour image is in proportion to -figscale, and its width also to -figwidthscale
-    imagefig = mplfig.Figure(figsize=(3.8, 4.2), layout="constrained")
-    image = imagefig.add_subplot().pcolormesh(np.arange(9.0).reshape(3, 3))
-    imagefig.colorbar(image)
-    FigureCanvasAgg(imagefig).draw()
-    imagemodel = viewertools.get_figure_size_model(imagefig, [], 1.0)
-    assert np.allclose(imagemodel.get_scales(7.6, 8.4), (2.0, 1.0), rtol=1e-12, atol=0.0)
-    assert np.allclose(imagemodel.get_scales(5.7, 4.2), (1.0, 1.5), rtol=1e-12, atol=0.0)
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:

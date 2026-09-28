@@ -1202,11 +1202,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     spectragrid.addLayout(referencerow, 2, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     figuresection = add_figure_section(
-        window,
-        panellayout,
-        viewer.parser,
-        split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1],
-        rasterparts=False,
+        window, panellayout, split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1]
     )
     _, optiongrid = add_section(panellayout, "Other options")
 
@@ -1882,8 +1878,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         from artistools.spectra.plotspectra import main as plotspectra_main
 
         plottokens = get_figure_tokens()
-        options = figuresection.get_options(viewer.fig, plottokens)
-        copy_figure_of_command(queue, statusbar, plotspectra_main, viewer.parser, plottokens, options)
+        copy_figure_of_command(
+            queue, statusbar, plotspectra_main, viewer.parser, plottokens, figuresection.get_choice()
+        )
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1893,8 +1890,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         from artistools.spectra.plotspectra import main as plotspectra_main
 
         plottokens = get_figure_tokens()
-        options = figuresection.get_options(viewer.fig, plottokens)
-        save_figure_of_command(window, statusbar, plotspectra_main, "plotspectra", plottokens, viewer.parser, options)
+        save_figure_of_command(
+            window, statusbar, plotspectra_main, "plotspectra", plottokens, viewer.parser, figuresection.get_choice()
+        )
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -1933,7 +1931,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
-            figuresection.get_options(viewer.fig, get_figure_tokens()).scales,
         )
 
     def on_plot_menu(_frameindex: int, _event: t.Any) -> None:

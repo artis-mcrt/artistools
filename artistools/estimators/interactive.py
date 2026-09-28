@@ -2118,11 +2118,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
     figuresection = add_figure_section(
-        window,
-        panellayout,
-        viewer.parser,
-        split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1],
-        rasterparts=True,
+        window, panellayout, split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1]
     )
     _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
@@ -3158,8 +3154,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         from artistools.estimators.plotestimators import main as plotestimators_main
 
         plottokens = get_figure_tokens()
-        options = figuresection.get_options(viewer.fig, plottokens)
-        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, plottokens, options)
+        copy_figure_of_command(
+            queue, statusbar, plotestimators_main, viewer.parser, plottokens, figuresection.get_choice()
+        )
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
@@ -3169,9 +3166,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         from artistools.estimators.plotestimators import main as plotestimators_main
 
         plottokens = get_figure_tokens()
-        options = figuresection.get_options(viewer.fig, plottokens)
         save_figure_of_command(
-            window, statusbar, plotestimators_main, "plotestimators", plottokens, viewer.parser, options
+            window,
+            statusbar,
+            plotestimators_main,
+            "plotestimators",
+            plottokens,
+            viewer.parser,
+            figuresection.get_choice(),
         )
 
     def on_open_model() -> None:
@@ -3347,7 +3349,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
-            figuresection.get_options(viewer.fig, get_figure_tokens()).scales,
         )
 
     def on_open_recent(folder: str) -> None:
