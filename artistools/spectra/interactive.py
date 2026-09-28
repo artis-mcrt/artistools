@@ -15,6 +15,7 @@ import polars as pl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
@@ -24,6 +25,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.packets.core import get_packets_textfilename
 from artistools.packets.core import RANKS_PER_BATCH
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
@@ -245,17 +247,21 @@ def get_default_groupby(*, gamma: bool) -> str:
     return "nuc" if gamma else "ion"
 
 
-def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
+def set_packet_type(
+    values: ControlValues, *, gamma: bool, gammareader: t.Literal["spec", "packets"] | None
+) -> ControlValues:
     """Return the values for the spectrum of the r-packets, or of the gamma packets if gamma is True.
 
     The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
-    grouping, and the locked series return to the defaults of the new spectrum.
+    grouping, and the locked series return to the defaults of the new spectrum. A run with no gamma_spec.out gives
+    its gamma-ray spectrum from the packets only (gammareader "packets").
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
     return dc.replace(
         values,
         gamma=gamma,
+        frompackets=values.frompackets or (gamma and gammareader == "packets"),
         xunit=xunit,
         xmin=format(xmin, ".10g"),
         xmax=format(xmax, ".10g"),
@@ -264,6 +270,23 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
         groupby=None,
         fixedionlist=(),
     )
+
+
+def get_gamma_reader(runfolders: "Sequence[Path]") -> t.Literal["spec", "packets"] | None:
+    """Return the files that give the gamma-ray spectrum of each run, or None if a run has no such files.
+
+    plotspectra reads gamma_spec.out, or the packets with --frompackets. A run can keep only the parquet cache of
+    its packets.
+    """
+    reader: t.Literal["spec", "packets"] = "spec"
+    for runfolder in runfolders:
+        if firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None:
+            continue
+        hastextpackets = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=runfolder) is not None
+        if not hastextpackets and not any((runfolder / "packets").glob("packetsbatch00_*.parquet.tmp")):
+            return None
+        reader = "packets"
+    return reader
 
 
 def format_days(value: float) -> str:
@@ -662,6 +685,7 @@ class SpectrumViewer:
         self.previewmaxpacketfiles = (
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in runfolders) else None
         )
+        self.gammareader = get_gamma_reader(runfolders)
         self.runspectra = tuple(str(path) for path in spectra)
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
@@ -1112,13 +1136,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         widget.setToolTip(helptexts.get(dest, ""))
     # the index of an item: 0 for the UVOIR spectrum of the r-packets, and 1 for the gamma packets (--gamma)
     packetbox = QtWidgets.QComboBox()
+    gammatooltip = f"--gamma: {helptexts.get('gamma', '')}"
     for text, tooltip in (
         ("r-packets", "The UVOIR spectrum of the radiation packets (r-packets)"),
-        ("\N{GREEK SMALL LETTER GAMMA}-packets", f"--gamma: {helptexts.get('gamma', '')}"),
+        ("\N{GREEK SMALL LETTER GAMMA}-packets", gammatooltip),
     ):
         packetbox.addItem(text)
         packetbox.setItemData(packetbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     packetbox.setToolTip("The packets of the spectrum: the r-packets, or the gamma packets (--gamma)")
+    packetmodel = packetbox.model()
+    assert isinstance(packetmodel, QtGui.QStandardItemModel)
+    gammaitem = packetmodel.item(1)
     add_row(
         axesgrid,
         2,
@@ -1502,6 +1530,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             set_time_mode()
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
         packetbox.setCurrentIndex(1 if values.gamma else 0)
+        # the current mode stays available, thus the user can switch back from a plot that failed
+        if gammaitem.isEnabled() != (gammaavailable := viewer.gammareader is not None or values.gamma):
+            gammaitem.setEnabled(gammaavailable)
+            gammaitem.setToolTip(gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files")
         previousbutton.setEnabled(viewer.step_time(-1) is not None)
         nextbutton.setEnabled(viewer.step_time(1) is not None)
         if values.notimeclamp:
@@ -1661,7 +1693,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_packet_type(index: int) -> None:
         if (gamma := index == 1) != viewer.values.gamma:
-            apply(set_packet_type(viewer.values, gamma=gamma))
+            apply(set_packet_type(viewer.values, gamma=gamma, gammareader=viewer.gammareader))
 
     def on_time_mode() -> None:
         values = viewer.values
