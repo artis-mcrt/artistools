@@ -2952,25 +2952,41 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
     assert not viewer.values.gamma
-    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=True, gammareader=viewer.gammareader)) is None
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=True)) is None
     tokens = viewer.get_plot_tokens()
     assert "--gamma" in tokens
     assert "-xunit" not in tokens, "keV is the default x unit of a gamma-ray spectrum"
     assert viewer.values.xunit == "kev"
-    assert (
-        viewer.change(interactive.set_packet_type(viewer.values, gamma=False, gammareader=viewer.gammareader)) is None
-    )
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=False)) is None
     assert "--gamma" not in viewer.get_plot_tokens()
     assert viewer.values.xunit == "angstroms"
     # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
     gammaviewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
     assert gammaviewer.values.gamma
     assert all(flag != "--gamma" for flag, _ in gammaviewer.values.otheroptions)
-    # the test model has packets and no gamma_spec.out, thus its gamma-ray spectrum needs --frompackets
+    # the test model has packets and no gamma_spec.out, thus plotspectra reads the packets of its gamma-ray spectrum.
+    # The viewer set --frompackets for the gamma packets, and that flag stayed after the switch back to the r-packets
     packetsviewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
-    assert packetsviewer.gammareader == "packets"
-    gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True, gammareader=packetsviewer.gammareader)
-    assert gammavalues.datasource == "packets"
+    assert packetsviewer.hasgammaspectrum
+    gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True)
+    assert gammavalues.datasource == "auto"
+    assert (
+        interactive.get_packets_reason(packetsviewer.get_plot_tokens(gammavalues)) == "--gamma with no gamma_spec.out"
+    )
     assert packetsviewer.change(gammavalues) is None
+    assert packetsviewer.change(interactive.set_packet_type(packetsviewer.values, gamma=False)) is None
+    assert packetsviewer.values.datasource == "auto"
+    assert "--frompackets" not in packetsviewer.get_plot_tokens()
     # a run with neither file has no gamma-ray spectrum, thus the window disables the gamma packets
-    assert interactive.get_gamma_reader([at.get_path("testdata") / "test-classicmode_1d"]) is None
+    assert not interactive.has_gamma_spectrum([at.get_path("testdata") / "test-classicmode_1d"])
+
+
+def test_interactive_direction_kinds_follow_the_first_run() -> None:
+    """The kinds of viewing direction come from the first run of the list, also after a change of the list.
+
+    The kinds came from the first run of the command, thus a new first run with no vpkt.txt kept -plotvspecpol.
+    """
+    viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
+    assert "vpkt" in viewer.directionkinds
+    viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
+    assert "vpkt" not in viewer.directionkinds

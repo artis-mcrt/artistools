@@ -288,21 +288,18 @@ def get_default_groupby(*, gamma: bool) -> str:
     return "nuc" if gamma else "ion"
 
 
-def set_packet_type(
-    values: ControlValues, *, gamma: bool, gammareader: t.Literal["spec", "packets"] | None
-) -> ControlValues:
+def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     """Return the values for the spectrum of the r-packets, or of the gamma packets if gamma is True.
 
     The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
-    grouping, and the locked series return to the defaults of the new spectrum. A run with no gamma_spec.out gives
-    its gamma-ray spectrum from the packets only (gammareader "packets").
+    grouping, and the locked series return to the defaults of the new spectrum. The data source stays. For a run with
+    no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum.
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
     return dc.replace(
         values,
         gamma=gamma,
-        datasource="packets" if gamma and gammareader == "packets" else values.datasource,
         usethermalemissiontype=values.usethermalemissiontype and not gamma,
         xunit=xunit,
         xmin=format(xmin, ".10g"),
@@ -314,21 +311,24 @@ def set_packet_type(
     )
 
 
-def get_gamma_reader(runfolders: "Sequence[Path]") -> t.Literal["spec", "packets"] | None:
-    """Return the files that give the gamma-ray spectrum of each run, or None if a run has no such files.
+def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
+    """Return True if each run has the files of a gamma-ray spectrum.
 
-    plotspectra reads gamma_spec.out, or the packets with --frompackets. A run can keep only the parquet cache of
-    its packets.
+    plotspectra reads gamma_spec.out, or the packets when a run has no gamma_spec.out. A run can keep only the parquet
+    cache of its packets.
     """
-    reader: t.Literal["spec", "packets"] = "spec"
     for runfolder in runfolders:
         if firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None:
             continue
         hastextpackets = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=runfolder) is not None
         if not hastextpackets and not any((runfolder / "packets").glob("packetsbatch00_*.parquet.tmp")):
-            return None
-        reader = "packets"
-    return reader
+            return False
+    return True
+
+
+def get_direction_kinds(runfolder: Path) -> list[str]:
+    """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
+    return ["", "bin", "phi", "theta", *(["vpkt"] if (runfolder / "vpkt.txt").is_file() else [])]
 
 
 def format_days(value: float) -> str:
@@ -635,10 +635,6 @@ class SpectrumViewer:
         self.helptexts = get_helptexts(parser)
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultyvariable: str = parser.get_default("yvariable")
-        # a run with a configuration of virtual packets has observers for -plotvspecpol
-        self.directionkinds = ["", "bin", "phi", "theta"]
-        if (self.runfolders[0] / "vpkt.txt").is_file():
-            self.directionkinds.append("vpkt")
         # the time of the command stays exact, because a rounded time can select a different timestep
         values = ControlValues(
             centre=centre,
@@ -727,7 +723,9 @@ class SpectrumViewer:
         self.previewmaxpacketfiles = (
             RANKS_PER_BATCH if any(get_nprocs(runfolder) > RANKS_PER_BATCH for runfolder in runfolders) else None
         )
-        self.gammareader = get_gamma_reader(runfolders)
+        self.hasgammaspectrum = has_gamma_spectrum(runfolders)
+        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
+        self.directionkinds = get_direction_kinds(runfolders[0])
         self.runspectra = tuple(str(path) for path in spectra)
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
@@ -1286,18 +1284,25 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, directiongrid = add_section(panellayout, "Viewing direction")
     directionkindbox = QtWidgets.QComboBox()
-    for directionkind, directionkindtext, dest in (
-        ("", "All directions", ""),
-        ("bin", "-plotviewingangle", "plotviewingangle"),
-        ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
-        ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
-        ("vpkt", "-plotvspecpol", "plotvspecpol"),
-    ):
-        if directionkind in viewer.directionkinds:
-            directionkindbox.addItem(directionkindtext, directionkind)
-            directionkindbox.setItemData(
-                directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
-            )
+
+    def show_direction_kinds() -> None:
+        """Give the box the kinds of viewing direction of the first run, which Add Model or a new order can change."""
+        with QtCore.QSignalBlocker(directionkindbox):
+            directionkindbox.clear()
+            for directionkind, directionkindtext, dest in (
+                ("", "All directions", ""),
+                ("bin", "-plotviewingangle", "plotviewingangle"),
+                ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
+                ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
+                ("vpkt", "-plotvspecpol", "plotvspecpol"),
+            ):
+                if directionkind in viewer.directionkinds:
+                    directionkindbox.addItem(directionkindtext, directionkind)
+                    directionkindbox.setItemData(
+                        directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
+                    )
+
+    show_direction_kinds()
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
     add_row(directiongrid, 0, [directionkindbox, usedegreescheck])
@@ -1510,6 +1515,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
         slidermode, shownchoices = None, None
         directionchoices.clear()
+        show_direction_kinds()
         shownruns = viewer.runspectra
 
     def set_time_mode() -> None:
@@ -1657,7 +1663,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
         packetbox.setCurrentIndex(1 if values.gamma else 0)
         # the current mode stays available, thus the user can switch back from a plot that failed
-        if gammaitem.isEnabled() != (gammaavailable := viewer.gammareader is not None or values.gamma):
+        if gammaitem.isEnabled() != (gammaavailable := viewer.hasgammaspectrum or values.gamma):
             gammaitem.setEnabled(gammaavailable)
             gammaitem.setToolTip(gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files")
         previousbutton.setEnabled(viewer.step_time(-1) is not None)
@@ -1819,7 +1825,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_packet_type(index: int) -> None:
         if (gamma := index == 1) != viewer.values.gamma:
-            apply(set_packet_type(viewer.values, gamma=gamma, gammareader=viewer.gammareader))
+            apply(set_packet_type(viewer.values, gamma=gamma))
 
     def on_time_mode() -> None:
         values = viewer.values
@@ -2070,6 +2076,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """
         viewer.load_runs(spectra)
         values = dc.replace(viewer.values, spectra=tuple(spectra))
+        # a new first run can lack a kind of viewing direction, e.g. the observers of the virtual packets
+        if values.directionkind not in viewer.directionkinds:
+            values = dc.replace(values, directionkind="", directionbins=())
         apply(viewer.clamp_time(values) if values.notimeclamp else viewer.snap(values, *viewer.get_selection(values)))
 
     def add_spectra(paths: "Sequence[str]") -> None:
@@ -2119,7 +2128,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """Apply the order of the rows after a drag in the list of spectra."""
         order = [spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())]
         if order != list(viewer.values.spectra):
-            apply(dc.replace(viewer.values, spectra=tuple(order)))
+            apply_spectra(order)
 
     def on_move_spectrum(step: int) -> None:
         """Move the selected spectrum one row up or down, and keep the selection on it."""
@@ -2128,7 +2137,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if row < 0 or not 0 <= row + step < len(spectra):
             return
         spectra.insert(row + step, spectra.pop(row))
-        apply(dc.replace(viewer.values, spectra=tuple(spectra)))
+        apply_spectra(spectra)
         spectralist.setCurrentRow(row + step)
 
     def on_remove_spectrum(path: str) -> None:

@@ -7,6 +7,7 @@ import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
@@ -46,6 +47,7 @@ from artistools.misc import apply_time_range_args
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import firstexisting_or_none
 from artistools.misc import folder_is_artis_run
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -2001,6 +2003,16 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
 
 
+@lru_cache(maxsize=64)
+def has_gamma_spec_file(runfolder: Path) -> bool:
+    """Return True if the run has gamma_spec.out.
+
+    The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
+    drive. Thus a file that exspec writes later stays unknown until a new window, and the plot then reads the packets.
+    """
+    return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
+
+
 def resolve_frompackets(args: argparse.Namespace) -> None:
     """Set args.frompackets and the default of -groupby, from the options that the exspec files cannot serve.
 
@@ -2017,6 +2029,13 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     packetreasons = {
         "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
+        "--gamma with no gamma_spec.out": args.gamma
+        and not all(
+            has_gamma_spec_file(runfolder)
+            for runfolder in get_artis_run_folders([
+                Path(path) for path in args.specpath if not path_is_reference_spectrum(path)
+            ])
+        ),
         f"-groupby {args.groupby}": args.groupby in {"element", "line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),
         "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
