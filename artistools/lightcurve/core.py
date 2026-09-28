@@ -42,10 +42,9 @@ from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
-from artistools.packets import bin_and_sum
-from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
+from artistools.packets import sum_packets_by_dirbin
 from artistools.spectra import get_escape_surface_gamma
 from artistools.spectra import get_spectra
 from artistools.spectra import get_spectrum_at_time
@@ -151,18 +150,16 @@ def get_from_packets(
 
     vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
-    # only set for real packets, where the escape times are measured at the model surface
-    escapesurfacegamma: float | None = None
     if directionbins_are_vpkt_observers:
         nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
         nprocs_read, dfpackets = get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        dfpackets = dfpackets.with_columns([
-            (pl.col("escape_time") * escapesurfacegamma / day_to_s).alias("t_arrive_cmf_d")
-        ])
+        # the escape time multiplied by the Lorentz factor at the model surface gives the comoving-frame arrival time
+        dfpackets = dfpackets.with_columns(
+            t_arrive_cmf_d=pl.col("escape_time") * get_escape_surface_gamma(modelpath) / day_to_s
+        )
 
     if pellet_nucname is not None:
         atomic_number = get_atomic_number(pellet_nucname)
@@ -182,73 +179,50 @@ def get_from_packets(
 
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
 
-    lcdata: dict[int, pl.LazyFrame] = {}
-    for dirbin in directionbins:
-        if directionbins_are_vpkt_observers:
-            assert vpkt_config is not None
+    if directionbins_are_vpkt_observers:
+        assert vpkt_config is not None
+        # each observer has its own columns of arrival time and energy, thus each observer needs a pass of its own
+        rfsums: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+        for dirbin in directionbins:
             obsdirindex, opacchoiceindex = divmod(dirbin, vpkt_config["nspectraperobs"])
-            pldfpackets_dirbin = dfpackets.with_columns(
-                e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"),
-                t_arrive_d=pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            energysums, packetcounts, _ = sum_packets_by_dirbin(
+                dfpackets,
+                [-1],
+                f"dir{obsdirindex}_t_arrive_d",
+                timebinstarts_plusend,
+                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            )[-1]
+            rfsums[dirbin] = (energysums, packetcounts, 4 * math.pi)
+        cmfsums = None
+    else:
+        rfsums, cmfsums = (
+            sum_packets_by_dirbin(
+                dfpackets,
+                list(directionbins),
+                valuecolumn,
+                timebinstarts_plusend,
+                weightcolumn,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
             )
-            inverse_solidangle_fraction = 4 * math.pi
-        else:
-            pldfpackets_dirbin, inverse_solidangle_fraction = filter_packets_dirbin(
-                dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
-            )
-
-        lcdata[dirbin] = (
-            bin_and_sum(
-                pldfpackets_dirbin, bincol=timecol, bins=timebinstarts_plusend, sumcols=["e_rf"], getcounts=True
-            )
-            .with_columns(timestep=pl.col(f"{timecol}_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min())
-            .rename({"count": "packetcount"})
-            .join(
-                dftimesteps_selected.select("timestep", "twidth_days", "tmid_days").lazy(),
-                how="left",
-                on="timestep",
-                maintain_order="left",
-            )
-            .with_columns(
-                luminosity_Lsun=(
-                    pl.col("e_rf_sum")
-                    / nprocs_read
-                    * inverse_solidangle_fraction
-                    / (pl.col("twidth_days") * day_to_s)
-                    / Lsun_to_erg_per_s
-                )
-            )
-            .drop("e_rf_sum", f"{timecol}_bin")
+            for valuecolumn, weightcolumn in ((timecol, "e_rf"), ("t_arrive_cmf_d", "e_cmf"))
         )
 
-        if escapesurfacegamma is not None and "t_arrive_cmf_d" in pldfpackets_dirbin.collect_schema().names():
-            lcdata[dirbin] = (
-                lcdata[dirbin]
-                .join(
-                    bin_and_sum(
-                        pldfpackets_dirbin, bincol="t_arrive_cmf_d", bins=timebinstarts_plusend, sumcols=["e_cmf"]
-                    )
-                    .with_columns(
-                        timestep=pl.col("t_arrive_cmf_d_bin").cast(pl.Int32) + dftimesteps_selected["timestep"].min()
-                    )
-                    .drop("t_arrive_cmf_d_bin"),
-                    how="left",
-                    on="timestep",
-                    maintain_order="left",
-                )
-                .with_columns(
-                    luminosity_cmf_Lsun=pl.col("e_cmf_sum")
-                    / nprocs_read
-                    * inverse_solidangle_fraction
-                    / (pl.col("twidth_days") * day_to_s)
-                    / Lsun_to_erg_per_s
-                )
-                .drop("e_cmf_sum")
-            )
-
-        lcdata[dirbin] = (
-            lcdata[dirbin].rename({"tmid_days": "time_days"}).drop("twidth_days").with_columns(derived_lum_unit_cols())
+    # the luminosity in Lsun of each timestep is the packet energy times this factor and the solid-angle factor
+    lumfactors = 1.0 / (nprocs_read * dftimesteps_selected["twidth_days"].to_numpy() * day_to_s * Lsun_to_erg_per_s)
+    dftimes = dftimesteps_selected.select(pl.col("timestep").cast(pl.Int32), time_days=pl.col("tmid_days"))
+    lcdata: dict[int, pl.LazyFrame] = {}
+    for dirbin, (energysums, packetcounts, inverse_solidangle_fraction) in rfsums.items():
+        dflc = dftimes.select(
+            pl.Series("packetcount", packetcounts),
+            pl.all(),
+            pl.Series("luminosity_Lsun", energysums * inverse_solidangle_fraction * lumfactors),
         )
+        if cmfsums is not None:
+            dflc = dflc.with_columns(
+                pl.Series("luminosity_cmf_Lsun", cmfsums[dirbin][0] * inverse_solidangle_fraction * lumfactors)
+            )
+        lcdata[dirbin] = dflc.lazy().with_columns(derived_lum_unit_cols())
 
     return lcdata
 

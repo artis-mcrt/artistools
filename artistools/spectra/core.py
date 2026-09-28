@@ -40,7 +40,6 @@ from artistools.misc import get_file_metadata
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
@@ -52,7 +51,6 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc.fileio import resolve_modelpath
-from artistools.packets import bin_and_sum
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
@@ -61,6 +59,7 @@ from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import has_emission_record_expr
+from artistools.packets import sum_packets_by_dirbin
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -594,7 +593,7 @@ def get_from_packets(
     ])
 
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
-    dirbin_fluxes: dict[int, pl.LazyFrame] = {}
+    dirbinsums: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
@@ -612,13 +611,11 @@ def get_from_packets(
                 else dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
             )
 
-            dirbin_fluxes[vspecindex] = bin_packet_flux(
-                dfpackets_dirbin,
-                lambda_column,
-                lambda_bin_edges,
-                energy_column,
-                pl.col(f"{energy_column}_sum") / delta_time_s / (constants.megaparsec_to_cm**2) / nprocs_read,
-            )
+            energysums, packetcounts, _ = sum_packets_by_dirbin(
+                dfpackets_dirbin, [-1], lambda_column, lambda_bin_edges, energy_column
+            )[-1]
+            # the flux of a virtual observer has no division by 4 pi, thus this factor cancels that division below
+            dirbinsums[vspecindex] = (energysums, packetcounts, 4 * math.pi)
 
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
@@ -627,8 +624,6 @@ def get_from_packets(
 
         if not packets_are_time_filtered:
             dfpackets = filter_packets_by_time(dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
-
-        dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
         dirbinsums = sum_packets_by_dirbin(
             dfpackets,
@@ -639,19 +634,21 @@ def get_from_packets(
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
         )
-        for dirbin, (energysums, packetcounts, inverse_solidangle_fraction) in dirbinsums.items():
-            flux = (
-                energysums
-                / delta_time_s
-                * inverse_solidangle_fraction
-                / (4 * math.pi * constants.megaparsec_to_cm**2)
-                / nprocs_read
-            )
-            dirbin_fluxes[dirbin] = pl.LazyFrame({
-                "lambda_binindex": np.arange(len(flux), dtype=np.int32),
-                "flux": flux,
-                "packetcount": packetcounts,
-            })
+
+    dirbin_fluxes: dict[int, pl.LazyFrame] = {}
+    for dirbin, (energysums, packetcounts, inverse_solidangle_fraction) in dirbinsums.items():
+        flux = (
+            energysums
+            / delta_time_s
+            * inverse_solidangle_fraction
+            / (4 * math.pi * constants.megaparsec_to_cm**2)
+            / nprocs_read
+        )
+        dirbin_fluxes[dirbin] = pl.LazyFrame({
+            "lambda_binindex": np.arange(len(flux), dtype=np.int32),
+            "flux": flux,
+            "packetcount": packetcounts,
+        })
 
     dirbin_spectra = {
         dirbin: (
@@ -677,86 +674,6 @@ def get_from_packets(
         dirbin: dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
         for dirbin, dfspectrum in dirbin_spectra.items()
     }
-
-
-def sum_packets_by_dirbin(
-    dfpackets: pl.LazyFrame,
-    dirbins: Sequence[int],
-    lambda_column: str,
-    lambda_bin_edges: npt.NDArray[np.floating],
-    energy_column: str,
-    *,
-    average_over_phi: bool,
-    average_over_theta: bool,
-) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
-    """Return the packet energy and the packet count of each wavelength bin, and the solid-angle factor, of each dirbin.
-
-    dirbin -1 selects all directions, as in filter_packets_dirbin. The Rust kernel bins the packets of all the
-    requested direction bins in one pass. For 65 million packets of a 3D kilonova run, the polars group_by took
-    0.40 s, and the read and the kernel took 0.13 s.
-    """
-    from artistools.rustext import sum_weights_in_bins
-
-    edges = [float(edge) for edge in lambda_bin_edges]
-    nbins = len(edges) - 1
-    directional = [dirbin for dirbin in dirbins if dirbin != -1]
-    if not directional:
-        dfsums = sum_weights_in_bins(
-            dfpackets.select(pl.col(lambda_column), pl.col(energy_column).cast(pl.Float64)).collect(),
-            lambda_column,
-            energy_column,
-            edges,
-        )
-        return {-1: (dfsums["sum"].to_numpy(), dfsums["count"].to_numpy(), 1.0)}
-
-    # each packet has one group, thus a group holds the packets of a direction bin or of an averaged set of them
-    if average_over_phi:
-        assert not average_over_theta
-        groupcolumn, ngroups = "costhetabin", get_viewingdirection_costhetabincount()
-        groupofdirbin = {dirbin: dirbin // get_viewingdirection_phibincount() for dirbin in directional}
-    elif average_over_theta:
-        groupcolumn, ngroups = "phibin", get_viewingdirection_phibincount()
-        groupofdirbin = {dirbin: dirbin for dirbin in directional}
-    else:
-        groupcolumn, ngroups = "dirbin", get_viewingdirectionbincount()
-        groupofdirbin = {dirbin: dirbin for dirbin in directional}
-
-    # all directions need every packet, and a few direction bins need only their own packets. The filter comes
-    # before the cast of the group column, thus polars applies it while it reads the files
-    if -1 not in dirbins:
-        dfpackets = dfpackets.filter(pl.col(groupcolumn).is_in(list(groupofdirbin.values())))
-    dfselected = dfpackets.select(
-        pl.col(lambda_column), pl.col(energy_column).cast(pl.Float64), pl.col(groupcolumn).cast(pl.Int32)
-    )
-    dfsums = sum_weights_in_bins(dfselected.collect(), lambda_column, energy_column, edges, groupcolumn, ngroups)
-    groupsums = dfsums["sum"].to_numpy().reshape(ngroups, nbins)
-    groupcounts = dfsums["count"].to_numpy().reshape(ngroups, nbins)
-
-    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
-    for dirbin in dirbins:
-        if dirbin == -1:
-            result[dirbin] = (groupsums.sum(axis=0), groupcounts.sum(axis=0), 1.0)
-        else:
-            group = groupofdirbin[dirbin]
-            result[dirbin] = (groupsums[group], groupcounts[group], float(ngroups))
-    return result
-
-
-def bin_packet_flux(
-    dfpackets: pl.LazyFrame,
-    lambda_column: str,
-    lambda_bin_edges: npt.NDArray[np.floating],
-    energy_column: str,
-    fluxexpr: pl.Expr,
-) -> pl.LazyFrame:
-    """Return the flux and the packet count of each wavelength bin.
-
-    fluxexpr gives the flux of a bin from the column {energy_column}_sum, which holds the sum of the
-    packet energies in that bin.
-    """
-    return bin_and_sum(
-        dfpackets, bincol=lambda_column, bins=lambda_bin_edges.tolist(), sumcols=[energy_column], getcounts=True
-    ).select(lambda_binindex=pl.col(f"{lambda_column}_bin"), flux=fluxexpr, packetcount=pl.col("count"))
 
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached

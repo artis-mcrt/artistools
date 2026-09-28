@@ -12,8 +12,8 @@ from itertools import batched
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
-import polars.selectors as cs
 
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
@@ -980,53 +980,67 @@ def filter_packets_dirbin(
     return dfpackets.filter(pl.col("dirbin") == dirbin), float(get_viewingdirectionbincount())
 
 
-def get_bin_index_expr(column: str, bins: Sequence[float | int]) -> pl.Expr:
-    """Return the index of the bin of each value of the column.
+def sum_packets_by_dirbin(
+    dfpackets: pl.LazyFrame,
+    dirbins: Sequence[int],
+    valuecolumn: str,
+    bin_edges: Sequence[float] | npt.NDArray[np.floating],
+    weightcolumn: str,
+    *,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
+    """For each direction bin, return the weight sum and the packet count of each value bin, and the solid-angle factor.
 
-    bins gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which also
-    holds its upper edge. cut() puts a value exactly on that final edge into the overflow bin. min_horizontal moves it
-    back to the last bin.
+    bin_edges gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which
+    also holds its upper edge. dirbin -1 selects all directions, as in filter_packets_dirbin. The Rust kernel bins the
+    packets of all the requested direction bins in one pass. For 65 million packets of a 3D kilonova run, the polars
+    group_by took 0.40 s, and the read and the kernel took 0.13 s.
     """
-    return pl.min_horizontal(
-        pl.col(column).cut(breaks=bins, left_closed=True).to_physical().cast(pl.Int32) - 1, len(bins) - 2
+    from artistools.rustext import sum_weights_in_bins
+
+    edges = [float(edge) for edge in bin_edges]
+    nbins = len(edges) - 1
+    # the kernel ignores a value outside the edges, but a filter here keeps such a packet out of memory
+    dfpackets = dfpackets.filter(pl.col(valuecolumn).is_between(edges[0], edges[-1]))
+    directional = [dirbin for dirbin in dirbins if dirbin != -1]
+    if not directional:
+        dfsums = sum_weights_in_bins(
+            dfpackets.select(pl.col(valuecolumn), pl.col(weightcolumn).cast(pl.Float64)).collect(),
+            valuecolumn,
+            weightcolumn,
+            edges,
+        )
+        return {-1: (dfsums["sum"].to_numpy(), dfsums["count"].to_numpy(), 1.0)}
+
+    # each packet has one group, thus a group holds the packets of a direction bin or of an averaged set of them
+    if average_over_phi:
+        assert not average_over_theta
+        groupcolumn, ngroups = "costhetabin", get_viewingdirection_costhetabincount()
+        groupofdirbin = {dirbin: dirbin // get_viewingdirection_phibincount() for dirbin in directional}
+    elif average_over_theta:
+        groupcolumn, ngroups = "phibin", get_viewingdirection_phibincount()
+        groupofdirbin = {dirbin: dirbin for dirbin in directional}
+    else:
+        groupcolumn, ngroups = "dirbin", get_viewingdirectionbincount()
+        groupofdirbin = {dirbin: dirbin for dirbin in directional}
+
+    # all directions need every packet, and a few direction bins need only their own packets. The filter comes
+    # before the cast of the group column, thus polars applies it while it reads the files
+    if -1 not in dirbins:
+        dfpackets = dfpackets.filter(pl.col(groupcolumn).is_in(list(groupofdirbin.values())))
+    dfselected = dfpackets.select(
+        pl.col(valuecolumn), pl.col(weightcolumn).cast(pl.Float64), pl.col(groupcolumn).cast(pl.Int32)
     )
+    dfsums = sum_weights_in_bins(dfselected.collect(), valuecolumn, weightcolumn, edges, groupcolumn, ngroups)
+    groupsums = dfsums["sum"].to_numpy().reshape(ngroups, nbins)
+    groupcounts = dfsums["count"].to_numpy().reshape(ngroups, nbins)
 
-
-def bin_and_sum(
-    df: pl.DataFrame | pl.LazyFrame,
-    bincol: str,
-    bins: Sequence[float | int],
-    sumcols: list[str] | None = None,
-    getcounts: bool = False,
-) -> pl.LazyFrame:
-    """Bins is a list of lower edges, and the final upper edge."""
-    # Polars method
-
-    nbins = len(bins) - 1
-    dfcut = (
-        df
-        .lazy()
-        .filter(pl.col(bincol).is_between(bins[0], bins[-1], closed="both"))
-        .with_columns(get_bin_index_expr(bincol, bins).alias(f"{bincol}_bin"))
-    )
-
-    if sumcols is None:
-        sumcols = []
-
-    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
-
-    if getcounts:
-        aggs.append(pl.col(bincol).count().alias("count"))
-
-    wlbins = dfcut.group_by(f"{bincol}_bin").agg(aggs)
-
-    # now we will include the empty bins
-    return (
-        pl
-        .LazyFrame({f"{bincol}_bin": range(nbins)}, schema={f"{bincol}_bin": pl.Int32})
-        .join(wlbins, how="left", on=f"{bincol}_bin")
-        # fill nulls with 0 for sum columns
-        .with_columns(pl.col(f"{sumcol}_sum").fill_null(0) for sumcol in sumcols)
-        .with_columns(cs.by_name("count", require_all=False).fill_null(0))
-        .sort(by=f"{bincol}_bin")
-    )
+    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+    for dirbin in dirbins:
+        if dirbin == -1:
+            result[dirbin] = (groupsums.sum(axis=0), groupcounts.sum(axis=0), 1.0)
+        else:
+            group = groupofdirbin[dirbin]
+            result[dirbin] = (groupsums[group], groupcounts[group], float(ngroups))
+    return result

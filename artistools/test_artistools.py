@@ -1629,7 +1629,7 @@ def test_expansion_opacity_keeps_a_weak_line() -> None:
 
 @pytest.mark.parametrize("edges", [[0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 2.0, 3.0]])
 def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
-    """The Rust kernel of the packet spectra gives the bins of bin_and_sum, for uniform and for other edges.
+    """The Rust kernel gives the bins of np.histogram, for uniform and for other edges.
 
     A bin is [lower, upper), the last bin also holds its upper edge, and a value outside the edges or NaN is in no
     bin. The uniform edges take a guess that the exact edges correct, thus a value on an inner edge tests it.
@@ -1641,10 +1641,13 @@ def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
     # 3.0000001 is 3.0 in 32 bits, thus each type of value has its own reference
     for dtype in (pl.Float64, pl.Float32):
         dftyped = df.with_columns(pl.col("x").cast(dtype))
-        reference = at.packets.bin_and_sum(dftyped, bincol="x", bins=edges, sumcols=["e"], getcounts=True).collect()
+        typedvalues = dftyped["x"].to_numpy()
+        isnumber = ~np.isnan(typedvalues)
+        refcounts, _ = np.histogram(typedvalues[isnumber], bins=edges)
+        refsums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber])
         sums = sum_weights_in_bins(dftyped, "x", "e", edges)
-        assert sums["sum"].to_list() == reference["e_sum"].to_list(), dtype
-        assert sums["count"].to_list() == reference["count"].to_list(), dtype
+        assert sums["sum"].to_list() == refsums.tolist(), dtype
+        assert sums["count"].to_list() == refcounts.tolist(), dtype
 
     # each group has its own bins, in the order [group][bin]
     rng = np.random.default_rng(seed=1)
@@ -1655,12 +1658,12 @@ def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
     })
     grouped = sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 3)
     for group in range(3):
-        expected = at.packets.bin_and_sum(
-            dfgroups.filter(pl.col("group") == group), bincol="x", bins=edges, sumcols=["e"], getcounts=True
-        ).collect()
+        dfgroup = dfgroups.filter(pl.col("group") == group)
+        expectedcounts, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges)
+        expectedsums, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges, weights=dfgroup["e"].to_numpy())
         rows = slice(group * (len(edges) - 1), (group + 1) * (len(edges) - 1))
-        assert np.allclose(grouped["sum"].to_numpy()[rows], expected["e_sum"].to_numpy(), rtol=1e-12, atol=0.0)
-        assert grouped["count"].to_numpy()[rows].tolist() == expected["count"].to_list()
+        assert np.allclose(grouped["sum"].to_numpy()[rows], expectedsums, rtol=1e-12, atol=0.0)
+        assert grouped["count"].to_numpy()[rows].tolist() == expectedcounts.tolist()
     # pyo3-polars raises its own ComputeError, which is not the class of the polars package
     with pytest.raises(Exception, match="a group is outside"):
         sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 2)
