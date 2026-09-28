@@ -62,6 +62,9 @@ extras = [
     "plotly>=6.9.0",
     "pypdf>=6.16.2",
     "pynonthermal>=2026.8.9",
+    # the viewers of --interactive use AppKit to copy a PDF or an SVG file to the clipboard of macOS. Qt gives such
+    # a file a type that no other application reads
+    "pyobjc-framework-cocoa>=12.2.2;sys_platform=='darwin' and python_version<'3.15'",
     # plotspectra --interactive needs this package, which has no wheels for Python 3.15. Its wheels use the stable
     # application binary interface (ABI), and a free-threaded build cannot load them. CI installs the extras only on
     # the build of Python 3.14 that is not free-threaded

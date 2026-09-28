@@ -55,6 +55,7 @@ from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
+from artistools.viewertools import export_figure_of_command
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import follow_colour_scheme
@@ -98,7 +99,6 @@ from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
-from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
@@ -168,7 +168,7 @@ DAYS_DECIMALS: t.Final = 6
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
-    # Save Figure asks for the resolution of a PNG file
+    # Export Figure asks for the resolution of a PNG file
     "dpi",
     "timedayslist",
     "multispecplot",
@@ -1880,8 +1880,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         defaultdpi = viewer.parser.get_default("dpi")
         rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
         plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        save_figure_of_command(
-            window, statusbar, plotspectra_main, "plotspectra", plottokens, dpi, viewer.parser, viewer.fig
+        export_figure_of_command(
+            window, queue, statusbar, plotspectra_main, "plotspectra", plottokens, dpi, viewer.parser, viewer.fig
         )
 
     def on_open_model() -> None:
@@ -1928,7 +1928,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
         menu = QtWidgets.QMenu(window)
         menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Save Figure…").triggered.connect(on_save)
+        menu.addAction("Export Figure…").triggered.connect(on_save)
         menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
@@ -1955,7 +1955,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     menucallbacks = {
         "Open Model…": on_open_model,
-        "Save Figure…": on_save,
+        "Export Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Undo": on_undo,

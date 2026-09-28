@@ -3944,7 +3944,7 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 
 
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
-    """Save Figure proposes the -dpi of the command, and each type of file takes it.
+    """Export Figure proposes the -dpi of the command, and each type of file takes it.
 
     The spectrum viewer proposed the default of 250 and kept -dpi 300 of the command, thus the file had 300 dpi. The
     estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
@@ -3970,19 +3970,61 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         def accept_proposal(
             _window: object, proposeddpi: int, _sizemodel: object, suffix: str = suffix
         ) -> viewertools.ExportOptions:
-            return viewertools.ExportOptions(suffix=suffix, dpi=proposeddpi, scales=None)
+            return viewertools.ExportOptions(suffix=suffix, dpi=proposeddpi, scales=None, copy=False)
 
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
             mock.patch.object(viewertools, "ask_export_options", side_effect=accept_proposal),
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
-            viewertools.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, parser, mplfig.Figure()
+            viewertools.export_figure_of_command(
+                mock.Mock(),
+                mock.Mock(),
+                statusbar,
+                commandmain,
+                "plotspectra",
+                ["-xmin", "5"],
+                dpi,
+                parser,
+                mplfig.Figure(),
             )
         # a name with no suffix takes the suffix of the type that the dialog selected
         assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
+
+
+def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
+    """Copy in the export dialog runs the command for a file of the selected format, and puts the file on the clipboard.
+
+    Qt gave only a TIFF image to the clipboard of macOS, thus a copy could not give a PDF or an SVG file.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
+    parser.add_argument("-dpi", type=int, default=250)
+    parser.add_argument("-figscale", type=float, default=1.0)
+    commands: list[list[str]] = []
+
+    def commandmain(argsraw: Sequence[str]) -> None:
+        commands.append(list(argsraw))
+        Path(argsraw[-1]).write_text("<svg/>", encoding="utf-8")
+
+    def run_task(task: Callable[[], str | None], _statustext: str, on_done: Callable[[str | None], None]) -> bool:
+        on_done(task())
+        return True
+
+    queue = mock.Mock(run_task=run_task)
+    statusbar = mock.Mock()
+    options = viewertools.ExportOptions(suffix="svg", dpi=150, scales=None, copy=True)
+    with mock.patch.object(viewertools, "put_file_on_clipboard", return_value=None) as mockclipboard:
+        viewertools.copy_figure_of_command(
+            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], options
+        )
+    assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
+    assert commands[0][-1].endswith("figure.svg")
+    mockclipboard.assert_called_once_with(b"<svg/>", "svg")
+    statusbar.message.setText.assert_called_with("Copied the figure as SVG, with 150 dpi")
 
 
 def test_viewer_row_wraps_its_groups() -> None:

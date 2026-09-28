@@ -2381,7 +2381,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
     return [
         ("File", "Open Model…", QtGui.QKeySequence(standardkey.Open)),
         ("File", "Reload Data", QtGui.QKeySequence(standardkey.Refresh)),
-        ("File", "Save Figure…", QtGui.QKeySequence(standardkey.Save)),
+        ("File", "Export Figure…", QtGui.QKeySequence(standardkey.Save)),
         ("File", "Export Animation…", QtGui.QKeySequence("Ctrl+Shift+E")),
         ("File", "Close Window", QtGui.QKeySequence(standardkey.Close)),
         ("Edit", "Undo", QtGui.QKeySequence(standardkey.Undo)),
@@ -2408,11 +2408,11 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
 MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Open Model…": "Open a model in a new window",
     "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
-    "Save Figure…": "Run the command to save the figure",
+    "Export Figure…": "Save the figure in a file, or copy it, in a format and a resolution that you select",
     "Export Animation…": "Save a GIF file of the steps of Play",
     "Undo": "Undo the last change",
     "Redo": "Redo the change that Undo removed",
-    "Copy Figure": "Copy the figure as an image",
+    "Copy Figure": "Copy the figure in the format and the resolution of the last Copy in Export Figure…",
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
     "Play": "Play or pause",
@@ -2845,38 +2845,94 @@ def copy_figure_of_command(
     commandmain: "Callable[..., None]",
     parser: "SuggestingArgumentParser",
     plottokens: "Sequence[str]",
+    options: "ExportOptions | None" = None,
 ) -> None:
-    """Put the figure of the command on the clipboard as a PNG image, with the resolution of a printed page.
+    """Put the figure of the command on the clipboard, in the format, the resolution, and the size that options gives.
 
-    The command draws the figure, as for Save Figure. Thus the image has the usual colours and no empty margin, also
-    when the window shows the plot in Dark Mode. The worker thread runs the command, thus the window accepts input.
+    With no options, the copy takes the format and the resolution of the last Copy in Export Figure. Before the
+    first Copy, the copy is a PNG image with the resolution of a printed page. The command draws the figure, as for
+    a saved file. Thus the image has the usual colours and no empty margin, also when the window shows the plot in
+    Dark Mode. The worker thread runs the command, thus the window accepts input.
     """
-    import tempfile
+    if options is None:
+        lastsuffix = str(get_settings().value("copyformat", "png"))
+        options = ExportOptions(
+            suffix=lastsuffix if lastsuffix in dict(EXPORT_FORMATS) else "png",
+            dpi=round(get_float_setting("copydpi", COPY_FIGURE_DPI)),
+            scales=None,
+            copy=True,
+        )
+    suffix = options.suffix
+    scaledtokens = set_figure_scales(parser, plottokens, options.scales)
+    tokens = [*remove_options(parser, scaledtokens, {"dpi"}), "-dpi", str(options.dpi)]
+    files: list[bytes] = []
 
-    from PySide6 import QtGui
-    from PySide6 import QtWidgets
+    def draw_file() -> str | None:
+        import tempfile
 
-    tokens = [*remove_options(parser, plottokens, {"dpi"}), "-dpi", str(COPY_FIGURE_DPI)]
-    images: list[bytes] = []
-
-    def draw_image() -> str | None:
         with tempfile.TemporaryDirectory() as folder:
-            imagepath = Path(folder) / "figure.png"
-            commandmain(argsraw=[*tokens, "-o", str(imagepath)])
-            if not imagepath.is_file():
-                return "The command wrote no image"
-            images.append(imagepath.read_bytes())
+            filepath = Path(folder) / f"figure.{suffix}"
+            commandmain(argsraw=[*tokens, "-o", str(filepath)])
+            if not filepath.is_file():
+                return f"The command wrote no {suffix.upper()} file"
+            files.append(filepath.read_bytes())
         return None
 
     def show_result(message: str | None) -> None:
-        if message is not None or not images:
+        if message is None and files:
+            message = put_file_on_clipboard(files[0], suffix)
+        if message is not None:
             show_status_message(statusbar, f"The viewer did not copy the figure: {message}", "")
-            return
-        QtWidgets.QApplication.clipboard().setImage(QtGui.QImage.fromData(images[0]))
-        show_status_note(statusbar, "Copied the figure")
+        else:
+            show_status_note(statusbar, f"Copied the figure as {suffix.upper()}, with {options.dpi} dpi")
 
-    if not queue.run_task(lambda: run_command_step(draw_image), "Copy of the figure in progress...", show_result):
+    if not queue.run_task(lambda: run_command_step(draw_file), "Copy of the figure in progress...", show_result):
         show_status_message(statusbar, "A different task is in progress. Copy the figure after it", "")
+
+
+# the type of each file format on the clipboard of macOS, and on the clipboard of Linux and Windows
+PASTEBOARD_TYPES: t.Final = MappingProxyType({"png": "public.png", "pdf": "com.adobe.pdf", "svg": "public.svg-image"})
+CLIPBOARD_MIME_TYPES: t.Final = MappingProxyType({"png": "image/png", "pdf": "application/pdf", "svg": "image/svg+xml"})
+
+
+def put_file_on_clipboard(data: bytes, suffix: str) -> str | None:
+    """Put the content of a PNG, a PDF, or an SVG file on the clipboard. Return an error message, or None.
+
+    On macOS, Qt gives an image to the clipboard only as TIFF. Qt gives a PDF or an SVG file a type of Qt that no
+    other application reads. Thus AppKit gives the file the type of macOS there. A PNG file also goes on the clipboard
+    as TIFF, for an application that reads no PNG. An SVG file also goes on the clipboard as text, e.g. for an editor
+    of SVG code.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    if sys.platform == "darwin":
+        try:
+            appkit = import_optional("AppKit")
+        except ModuleNotFoundError as exc:
+            if suffix != "png":
+                return str(exc)
+        else:
+            pasteboard = appkit.NSPasteboard.generalPasteboard()
+            pasteboard.clearContents()
+            nsdata = appkit.NSData.dataWithBytes_length_(data, len(data))
+            pasteboard.setData_forType_(nsdata, PASTEBOARD_TYPES[suffix])
+            if suffix == "png":
+                pasteboard.setData_forType_(
+                    appkit.NSBitmapImageRep.imageRepWithData_(nsdata).TIFFRepresentation(), "public.tiff"
+                )
+            elif suffix == "svg":
+                pasteboard.setString_forType_(data.decode(), "public.utf8-plain-text")
+            return None
+    mimedata = QtCore.QMimeData()
+    mimedata.setData(CLIPBOARD_MIME_TYPES[suffix], QtCore.QByteArray(data))
+    if suffix == "png":
+        mimedata.setImageData(QtGui.QImage.fromData(data))
+    elif suffix == "svg":
+        mimedata.setText(data.decode())
+    QtWidgets.QApplication.clipboard().setMimeData(mimedata)
+    return None
 
 
 def follow_colour_scheme(
@@ -2932,7 +2988,7 @@ def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
 # a GIF file shows on a screen, thus its frames take the resolution of a screen
 ANIMATION_DPI: t.Final = 100
 
-# the file types of Save Figure, with the tooltip of each
+# the file formats of Export Figure, with the tooltip of each
 EXPORT_FORMATS: t.Final = (
     ("pdf", "A vector file, for a paper. A colour image in it takes the resolution"),
     ("png", "An image with the resolution, e.g. for a slide"),
@@ -3021,19 +3077,23 @@ class ExportOptions(t.NamedTuple):
     scales: tuple[float, float] | None
     """The -figscale and the -figwidthscale of the size that the user gave, or None for the size of the screen."""
 
+    copy: bool
+    """True if the user selected Copy and not Save."""
+
 
 def ask_export_options(
     window: "QtWidgets.QWidget",
     dpi: int,
     sizemodel: FigureSizeModel,
     *,
-    title: str = "Save Figure",
+    title: str = "Export Figure",
     formats: bool = True,
 ) -> ExportOptions | None:
-    """Ask for the file type, the resolution, and the size before the save panel, as the Export dialog of Keynote does.
+    """Ask for the file format, the resolution, and the size before the save panel, as in the Export dialog of Keynote.
 
     Return the choices, or None if the user cancels. The settings keep the type for the next export. With formats
-    False, the dialog asks only for the resolution and the size, e.g. for an animation.
+    True, the dialog also has a Copy button, which puts the figure on the clipboard. With formats False, the dialog
+    asks only for the resolution and the size, e.g. for an animation.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -3075,29 +3135,40 @@ def ask_export_options(
     sizerow.addWidget(sizeboxes[1])
     form.addRow("Size:", sizerow)
     buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
-    nextbutton = buttons.addButton("Next…", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+    copyresult = 2
+    if formats:
+        copybutton = buttons.addButton("Copy", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        copybutton.setToolTip(
+            "Put the figure on the clipboard in this format, this resolution, and this size. Copy Figure then uses"
+            " this format and this resolution."
+        )
+        copybutton.clicked.connect(partial(dialog.done, copyresult))
+    nextbutton = buttons.addButton("Save…" if formats else "Next…", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
     nextbutton.setDefault(True)
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
     form.addRow(buttons)
     dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-    accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    result = dialog.exec()
     # the window is the parent of the dialog, thus without this the window keeps each dialog until it closes
     dialog.deleteLater()
-    if not accepted:
+    if result not in {QtWidgets.QDialog.DialogCode.Accepted, copyresult}:
         return None
     suffix = suffixes[segments.currentIndex()]
+    iscopy = result == copyresult
     if formats:
         get_settings().setValue("exportformat", suffix)
+    if iscopy:
+        get_settings().setValue("copyformat", suffix)
+        get_settings().setValue("copydpi", dpibox.value())
     # a box rounds the size to 0.01 inches, thus the code keeps the exact size of a box that the user did not change
     width, height = (
         old if abs(box.value() - old) < 0.006 else box.value()
         for box, old in zip(sizeboxes, sizemodel.figsize, strict=True)
     )
     unchanged = (width, height) == sizemodel.figsize
-    return ExportOptions(
-        suffix=suffix, dpi=dpibox.value(), scales=None if unchanged else sizemodel.get_scales(width, height)
-    )
+    scales = None if unchanged else sizemodel.get_scales(width, height)
+    return ExportOptions(suffix=suffix, dpi=dpibox.value(), scales=scales, copy=iscopy)
 
 
 def export_animation(
@@ -3172,8 +3243,9 @@ def export_animation(
         show_status_message(statusbar, "A different task is in progress. Export the animation after it", "")
 
 
-def save_figure_of_command(
+def export_figure_of_command(
     window: "QtWidgets.QWidget",
+    queue: "DrawQueue[t.Any]",
     statusbar: StatusBar,
     commandmain: "Callable[..., None]",
     commandname: str,
@@ -3182,10 +3254,10 @@ def save_figure_of_command(
     parser: "SuggestingArgumentParser",
     fig: "mplfig.Figure",
 ) -> None:
-    """Save the figure of the command in a file that the user selects.
+    """Save the figure of the command in a file that the user selects, or copy it, after the export dialog.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected type. The status bar shows the
+    name with no suffix as a folder, thus the name takes the suffix of the selected format. The status bar shows the
     result.
 
     plottokens holds no -dpi. dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or
@@ -3197,6 +3269,9 @@ def save_figure_of_command(
     sizemodel = get_figure_size_model(fig, plottokens, parser.get_default("figscale"))
     options = ask_export_options(window, dpi, sizemodel)
     if options is None:
+        return
+    if options.copy:
+        copy_figure_of_command(queue, statusbar, commandmain, parser, plottokens, options)
         return
     suffix, dpi = options.suffix, options.dpi
     defaultdpi = parser.get_default("dpi")

@@ -83,6 +83,7 @@ from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
+from artistools.viewertools import export_figure_of_command
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import follow_colour_scheme
@@ -128,7 +129,6 @@ from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
-from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
@@ -176,7 +176,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "interactive",
 })
 
-# these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
+# these options change only the output file. Export Figure in the File menu gives the file, thus the command drops them
 OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
 
 # the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
@@ -215,7 +215,7 @@ SMOOTHING_MODES: t.Final = MappingProxyType({
 LEVEL_CHOICES_PER_ION: t.Final = 20
 
 # the option table does not offer these options, but it shows their rows from the command. Some give a
-# different action from one plot, and --verbose and --quiet change only the hidden output. Save Figure asks for the
+# different action from one plot, and --verbose and --quiet change only the hidden output. Export Figure asks for the
 # resolution of a PNG file (-dpi)
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
@@ -3156,8 +3156,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         defaultdpi = viewer.parser.get_default("dpi")
         rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
         plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        save_figure_of_command(
-            window, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, viewer.parser, viewer.fig
+        export_figure_of_command(
+            window, queue, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, viewer.parser, viewer.fig
         )
 
     def on_open_model() -> None:
@@ -3295,7 +3295,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if menu.actions():
             menu.addSeparator()
         menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Save Figure…").triggered.connect(on_save)
+        menu.addAction("Export Figure…").triggered.connect(on_save)
         menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
@@ -3362,7 +3362,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     menucallbacks = {
         "Open Model…": on_open_model,
         "Reload Data": on_reload,
-        "Save Figure…": on_save,
+        "Export Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Copy Figure": on_copy_figure,
