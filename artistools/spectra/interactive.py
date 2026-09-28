@@ -74,6 +74,7 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
+from artistools.viewertools import get_settings
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
@@ -100,7 +101,6 @@ from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
-from artistools.viewertools import PREVIEW_SECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
@@ -185,9 +185,6 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "averagevspecpolfiles",
     "output_spectra",
 })
-
-# the shortest time range [d] of the estimate of the plot time, thus a range of zero days gives no division by zero
-MIN_TIMESPAN_DAYS: t.Final = 1e-3
 
 
 type DataSource = t.Literal["auto", "text", "packets"]
@@ -422,7 +419,6 @@ class RenderedSpectrum(t.NamedTuple):
     residualaxis: "mplax.Axes | None"
     dfalldata: pl.DataFrame
     ispreview: bool
-    readpackets: bool
 
 
 def fix_title_position(axis: "mplax.Axes") -> None:
@@ -688,8 +684,6 @@ class SpectrumViewer:
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
         self.residualaxis: mplax.Axes | None = None
         self.drewpreview = False
-        # True if the last plot read the packets files, thus its time gives the time of a full plot of the packets
-        self.drewpackets = False
         # the window sets this before each plot that a slider drag gives, and the worker thread reads it
         self.wantspreview = False
         # the colours of the window in Dark Mode, which the window sets and the worker thread reads
@@ -958,12 +952,7 @@ class SpectrumViewer:
             fig.draw_without_rendering()
             plots.append(
                 RenderedSpectrum(
-                    fig=fig,
-                    axes=axes,
-                    residualaxis=residualaxis,
-                    dfalldata=dfalldata,
-                    ispreview=ispreview,
-                    readpackets=bool(plotargs.frompackets),
+                    fig=fig, axes=axes, residualaxis=residualaxis, dfalldata=dfalldata, ispreview=ispreview
                 )
             )
             return None
@@ -977,7 +966,7 @@ class SpectrumViewer:
             plot = plots[0]
             self.figsize = show_figure_in_canvas(self.fig, plot.fig)
             self.fig, self.axes, self.residualaxis = plot.fig, plot.axes, plot.residualaxis
-            self.dfalldata, self.drewpreview, self.drewpackets = plot.dfalldata, plot.ispreview, plot.readpackets
+            self.dfalldata, self.drewpreview = plot.dfalldata, plot.ispreview
             return None
 
         return show_plot
@@ -1372,7 +1361,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     datasourcemodel = datasourcebox.model()
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
-    add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
+    previewcheck = QtWidgets.QCheckBox("Low-packet preview while dragging")
+    previewtooltip = (
+        "While a slider moves, draw a preview from the first batch of ranks of the packets files. The full plot"
+        " follows each preview at once. A new window takes the last choice."
+    )
+    previewcheck.setChecked(get_bool_setting("dragpreview", default=True))
+    previewcheck.toggled.connect(partial(get_settings().setValue, "dragpreview"))
+    add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox, previewcheck])
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     defaultdpi: int = viewer.parser.get_default("dpi")
     figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
@@ -1586,6 +1582,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"
         )
         datasourcebox.setCurrentIndex(datasourcebox.findData(values.datasource))
+        # only a plot of the packets files has a preview, and a run with one batch of ranks has no faster preview
+        previewcheck.setVisible(values.datasource == "packets" or (values.datasource == "auto" and reason is not None))
+        hasfasterpreview = viewer.previewmaxpacketfiles is not None
+        previewcheck.setEnabled(hasfasterpreview)
+        previewcheck.setToolTip(
+            previewtooltip
+            if hasfasterpreview
+            else "Each run has one batch of ranks, thus a preview reads all the packets and is not faster"
+        )
 
     def show_rejections() -> None:
         """Disable each choice that plotspectra rejects, and give the reason in its tooltip."""
@@ -1736,33 +1741,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
-    # the time [s] of the last full plot of the packets files and the length [d] of its time range, or None
-    fullplotcost: tuple[float, float] | None = None
-
-    def get_timespan_days(values: ControlValues) -> float:
-        """Return the length of the time range of the values, which sets the count of packets that a plot reads."""
-        if values.notimeclamp:
-            return max(values.width, MIN_TIMESPAN_DAYS)
-        first, last = viewer.get_selection(values)
-        return max(float(viewer.tends[last] - viewer.tstarts[first]), MIN_TIMESPAN_DAYS)
-
-    def needs_preview(values: ControlValues) -> bool:
-        """Return True if the full plot of the values takes longer than PREVIEW_SECONDS.
-
-        The time of the last full plot of the packets, scaled by the length of the time range, gives the estimate.
-        With no such plot, the drag draws a preview, because a preview is fast for any run.
-        """
-        if fullplotcost is None:
-            return True
-        seconds, timespan = fullplotcost
-        return seconds * get_timespan_days(values) / timespan > PREVIEW_SECONDS
-
     def after_draw(message: str | None) -> None:
-        nonlocal fullplotcost
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
-        if message is None and viewer.drewpackets and not viewer.drewpreview:
-            fullplotcost = (queue.plotseconds, get_timespan_days(queue.drawnvalues))
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
         if message is None and viewer.values.yscale == "auto" and plot_shows_values():
             yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axes[0].get_yscale()})")
@@ -1800,19 +1781,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         keep_on_undo=keep_figwidthscale,
     )
 
-    # the setting of the preview, which the window reads one time at the start of each slider drag
-    dragpreview: bool | None = None
-
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, and draw a preview if a slider drag gives them."""
-        nonlocal dragpreview
-        if not is_slider_dragged():
-            dragpreview = None
-        elif dragpreview is None:
-            dragpreview = get_bool_setting("dragpreview", default=True)
-        values = viewer.clamp_time(values)
-        viewer.wantspreview = bool(dragpreview) and needs_preview(values)
-        queue.apply(values, undoable=undoable)
+        viewer.wantspreview = previewcheck.isChecked() and is_slider_dragged()
+        queue.apply(viewer.clamp_time(values), undoable=undoable)
 
     def on_undo() -> None:
         viewer.wantspreview = False
