@@ -7,6 +7,7 @@ import time
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import polars as pl
 import polars.selectors as cs
@@ -44,7 +45,10 @@ HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 OPACITYCOLUMNS = ("exopac", "linebinned", "linebinned_maxone")
 
 # the estimator columns that can give the excitation temperature T_exc of the LTE level populations
-EXCITATIONTEMPERATURE_NAMES = {"TJ": "the temperature of the mean intensity J", "Te": "the electron temperature"}
+EXCITATIONTEMPERATURE_NAMES: t.Final = MappingProxyType({
+    "TJ": "the temperature of the mean intensity J",
+    "Te": "the electron temperature",
+})
 
 # sum_binned_line_opacities() gives each group of 32 cells to a thread, thus a batch of 4096 cells gives each
 # core work. A batch has one row for each cell and bin, and 4096 cells of 1200 bins took 0.8 GB. 4096 cells of
