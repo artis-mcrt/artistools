@@ -1318,14 +1318,14 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
     lines = at.ejectaopacity.get_opacity_lines(
         at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
     )
     dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcell, edges, time_days)
     lambda_cm = dfbins["lambda_angstroms_bin_mid"].to_numpy() * 1e-8
-    temperature = dfcell["Te"].item()
+    temperature = dfcell["T_exc"].item()
     planck = lambda_cm**-5 / np.expm1(
         at.constants.h_erg_s * at.constants.C_cm_per_s / lambda_cm / temperature / at.constants.K_B_erg_per_K
     )
@@ -1352,11 +1352,11 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 
 
 def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.CaptureFixture[str]) -> None:
-    """--averagecell takes one cell with the mass-weighted mean of n_ion / rho, of rho, and of Te, and logs Te.
+    """--averagecell takes one cell with the mass-weighted mean of n_ion / rho, of rho, and of T_exc, and logs T_exc.
 
     A model of one cell gives the same cell. A cell with no temperature does not count in the mean temperature.
     """
-    dfone = at.ejectaopacity.get_cell_estimators(modelpath, 40, None)
+    dfone = at.ejectaopacity.get_cell_estimators(modelpath, 40, None, "Te")
     pltest.assert_frame_equal(
         at.plotopacity.get_average_cell(dfone),
         dfone.select(at.plotopacity.get_average_cell(dfone).columns),
@@ -1367,19 +1367,48 @@ def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.Capt
     dfcells = pl.DataFrame({
         "modelgridindex": [0, 1, 2],
         "timestep": [5, 5, 5],
-        "Te": [1000.0, 3000.0, None],
+        "T_exc": [1000.0, 3000.0, None],
         "rho": [1.0, 2.0, 4.0],
         "mass_g": [1.0, 3.0, 4.0],
         "nnion_Fe_II": [2.0, 4.0, 8.0],
     })
     capsys.readouterr()
     dfmean = at.plotopacity.get_average_cell(dfcells)
-    assert np.isclose(dfmean["Te"].item(), (1000.0 + 3 * 3000.0) / 4, rtol=1e-12, atol=0.0)
+    assert np.isclose(dfmean["T_exc"].item(), (1000.0 + 3 * 3000.0) / 4, rtol=1e-12, atol=0.0)
     meanrho = (1.0 + 3 * 2.0 + 4 * 4.0) / 8
     assert np.isclose(dfmean["rho"].item(), meanrho, rtol=1e-12, atol=0.0)
     assert np.isclose(dfmean["nnion_Fe_II"].item(), meanrho * (2.0 + 3 * 2.0 + 4 * 2.0) / 8, rtol=1e-12, atol=0.0)
-    assert "one cell of the mass-weighted mean of 3 cells: Te = 2500 K" in capsys.readouterr().out
-    assert at.plotopacity.get_cells_text(None, None, None, 2500.0) == "mean composition of all cells at 2500 K"
+    assert "T_exc = 2500 K" in capsys.readouterr().out
+    assert (
+        at.plotopacity.get_cells_text(None, None, None, "TJ = 2500 K") == "mean composition of all cells at TJ = 2500 K"
+    )
+
+
+def test_excitation_temperature_is_the_temperature_that_artis_used(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """-exctemperature auto takes TJ or Te from LTEPOP_EXCITATION_USE_TJ of the run, and the log names it.
+
+    The kernel took Te before. A classic run sets LTEPOP_EXCITATION_USE_TJ = true, and after the LTE timesteps its Te
+    differs from TJ, thus the level populations did not match ARTIS. A commented line does not count.
+    """
+    get_column = at.ejectaopacity.get_excitation_temperature_column
+    capsys.readouterr()
+    assert get_column(tmp_path, "auto") == "Te"
+    assert "gives no LTEPOP_EXCITATION_USE_TJ" in capsys.readouterr().err
+
+    (tmp_path / "artis").mkdir()
+    optionspath = tmp_path / "artis" / "artisoptions.h"
+    for value, expectedcolumn in (("true", "TJ"), ("false", "Te")):
+        optionspath.write_text(
+            f"// constexpr bool LTEPOP_EXCITATION_USE_TJ = {'false' if value == 'true' else 'true'};\n"
+            f"constexpr bool LTEPOP_EXCITATION_USE_TJ = {value};\n",
+            encoding="utf-8",
+        )
+        assert get_column(tmp_path, "auto") == expectedcolumn
+        assert f"T_exc = {expectedcolumn}," in capsys.readouterr().out
+    assert get_column(tmp_path, "TJ") == "TJ"
+    assert "-exctemperature TJ" in capsys.readouterr().out
 
 
 def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
@@ -1390,7 +1419,7 @@ def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     opacitylines = at.ejectaopacity.get_opacity_lines(
         at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
@@ -1414,7 +1443,7 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     opacitylines = at.ejectaopacity.get_opacity_lines(
         at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
@@ -1430,7 +1459,7 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
         get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
         get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
     )
-    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("Te")))
+    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("T_exc")))
     assert np.allclose(dfnotemperature.select(pl.all().abs().max()).row(0), 0.0, rtol=0.0, atol=0.0)
 
 
@@ -1442,8 +1471,8 @@ def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None).with_columns(
-        pl.lit(0.0, dtype=pl.Float32).alias("Te")
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te").with_columns(
+        pl.lit(0.0, dtype=pl.Float32).alias("T_exc")
     )
     lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     opacitylines = at.ejectaopacity.get_opacity_lines(
@@ -1465,7 +1494,7 @@ def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
     isfirstline = pl.int_range(pl.len()) == 0
@@ -1516,7 +1545,7 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
     adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     assert dfcell.height == 1
 
     cellcount = at.ejectaopacity.CELLSPERBATCH + 8
@@ -1561,7 +1590,7 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
     adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None)
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
     dffull, _ = at.plotopacity.get_massweighted_opacities(
         adata, time_days, dfcell, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     )
@@ -1622,7 +1651,7 @@ def test_expansion_opacity_keeps_a_weak_line() -> None:
         },
         schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
     )
-    dfcells = pl.DataFrame({"Te": [5000.0], "nnion_0": [1.0]})
+    dfcells = pl.DataFrame({"T_exc": [5000.0], "nnion_0": [1.0]})
     exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], 3, at.constants.K_B_ev_per_K)["exopac"]
     assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
 
@@ -1715,7 +1744,7 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
     assert 0 < len(expectedcells) < dfvelocities.height
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "0.2c"])
-    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None)
+    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, "Te")
     capsys.readouterr()
     dfcells = at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
     assert set(dfcells["modelgridindex"]) == expectedcells
@@ -1739,7 +1768,7 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
-    """A cell with no matter has no estimators, and the error names the cell.
+    """A cell with no matter has no estimators, and the error names the cell and the next cell with estimators.
 
     The command stopped with "cannot concat empty list" before.
     """
@@ -1752,8 +1781,10 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
         .collect()
         .item()
     )
-    with pytest.raises(ValueError, match="hold no values"):
-        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell)
+    estimatorcells = at.scan_estimators(modelpath_classic_3d, timestep=5).select("modelgridindex").collect()
+    nextcell = estimatorcells.filter(pl.col("modelgridindex") > emptycell)["modelgridindex"].min()
+    with pytest.raises(ValueError, match=rf"hold no values for cell {emptycell} .* is cell {nextcell}$"):
+        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell, "Te")
 
 
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

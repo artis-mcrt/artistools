@@ -16,6 +16,7 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
+from artistools.misc.cliutils import print_detail
 from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
@@ -174,6 +175,22 @@ def get_model_name_cached(abspath: Path) -> str:
     except FileNotFoundError:
         foldername = Path(modelpath).name
         return shorten_middle(foldername, maxlen=50)
+
+
+def print_modelpath(modelpath: Path | str) -> None:
+    """Print the folder of the model below a heading, as the other plot commands do.
+
+    The name of a model says nothing about the folder that holds it, and a user runs a command over
+    many folders. The full path answers that, because "." says nothing on a run inside the model.
+    """
+    folder = Path(modelpath) if path_is_codecomparison(modelpath) else Path(modelpath).resolve()
+    print_detail(f"modelpath: {folder}")
+
+
+def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
+    """Return the text of a file in the copy of the ARTIS source in the artis folder of the run, or None."""
+    sourcepath = Path(modelpath) / "artis" / filename
+    return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
 def get_model_logname(path: Path | str, label: str | None = None) -> str:

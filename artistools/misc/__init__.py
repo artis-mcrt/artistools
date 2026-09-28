@@ -107,6 +107,7 @@ from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import import_optional as import_optional
 from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
+from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
@@ -121,6 +122,7 @@ from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel
+from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
 from artistools.misc.timesteps import get_deposition as get_deposition

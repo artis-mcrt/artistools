@@ -71,12 +71,12 @@ type CellRow = [f64; CELLSPERTASK];
 /// nothing to a sum.
 fn get_level_pops(
     levels: &Levels,
-    te: &[f64],
+    t_exc: &[f64],
     nnion: &[&[f64]],
     k_b_ev_per_k: f64,
 ) -> Vec<CellRow> {
     let mut pops = vec![[0.0; CELLSPERTASK]; levels.g.len()];
-    for (cell, &cellte) in te.iter().enumerate() {
+    for (cell, &cell_t_exc) in t_exc.iter().enumerate() {
         for (ionrange, ionpops) in levels.ranges.iter().zip(nnion) {
             let cellnnion = ionpops[cell];
             // an ion with no population gives zero in each level
@@ -86,7 +86,7 @@ fn get_level_pops(
             let mut partitionfunction = 0.0;
             for level in ionrange.clone() {
                 let boltzmannfactor =
-                    levels.g[level] * (-levels.energy_ev[level] / k_b_ev_per_k / cellte).exp();
+                    levels.g[level] * (-levels.energy_ev[level] / k_b_ev_per_k / cell_t_exc).exp();
                 pops[level][cell] = boltzmannfactor;
                 partitionfunction += boltzmannfactor;
             }
@@ -102,12 +102,12 @@ fn get_level_pops(
 fn sum_cell_group(
     levels: &Levels,
     lines: &Lines,
-    te: &[f64],
+    t_exc: &[f64],
     nnion: &[&[f64]],
     numbins: usize,
     k_b_ev_per_k: f64,
 ) -> [Vec<f64>; 3] {
-    let pops = get_level_pops(levels, te, nnion, k_b_ev_per_k);
+    let pops = get_level_pops(levels, t_exc, nnion, k_b_ev_per_k);
 
     // in the order [bin][cell], each line adds to one contiguous row of the sums
     let mut exopac = vec![[0.0; CELLSPERTASK]; numbins];
@@ -147,7 +147,7 @@ fn sum_cell_group(
     }
 
     [exopac, linebinned, linebinned_maxone].map(|binsums| {
-        (0..te.len())
+        (0..t_exc.len())
             .flat_map(|cell| binsums.iter().map(move |cellsums| cellsums[cell]))
             .collect()
     })
@@ -161,7 +161,8 @@ fn sum_cell_group(
 /// - the time;
 /// - the density.
 ///
-/// The rows are in the order [cell][bin]. The level populations are the LTE populations at the cell temperature.
+/// The rows are in the order [cell][bin]. The level populations are the LTE populations at the excitation temperature
+/// `T_exc` of each cell.
 /// `lower` and `upper` give the row of each level in `dflevels`.
 ///
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.
@@ -207,18 +208,18 @@ pub fn sum_binned_line_opacities(
                 polars_bail!(ComputeError: "a line names a bin or a level that does not exist");
             }
 
-            let te = f64_column(&dfcells, "Te")?;
+            let t_exc = f64_column(&dfcells, "T_exc")?;
             let nnion: Vec<&[f64]> = nnioncolumns
                 .iter()
                 .map(|name| f64_column(&dfcells, name))
                 .collect::<PolarsResult<_>>()?;
 
-            let groupsums: Vec<[Vec<f64>; 3]> = (0..te.len())
+            let groupsums: Vec<[Vec<f64>; 3]> = (0..t_exc.len())
                 .step_by(CELLSPERTASK)
                 .collect::<Vec<_>>()
                 .into_par_iter()
                 .map(|firstcell| {
-                    let cells = firstcell..(firstcell + CELLSPERTASK).min(te.len());
+                    let cells = firstcell..(firstcell + CELLSPERTASK).min(t_exc.len());
                     let groupnnion: Vec<&[f64]> = nnion
                         .iter()
                         .map(|ionpops| &ionpops[cells.clone()])
@@ -226,7 +227,7 @@ pub fn sum_binned_line_opacities(
                     sum_cell_group(
                         &levels,
                         &lines,
-                        &te[cells],
+                        &t_exc[cells],
                         &groupnnion,
                         numbins,
                         k_b_ev_per_k,
