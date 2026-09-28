@@ -44,6 +44,7 @@ from artistools.spectra.plotspectra import resolve_plot_args
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
+from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -1200,6 +1201,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     spectragrid.addLayout(make_row_layout([addmodelbutton, removebutton]), 1, 0, 1, -1)
     spectragrid.addLayout(referencerow, 2, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
+    copyfigurebutton, exportfigurebutton = add_figure_section(window, panellayout)
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
@@ -1985,6 +1987,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
+    copyfigurebutton.clicked.connect(on_copy_figure)
+    exportfigurebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)
     xminedit.editingFinished.connect(on_xedit)

@@ -72,6 +72,7 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
+from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -2116,6 +2117,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
+    copyfigurebutton, exportfigurebutton = add_figure_section(window, panellayout)
     _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
@@ -3390,6 +3392,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tminedit.editingFinished.connect(on_trangeedit)
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
+    copyfigurebutton.clicked.connect(on_copy_figure)
+    exportfigurebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     previousbutton.clicked.connect(lambda: on_step_time(-1))
     nextbutton.clicked.connect(lambda: on_step_time(1))

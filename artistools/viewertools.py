@@ -2412,7 +2412,7 @@ MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Export Animation…": "Save a GIF file of the steps of Play",
     "Undo": "Undo the last change",
     "Redo": "Redo the change that Undo removed",
-    "Copy Figure": "Copy the figure in the format and the resolution of the last Copy in Export Figure…",
+    "Copy Figure": "Copy the figure in the format of the Figure section",
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
     "Play": "Play or pause",
@@ -2849,18 +2849,14 @@ def copy_figure_of_command(
 ) -> None:
     """Put the figure of the command on the clipboard, in the format, the resolution, and the size that options gives.
 
-    With no options, the copy takes the format and the resolution of the last Copy in Export Figure. Before the
-    first Copy, the copy is a PNG image with the resolution of a printed page. The command draws the figure, as for
+    With no options, the copy takes the format of the Figure section and the resolution of the last Copy in Export
+    Figure. Before the first Copy, the resolution is that of a printed page. The command draws the figure, as for
     a saved file. Thus the image has the usual colours and no empty margin, also when the window shows the plot in
     Dark Mode. The worker thread runs the command, thus the window accepts input.
     """
     if options is None:
-        lastsuffix = str(get_settings().value("copyformat", "png"))
         options = ExportOptions(
-            suffix=lastsuffix if lastsuffix in dict(EXPORT_FORMATS) else "png",
-            dpi=round(get_float_setting("copydpi", COPY_FIGURE_DPI)),
-            scales=None,
-            copy=True,
+            suffix=get_figure_format(), dpi=round(get_float_setting("copydpi", COPY_FIGURE_DPI)), scales=None, copy=True
         )
     suffix = options.suffix
     scaledtokens = set_figure_scales(parser, plottokens, options.scales)
@@ -2985,6 +2981,68 @@ def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
     return tuple(row for row in rows if row[0] != "-dpi"), dpi
 
 
+# the format of Copy Figure, of the Figure section, and the first format of Export Figure, which a PNG image has at the
+# start because each application can paste it
+DEFAULT_FIGURE_FORMAT: t.Final = "png"
+
+
+def get_figure_format() -> str:
+    """Return the suffix of the format of the figure that the user selected last, e.g. "pdf"."""
+    suffix = str(get_settings().value("figureformat", DEFAULT_FIGURE_FORMAT))
+    return suffix if suffix in dict(EXPORT_FORMATS) else DEFAULT_FIGURE_FORMAT
+
+
+def set_figure_format(suffix: str) -> None:
+    """Keep the format of the figure, and show it in the Figure section of each window of the viewers."""
+    from PySide6 import QtWidgets
+
+    get_settings().setValue("figureformat", suffix)
+    for widget in QtWidgets.QApplication.topLevelWidgets():
+        if callable(handler := widget.property("figureformathandler")):
+            handler(suffix)
+
+
+def add_figure_section(
+    window: "QtWidgets.QMainWindow", panellayout: "QtWidgets.QVBoxLayout"
+) -> "tuple[QtWidgets.QPushButton, QtWidgets.QPushButton]":
+    """Add the Figure section: the format of the figure, a button that copies the figure, and a button for Export.
+
+    Return the Copy Figure button and the Export button, which the window connects to its handlers. Export Figure…
+    gives the resolution and the size too, and it saves a file or copies the figure.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    _, grid = add_section(panellayout, "Figure")
+    formatbox = QtWidgets.QComboBox()
+    for index, (suffix, tooltip) in enumerate(EXPORT_FORMATS):
+        formatbox.addItem(suffix.upper(), suffix)
+        formatbox.setItemData(index, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    formatbox.setToolTip("The format of Copy Figure and the first format of Export Figure…")
+    shortcuts = get_menu_shortcut_texts()
+    copybutton = QtWidgets.QPushButton("Copy Figure")
+    copybutton.setToolTip(f"Put the figure on the clipboard in this format ({shortcuts['Copy Figure']})")
+    exportbutton = QtWidgets.QPushButton("Export…")
+    exportbutton.setToolTip(
+        f"Select the format, the resolution, and the size, then copy or save the figure ({shortcuts['Export Figure…']})"
+    )
+
+    def show_format(suffix: str) -> None:
+        # a format from a different window must not call set_figure_format again
+        blocker = QtCore.QSignalBlocker(formatbox)
+        formatbox.setCurrentIndex(max(formatbox.findData(suffix), 0))
+        blocker.unblock()
+
+    def on_format(index: int) -> None:
+        set_figure_format(str(formatbox.itemData(index)))
+
+    show_format(get_figure_format())
+    formatbox.currentIndexChanged.connect(on_format)
+    window.setProperty("figureformathandler", show_format)
+    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, copybutton, exportbutton])
+    return copybutton, exportbutton
+
+
 # a GIF file shows on a screen, thus its frames take the resolution of a screen
 ANIMATION_DPI: t.Final = 100
 
@@ -3105,8 +3163,7 @@ def ask_export_options(
         [suffix.upper() for suffix, _ in EXPORT_FORMATS], [tooltip for _, tooltip in EXPORT_FORMATS]
     )
     suffixes = [suffix for suffix, _ in EXPORT_FORMATS]
-    lastsuffix = str(get_settings().value("exportformat", "pdf"))
-    segments.setCurrentIndex(suffixes.index(lastsuffix) if lastsuffix in suffixes else 0)
+    segments.setCurrentIndex(suffixes.index(get_figure_format()))
     dpibox = QtWidgets.QSpinBox()
     dpibox.setRange(10, 2400)
     dpibox.setSingleStep(50)
@@ -3157,9 +3214,8 @@ def ask_export_options(
     suffix = suffixes[segments.currentIndex()]
     iscopy = result == copyresult
     if formats:
-        get_settings().setValue("exportformat", suffix)
+        set_figure_format(suffix)
     if iscopy:
-        get_settings().setValue("copyformat", suffix)
         get_settings().setValue("copydpi", dpibox.value())
     # a box rounds the size to 0.01 inches, thus the code keeps the exact size of a box that the user did not change
     width, height = (
