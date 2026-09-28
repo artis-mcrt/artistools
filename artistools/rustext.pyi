@@ -14,6 +14,7 @@ def sum_binned_line_opacities(
     numbins: int,
     k_b_ev_per_k: float,
 ) -> pl.DataFrame: ...
+def get_bin_indices(df: pl.DataFrame, valuecolumn: str, edges: list[float]) -> pl.DataFrame: ...
 def sum_weights_in_bins(
     df: pl.DataFrame,
     valuecolumn: str,

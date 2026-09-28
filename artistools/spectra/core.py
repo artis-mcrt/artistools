@@ -54,7 +54,6 @@ from artistools.misc import split_multitable_dataframe
 from artistools.misc.fileio import resolve_modelpath
 from artistools.packets import bin_and_sum
 from artistools.packets import filter_packets_dirbin
-from artistools.packets import get_bin_index_expr
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
 from artistools.packets import get_modelgridindex_expr
@@ -1609,27 +1608,38 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
     return [f"[{vlow}, {vhigh}) {unitlabel}" for vlow, vhigh in itertools.pairwise(edges)]
 
 
-def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> pl.Expr:
-    """Return the label of the shell that holds the value of each packet, or null outside every shell.
+# the shell index of a packet with no thermal emission record, which takes the label NOT SET as in the ion grouping
+SHELL_NOT_SET: t.Final = -1
+
+
+def get_shell_index_expr(
+    column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps"
+) -> pl.Expr:
+    """Return the index of the shell that holds the value of each packet, or null outside every shell.
 
     A velocity column holds cm/s, and the edges are in km/s. A packet with no thermal emission record
     has a value of NaN or null, which the packets module gives. A packet from an old cache with no
-    thermal column also has a value of null. Such a packet takes the label NOT SET, as the ion grouping
-    gives it.
+    thermal column also has a value of null. Such a packet takes the index SHELL_NOT_SET. The index is an integer
+    and not a label, because an integer bins much faster, and only the binned rows then need a label.
     """
     scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
-    labels = ["below", *get_shell_labels(shelledges, unit), "above"]
     value = pl.col(column)
-    shell = value.cut(breaks=edges, labels=labels, left_closed=True).cast(pl.String)
+    # the first category of cut() holds the values below the first edge, thus the first shell has the index 1
+    shell = value.cut(breaks=edges, left_closed=True).to_physical().cast(pl.Int32) - 1
 
     return (
         pl
         .when(value.is_null() | value.is_nan())
-        .then(pl.lit("NOT SET"))
+        .then(pl.lit(SHELL_NOT_SET, dtype=pl.Int32))
         .when(value.is_between(edges[0], edges[-1], closed="left"))
         .then(shell)
     )
+
+
+def get_shell_label_of_index(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"]) -> dict[int, str]:
+    """Return the label of each shell index of get_shell_index_expr, and NOT SET for SHELL_NOT_SET."""
+    return {**dict(enumerate(get_shell_labels(shelledges, unit))), SHELL_NOT_SET: "NOT SET"}
 
 
 def add_ye_columns(
@@ -1909,14 +1919,14 @@ def get_flux_contributions_from_packets(
         assert shelledges is not None
         shellexprs = {}
         if getemission:
-            shellexprs["emissiontype_str"] = get_shell_expr(emtypecolumn, shelledges, shellunit)
+            shellexprs["emissionshell"] = get_shell_index_expr(emtypecolumn, shelledges, shellunit)
         if getabsorption:
-            shellexprs["absorptiontype_str"] = get_shell_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)
+            shellexprs["absorptionshell"] = get_shell_index_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)
         dfpackets = dfpackets.with_columns(**shellexprs).drop(*SHELLCOLUMNS[groupby], "absorption_type", strict=False)
-        labelcolumns = pl.col(list(shellexprs))
+        shellcolumns = pl.col(list(shellexprs))
         counts = dfpackets.select(
-            noutside=pl.all_horizontal(labelcolumns.is_null()).sum(),
-            nnotset=pl.any_horizontal(labelcolumns == "NOT SET").sum(),
+            noutside=pl.all_horizontal(shellcolumns.is_null()).sum(),
+            nnotset=pl.any_horizontal(shellcolumns == SHELL_NOT_SET).sum(),
         ).row(0)
         noutside, nnotset = counts
         if nnotset > 0:
@@ -1944,20 +1954,41 @@ def get_flux_contributions_from_packets(
     def bin_by_type(dfpkts: pl.DataFrame, typecolumn: str, nucolumn: str) -> pl.DataFrame:
         """Return the packet energy of each type and wavelength bin.
 
-        The type is a code or the label of a shell. For 3e7 packets of a 3D kilonova model, the old method took 2.4 s.
-        It gave a string label to each packet, then a frame and a spectrum to each label. This group_by of the integer
-        code of each packet takes 0.4 s. The steps are eager, because one lazy query with cut() in the keys took 0.9 s.
+        The type is a code or the label of a shell. The Rust function gives the bins of the spectrum kernel. An
+        integer type and its bin then form one Int64 key, because one key groups faster than two. For 65 million
+        packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with polars 1.44
+        and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s.
         """
+        from artistools.rustext import get_bin_indices
+
         dfinrange = dfpkts.select(
             typecolumn, energy_column, lambda_angstroms=constants.c_ang_per_s / pl.col(nucolumn)
         ).filter(
             pl.col(typecolumn).is_not_null() & pl.col("lambda_angstroms").is_between(sorted_edges[0], sorted_edges[-1])
         )
+        binindex = get_bin_indices(dfinrange, "lambda_angstroms", sorted_edges.tolist())["binindex"]
+        typedtype = dfinrange.schema[typecolumn]
+        if not typedtype.is_integer():
+            return (
+                dfinrange
+                .with_columns(binindex=binindex)
+                .group_by(typecolumn, "binindex")
+                .agg(pl.col(energy_column).sum())
+            )
+        nbins = len(sorted_edges) - 1
+        code = pl.col("key").floordiv(nbins)
         return (
             dfinrange
-            .with_columns(binindex=get_bin_index_expr("lambda_angstroms", sorted_edges.tolist()))
-            .group_by(typecolumn, "binindex")
-            .agg(pl.col(energy_column).sum())
+            .lazy()
+            .select(key=pl.col(typecolumn).cast(pl.Int64) * nbins + binindex, energy=pl.col(energy_column))
+            .group_by("key")
+            .agg(pl.col("energy").sum())
+            .select(
+                code.cast(typedtype).alias(typecolumn),
+                (pl.col("key") - code * nbins).cast(pl.Int32).alias("binindex"),
+                pl.col("energy").alias(energy_column),
+            )
+            .collect()
         )
 
     def sum_by_label(dfbinned: pl.DataFrame, labelcolumn: str) -> pl.DataFrame:
@@ -2058,12 +2089,24 @@ def get_flux_contributions_from_packets(
             keptcodes = get_emission_labels(dfpackets[emtypecolumn], dflines).filter(keptlabel)[emtypecolumn]
             dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(keptcodes.implode()))
 
-    # a shell label comes from the position of each packet, thus the label is the type of the packet
-    emission_typecolumn = "emissiontype_str" if groupby in SHELLCOLUMNS else emtypecolumn
-    absorption_typecolumn = "absorptiontype_str" if groupby in SHELLCOLUMNS else "absorption_type"
+    # a shell index comes from the position of each packet, thus the index is the type of the packet
+    emission_typecolumn = "emissionshell" if groupby in SHELLCOLUMNS else emtypecolumn
+    absorption_typecolumn = "absorptionshell" if groupby in SHELLCOLUMNS else "absorption_type"
     dfemission = bin_by_type(dfpackets, emission_typecolumn, dirbin_nu_column) if getemission else None
     dfabsorption = bin_by_type(dfpackets, absorption_typecolumn, "absorption_freq") if getabsorption else None
     del dfpackets
+
+    if groupby in SHELLCOLUMNS:
+        assert shelledges is not None
+        shelllabels = get_shell_label_of_index(shelledges, shellunit)
+        if dfemission is not None:
+            dfemission = dfemission.with_columns(
+                emissiontype_str=pl.col("emissionshell").replace_strict(shelllabels, return_dtype=pl.String)
+            ).drop("emissionshell")
+        if dfabsorption is not None:
+            dfabsorption = dfabsorption.with_columns(
+                absorptiontype_str=pl.col("absorptionshell").replace_strict(shelllabels, return_dtype=pl.String)
+            ).drop("absorptionshell")
 
     # The code adds the labels after it bins the packets. Thus it finds a label only for a code that a packet uses.
     if dfemission is not None and groupby not in SHELLCOLUMNS:

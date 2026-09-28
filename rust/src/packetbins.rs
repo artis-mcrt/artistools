@@ -115,6 +115,57 @@ fn sum_bins<T: Copy + Into<f64> + Sync>(
     (sums, counts)
 }
 
+fn check_edges(edges: &[f64]) -> PolarsResult<()> {
+    if edges.len() < 2 || edges.windows(2).any(|pair| pair[0] >= pair[1]) {
+        polars_bail!(ComputeError: "the bin edges must be two or more values in increasing order");
+    }
+    Ok(())
+}
+
+/// Return the bin of each value, or -1 for a value outside the edges or NaN.
+fn get_bins<T: Copy + Into<f64> + Sync>(values: &[T], edges: &BinEdges) -> Vec<i32> {
+    values
+        .par_iter()
+        .map(|&value| {
+            edges
+                .index(value.into())
+                .and_then(|bin| i32::try_from(bin).ok())
+                .unwrap_or(-1)
+        })
+        .collect()
+}
+
+/// Return the index of the bin of each value in the column "binindex", or -1 for a value outside the edges or NaN.
+///
+/// The bins are the bins of `sum_weights_in_bins`. A caller can then group the rows by the bin and by other columns,
+/// e.g. by the emission type of each packet. The count of emission types is too large for the groups of
+/// `sum_weights_in_bins`.
+#[pyfunction]
+#[expect(clippy::needless_pass_by_value)]
+pub fn get_bin_indices(
+    py: Python<'_>,
+    df: PyDataFrame,
+    valuecolumn: &str,
+    edges: Vec<f64>,
+) -> PyResult<PyDataFrame> {
+    let dfbins = py
+        .detach(|| {
+            let mut df = df.0;
+            df.rechunk_mut_par();
+            check_edges(&edges)?;
+            let binedges = BinEdges::new(&edges);
+            let values = df.column(valuecolumn)?.as_materialized_series();
+            let bins = match values.dtype() {
+                DataType::Float32 => get_bins(values.f32()?.cont_slice()?, &binedges),
+                _ => get_bins(values.f64()?.cont_slice()?, &binedges),
+            };
+            df!("binindex" => bins)
+        })
+        .map_err(PyPolarsErr::from)?;
+
+    Ok(PyDataFrame(dfbins))
+}
+
 /// Return the sum of the weights and the count of the values in each bin, e.g. the packet energy of each wavelength
 /// bin of a spectrum.
 ///
@@ -142,17 +193,23 @@ pub fn sum_weights_in_bins(
         .detach(|| {
             let mut df = df.0;
             df.rechunk_mut_par();
-            if edges.len() < 2 || edges.windows(2).any(|pair| pair[0] >= pair[1]) {
-                polars_bail!(ComputeError: "the bin edges must be two or more values in increasing order");
-            }
+            check_edges(&edges)?;
             if ngroups == 0 {
                 polars_bail!(ComputeError: "the count of groups must be one or more");
             }
             let binedges = BinEdges::new(&edges);
-            let weights = df.column(weightcolumn)?.as_materialized_series().f64()?.cont_slice()?;
+            let weights = df
+                .column(weightcolumn)?
+                .as_materialized_series()
+                .f64()?
+                .cont_slice()?;
             let groups = match groupcolumn {
                 Some(name) => {
-                    let groups = df.column(name)?.as_materialized_series().i32()?.cont_slice()?;
+                    let groups = df
+                        .column(name)?
+                        .as_materialized_series()
+                        .i32()?
+                        .cont_slice()?;
                     if groups
                         .iter()
                         .any(|&group| usize::try_from(group).map_or(true, |group| group >= ngroups))
@@ -165,8 +222,20 @@ pub fn sum_weights_in_bins(
             };
             let values = df.column(valuecolumn)?.as_materialized_series();
             let (sums, counts) = match values.dtype() {
-                DataType::Float32 => sum_bins(values.f32()?.cont_slice()?, weights, groups, &binedges, ngroups),
-                _ => sum_bins(values.f64()?.cont_slice()?, weights, groups, &binedges, ngroups),
+                DataType::Float32 => sum_bins(
+                    values.f32()?.cont_slice()?,
+                    weights,
+                    groups,
+                    &binedges,
+                    ngroups,
+                ),
+                _ => sum_bins(
+                    values.f64()?.cont_slice()?,
+                    weights,
+                    groups,
+                    &binedges,
+                    ngroups,
+                ),
             };
             df!("sum" => sums, "count" => counts)
         })

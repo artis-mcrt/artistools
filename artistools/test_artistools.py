@@ -1666,6 +1666,22 @@ def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
         sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 2)
 
 
+def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
+    """get_bin_indices gives the bin of each value with the rules of sum_weights_in_bins, and -1 outside the edges."""
+    from artistools.rustext import get_bin_indices
+    from artistools.rustext import sum_weights_in_bins
+
+    rng = np.random.default_rng(seed=2)
+    edges = [0.0, 0.5, 2.0, 3.0]
+    values = np.concatenate([rng.uniform(-0.5, 3.5, 10_000), edges, [math.nan]])
+    df = pl.DataFrame({"x": values, "e": np.ones(len(values))})
+    bins = get_bin_indices(df, "x", edges)["binindex"].to_numpy()
+    counts = sum_weights_in_bins(df, "x", "e", edges)["count"].to_numpy()
+    assert np.array_equal(np.bincount(bins[bins >= 0], minlength=len(edges) - 1), counts)
+    # each edge starts its bin, the last edge is in the last bin, and NaN is in no bin
+    assert bins[-5:].tolist() == [0, 1, 2, 2, -1]
+
+
 def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
     """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
 
