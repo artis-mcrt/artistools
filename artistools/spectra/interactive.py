@@ -1159,6 +1159,28 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xgrid.addWidget(widget, 0, column)
     xgrid.setColumnStretch(1, 1)
 
+    # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
+    binmodebox = QtWidgets.QComboBox()
+    for binmode, binmodetext in (("", "Default bins"), ("deltax", "-deltax"), ("deltalogx", "-deltalogx")):
+        binmodebox.addItem(binmodetext, binmode)
+        binmodebox.setItemData(binmodebox.count() - 1, helptexts.get(binmode, ""), QtCore.Qt.ItemDataRole.ToolTipRole)
+    binmodebox.setToolTip("The bins of a spectrum from the packets files. The text files of exspec have their own bins")
+
+    class BinWidthSpinBox(QtWidgets.QDoubleSpinBox):
+        """A box for the bin width that shows the shortest text of its value.
+
+        The box accepts more decimals than a bin width usually has. A fixed count of decimals then shows "20.000".
+        """
+
+        @t.override
+        def textFromValue(self, v: float) -> str:
+            return format(v, ".10g")
+
+    binwidthbox = BinWidthSpinBox()
+    # each arrow step is one power of ten below the value, thus the arrows reach each bin width
+    binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
+    add_row(xgrid, 1, [QtWidgets.QLabel("Bins:"), binmodebox, binwidthbox])
+
     _, axesgrid = add_section(panellayout, "Axes")
     xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
@@ -1260,42 +1282,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
-    _, bingrid = add_section(panellayout, "Bins of the packet spectrum")
-    # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
-    binmodebox = QtWidgets.QComboBox()
-    for binmode, binmodetext in (("", "Default bins"), ("deltax", "-deltax"), ("deltalogx", "-deltalogx")):
-        binmodebox.addItem(binmodetext, binmode)
-        binmodebox.setItemData(binmodebox.count() - 1, helptexts.get(binmode, ""), QtCore.Qt.ItemDataRole.ToolTipRole)
-
-    class BinWidthSpinBox(QtWidgets.QDoubleSpinBox):
-        """A box for the bin width that shows the shortest text of its value.
-
-        The box accepts more decimals than a bin width usually has. A fixed count of decimals then shows "20.000".
-        """
-
-        @t.override
-        def textFromValue(self, v: float) -> str:
-            return format(v, ".10g")
-
-    binwidthbox = BinWidthSpinBox()
-    # each arrow step is one power of ten below the value, thus the arrows reach each bin width
-    binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
-    datasourcebox = QtWidgets.QComboBox()
-    for text, source, tooltip in (
-        ("Auto", "auto", "Read the packets files only when an option needs them"),
-        ("Text files", "text", "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"),
-        ("Packets files", "packets", f"--frompackets: {helptexts.get('frompackets', '')}"),
-    ):
-        datasourcebox.addItem(text, source)
-        datasourcebox.setItemData(datasourcebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    datasourcebox.setToolTip(
-        "The files of the plot. Auto shows in brackets the files that it selected for the current options"
-    )
-    datasourcemodel = datasourcebox.model()
-    assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
-    autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
-    add_row(bingrid, 0, [QtWidgets.QLabel("--frompackets"), datasourcebox, binmodebox, binwidthbox])
-
     _, directiongrid = add_section(panellayout, "Viewing direction")
     directionkindbox = QtWidgets.QComboBox()
     for directionkind, directionkindtext, dest in (
@@ -1359,6 +1345,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     addrow.addWidget(addmodelbutton)
     spectragrid.addWidget(spectralist, 0, 0, 1, -1)
     spectragrid.addLayout(addrow, 1, 0, 1, -1)
+    datasourcebox = QtWidgets.QComboBox()
+    for text, source, tooltip in (
+        ("Auto", "auto", "Read the packets files only when an option needs them"),
+        ("Text files", "text", "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"),
+        ("Packets files", "packets", f"--frompackets: {helptexts.get('frompackets', '')}"),
+    ):
+        datasourcebox.addItem(text, source)
+        datasourcebox.setItemData(datasourcebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    datasourcebox.setToolTip(
+        "The files of the plot. Auto shows in brackets the files that it selected for the current options"
+    )
+    datasourcemodel = datasourcebox.model()
+    assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
+    autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
+    add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     defaultdpi: int = viewer.parser.get_default("dpi")
     figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
