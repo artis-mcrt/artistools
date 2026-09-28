@@ -87,6 +87,7 @@ from artistools.viewertools import make_play_row
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
+from artistools.viewertools import make_reorder_list
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_sidebar
@@ -995,6 +996,7 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
     ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
     ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
+    ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
     ("<b>Drag</b> across the plot", "Select the x range"),
     ("<b>Double-click</b> the plot", "Get the default x range"),
 )
@@ -1254,17 +1256,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         box.setKeyboardTracking(False)
 
     _, spectragrid = add_section(panellayout, "Spectra")
-    spectralist = QtWidgets.QListWidget()
-    # a drag of a row moves its spectrum, and a drag needs the selection of the row
-    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-    spectralist.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
-    spectralist.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
+    # the handler comes later in this function, thus the lambda reads it at the time of the key
+    spectralist = make_reorder_list(lambda step: on_move_spectrum(step))  # ruff:ignore[unnecessary-lambda]
     # the widget of each row shows the text beside its ✕, thus the list draws no text of its own
     spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     spectralist.setToolTip(
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Drag a row to change the order. The command gives a file from the"
-        " reference data of artistools by its name alone."
+        " -label and the style of each series. Drag a row, or press Alt-Up or Alt-Down (Option on a Mac), to"
+        " change the order. The command gives a file from the reference data of artistools by its name alone."
     )
     addmodelbutton = QtWidgets.QPushButton("Add Model…")
     addmodelbutton.setToolTip("Add the folder of an ARTIS run")
@@ -1983,6 +1982,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         order = [spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())]
         if order != list(viewer.values.spectra):
             apply(dc.replace(viewer.values, spectra=tuple(order)))
+
+    def on_move_spectrum(step: int) -> None:
+        """Move the selected spectrum one row up or down, and keep the selection on it."""
+        spectra = list(viewer.values.spectra)
+        row = spectralist.currentRow()
+        if row < 0 or not 0 <= row + step < len(spectra):
+            return
+        spectra.insert(row + step, spectra.pop(row))
+        apply(dc.replace(viewer.values, spectra=tuple(spectra)))
+        spectralist.setCurrentRow(row + step)
 
     def on_remove_spectrum(path: str) -> None:
         spectra = tuple(other for other in viewer.values.spectra if other != path)

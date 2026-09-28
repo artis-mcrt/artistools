@@ -1488,6 +1488,74 @@ def make_drag_header(
     return header
 
 
+def make_reorder_list(on_move: "Callable[[int], None]") -> "QtWidgets.QListWidget":
+    """Return a list whose rows the user can move with a drag or with the keyboard, as the subplot cards do.
+
+    Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move for the selected row. A drag shows the drop
+    position as a line of 2 pixels in the highlight colour, which is the line between two subplot cards.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    listwidget = get_reorder_list_class()()
+    # a drag of a row moves it, and a drag needs the selection of the row
+    listwidget.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+    listwidget.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+    listwidget.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
+    listwidget.setProperty("on_move", on_move)
+    return listwidget
+
+
+@cache
+def get_reorder_list_class() -> "type[QtWidgets.QListWidget]":
+    """Return the class of the lists of make_reorder_list."""
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class DropLineStyle(QtWidgets.QProxyStyle):
+        """A style that draws the drop position of a list as the drop line of the subplot cards."""
+
+        @t.override
+        def drawPrimitive(
+            self,
+            element: QtWidgets.QStyle.PrimitiveElement,
+            option: QtWidgets.QStyleOption,
+            painter: QtGui.QPainter,
+            widget: QtWidgets.QWidget | None = None,
+        ) -> None:
+            if element != QtWidgets.QStyle.PrimitiveElement.PE_IndicatorItemViewItemDrop:
+                super().drawPrimitive(element, option, painter, widget)
+                return
+            # the list gives a rectangle with no height at the top or the bottom of a row. The stubs of PySide give
+            # the fields of an option with no type
+            rect = t.cast("QtCore.QRect", option.rect)
+            palette = t.cast("QtGui.QPalette", option.palette)
+            painter.fillRect(QtCore.QRect(rect.left(), rect.top() - 1, rect.width(), 2), palette.highlight())
+
+    class ReorderList(QtWidgets.QListWidget):
+        """A list that gives Alt-Up and Alt-Down to its on_move callback."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            # a proxy of the style of the application, with the list as its parent, thus Qt deletes both together
+            style = DropLineStyle()
+            style.setParent(self)
+            self.setStyle(style)
+
+        @t.override
+        def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
+            steps = {QtCore.Qt.Key.Key_Up: -1, QtCore.Qt.Key.Key_Down: 1}
+            holdsalt = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.AltModifier)
+            if holdsalt and event.key() in steps and callable(callback := self.property("on_move")):
+                callback(steps[QtCore.Qt.Key(event.key())])
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+
+    return ReorderList
+
+
 @cache
 def get_drag_header_class() -> "type[QtWidgets.QWidget]":
     """Return the class of the headers of make_drag_header.
