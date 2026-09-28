@@ -60,6 +60,7 @@ from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import has_emission_record_expr
 from artistools.packets import sum_packets_by_dirbin
+from artistools.packets import sum_virtual_packets_by_observer
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -546,13 +547,11 @@ def get_from_packets(
     maxpacketfiles: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    nu_column: str = "nu_rf",
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
     directionbins_are_vpkt_observers: bool = False,
     directionbins: Sequence[int] | None = None,
     gamma: bool = False,
-    packets_are_time_filtered: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Return a spectrum dataframe. The packets files are the input.
 
@@ -564,8 +563,6 @@ def get_from_packets(
         msg = "Virtual packet spectra support only observer arrival time"
         raise ValueError(msg)
 
-    if nu_column == "absorption_freq":
-        nu_column = "nu_absorbed"
     if lambda_bin_edges is None:
         lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
     lambda_bin_edges = np.sort(lambda_bin_edges)
@@ -584,51 +581,31 @@ def get_from_packets(
             escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
 
-    dfpackets = dfpackets.with_columns([
-        (constants.c_ang_per_s / pl.col(colname)).alias(
-            colname.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
-        )
-        for colname in dfpackets.collect_schema().names()
-        if "nu_" in colname or colname == "absorption_freq"
-    ])
-
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
     dirbinsums: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
-        for vspecindex in select_dirbins(alldirbins, directionbins):
-            obsdirindex, opacchoiceindex = divmod(vspecindex, vpkt_config["nspectraperobs"])
-            lambda_column = (
-                f"dir{obsdirindex}_lambda_angstroms_rf"
-                if nu_column == "nu_rf"
-                else nu_column.replace("absorption_freq", "nu_absorbed").replace("nu_", "lambda_angstroms_")
-            )
-            energy_column = f"dir{obsdirindex}_e_rf_{opacchoiceindex}"
-            dfpackets_dirbin = (
-                dfpackets
-                if packets_are_time_filtered
-                else dfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
-            )
-
-            energysums, packetcounts, _ = sum_packets_by_dirbin(
-                dfpackets_dirbin, [-1], lambda_column, lambda_bin_edges, energy_column
-            )[-1]
-            # the flux of a virtual observer has no division by 4 pi, thus this factor cancels that division below
-            dirbinsums[vspecindex] = (energysums, packetcounts, 4 * math.pi)
+        dirbinsums = sum_virtual_packets_by_observer(
+            dfpackets,
+            select_dirbins(alldirbins, directionbins),
+            vpkt_config["nspectraperobs"],
+            lambda obsdirindex: constants.c_ang_per_s / pl.col(f"dir{obsdirindex}_nu_rf"),
+            lambda_bin_edges,
+            arrivaltimerange_days=(timelowdays, timehighdays),
+        )
 
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
-        lambda_column = nu_column.replace("nu_", "lambda_angstroms_")
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
-
-        if not packets_are_time_filtered:
-            dfpackets = filter_packets_by_time(dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        dfpackets = filter_packets_by_time(
+            dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
+        ).with_columns(lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf"))
 
         dirbinsums = sum_packets_by_dirbin(
             dfpackets,
             select_dirbins(alldirbins, directionbins),
-            lambda_column,
+            "lambda_angstroms_rf",
             lambda_bin_edges,
             energy_column,
             average_over_phi=average_over_phi,

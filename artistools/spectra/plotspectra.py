@@ -486,6 +486,31 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
         )
 
 
+def get_packet_use_time(args: argparse.Namespace) -> t.Literal["escape", "emission", "arrival"]:
+    """Return the time of each packet that selects it for the spectrum."""
+    if args.use_escapetime:
+        return "escape"
+    if args.use_emissiontime:
+        return "emission"
+    return "arrival"
+
+
+def get_packet_lambda_bin_edges(
+    args: argparse.Namespace, xmin: float, xmax: float, modelpath: Path
+) -> npt.NDArray[np.floating]:
+    """Return the wavelength bin edges of a spectrum from packets, from the bin width that the arguments give."""
+    return get_lambda_bin_edges(
+        xmin,
+        xmax,
+        deltax=args.deltax,
+        deltalogx=args.deltalogx,
+        deltalambda=args.deltalambda,
+        xunit=args.xunit,
+        modelpath=modelpath,
+        gamma=args.gamma,
+    )
+
+
 def plot_artis_spectrum(
     axes: npt.NDArray[np.object_] | Sequence[mplax.Axes],
     modelpath: Path | str,
@@ -517,15 +542,8 @@ def plot_artis_spectrum(
     # --write_data names one column for each drawn series, thus the loops below collect every one of
     # them. The suffix names the direction bin and the epoch of the panel
     drawnseries: list[tuple[str, pl.DataFrame]] = []
-    use_time: t.Literal["escape", "emission", "arrival"]
-    if args.use_escapetime:
-        use_time = "escape"
-        assert from_packets
-    elif args.use_emissiontime:
-        use_time = "emission"
-        assert from_packets
-    else:
-        use_time = "arrival"
+    use_time = get_packet_use_time(args)
+    assert from_packets or use_time == "arrival"
 
     if directionbins is None:
         directionbins = [-1]
@@ -600,16 +618,7 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_bin_edges = get_lambda_bin_edges(
-                xmin,
-                xmax,
-                deltax=args.deltax,
-                deltalogx=args.deltalogx,
-                deltalambda=args.deltalambda,
-                xunit=args.xunit,
-                modelpath=modelpath,
-                gamma=args.gamma,
-            )
+            lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
 
             viewinganglespectra = get_from_packets(
                 modelpath,
@@ -961,24 +970,8 @@ def get_emission_contributions(
             lambda_max=lambda_max,
         )
 
-    use_time: t.Literal["escape", "emission", "arrival"]
-    if args.use_escapetime:
-        use_time = "escape"
-    elif args.use_emissiontime:
-        use_time = "emission"
-    else:
-        use_time = "arrival"
-
-    lambda_bin_edges = get_lambda_bin_edges(
-        xmin,
-        xmax,
-        deltax=args.deltax,
-        deltalogx=args.deltalogx,
-        deltalambda=args.deltalambda,
-        xunit=args.xunit,
-        modelpath=modelpath,
-        gamma=args.gamma,
-    )
+    use_time = get_packet_use_time(args)
+    lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
 
     return get_flux_contributions_from_packets(
         modelpath,

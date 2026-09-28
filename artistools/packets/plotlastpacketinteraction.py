@@ -11,6 +11,7 @@ import polars as pl
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_lineindices
 from artistools.atomic import get_linelist_pldf
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
@@ -47,23 +48,24 @@ def get_required_packets(
         # that no line absorbed has a negative absorption_type
         return nprocs_read, dfpackets.filter(pl.col("absorption_type") >= 0)
 
-    linelist_lazyframe = get_linelist_pldf(modelpath)
     if srII_triplet:
-        linelist_lazyframe = linelist_lazyframe.filter(
-            (pl.col("atomic_number") == 38)
-            & (pl.col("ion_stage") == 2)
-            & (
-                ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
-                | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
-                | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
+        lineindices = (
+            get_linelist_pldf(modelpath)
+            .filter(
+                (pl.col("atomic_number") == 38)
+                & (pl.col("ion_stage") == 2)
+                & (
+                    ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
+                    | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
+                    | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
+                )
             )
+            .select("lineindex")
+            .collect()
+            .get_column("lineindex")
         )
     else:
-        if Z_list is not None:
-            linelist_lazyframe = linelist_lazyframe.filter(pl.col("atomic_number").is_in(Z_list))
-        if ion_stage_list is not None:
-            linelist_lazyframe = linelist_lazyframe.filter(pl.col("ion_stage").is_in(ion_stage_list))
-    lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
+        lineindices = get_lineindices(modelpath, Z_list, ion_stage_list)
 
     return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
 

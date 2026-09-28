@@ -15,6 +15,7 @@ from artistools.atomic.core import get_elsymbolslist as get_elsymbolslist
 from artistools.atomic.core import get_ion_tuple as get_ion_tuple
 from artistools.atomic.core import get_ionstring as get_ionstring
 from artistools.atomic.core import get_levels as get_levels
+from artistools.atomic.core import get_lineindices as get_lineindices
 from artistools.atomic.core import get_linelist_pldf as get_linelist_pldf
 from artistools.atomic.core import get_lte_partfunc as get_lte_partfunc
 from artistools.atomic.core import get_nuclides as get_nuclides

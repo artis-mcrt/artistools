@@ -6,6 +6,7 @@ import math
 import os
 import time
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import batched
@@ -609,12 +610,7 @@ def get_packets_rankbatch_parquetfile(
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
             pldf_batch = add_packet_directions_lazypolars(pldf_batch)
-            pldf_batch = bin_packet_directions_polars(
-                pldf_batch,
-                nphibins=get_viewingdirection_phibincount(),
-                ncosthetabins=get_viewingdirection_costhetabincount(),
-                phibintype="phibinhistoricaldescendingdiscont",
-            )
+            pldf_batch = bin_packet_directions_polars(pldf_batch)
 
         print(
             f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
@@ -766,15 +762,19 @@ def check_packets_batch_parquet_paths(
     return nprocs_read, parquetpacketsfiles
 
 
+def print_parquet_size(parquetfiles: Sequence[Path]) -> None:
+    """Print the total size and the count of the packet batch caches that a scan reads."""
+    packetsdatasize_gb = sum(f.stat().st_size for f in parquetfiles) / 1024 / 1024 / 1024
+    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {len(parquetfiles)} batches)")
+
+
 def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     """Return the number of MPI ranks read and a lazy frame of all of the model's virtual packets."""
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
         modelpath, maxpacketfiles=maxpacketfiles, virtual=True
     )
 
-    nbatches_read = len(vpacketparquetfiles)
-    packetsdatasize_gb = sum(f.stat().st_size for f in vpacketparquetfiles) / 1024 / 1024 / 1024
-    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
+    print_parquet_size(vpacketparquetfiles)
 
     # add some extra columns to imitate the real packets
     dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
@@ -801,9 +801,7 @@ def get_packets(
 
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
-    nbatches_read = len(packetsparquetfiles)
-    packetsdatasize_gb = sum(f.stat().st_size for f in packetsparquetfiles) / 1024 / 1024 / 1024
-    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {nbatches_read} batches)")
+    print_parquet_size(packetsparquetfiles)
 
     # ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2
     # is Q and stokes3 is U. The cache keeps stokes1, because a cache file that omits it would need a
@@ -1043,4 +1041,37 @@ def sum_packets_by_dirbin(
         else:
             group = groupofdirbin[dirbin]
             result[dirbin] = (groupsums[group], groupcounts[group], float(ngroups))
+    return result
+
+
+def sum_virtual_packets_by_observer(
+    dfvpackets: pl.LazyFrame,
+    vspecindices: Sequence[int],
+    nspectraperobs: int,
+    valueexpr: Callable[[int], pl.Expr],
+    bin_edges: Sequence[float] | npt.NDArray[np.floating],
+    arrivaltimerange_days: tuple[float, float] | None = None,
+) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
+    """Return the sum of the energies and the packet count of each bin, and the solid-angle factor, of each observer.
+
+    A vspecindex gives an observer direction and an opacity choice. valueexpr gives the binned value of the virtual
+    packets of an observer direction, e.g. the arrival time. Each observer direction has its own columns, thus each
+    vspecindex needs its own pass over the packets.
+    """
+    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+    for vspecindex in vspecindices:
+        obsdirindex, opacchoiceindex = divmod(vspecindex, nspectraperobs)
+        dfobserver = dfvpackets
+        if arrivaltimerange_days is not None:
+            dfobserver = dfobserver.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(*arrivaltimerange_days))
+        energysums, packetcounts, _ = sum_packets_by_dirbin(
+            dfobserver.with_columns(binvalue=valueexpr(obsdirindex)),
+            [-1],
+            "binvalue",
+            bin_edges,
+            f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+        )[-1]
+        # the flux of a virtual observer has no division by 4 pi. Thus this factor takes the place of the
+        # solid-angle factor of the real packets
+        result[vspecindex] = (energysums, packetcounts, 4 * math.pi)
     return result

@@ -45,6 +45,7 @@ from artistools.misc import zopenpl
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
+from artistools.packets import sum_virtual_packets_by_observer
 from artistools.spectra import get_escape_surface_gamma
 from artistools.spectra import get_spectra
 from artistools.spectra import get_spectrum_at_time
@@ -181,18 +182,13 @@ def get_from_packets(
 
     if directionbins_are_vpkt_observers:
         assert vpkt_config is not None
-        # each observer has its own columns of arrival time and energy, thus each observer needs a pass of its own
-        rfsums: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
-        for dirbin in directionbins:
-            obsdirindex, opacchoiceindex = divmod(dirbin, vpkt_config["nspectraperobs"])
-            energysums, packetcounts, _ = sum_packets_by_dirbin(
-                dfpackets,
-                [-1],
-                f"dir{obsdirindex}_t_arrive_d",
-                timebinstarts_plusend,
-                f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
-            )[-1]
-            rfsums[dirbin] = (energysums, packetcounts, 4 * math.pi)
+        rfsums = sum_virtual_packets_by_observer(
+            dfpackets,
+            list(directionbins),
+            vpkt_config["nspectraperobs"],
+            lambda obsdirindex: pl.col(f"dir{obsdirindex}_t_arrive_d"),
+            timebinstarts_plusend,
+        )
         cmfsums = None
     else:
         rfsums, cmfsums = (
