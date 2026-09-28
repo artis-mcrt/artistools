@@ -1203,7 +1203,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     for edit in (yminedit, ymaxedit):
         edit.setFixedWidth(110)
     add_row(axesgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, logscalexcheck])
-    add_row(axesgrid, 1, [fixycheck, QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit])
+    # the limits of the y axis go on the row below the y axis boxes
+    add_row(axesgrid, 2, [fixycheck, QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit])
     yvariablebox = QtWidgets.QComboBox()
     yvariablebox.addItems(viewer.yvariablechoices)
     normalisedcheck = QtWidgets.QCheckBox("--normalised")
@@ -1223,7 +1224,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     assert isinstance(packetmodel, QtGui.QStandardItemModel)
     gammaitem = packetmodel.item(1)
     # the packets and the scale also describe the y axis, thus the three boxes share one label
-    add_row(axesgrid, 2, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
+    add_row(axesgrid, 1, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
