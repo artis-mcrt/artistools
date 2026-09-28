@@ -3895,7 +3895,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--notitle": "Hide title",
     "--showabsorption": "Show absorption",
     "--showemission": "Show emission",
-    "--use_thermalemissiontype": "Emission type",
+    "--use_thermalemissiontype": "Event:",
     "--usedegrees": "Degrees",
     "-axis": "Axis",
     "-cell": "Cells",
