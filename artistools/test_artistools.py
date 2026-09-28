@@ -3944,7 +3944,7 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 
 
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
-    """Export Figure proposes the -dpi of the command, and each type of file takes it.
+    """The Figure section starts with the -dpi of the command, and each format of file takes it.
 
     The spectrum viewer proposed the default of 250 and kept -dpi 300 of the command, thus the file had 300 dpi. The
     estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
@@ -3967,34 +3967,21 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
 
-        def accept_proposal(
-            _window: object, proposeddpi: int, _sizemodel: object, suffix: str = suffix
-        ) -> viewertools.ExportOptions:
-            return viewertools.ExportOptions(suffix=suffix, dpi=proposeddpi, scales=None, copy=False)
-
+        options = viewertools.ExportOptions(suffix=suffix, dpi=dpi, scales=None)
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
-            mock.patch.object(viewertools, "ask_export_options", side_effect=accept_proposal),
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
-            viewertools.export_figure_of_command(
-                mock.Mock(),
-                mock.Mock(),
-                statusbar,
-                commandmain,
-                "plotspectra",
-                ["-xmin", "5"],
-                dpi,
-                parser,
-                mplfig.Figure(),
+            viewertools.save_figure_of_command(
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, options
             )
-        # a name with no suffix takes the suffix of the type that the dialog selected
+        # a name with no suffix takes the suffix of the selected format
         assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
 
 
 def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
-    """Copy in the export dialog runs the command for a file of the selected format, and puts the file on the clipboard.
+    """Copy Figure runs the command for a file of the selected format, and puts the file on the clipboard.
 
     Qt gave only a TIFF image to the clipboard of macOS, thus a copy could not give a PDF or an SVG file.
     """
@@ -4016,7 +4003,7 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
 
     queue = mock.Mock(run_task=run_task)
     statusbar = mock.Mock()
-    options = viewertools.ExportOptions(suffix="svg", dpi=150, scales=None, copy=True)
+    options = viewertools.ExportOptions(suffix="svg", dpi=150, scales=None)
     with mock.patch.object(viewertools, "put_file_on_clipboard", return_value=None) as mockclipboard:
         viewertools.copy_figure_of_command(
             queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], options
@@ -4036,7 +4023,7 @@ def test_viewer_row_wraps_its_groups() -> None:
 
 
 def test_viewer_size_model_gives_the_scales_of_a_size() -> None:
-    """The export dialog finds the -figscale and the -figwidthscale that give a figure a new size.
+    """The Figure section finds the -figscale and the -figwidthscale that give a figure a new size.
 
     The frames grow with the scales, and the margins of the labels keep their size. Thus a figure is not in proportion
     to -figscale, and a proportional model gave a wrong size. A colour image of plotestimators has the constrained

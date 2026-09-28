@@ -85,9 +85,6 @@ SIDEBAR_WIDTH: t.Final = 600
 # Export Animation asks before it runs the command for more frames than this
 MAX_ANIMATION_FRAMES: t.Final = 200
 
-# the resolution of Copy Figure, in dots per inch
-COPY_FIGURE_DPI: t.Final = 300
-
 # changes closer together than this, e.g. the steps of a slider drag, give one step of Undo
 UNDO_MERGE_SECONDS: t.Final = 0.8
 
@@ -2381,7 +2378,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
     return [
         ("File", "Open Model…", QtGui.QKeySequence(standardkey.Open)),
         ("File", "Reload Data", QtGui.QKeySequence(standardkey.Refresh)),
-        ("File", "Export Figure…", QtGui.QKeySequence(standardkey.Save)),
+        ("File", "Save Figure…", QtGui.QKeySequence(standardkey.Save)),
         ("File", "Export Animation…", QtGui.QKeySequence("Ctrl+Shift+E")),
         ("File", "Close Window", QtGui.QKeySequence(standardkey.Close)),
         ("Edit", "Undo", QtGui.QKeySequence(standardkey.Undo)),
@@ -2408,11 +2405,11 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
 MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Open Model…": "Open a model in a new window",
     "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
-    "Export Figure…": "Save the figure in a file, or copy it, in a format and a resolution that you select",
+    "Save Figure…": "Save the figure in the format, the resolution, and the size that the Figure section gives",
     "Export Animation…": "Save a GIF file of the steps of Play",
     "Undo": "Undo the last change",
     "Redo": "Redo the change that Undo removed",
-    "Copy Figure": "Copy the figure in the format of the Figure section",
+    "Copy Figure": "Copy the figure in the format, the resolution, and the size that the Figure section gives",
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
     "Play": "Play or pause",
@@ -2845,19 +2842,13 @@ def copy_figure_of_command(
     commandmain: "Callable[..., None]",
     parser: "SuggestingArgumentParser",
     plottokens: "Sequence[str]",
-    options: "ExportOptions | None" = None,
+    options: "ExportOptions",
 ) -> None:
     """Put the figure of the command on the clipboard, in the format, the resolution, and the size that options gives.
 
-    With no options, the copy takes the format of the Figure section and the resolution of the last Copy in Export
-    Figure. Before the first Copy, the resolution is that of a printed page. The command draws the figure, as for
-    a saved file. Thus the image has the usual colours and no empty margin, also when the window shows the plot in
-    Dark Mode. The worker thread runs the command, thus the window accepts input.
+    The command draws the figure, as for a saved file. Thus the image has the usual colours and no empty margin, also
+    when the window shows the plot in Dark Mode. The worker thread runs the command, thus the window accepts input.
     """
-    if options is None:
-        options = ExportOptions(
-            suffix=get_figure_format(), dpi=round(get_float_setting("copydpi", COPY_FIGURE_DPI)), scales=None, copy=True
-        )
     suffix = options.suffix
     scaledtokens = set_figure_scales(parser, plottokens, options.scales)
     tokens = [*remove_options(parser, scaledtokens, {"dpi"}), "-dpi", str(options.dpi)]
@@ -2880,10 +2871,23 @@ def copy_figure_of_command(
         if message is not None:
             show_status_message(statusbar, f"The viewer did not copy the figure: {message}", "")
         else:
-            show_status_note(statusbar, f"Copied the figure as {suffix.upper()}, with {options.dpi} dpi")
+            pixelsize = get_pixel_size_text(files[0], suffix)
+            show_status_note(statusbar, f"Copied the figure as {suffix.upper()}, with {options.dpi} dpi{pixelsize}")
 
     if not queue.run_task(lambda: run_command_step(draw_file), "Copy of the figure in progress...", show_result):
         show_status_message(statusbar, "A different task is in progress. Copy the figure after it", "")
+
+
+def get_pixel_size_text(data: bytes, suffix: str) -> str:
+    """Return the size of a PNG file in pixels for the status bar, or "" for a different format.
+
+    The command crops the empty part of a margin, and the labels need a minimum size. Thus the size of a file can be
+    different from the size that the Figure section gives.
+    """
+    from PySide6 import QtGui
+
+    image = QtGui.QImage.fromData(data) if suffix == "png" else QtGui.QImage()
+    return "" if image.isNull() else f" ({image.width()} \N{MULTIPLICATION SIGN} {image.height()} px)"
 
 
 # the type of each file format on the clipboard of macOS, and on the clipboard of Linux and Windows
@@ -2981,8 +2985,7 @@ def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
     return tuple(row for row in rows if row[0] != "-dpi"), dpi
 
 
-# the format of Copy Figure, of the Figure section, and the first format of Export Figure, which a PNG image has at the
-# start because each application can paste it
+# the Figure section selects PNG at the start, because each application can paste a PNG image
 DEFAULT_FIGURE_FORMAT: t.Final = "png"
 
 
@@ -3002,13 +3005,29 @@ def set_figure_format(suffix: str) -> None:
             handler(suffix)
 
 
-def add_figure_section(
-    window: "QtWidgets.QMainWindow", panellayout: "QtWidgets.QVBoxLayout"
-) -> "tuple[QtWidgets.QPushButton, QtWidgets.QPushButton]":
-    """Add the Figure section: the format of the figure, a button that copies the figure, and a button for Export.
+class FigureSection(t.NamedTuple):
+    """The buttons of the Figure section, and the function that gives its choices for the figure in the window."""
 
-    Return the Copy Figure button and the Export button, which the window connects to its handlers. Export Figure…
-    gives the resolution and the size too, and it saves a file or copies the figure.
+    copybutton: "QtWidgets.QPushButton"
+    savebutton: "QtWidgets.QPushButton"
+    get_options: "Callable[[mplfig.Figure, Sequence[str]], ExportOptions]"
+    """Return the choices of the Figure section. The figure and its command give the size "window"."""
+
+
+def add_figure_section(
+    window: "QtWidgets.QMainWindow",
+    panellayout: "QtWidgets.QVBoxLayout",
+    parser: "SuggestingArgumentParser",
+    dpi: int,
+    *,
+    rasterparts: bool,
+) -> FigureSection:
+    """Add the Figure section: the format, the resolution, and the size of a copied or saved figure, and two buttons.
+
+    dpi is the resolution of the command. The section gives the size of a PNG file in pixels, and the size of a
+    different format in inches. The size "window" is the size of the plot in the window. rasterparts is True if a PDF
+    or an SVG file of the viewer can have raster parts, e.g. a colour image. If rasterparts is False, only a PNG file
+    uses the resolution.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -3018,35 +3037,99 @@ def add_figure_section(
     for index, (suffix, tooltip) in enumerate(EXPORT_FORMATS):
         formatbox.addItem(suffix.upper(), suffix)
         formatbox.setItemData(index, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    formatbox.setToolTip("The format of Copy Figure and the first format of Export Figure…")
+    formatbox.setToolTip("The format of Copy Figure and Save Figure…")
+    dpibox = QtWidgets.QSpinBox()
+    dpibox.setRange(10, 2400)
+    dpibox.setSingleStep(50)
+    dpibox.setValue(dpi)
+    dpibox.setSuffix(" dpi")
+    dpibox.setKeyboardTracking(False)
+    dpibox.setToolTip(
+        "The resolution of a PNG file, and of a colour image or the points of --markers in a PDF or an SVG file (-dpi)"
+        if rasterparts
+        else "The resolution of a PNG file (-dpi). A PDF or an SVG file of this plot has no image, thus it has no"
+        " resolution."
+    )
+    # the width and the height in inches, or 0.0 for the size of the plot in the window
+    sizes = [0.0, 0.0]
+    sizeboxes: list[QtWidgets.QDoubleSpinBox] = []
+    for dimension in ("width", "height"):
+        box = QtWidgets.QDoubleSpinBox()
+        box.setSpecialValueText("window")
+        box.setKeyboardTracking(False)
+        box.setToolTip(
+            f"The {dimension} of the figure. The value 'window' gives the {dimension} of the plot in the window."
+            " The command sets -figscale and -figwidthscale for this size. The margins of the labels keep their size,"
+            " and the command crops the empty part of a margin in a saved file."
+        )
+        sizeboxes.append(box)
     shortcuts = get_menu_shortcut_texts()
     copybutton = QtWidgets.QPushButton("Copy Figure")
-    copybutton.setToolTip(f"Put the figure on the clipboard in this format ({shortcuts['Copy Figure']})")
-    exportbutton = QtWidgets.QPushButton("Export…")
-    exportbutton.setToolTip(
-        f"Select the format, the resolution, and the size, then copy or save the figure ({shortcuts['Export Figure…']})"
-    )
+    copybutton.setToolTip(f"Put the figure on the clipboard ({shortcuts['Copy Figure']})")
+    savebutton = QtWidgets.QPushButton("Save…")
+    savebutton.setToolTip(f"Save the figure in a file ({shortcuts['Save Figure…']})")
+
+    def show_sizes() -> None:
+        """Show the size in pixels for a PNG file, and in inches for the other formats."""
+        inpixels = formatbox.currentData() == "png"
+        for box, inches in zip(sizeboxes, sizes, strict=True):
+            blocker = QtCore.QSignalBlocker(box)
+            box.setDecimals(0 if inpixels else 2)
+            box.setRange(0.0, 50000.0 if inpixels else 200.0)
+            box.setSingleStep(100.0 if inpixels else 0.5)
+            box.setSuffix(" px" if inpixels else " in")
+            box.setValue(round(inches * dpibox.value()) if inpixels else inches)
+            blocker.unblock()
+        dpibox.setEnabled(inpixels or rasterparts)
 
     def show_format(suffix: str) -> None:
         # a format from a different window must not call set_figure_format again
         blocker = QtCore.QSignalBlocker(formatbox)
         formatbox.setCurrentIndex(max(formatbox.findData(suffix), 0))
         blocker.unblock()
+        show_sizes()
 
     def on_format(index: int) -> None:
         set_figure_format(str(formatbox.itemData(index)))
 
+    def on_size(index: int, value: float) -> None:
+        sizes[index] = value / dpibox.value() if formatbox.currentData() == "png" else value
+
+    shownresolution = [dpibox.value()]
+
+    def on_resolution(resolution: int) -> None:
+        # a PNG file keeps its size in pixels, and a new resolution makes the text and the lines larger or smaller
+        if formatbox.currentData() == "png":
+            sizes[:] = [size * shownresolution[0] / resolution for size in sizes]
+        shownresolution[0] = resolution
+        show_sizes()
+
+    def get_options(fig: "mplfig.Figure", plottokens: "Sequence[str]") -> ExportOptions:
+        suffix, resolution = str(formatbox.currentData()), dpibox.value()
+        if not any(sizes):
+            return ExportOptions(suffix=suffix, dpi=resolution, scales=None)
+        sizemodel = get_figure_size_model(fig, plottokens, parser.get_default("figscale"))
+        width, height = (size or windowsize for size, windowsize in zip(sizes, sizemodel.figsize, strict=True))
+        return ExportOptions(suffix=suffix, dpi=resolution, scales=sizemodel.get_scales(width, height))
+
     show_format(get_figure_format())
     formatbox.currentIndexChanged.connect(on_format)
+    dpibox.valueChanged.connect(on_resolution)
+    for index, box in enumerate(sizeboxes):
+        box.valueChanged.connect(partial(on_size, index))
     window.setProperty("figureformathandler", show_format)
-    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, copybutton, exportbutton])
-    return copybutton, exportbutton
+    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, QtWidgets.QLabel("Resolution"), dpibox])
+    add_row(
+        grid, 1, [QtWidgets.QLabel("Size"), sizeboxes[0], QtWidgets.QLabel("\N{MULTIPLICATION SIGN}"), sizeboxes[1]]
+    )
+    add_row(grid, 2, [copybutton, savebutton])
+    return FigureSection(copybutton=copybutton, savebutton=savebutton, get_options=get_options)
 
 
 # a GIF file shows on a screen, thus its frames take the resolution of a screen
 ANIMATION_DPI: t.Final = 100
 
-# the file formats of Export Figure, with the tooltip of each
+# the file formats of the Figure section, with the tooltip of each
 EXPORT_FORMATS: t.Final = (
     ("pdf", "A vector file, for a paper. A colour image in it takes the resolution"),
     ("png", "An image with the resolution, e.g. for a slide"),
@@ -3128,103 +3211,12 @@ def set_figure_scales(
 
 
 class ExportOptions(t.NamedTuple):
-    """The choices of the export dialog."""
+    """The format, the resolution, and the size of a saved or copied figure, which the Figure section gives."""
 
     suffix: str
     dpi: int
     scales: tuple[float, float] | None
-    """The -figscale and the -figwidthscale of the size that the user gave, or None for the size of the screen."""
-
-    copy: bool
-    """True if the user selected Copy and not Save."""
-
-
-def ask_export_options(
-    window: "QtWidgets.QWidget",
-    dpi: int,
-    sizemodel: FigureSizeModel,
-    *,
-    title: str = "Export Figure",
-    formats: bool = True,
-) -> ExportOptions | None:
-    """Ask for the file format, the resolution, and the size before the save panel, as in the Export dialog of Keynote.
-
-    Return the choices, or None if the user cancels. The settings keep the type for the next export. With formats
-    True, the dialog also has a Copy button, which puts the figure on the clipboard. With formats False, the dialog
-    asks only for the resolution and the size, e.g. for an animation.
-    """
-    from PySide6 import QtCore
-    from PySide6 import QtWidgets
-
-    dialog = QtWidgets.QDialog(window)
-    dialog.setWindowTitle(title)
-    form = QtWidgets.QFormLayout(dialog)
-    segments = make_segmented_control(
-        [suffix.upper() for suffix, _ in EXPORT_FORMATS], [tooltip for _, tooltip in EXPORT_FORMATS]
-    )
-    suffixes = [suffix for suffix, _ in EXPORT_FORMATS]
-    segments.setCurrentIndex(suffixes.index(get_figure_format()))
-    dpibox = QtWidgets.QSpinBox()
-    dpibox.setRange(10, 2400)
-    dpibox.setSingleStep(50)
-    dpibox.setValue(dpi)
-    dpibox.setSuffix(" dpi")
-    dpibox.setToolTip("The resolution of a PNG file, and of a colour image in a PDF or an SVG file (-dpi)")
-    if formats:
-        form.addRow("Format:", segments)
-    form.addRow("Resolution:", dpibox)
-    sizeboxes: list[QtWidgets.QDoubleSpinBox] = []
-    for value, flag in zip(sizemodel.figsize, ("-figscale and -figwidthscale", "-figscale"), strict=True):
-        box = QtWidgets.QDoubleSpinBox()
-        box.setRange(0.5, 100.0)
-        box.setDecimals(2)
-        box.setSingleStep(0.5)
-        box.setSuffix(" in")
-        box.setValue(value)
-        box.setToolTip(
-            f"The command sets {flag} for this size. The margins of the labels keep their size, and a saved file"
-            " crops the empty part of a margin."
-        )
-        sizeboxes.append(box)
-    sizerow = QtWidgets.QHBoxLayout()
-    sizerow.addWidget(sizeboxes[0])
-    sizerow.addWidget(QtWidgets.QLabel("\N{MULTIPLICATION SIGN}"))
-    sizerow.addWidget(sizeboxes[1])
-    form.addRow("Size:", sizerow)
-    buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
-    copyresult = 2
-    if formats:
-        copybutton = buttons.addButton("Copy", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
-        copybutton.setToolTip(
-            "Put the figure on the clipboard in this format, this resolution, and this size. Copy Figure then uses"
-            " this format and this resolution."
-        )
-        copybutton.clicked.connect(partial(dialog.done, copyresult))
-    nextbutton = buttons.addButton("Save…" if formats else "Next…", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
-    nextbutton.setDefault(True)
-    buttons.accepted.connect(dialog.accept)
-    buttons.rejected.connect(dialog.reject)
-    form.addRow(buttons)
-    dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-    result = dialog.exec()
-    # the window is the parent of the dialog, thus without this the window keeps each dialog until it closes
-    dialog.deleteLater()
-    if result not in {QtWidgets.QDialog.DialogCode.Accepted, copyresult}:
-        return None
-    suffix = suffixes[segments.currentIndex()]
-    iscopy = result == copyresult
-    if formats:
-        set_figure_format(suffix)
-    if iscopy:
-        get_settings().setValue("copydpi", dpibox.value())
-    # a box rounds the size to 0.01 inches, thus the code keeps the exact size of a box that the user did not change
-    width, height = (
-        old if abs(box.value() - old) < 0.006 else box.value()
-        for box, old in zip(sizeboxes, sizemodel.figsize, strict=True)
-    )
-    unchanged = (width, height) == sizemodel.figsize
-    scales = None if unchanged else sizemodel.get_scales(width, height)
-    return ExportOptions(suffix=suffix, dpi=dpibox.value(), scales=scales, copy=iscopy)
+    """The -figscale and the -figwidthscale of the size that the user gave, or None for the size of the window."""
 
 
 def export_animation(
@@ -3236,14 +3228,15 @@ def export_animation(
     frames: "tuple[int, Callable[[int], list[str]]]",
     fps: float,
     parser: "SuggestingArgumentParser",
-    fig: "mplfig.Figure",
+    scales: tuple[float, float] | None,
 ) -> None:
     """Save a GIF file of the steps of Play, with one run of the command for each frame.
 
     frames gives the count of the frames and a function that gives the command of a frame by its index. The worker
     thread makes the command of each frame, runs it, and joins the frames, thus the window accepts input. A plot
     against time can have a frame for each of 125 000 cells, and a list of their commands took seconds. The GIF shows
-    each frame for 1/fps seconds. A dialog first asks for the size, and fig gives the size on the screen.
+    each frame for 1/fps seconds. scales holds the size that the user gave in the Figure section, and each frame has
+    the resolution of a screen.
     """
     import tempfile
 
@@ -3260,10 +3253,6 @@ def export_animation(
         )
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-    sizemodel = get_figure_size_model(fig, get_frametokens(0), parser.get_default("figscale"))
-    options = ask_export_options(window, ANIMATION_DPI, sizemodel, title="Export Animation", formats=False)
-    if options is None:
-        return
     filename, _ = QtWidgets.QFileDialog.getSaveFileName(
         window, "Export the animation", str(Path.cwd() / f"{commandname}.gif"), "GIF (*.gif)"
     )
@@ -3276,9 +3265,9 @@ def export_animation(
         with tempfile.TemporaryDirectory() as folder:
             framepaths: list[Path] = []
             for index in range(framecount):
-                scaledtokens = set_figure_scales(parser, get_frametokens(index), options.scales)
+                scaledtokens = set_figure_scales(parser, get_frametokens(index), scales)
                 # the default -dpi suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
-                tokens = [*remove_options(parser, scaledtokens, {"dpi"}), "-dpi", str(options.dpi)]
+                tokens = [*remove_options(parser, scaledtokens, {"dpi"}), "-dpi", str(ANIMATION_DPI)]
                 framepath = Path(folder) / f"frame{index:04d}.png"
                 commandmain(argsraw=[*tokens, "-o", str(framepath)])
                 if not framepath.is_file():
@@ -3299,36 +3288,23 @@ def export_animation(
         show_status_message(statusbar, "A different task is in progress. Export the animation after it", "")
 
 
-def export_figure_of_command(
+def save_figure_of_command(
     window: "QtWidgets.QWidget",
-    queue: "DrawQueue[t.Any]",
     statusbar: StatusBar,
     commandmain: "Callable[..., None]",
     commandname: str,
     plottokens: "Sequence[str]",
-    dpi: int,
     parser: "SuggestingArgumentParser",
-    fig: "mplfig.Figure",
+    options: ExportOptions,
 ) -> None:
-    """Save the figure of the command in a file that the user selects, or copy it, after the export dialog.
+    """Save the figure of the command in a file that the user selects, with the choices of the Figure section.
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
-    name with no suffix as a folder, thus the name takes the suffix of the selected format. The status bar shows the
-    result.
-
-    plottokens holds no -dpi. dpi is the resolution of the command, and the dialog for a PNG file proposes it. A PDF or
-    an SVG file takes dpi for its raster parts, e.g. a colour image. The dialog also proposes the size of fig, which is
-    the figure on the screen.
+    name with no suffix as a folder, thus the name takes the suffix of the format. The status bar shows the result.
+    plottokens holds no -dpi. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour image.
     """
     from PySide6 import QtWidgets
 
-    sizemodel = get_figure_size_model(fig, plottokens, parser.get_default("figscale"))
-    options = ask_export_options(window, dpi, sizemodel)
-    if options is None:
-        return
-    if options.copy:
-        copy_figure_of_command(queue, statusbar, commandmain, parser, plottokens, options)
-        return
     suffix, dpi = options.suffix, options.dpi
     defaultdpi = parser.get_default("dpi")
     plottokens = set_figure_scales(parser, plottokens, options.scales)
@@ -3353,7 +3329,7 @@ def export_figure_of_command(
         show_status_message(statusbar, f"The command wrote no file at {filename}. The terminal shows its output", "")
     else:
         print(shlex.join(["artistools", commandname, *savetokens]))
-        show_status_note(statusbar, f"Saved {filename}")
+        show_status_note(statusbar, f"Saved {filename}{get_pixel_size_text(Path(filename).read_bytes(), suffix)}")
 
 
 def open_model_window(

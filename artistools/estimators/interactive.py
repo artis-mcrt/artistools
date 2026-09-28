@@ -84,7 +84,6 @@ from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
-from artistools.viewertools import export_figure_of_command
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import follow_colour_scheme
@@ -130,6 +129,7 @@ from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
+from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
@@ -177,7 +177,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "interactive",
 })
 
-# these options change only the output file. Export Figure in the File menu gives the file, thus the command drops them
+# these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
 OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
 
 # the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
@@ -216,8 +216,8 @@ SMOOTHING_MODES: t.Final = MappingProxyType({
 LEVEL_CHOICES_PER_ION: t.Final = 20
 
 # the option table does not offer these options, but it shows their rows from the command. Some give a
-# different action from one plot, and --verbose and --quiet change only the hidden output. Export Figure asks for the
-# resolution of a PNG file (-dpi)
+# different action from one plot, and --verbose and --quiet change only the hidden output. The Figure section gives
+# the resolution of a PNG file (-dpi)
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
     "multiplot",
@@ -2117,7 +2117,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
-    copyfigurebutton, exportfigurebutton = add_figure_section(window, panellayout)
+    figuresection = add_figure_section(
+        window,
+        panellayout,
+        viewer.parser,
+        split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1],
+        rasterparts=True,
+    )
     _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
@@ -3143,10 +3149,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
+    def get_figure_tokens() -> list[str]:
+        """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
+        rows, _ = split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))
+        return viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+
     def on_copy_figure() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, viewer.get_plot_tokens())
+        plottokens = get_figure_tokens()
+        options = figuresection.get_options(viewer.fig, plottokens)
+        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, plottokens, options)
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
@@ -3155,11 +3168,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        defaultdpi = viewer.parser.get_default("dpi")
-        rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
-        plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        export_figure_of_command(
-            window, queue, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, viewer.parser, viewer.fig
+        plottokens = get_figure_tokens()
+        options = figuresection.get_options(viewer.fig, plottokens)
+        save_figure_of_command(
+            window, statusbar, plotestimators_main, "plotestimators", plottokens, viewer.parser, options
         )
 
     def on_open_model() -> None:
@@ -3297,7 +3309,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if menu.actions():
             menu.addSeparator()
         menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Export Figure…").triggered.connect(on_save)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
         menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
@@ -3335,7 +3347,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
-            viewer.fig,
+            figuresection.get_options(viewer.fig, get_figure_tokens()).scales,
         )
 
     def on_open_recent(folder: str) -> None:
@@ -3364,7 +3376,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     menucallbacks = {
         "Open Model…": on_open_model,
         "Reload Data": on_reload,
-        "Export Figure…": on_save,
+        "Save Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Copy Figure": on_copy_figure,
@@ -3392,8 +3404,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tminedit.editingFinished.connect(on_trangeedit)
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
-    copyfigurebutton.clicked.connect(on_copy_figure)
-    exportfigurebutton.clicked.connect(on_save)
+    figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     previousbutton.clicked.connect(lambda: on_step_time(-1))
     nextbutton.clicked.connect(lambda: on_step_time(1))

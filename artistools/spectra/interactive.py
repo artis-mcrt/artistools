@@ -56,7 +56,6 @@ from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
-from artistools.viewertools import export_figure_of_command
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import follow_colour_scheme
@@ -100,6 +99,7 @@ from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
+from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
@@ -169,7 +169,7 @@ DAYS_DECIMALS: t.Final = 6
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
-    # Export Figure asks for the resolution of a PNG file
+    # the Figure section gives the resolution of a PNG file
     "dpi",
     "timedayslist",
     "multispecplot",
@@ -1201,7 +1201,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     spectragrid.addLayout(make_row_layout([addmodelbutton, removebutton]), 1, 0, 1, -1)
     spectragrid.addLayout(referencerow, 2, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
-    copyfigurebutton, exportfigurebutton = add_figure_section(window, panellayout)
+    figuresection = add_figure_section(
+        window,
+        panellayout,
+        viewer.parser,
+        split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1],
+        rasterparts=False,
+    )
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
@@ -1867,10 +1873,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
+    def get_figure_tokens() -> list[str]:
+        """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
+        rows, _ = split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))
+        return viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+
     def on_copy_figure() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        copy_figure_of_command(queue, statusbar, plotspectra_main, viewer.parser, viewer.get_plot_tokens())
+        plottokens = get_figure_tokens()
+        options = figuresection.get_options(viewer.fig, plottokens)
+        copy_figure_of_command(queue, statusbar, plotspectra_main, viewer.parser, plottokens, options)
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1879,12 +1892,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
-        defaultdpi = viewer.parser.get_default("dpi")
-        rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
-        plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        export_figure_of_command(
-            window, queue, statusbar, plotspectra_main, "plotspectra", plottokens, dpi, viewer.parser, viewer.fig
-        )
+        plottokens = get_figure_tokens()
+        options = figuresection.get_options(viewer.fig, plottokens)
+        save_figure_of_command(window, statusbar, plotspectra_main, "plotspectra", plottokens, viewer.parser, options)
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -1923,14 +1933,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             get_animation_frames(),
             fpsbox.value(),
             viewer.parser,
-            viewer.fig,
+            figuresection.get_options(viewer.fig, get_figure_tokens()).scales,
         )
 
     def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
         """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
         menu = QtWidgets.QMenu(window)
         menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Export Figure…").triggered.connect(on_save)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
         menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
@@ -1957,7 +1967,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     menucallbacks = {
         "Open Model…": on_open_model,
-        "Export Figure…": on_save,
+        "Save Figure…": on_save,
         "Export Animation…": on_export_animation,
         "Close Window": window.close,
         "Undo": on_undo,
@@ -1987,8 +1997,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
-    copyfigurebutton.clicked.connect(on_copy_figure)
-    exportfigurebutton.clicked.connect(on_save)
+    figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
