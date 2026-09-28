@@ -24,6 +24,7 @@ from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_planck_mean_opacities
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import OPACITYCOLUMNS
+from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
@@ -37,10 +38,13 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
+from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
 from artistools.plottools import make_frame_figure_with_residuals
@@ -83,6 +87,10 @@ def get_massweighted_opacities(
     have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a run with
     no cell temperature, gives a Planck mean of NaN.
     """
+    if dfestimators.height > 1:
+        print_detail(f"The curves are the mass-weighted mean of the opacities of {dfestimators.height} cells")
+    if planckrange is not None:
+        print_planck_mean_method(*planckrange)
     lambda_bin_edges = list(lambda_bin_edges)
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
@@ -159,8 +167,8 @@ def get_computed_bin_edges(
     gridtext = (
         "" if grid is None else f" of the {len(gridlowers)} bins of rpkt.h from {gridmin:g} to {gridmax:g} Angstroms"
     )
-    print(
-        f"  {len(lowers)} wavelength bins of {deltalambda:g} Angstroms from {edges[0]:g} to {edges[-1]:g}"
+    print_detail(
+        f"{len(lowers)} wavelength bins of {deltalambda:g} Angstroms from {edges[0]:g} to {edges[-1]:g}"
         f" Angstroms{gridtext}"
     )
     return edges, deltalambda
@@ -313,8 +321,8 @@ def select_velocity_range(
         )
     )
     boundstext = get_velocity_bounds_text(vmin, vmax)
-    print(
-        f"  {dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range with {boundstext}"
+    print_detail(
+        f"{dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range with {boundstext}"
     )
     if dfselected.is_empty():
         msg = f"No cell with estimators is in the velocity range with {boundstext}"
@@ -322,12 +330,12 @@ def select_velocity_range(
     return dfselected
 
 
-def get_average_cell(dfestimators: pl.DataFrame, temperaturecolumn: str) -> pl.DataFrame:
+def get_average_cell(dfestimators: pl.DataFrame) -> pl.DataFrame:
     """Return one cell with the mass-weighted mean composition, temperature, and density of the cells, and log them.
 
     The opacity per gram depends on the ion densities per gram, thus the mean takes each n_ion / rho. The expansion
     opacity also depends on the density, thus the cell takes the mean density. A cell with no T_exc does not count in
-    the mean T_exc. temperaturecolumn is the estimator that gives T_exc, which the log names.
+    the mean T_exc.
     """
     mass = pl.col("mass_g")
     hastemperature = pl.col("T_exc") > 0.0
@@ -346,12 +354,12 @@ def get_average_cell(dfestimators: pl.DataFrame, temperaturecolumn: str) -> pl.D
     )
     temperature = dfcell["T_exc"].item()
     if temperature is None or not math.isfinite(temperature):
-        msg = f"No cell has a value of {temperaturecolumn}, thus the mean cell has no temperature"
+        msg = "No cell has a value of T_exc, thus the mean cell has no temperature"
         raise ValueError(msg)
-    print(
-        f"  --averagecell: one cell with the mass-weighted means of {dfestimators.height} cells. These are the"
-        " ion densities per gram, the density, and the linear mean of T_exc over the cells with T_exc > 0:"
-        f" {temperaturecolumn} = {temperature:.0f} K, rho = {dfcell['rho'].item():.3g} g/cm^3"
+    print_detail(
+        f"--averagecell: one cell with the mass-weighted means of {dfestimators.height} cells (the ion densities per"
+        f" gram, the density, and T_exc of the cells with T_exc > 0): T_exc = {temperature:.0f} K,"
+        f" rho = {dfcell['rho'].item():.3g} g/cm^3"
     )
     return dfcell
 
@@ -453,7 +461,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     time_days = get_timestep_time(args.modelpath, timestep)
-    print(f"Plotting {Path(args.modelpath).resolve()} at {time_days:.1f}d (timestep {timestep})")
+    print(f"Plotting {get_model_logname(args.modelpath)} at {time_days:.1f}d (timestep {timestep})")
+    print_modelpath(args.modelpath)
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
     lambda_bin_edges, deltalambda = get_computed_bin_edges(
         args.modelpath, args.xmin, args.xmax, args.deltalambda, args.movingaveragewidth
@@ -465,15 +474,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     averagetemperaturetext = None
     if args.averagecell and modelgridindex is None:
-        dfestimators = get_average_cell(dfestimators, temperaturecolumn)
+        dfestimators = get_average_cell(dfestimators)
         averagetemperaturetext = f"{temperaturecolumn} = {dfestimators['T_exc'].item():.0f} K"
-    elif dfestimators.height > 1:
-        print(f"  The curves are the mass-weighted mean of the opacities of {dfestimators.height} cells")
-    if args.showplanckmean:
-        print(
-            f"  The Planck mean of each cell weights the bins from {args.xmin:g} to {args.xmax:g} Angstroms with the"
-            " Planck function at T_exc. The line gives the mass-weighted mean of these values"
-        )
 
     dfopacities, planckmean = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),

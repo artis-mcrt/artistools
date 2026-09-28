@@ -81,7 +81,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import path_is_codecomparison
-from artistools.misc import print_detail
+from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
@@ -2065,16 +2065,6 @@ def filter_listed_columns(columns: Sequence[str], searchterms: Sequence[str]) ->
         return list(columns)
 
     return [column for column in columns if any(term in column.lower() for term in lowerterms)]
-
-
-def print_modelpath(modelpath: Path | str) -> None:
-    """Print the folder of the model below a heading, as the other plot commands do.
-
-    The name of a model says nothing about the folder that holds it, and a user runs a command over
-    many folders. The full path answers that, because "." says nothing on a run inside the model.
-    """
-    folder = Path(modelpath) if path_is_codecomparison(modelpath) else Path(modelpath).resolve()
-    print_detail(f"modelpath: {folder}")
 
 
 def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:

@@ -24,11 +24,16 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import get_artis_source_text
+from artistools.misc import get_model_logname
+from artistools.misc import get_npts_model
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
+from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.rustext import sum_binned_line_opacities
 
@@ -71,14 +76,10 @@ def get_expopac_grid(modelpath: Path | str) -> tuple[float, float, float] | None
     The values come from rpkt.h in the artis folder of the run, which holds the source code of the run. A run with
     no such file, or a file with no expopac constants, gives None.
     """
-    rpktpath = Path(modelpath) / "artis" / "rpkt.h"
-    if not rpktpath.is_file():
+    rpkttext = get_artis_source_text(modelpath, "rpkt.h")
+    if rpkttext is None:
         return None
-    values = dict(
-        re.findall(
-            r"expopac_(lambdamin|lambdamax|deltalambda)\s*=\s*([-+0-9.eE]+)", rpktpath.read_text(encoding="utf-8")
-        )
-    )
+    values = dict(re.findall(r"expopac_(lambdamin|lambdamax|deltalambda)\s*=\s*([-+0-9.eE]+)", rpkttext))
     if set(values) != {"lambdamin", "lambdamax", "deltalambda"}:
         return None
     return float(values["lambdamin"]), float(values["lambdamax"]), float(values["deltalambda"])
@@ -275,13 +276,11 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
 
     A run with no such file, or a file with no such option, gives None.
     """
-    optionspath = Path(modelpath) / "artis" / "artisoptions.h"
-    if not optionspath.is_file():
+    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
+    if optionstext is None:
         return None
     match = re.search(
-        r"^\s*constexpr\s+bool\s+LTEPOP_EXCITATION_USE_TJ\s*=\s*(true|false)\s*;",
-        optionspath.read_text(encoding="utf-8"),
-        flags=re.MULTILINE,
+        r"^\s*constexpr\s+bool\s+LTEPOP_EXCITATION_USE_TJ\s*=\s*(true|false)\s*;", optionstext, flags=re.MULTILINE
     )
     return None if match is None else match.group(1) == "true"
 
@@ -293,25 +292,29 @@ def get_excitation_temperature_column(modelpath: Path | str, selection: str) -> 
     """
     if selection != "auto":
         column, reason = selection, f"-exctemperature {selection}"
+    elif (usestj := get_artis_excitation_uses_tj(modelpath)) is None:
+        column, reason = "Te", "the default"
+        print_warning(
+            "artis/artisoptions.h of the run gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
+            " Give -exctemperature TJ or -exctemperature Te to select the temperature"
+        )
     else:
-        usestj = get_artis_excitation_uses_tj(modelpath)
-        if usestj is None:
-            column, reason = "Te", "the default, because artis/artisoptions.h gives no LTEPOP_EXCITATION_USE_TJ"
-            print_warning(
-                f"{Path(modelpath) / 'artis' / 'artisoptions.h'} gives no LTEPOP_EXCITATION_USE_TJ, thus the level"
-                " populations take Te. Give -exctemperature TJ or -exctemperature Te to select the temperature"
-            )
-        else:
-            column = "TJ" if usestj else "Te"
-            reason = (
-                f"ARTIS used it, because artis/artisoptions.h sets LTEPOP_EXCITATION_USE_TJ = {str(usestj).lower()}"
-            )
+        column = "TJ" if usestj else "Te"
+        reason = f"ARTIS used it, because artis/artisoptions.h sets LTEPOP_EXCITATION_USE_TJ = {str(usestj).lower()}"
 
-    print(
-        f"  The level populations are LTE populations at T_exc = {column}, {EXCITATIONTEMPERATURE_NAMES[column]} of"
+    print_detail(
+        f"The level populations are LTE populations at T_exc = {column}, {EXCITATIONTEMPERATURE_NAMES[column]} of"
         f" each cell ({reason})"
     )
     return column
+
+
+def print_planck_mean_method(xmin: float, xmax: float) -> None:
+    """Log the wavelength range and the weights of the Planck mean of each cell and of the cells."""
+    print_detail(
+        f"The Planck mean of each cell weights the bins from {xmin:g} to {xmax:g} Angstroms with the Planck function"
+        " at T_exc. The mean of the cells takes the mass of each cell as its weight"
+    )
 
 
 def get_cell_estimators(
@@ -346,17 +349,26 @@ def get_cell_estimators(
 
 
 def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, modelgridindex: int) -> str:
-    """Return a sentence that names the first cell after modelgridindex that has estimators at the timestep."""
-    nextcell = (
-        scan_estimators(modelpath, timestep=timestep)
-        .select(pl.col("modelgridindex").filter(pl.col("modelgridindex") > modelgridindex).min())
-        .collect()
-        .item()
-    )
-    if nextcell is None:
-        return f"No cell after cell {modelgridindex} has estimators"
+    """Return a sentence that names the first cell after modelgridindex that has estimators at the timestep.
 
-    return f"The next cell with estimators is cell {nextcell}"
+    A scan of a range of cells reads only the batches of the ranks that update them. Thus the search starts with a
+    small range, and it doubles the range until it finds a cell. A first use of a large run then converts few batches.
+    """
+    npts_model = get_npts_model(modelpath)
+    firstcell, cellcount = modelgridindex + 1, 64
+    while firstcell < npts_model:
+        lastcell = min(firstcell + cellcount, npts_model) - 1
+        nextcell = (
+            scan_estimators(modelpath, timestep=timestep, modelgridindex=range(firstcell, lastcell + 1))
+            .select(pl.col("modelgridindex").min())
+            .collect()
+            .item()
+        )
+        if nextcell is not None:
+            return f"The next cell with estimators is cell {nextcell}"
+        firstcell, cellcount = lastcell + 1, 2 * cellcount
+
+    return f"No cell after cell {modelgridindex} has estimators"
 
 
 def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
@@ -385,9 +397,10 @@ def addarg_excitationtemperature(parser: argparse.ArgumentParser) -> None:
         choices=("auto", *EXCITATIONTEMPERATURE_NAMES),
         default="auto",
         help=(
-            "Estimator temperature of the LTE level populations: TJ, the temperature of the mean intensity, or Te, the"
-            " electron temperature. auto takes the temperature that ARTIS used, from LTEPOP_EXCITATION_USE_TJ in"
-            " artis/artisoptions.h of the run, or Te if the run has no such option"
+            "Estimator temperature of the LTE level populations: "
+            + " or ".join(f"{column}, {name}" for column, name in EXCITATIONTEMPERATURE_NAMES.items())
+            + ". auto takes the temperature that ARTIS used, from LTEPOP_EXCITATION_USE_TJ in artis/artisoptions.h of"
+            " the run, or Te if the run has no such option"
         ),
     )
 
@@ -423,20 +436,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
-    print(f"Calculating the opacities of {Path(args.modelpath).resolve()} at timestep {timestep}")
+    time_days = get_timestep_time(args.modelpath, timestep)
+    print(f"Opacities of {get_model_logname(args.modelpath)} at {time_days:.2f}d (timestep {timestep})")
+    print_modelpath(args.modelpath)
     temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
-    print(
-        f"  The Planck mean of each cell weights the bins from {args.xmin:g} to {args.xmax:g} Angstroms with the"
-        " Planck function at T_exc"
-    )
+    print_planck_mean_method(args.xmin, args.xmax)
     dfestimators = get_cell_estimators(
         args.modelpath, timestep, get_single_modelgridindex(args.modelgridindex), temperaturecolumn
     )
-
-    time_days = get_timestep_time(args.modelpath, timestep)
-
-    print()
-    print(f"timestep {timestep} T_days = {time_days:.2f}")
 
     lambda_bin_edges = get_lambda_bin_edges(args.xmin, args.xmax, args.deltalambda)
     opacitylines = get_opacity_lines(
@@ -471,4 +478,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print()
     globalplanckmeanopacity = planckmeanopacity_times_mass / mass_g_sum
-    print(f"Global Planck mean opacity (mass-weighted mean of the cells): {globalplanckmeanopacity:.2f} cm^2/g")
+    print(f"Global Planck mean opacity: {globalplanckmeanopacity:.2f} cm^2/g")
