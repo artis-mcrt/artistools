@@ -1655,9 +1655,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         keep_on_undo=keep_figwidthscale,
     )
 
+    # the setting of the preview, which the window reads one time at the start of each slider drag
+    dragpreview: bool | None = None
+
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, and draw a preview if a slider drag gives them."""
-        viewer.dragging = is_slider_dragged() and get_bool_setting("dragpreview", default=True)
+        nonlocal dragpreview
+        if not is_slider_dragged():
+            dragpreview = None
+        elif dragpreview is None:
+            dragpreview = get_bool_setting("dragpreview", default=True)
+        viewer.dragging = bool(dragpreview)
         queue.apply(viewer.clamp_time(values), undoable=undoable)
 
     def on_undo() -> None:

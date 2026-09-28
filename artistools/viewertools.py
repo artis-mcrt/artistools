@@ -3916,9 +3916,13 @@ FLAG_LABELS: t.Final = MappingProxyType({
 })
 
 
-def get_flag_label(flag: str) -> str:
-    """Return the text of the control of a flag: a readable text, or the flag if the settings ask for the flags."""
-    return flag if get_bool_setting("flaglabels", default=False) else FLAG_LABELS.get(flag, flag)
+def get_flag_label(flag: str, *, showflags: bool) -> str:
+    """Return the text of the control of a flag: a readable text, or the flag if showflags is True.
+
+    The setting "flaglabels" gives showflags. A new window shows a change of the setting, thus a window reads the
+    setting one time.
+    """
+    return flag if showflags else FLAG_LABELS.get(flag, flag)
 
 
 def show_flag_labels(window: "QtWidgets.QWidget") -> None:
@@ -3929,9 +3933,10 @@ def show_flag_labels(window: "QtWidgets.QWidget") -> None:
         *window.findChildren(QtWidgets.QLabel),
         *window.findChildren(QtWidgets.QCheckBox),
     ]
+    showflags = get_bool_setting("flaglabels", default=False)
     for widget in widgets:
         flag = widget.text()
-        if (text := get_flag_label(flag)) != flag:
+        if (text := get_flag_label(flag, showflags=showflags)) != flag:
             widget.setText(text)
             tooltip = widget.toolTip()
             # a label whose text changes later, e.g. -xmin with a unit, already gives the flag in its tooltip
