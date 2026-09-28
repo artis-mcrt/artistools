@@ -1311,13 +1311,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     directionbox.setToolTip(
         "The direction bins of the plot, or the observers of the virtual packets. An emission plot draws one bin, thus"
-        " a click on a bin then replaces the selected bin."
+        " the list then shows a radio button for each bin."
     )
-    directionchecks: dict[int, QtWidgets.QCheckBox] = {}
+    directionchecks: dict[int, QtWidgets.QAbstractButton] = {}
     directiongrid.addWidget(directionbox, 1, 0, 1, -1)
     # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
     directionchoices: dict[tuple[str, bool], list[tuple[int, str]]] = {}
-    shownchoices: tuple[str, bool] | None = None
+    shownchoices: tuple[str, bool, bool] | None = None
     for box in (countbox, binwidthbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
@@ -1450,13 +1450,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         binwidthbox.setRange(low, high)
         binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
 
-    def show_direction_choices(directionkind: str, usedegrees: bool) -> bool:
-        """Fill the list of the direction bins with a checkbox for each bin of a kind of viewing direction.
+    def show_direction_choices(directionkind: str, usedegrees: bool, onebin: bool) -> bool:
+        """Fill the list of the direction bins with a button for each bin of a kind of viewing direction.
 
+        A plot that draws one bin, i.e. an emission plot, gets radio buttons, and a different plot gets checkboxes.
         Return whether the list is new.
         """
         nonlocal shownchoices
-        if (directionkind, usedegrees) == shownchoices:
+        if (directionkind, usedegrees, onebin) == shownchoices:
             return False
         checklist = QtWidgets.QWidget()
         checklayout = QtWidgets.QVBoxLayout(checklist)
@@ -1464,8 +1465,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         checklayout.setSpacing(2)
         directionchecks.clear()
         for dirbin, label in get_direction_choices_of_kind(directionkind, usedegrees):
-            check = QtWidgets.QCheckBox(f"{dirbin}: {label}")
-            check.toggled.connect(on_direction)
+            text = f"{dirbin}: {label}"
+            check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
+            # a click on a radio button also clears the previous button, thus toggled would call the handler twice
+            check.clicked.connect(on_direction)
             checklayout.addWidget(check)
             directionchecks[dirbin] = check
         checklayout.addStretch(1)
@@ -1474,7 +1477,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lineheight = max(check.sizeHint().height() for check in directionchecks.values()) if directionchecks else 20
         directionbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
         directionbox.setWidget(checklist)
-        shownchoices = (directionkind, usedegrees)
+        shownchoices = (directionkind, usedegrees, onebin)
         return True
 
     def get_direction_choices_of_kind(directionkind: str, usedegrees: bool) -> list[tuple[int, str]]:
@@ -1700,7 +1703,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
         usedegreescheck.setChecked(values.usedegrees)
         usedegreescheck.setEnabled(bool(values.directionkind))
-        isnewlist = show_direction_choices(values.directionkind, values.usedegrees)
+        isnewlist = show_direction_choices(
+            values.directionkind, values.usedegrees, values.showemission or values.showabsorption
+        )
         for dirbin, check in directionchecks.items():
             with QtCore.QSignalBlocker(check):
                 check.setChecked(dirbin in values.directionbins)
