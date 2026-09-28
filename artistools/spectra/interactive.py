@@ -1248,7 +1248,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionbox = QtWidgets.QScrollArea()
     directionbox.setWidgetResizable(True)
     directionbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    directionbox.setToolTip("The direction bins of the plot, or the observers of the virtual packets")
+    directionbox.setToolTip(
+        "The direction bins of the plot, or the observers of the virtual packets. An emission plot draws one bin, thus"
+        " a click on a bin then replaces the selected bin."
+    )
     directionchecks: dict[int, QtWidgets.QCheckBox] = {}
     directiongrid.addWidget(directionbox, 1, 0, 1, -1)
     # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
@@ -1889,6 +1892,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
             values = remove_series_lock(values)
+        # an emission plot draws one direction bin, thus it keeps the first selected bin
+        if values.showemission or values.showabsorption:
+            values = dc.replace(values, directionbins=values.directionbins[:1])
         apply(values)
 
     def on_binmode() -> None:
@@ -1901,16 +1907,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         directionkind: str = directionkindbox.currentData()
         usedegrees = usedegreescheck.isChecked()
         dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees)]
+        # an emission plot draws one direction bin, thus a click on a bin replaces the previous bin
+        showscontributions = viewer.values.showemission or viewer.values.showabsorption
         if directionkind == viewer.values.directionkind:
             directionbins = tuple(dirbin for dirbin, check in directionchecks.items() if check.isChecked())
             if directionkind and not directionbins:
                 show_error("A kind of viewing direction needs one direction bin at least")
                 return
+            newbins = tuple(dirbin for dirbin in directionbins if dirbin not in viewer.values.directionbins)
+            if showscontributions and newbins:
+                directionbins = newbins[:1]
         else:
             # a new kind keeps each direction bin that the kind also has
             directionbins = tuple(dirbin for dirbin in viewer.values.directionbins if dirbin in dirbins) or tuple(
                 dirbins[:1]
             )
+            if showscontributions:
+                directionbins = directionbins[:1]
         values = dc.replace(
             viewer.values, directionkind=directionkind, directionbins=directionbins, usedegrees=usedegrees
         )
