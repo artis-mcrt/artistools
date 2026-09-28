@@ -1739,20 +1739,16 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
-    """A cell with no matter has no estimators, and the error names the cell.
+    """A cell with no matter has no estimators, and the error names the cell and the next cell with estimators.
 
     The command stopped with "cannot concat empty list" before.
     """
     lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
-    emptycell = (
-        at.inputmodel
-        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .filter(pl.col("rho") == 0.0)
-        .select(pl.col("modelgridindex").min())
-        .collect()
-        .item()
-    )
-    with pytest.raises(ValueError, match="hold no values"):
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).collect()
+    emptycell = dfmodel.filter(pl.col("rho") == 0.0)["modelgridindex"].min()
+    assert isinstance(emptycell, int)
+    nextcell = dfmodel.filter(pl.col("rho") > 0.0, pl.col("modelgridindex") > emptycell)["modelgridindex"].min()
+    with pytest.raises(ValueError, match=rf"hold no values for cell {emptycell} .* is cell {nextcell}$"):
         at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell)
 
 

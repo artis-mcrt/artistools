@@ -268,9 +268,25 @@ def get_cell_estimators(modelpath: Path | str, timestep: int, modelgridindex: in
     if dfestimators.is_empty():
         cellstr = "any cell" if modelgridindex is None else f"cell {modelgridindex}"
         msg = f"The estimators hold no values for {cellstr} at timestep {timestep}. An empty cell has no estimators"
+        if modelgridindex is not None:
+            msg += f". {get_next_nonempty_cell_text(modelpath, timestep, modelgridindex)}"
         raise ValueError(msg)
 
     return dfestimators
+
+
+def get_next_nonempty_cell_text(modelpath: Path | str, timestep: int, modelgridindex: int) -> str:
+    """Return a sentence that names the first cell after modelgridindex that has estimators at the timestep."""
+    nextcell = (
+        scan_estimators(modelpath, timestep=timestep)
+        .select(pl.col("modelgridindex").filter(pl.col("modelgridindex") > modelgridindex).min())
+        .collect()
+        .item()
+    )
+    if nextcell is None:
+        return f"No cell after cell {modelgridindex} has estimators"
+
+    return f"The next cell with estimators is cell {nextcell}"
 
 
 def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:

@@ -449,6 +449,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     time_days = get_timestep_time(args.modelpath, timestep)
+    print(f"Plotting {Path(args.modelpath).resolve()} at {time_days:.1f}d (timestep {timestep})")
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
     lambda_bin_edges, deltalambda = get_computed_bin_edges(
         args.modelpath, args.xmin, args.xmax, args.deltalambda, args.movingaveragewidth
