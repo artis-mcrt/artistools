@@ -310,6 +310,73 @@ def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
         assert not any("λ" in label for label in labels)
 
 
+def test_spectra_element_contributions_sum_the_ions() -> None:
+    """Each element series holds the emission and the absorption of all the ions of that element."""
+    contributions, array_flambda_emission_total, _ = get_contributions_classic_3d(groupby="element")
+    contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
+    elements = {contribution.linelabel: contribution for contribution in contributions}
+    assert set(elements) == {"Co", "Fe", "Ni", "free-free"}
+    for label, contribution in elements.items():
+        # "Fe II" belongs to "Fe", and "Fe II bound-free" belongs to "Fe bound-free"
+        ions = [
+            ion
+            for ion in contributions_ion
+            if ion.linelabel == label
+            or (
+                ion.linelabel.split(" ")[0] == label.split(" ")[0]
+                and ("bound-free" in ion.linelabel) == ("bound-free" in label)
+            )
+        ]
+        assert ions
+        for arrayname in ("array_flambda_emission", "array_flambda_absorption"):
+            iontotal = sum(getattr(ion, arrayname) for ion in ions)
+            assert np.allclose(getattr(contribution, arrayname), iontotal, rtol=1e-6, atol=0.0)
+
+
+def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The element of a gamma packet is the element of its nuclide, thus Ni56 and Ni57 give one series."""
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0, 4.0, 8.0],
+        "t_arrive_d": [2.0] * 4,
+        "pellet_nucindex": [0, 1, 2, -1],
+        "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 4,
+    })
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+        del modelpath
+        return pl.LazyFrame({
+            "pellet_nucindex": [-1, 0, 1, 2],
+            "elsymbol": ["initial energy", "Ni", "Co", "Ni"],
+            "nucname": ["initial energy", "Ni56", "Co56", "Ni57"],
+        })
+
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
+    contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=np.array([4000.0, 5000.0, 6000.0]),
+        getabsorption=False,
+        groupby="element",
+        gamma=True,
+    )
+
+    total = float(np.sum(array_flambda_emission_total))
+    fractions = {
+        contribution.linelabel: float(np.sum(contribution.array_flambda_emission)) / total
+        for contribution in contributions
+    }
+    assert set(fractions) == {"Ni", "Co", "initial energy"}
+    for label, energy in (("Ni", 5.0), ("Co", 2.0), ("initial energy", 8.0)):
+        assert np.isclose(fractions[label], energy / 15.0, rtol=1e-12, atol=0.0)
+
+
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
         get_contributions_classic_3d(groupby="nuc")

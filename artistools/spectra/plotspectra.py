@@ -1747,11 +1747,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
+        choices=["element", "ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
         help=(
-            "Use a different colour for each ion, line, or nuclide with --showemission, or for each shell of the"
-            " last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of sight,"
-            " and ye the initial electron fraction of the cell. Every choice but ion implies --frompackets"
+            "Use a different colour for each element, ion, line, or nuclide with --showemission, or for each shell"
+            " of the last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of"
+            " sight, and ye the initial electron fraction of the cell. The element of a gamma packet is the element"
+            " of its nuclide. Every choice but ion implies --frompackets"
         ),
     )
 
@@ -2017,7 +2018,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     packetreasons = {
         "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
-        f"-groupby {args.groupby}": args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS},
+        f"-groupby {args.groupby}": args.groupby in {"element", "line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),
         "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
         "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),

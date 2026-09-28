@@ -21,6 +21,7 @@ from artistools import constants
 from artistools.atomic import add_ion_str_column
 from artistools.atomic import get_bflist
 from artistools.atomic import get_elsymbol
+from artistools.atomic import get_elsymbols_df
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
@@ -1374,14 +1375,14 @@ def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFr
     Thus this frame can be hundreds of megabytes. The emission labels and the absorption labels both use it.
     """
     linecolumns = ["atomic_number", "ion_stage"]
-    if groupby != "ion":
+    if groupby not in {"element", "ion"}:
         linecolumns += ["lambda_angstroms_air", "upperlevelindex", "lowerlevelindex"]
 
     return get_linelist_pldf(modelpath=modelpath).select(linecolumns).collect()
 
 
 def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str, labelcolumn: str) -> pl.LazyFrame:
-    """Return a frame that gives the ion label or the line label of each supplied line index.
+    """Return a frame that gives the element label, the ion label, or the line label of each supplied line index.
 
     A linelist can have tens of millions of lines. One spectrum uses only a small part of them.
     Thus the code gets the line data at the supplied indices. It does not join the packets to the full linelist.
@@ -1393,12 +1394,15 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
     # end of the linelist. For an index after the last row, gather() makes an error. Remove both types of index here.
     # The join of the caller then finds no label for these codes.
     lineindices = lineindices.filter(lineindices.is_between(0, dflines.height - 1)).unique()
-
-    return add_ion_str_column(
-        pl.LazyFrame({typecolumn: lineindices.cast(pl.Int32)}).select(
-            typecolumn, *[pl.lit(dflines[col]).gather(pl.col(typecolumn)).alias(col) for col in dflines.columns]
+    linedata = pl.LazyFrame({typecolumn: lineindices.cast(pl.Int32)}).select(
+        typecolumn, *[pl.lit(dflines[col]).gather(pl.col(typecolumn)).alias(col) for col in dflines.columns]
+    )
+    if groupby == "element":
+        return linedata.join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left").select(
+            typecolumn, pl.col("elsymbol").alias(labelcolumn)
         )
-    ).select(
+
+    return add_ion_str_column(linedata).select(
         typecolumn,
         pl.col("ion_str").alias(labelcolumn)
         if groupby == "ion"
@@ -1688,7 +1692,7 @@ def get_flux_contributions_from_packets(
     range. The keys name the radial velocity and the velocity along the line of sight. Each contribution
     then holds only the packets inside each range. The lower edge is inside the range.
     """
-    assert groupby in {"ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
+    assert groupby in {"element", "ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
     assert use_time in {"arrival", "emission", "escape"}
     if groupby in SHELLCOLUMNS:
         emtypecolumn = SHELLCOLUMNS[groupby][1 if usethermal else 0]
@@ -1699,7 +1703,8 @@ def get_flux_contributions_from_packets(
             msg = f"groupby {groupby} needs the shell edges in shelledges"
             raise ValueError(msg)
         check_edges_increase(shelledges, "shell edges")
-    elif groupby in {"nuc", "nucmass"}:
+    elif groupby in {"nuc", "nucmass"} or (groupby == "element" and gamma):
+        # a gamma packet comes from the decay of a nuclide, thus its element is the element of that nuclide
         emtypecolumn = "pellet_nucindex"
     else:
         emtypecolumn = "trueemissiontype" if usethermal else "emissiontype"
@@ -1724,7 +1729,7 @@ def get_flux_contributions_from_packets(
         )
 
     if gamma:
-        assert groupby in {"nuc", "nucmass", *SHELLCOLUMNS}
+        assert groupby in {"element", "nuc", "nucmass", *SHELLCOLUMNS}
         assert not (usethermal and (groupby in SHELLCOLUMNS or velocityranges))
 
     if directionbins_are_vpkt_observers and use_time != "arrival":
@@ -1825,7 +1830,9 @@ def get_flux_contributions_from_packets(
     # The code reads these columns one time. The emission labels and the absorption labels both use them.
     # The memory becomes free when this function returns. Each absorption label is a line label.
     # Thus only an emission-only plot with a nuclide group can omit the linelist.
-    needs_linelist = groupby not in SHELLCOLUMNS and (getabsorption or (getemission and groupby in {"ion", "line"}))
+    needs_linelist = groupby not in SHELLCOLUMNS and (
+        getabsorption or (getemission and emtypecolumn in {"emissiontype", "trueemissiontype"})
+    )
     dflines = get_linelist_label_columns(modelpath, groupby) if needs_linelist else pl.DataFrame()
 
     if groupby in SHELLCOLUMNS:
@@ -1922,12 +1929,20 @@ def get_flux_contributions_from_packets(
                     pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
                 ).alias("emissiontype_str")
             )
+        elif emtypecolumn == "pellet_nucindex":
+            # the nuclide table gives "initial energy" as the element of the initial energy
+            emtypelabels = get_nuclides(modelpath=modelpath).rename({"elsymbol": "emissiontype_str"})
         else:
-            expr_bflist_to_str = (
-                pl.col("ion_str") + " bound-free"
-                if groupby == "ion"
-                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-            )
+            bflabels = {
+                "element": pl.col("elsymbol") + " bound-free",
+                "ion": pl.col("ion_str") + " bound-free",
+                "line": pl.format(
+                    "{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")
+                ),
+            }
+            bflist = get_bflist(modelpath)
+            if groupby == "element":
+                bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
 
             emtypelabels = pl.concat([
                 get_line_labels(linelist, typecodes, groupby, "emissiontype_str"),
@@ -1936,9 +1951,9 @@ def get_flux_contributions_from_packets(
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                     orient="col",
                 ),
-                get_bflist(modelpath).select(
+                bflist.select(
                     (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn),
-                    expr_bflist_to_str.alias("emissiontype_str"),
+                    bflabels[groupby].alias("emissiontype_str"),
                 ),
             ])
 
@@ -1965,7 +1980,9 @@ def get_flux_contributions_from_packets(
             keptlabel = pl.col("emissiontype_str").str.contains("bound-free").not_()
         elif z_exclude > 0:
             elsymb = get_elsymbol(z_exclude)
-            keptlabel = pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_()
+            # an element label is the symbol alone, and an ion label or a line label starts with the symbol
+            label = pl.col("emissiontype_str")
+            keptlabel = ((label == elsymb) | label.str.starts_with(f"{elsymb} ")).not_()
         if keptlabel is not None:
             # the filter drops a code with no label, as the filter of the labelled packets did
             keptcodes = get_emission_labels(dfpackets[emtypecolumn], dflines).filter(keptlabel)[emtypecolumn]
