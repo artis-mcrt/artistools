@@ -911,11 +911,15 @@ def make_frame_figure_with_residuals(
     args: argparse.Namespace,
     aspect: float = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES,
     *,
+    fullwidth: bool = True,
     fig: mplfig.Figure | None = None,
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes]:
-    """Return a figure with a main frame and a residual panel below it, and the two axes."""
+    """Return a figure with a main frame and a residual panel below it, and the two axes.
+
+    fullwidth=False gives a frame that fills one column of the page, as in make_frame_figure.
+    """
     fig, axesgrid = make_frame_figure(
-        args, rows=2, aspect=aspect, sharex=True, rowheights=(1.0, RESIDUALROWHEIGHT), fig=fig
+        args, rows=2, aspect=aspect, sharex=True, fullwidth=fullwidth, rowheights=(1.0, RESIDUALROWHEIGHT), fig=fig
     )
     return fig, axesgrid[0, 0], axesgrid[1, 0]
 
