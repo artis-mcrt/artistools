@@ -2757,3 +2757,25 @@ def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: py
     monkeypatch.chdir(modelpath)
     assert interactive.get_spectrum_path(".") == interactive.get_spectrum_path(str(modelpath.absolute()))
     assert interactive.get_spectrum_path(".") != interactive.get_spectrum_path(str(modelpath.parent))
+
+
+def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
+    """The packet control switches the plot between the r-packets and the gamma packets, with the units of each.
+
+    --gamma was an option of the table, thus the x unit, the x range, and the grouping kept the defaults of the
+    r-packets after a switch.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    assert not viewer.values.gamma
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=True)) is None
+    tokens = viewer.get_plot_tokens()
+    assert "--gamma" in tokens
+    assert "-xunit" not in tokens, "keV is the default x unit of a gamma-ray spectrum"
+    assert viewer.values.xunit == "kev"
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=False)) is None
+    assert "--gamma" not in viewer.get_plot_tokens()
+    assert viewer.values.xunit == "angstroms"
+    # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
+    gammaviewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
+    assert gammaviewer.values.gamma
+    assert all(flag != "--gamma" for flag, _ in gammaviewer.values.otheroptions)

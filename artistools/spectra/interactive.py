@@ -160,6 +160,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "usedegrees",
     "fixedionlist",
     "figwidthscale",
+    "gamma",
     "interactive",
 })
 
@@ -194,6 +195,8 @@ class ControlValues:
     centre: float
     width: float
     notimeclamp: bool
+    # True for the gamma-ray spectrum of the gamma packets, and False for the UVOIR spectrum of the r-packets
+    gamma: bool
     xmin: str
     xmax: str
     xunit: str
@@ -227,6 +230,37 @@ class ControlValues:
     spectra: tuple[str, ...]
     figwidthscale: float
     otheroptions: OptionRows
+
+
+def get_default_xunit(*, gamma: bool) -> str:
+    """Return the x unit that plotspectra takes when the command gives no -xunit."""
+    return "kev" if gamma else "angstroms"
+
+
+def get_default_groupby(*, gamma: bool) -> str:
+    """Return the -groupby that plotspectra takes for an emission plot when the command gives none."""
+    return "nuc" if gamma else "ion"
+
+
+def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
+    """Return the values for the spectrum of the r-packets, or of the gamma packets if gamma is True.
+
+    The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
+    grouping, and the locked series return to the defaults of the new spectrum.
+    """
+    xunit = get_default_xunit(gamma=gamma)
+    xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
+    return dc.replace(
+        values,
+        gamma=gamma,
+        xunit=xunit,
+        xmin=format(xmin, ".10g"),
+        xmax=format(xmax, ".10g"),
+        ymin="",
+        ymax="",
+        groupby=None,
+        fixedionlist=(),
+    )
 
 
 def format_days(value: float) -> str:
@@ -532,8 +566,6 @@ class SpectrumViewer:
         self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
         self.helptexts = get_helptexts(parser)
         self.defaultyscale: str = parser.get_default("defaultyscale")
-        self.defaultxunit = "kev" if args.gamma else "angstroms"
-        self.defaultgroupby = "nuc" if args.gamma else "ion"
         self.defaultyvariable: str = parser.get_default("yvariable")
         # a run with a configuration of virtual packets has observers for -plotvspecpol
         self.directionkinds = ["", "bin", "phi", "theta"]
@@ -544,6 +576,7 @@ class SpectrumViewer:
             centre=centre,
             width=width,
             notimeclamp=bool(args.notimeclamp),
+            gamma=bool(args.gamma),
             xmin=format(args.xmin, ".10g"),
             xmax=format(args.xmax, ".10g"),
             xunit=args.xunit,
@@ -554,7 +587,7 @@ class SpectrumViewer:
             showemission=bool(args.showemission),
             showabsorption=bool(args.showabsorption),
             # None is the default grouping, thus a -groupby that names the default gives None as well
-            groupby=None if givengroupby == self.defaultgroupby else givengroupby,
+            groupby=None if givengroupby == get_default_groupby(gamma=bool(args.gamma)) else givengroupby,
             maxseriescount=args.maxseriescount,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
@@ -661,7 +694,9 @@ class SpectrumViewer:
         options = ["-t", timedays, *get_option_tokens("-xmin", values.xmin), *get_option_tokens("-xmax", values.xmax)]
         if values.notimeclamp:
             options.append("--notimeclamp")
-        if values.xunit != self.defaultxunit:
+        if values.gamma:
+            options.append("--gamma")
+        if values.xunit != get_default_xunit(gamma=values.gamma):
             options += ["-xunit", values.xunit]
         if values.logscalex:
             options.append("--logscalex")
@@ -1069,7 +1104,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     normalisedcheck = QtWidgets.QCheckBox("--normalised")
     for widget, dest in ((yvariablebox, "yvariable"), (normalisedcheck, "normalised")):
         widget.setToolTip(helptexts.get(dest, ""))
-    add_row(axesgrid, 2, [QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck])
+    # the index of an item: 0 for the UVOIR spectrum of the r-packets, and 1 for the gamma packets (--gamma)
+    packetbox = QtWidgets.QComboBox()
+    for text, tooltip in (
+        ("r-packets", "The UVOIR spectrum of the radiation packets (r-packets)"),
+        ("\N{GREEK SMALL LETTER GAMMA}-packets", f"--gamma: {helptexts.get('gamma', '')}"),
+    ):
+        packetbox.addItem(text)
+        packetbox.setItemData(packetbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    packetbox.setToolTip("The packets of the spectrum: the r-packets, or the gamma packets (--gamma)")
+    add_row(
+        axesgrid,
+        2,
+        [QtWidgets.QLabel("Packets"), packetbox, QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck],
+    )
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -1225,6 +1273,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     signalwidgets: list[QtWidgets.QWidget] = [
         modesegments,
+        packetbox,
         timeslider,
         widthslider,
         xrangeslider,
@@ -1252,12 +1301,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
     logxrange = (0.0, 1.0)
-    rangesunit: str | None = None
+    # the x unit and the packet type of the ranges, because the default x range follows both
+    rangesunit: tuple[str, bool] | None = None
 
     def set_xunit_ranges() -> None:
         nonlocal logxrange, rangesunit
         values = viewer.values
-        defaultxmin, defaultxmax = get_default_xlimits(values.xunit, gamma=viewer.args.gamma)
+        defaultxmin, defaultxmax = get_default_xlimits(values.xunit, gamma=values.gamma)
         # the x slider acts on log10(x), thus its range must be above zero
         xlow = min(value for value in (float(values.xmin), defaultxmin) if value > 0.0) / 2.0
         xhigh = max(float(values.xmax), defaultxmax) * 2.0
@@ -1273,7 +1323,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xunit = get_xunit(values.xunit)
         xheader.setText(f"{xunit.kind.capitalize()} [{xunit.label}]")
         binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
-        rangesunit = values.xunit
+        rangesunit = (values.xunit, values.gamma)
 
     # each bin mode keeps its decimals, its range, and its default width. The box keeps the last width of each mode
     binwidthranges: dict[str, tuple[int, float, float, float]] = {"deltalogx": (8, 1e-8, 1.0, 1e-3)}
@@ -1371,7 +1421,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if key not in rejections:
             groupbys = [
                 None
-                if choice == (values.groupby or viewer.defaultgroupby)
+                if choice == (values.groupby or get_default_groupby(gamma=values.gamma))
                 else viewer.get_rejection(dc.replace(values, groupby=choice, showemission=True))
                 for choice in viewer.groupbychoices
             ]
@@ -1440,11 +1490,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewer.load_runs(values.spectra)
         if viewer.runspectra != shownruns:
             show_run_ranges()
-        if values.xunit != rangesunit:
+        if (values.xunit, values.gamma) != rangesunit:
             set_xunit_ranges()
         if values.notimeclamp != slidermode:
             set_time_mode()
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
+        packetbox.setCurrentIndex(1 if values.gamma else 0)
         previousbutton.setEnabled(viewer.step_time(-1) is not None)
         nextbutton.setEnabled(viewer.step_time(1) is not None)
         if values.notimeclamp:
@@ -1477,7 +1528,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             edit.setEnabled(isyfixed)
         emissioncheck.setChecked(values.showemission)
         absorptioncheck.setChecked(values.showabsorption)
-        groupbybox.setCurrentText(values.groupby or viewer.defaultgroupby)
+        groupbybox.setCurrentText(values.groupby or get_default_groupby(gamma=values.gamma))
         countbox.setValue(values.maxseriescount)
         emissionoptions.setVisible(values.showemission or values.showabsorption)
         nostackcheck.setEnabled(values.showemission or values.showabsorption)
@@ -1600,6 +1651,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def show_error(message: str) -> None:
         show_status_message(statusbar, message, "")
         show_values()
+
+    def on_packet_type(index: int) -> None:
+        if (gamma := index == 1) != viewer.values.gamma:
+            apply(set_packet_type(viewer.values, gamma=gamma))
 
     def on_time_mode() -> None:
         values = viewer.values
@@ -1753,7 +1808,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_axes() -> None:
         values = viewer.values
         if xunitbox.currentText() != values.xunit:
-            values = convert_xunit(values, xunitbox.currentText(), gamma=viewer.args.gamma)
+            values = convert_xunit(values, xunitbox.currentText(), gamma=values.gamma)
         values = dc.replace(
             values,
             yscale=yscalebox.currentText(),
@@ -1768,12 +1823,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         showemission = emissioncheck.isChecked()
         # -groupby colours the emission plot, thus a choice of -groupby also sets --showemission.
         # An empty --showemission check box removes the -groupby choice.
-        if groupby != (viewer.values.groupby or viewer.defaultgroupby):
+        defaultgroupby = get_default_groupby(gamma=viewer.values.gamma)
+        if groupby != (viewer.values.groupby or defaultgroupby):
             showemission = True
         elif not showemission:
-            groupby = viewer.defaultgroupby
+            groupby = defaultgroupby
         # plotspectra takes the default -groupby when the command gives none, thus the command stays short
-        if groupby == viewer.defaultgroupby:
+        if groupby == defaultgroupby:
             groupby = None
         values = dc.replace(
             viewer.values,
@@ -2019,6 +2075,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window.setProperty("sessiontokens", get_session_tokens)
 
     modesegments.currentChanged.connect(on_time_mode)
+    packetbox.currentIndexChanged.connect(on_packet_type)
     previousbutton.clicked.connect(lambda: on_arrow(-1))
     nextbutton.clicked.connect(lambda: on_arrow(1))
     timeslider.valueChanged.connect(on_time)
@@ -2069,7 +2126,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         get_readout=lambda event, _frame: viewer.get_readout(event.xdata),
         readoutlabel=statusbar.readout,
         on_select=set_xlimits,
-        on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.args.gamma)),
+        on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.values.gamma)),
         can_select=plot_has_xunit,
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
