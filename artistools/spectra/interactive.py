@@ -190,14 +190,9 @@ type DataSource = t.Literal["auto", "text", "packets"]
 
 # the rule of the width of a continuous time range:
 # - "timestep" takes the width of the valid timestep with the middle nearest to the time;
-# - "fraction" takes widthfraction times the time;
+# - "dlogt" takes the width that gives ln(t_end / t_start) = dlogt, as the logarithmic timesteps of ARTIS do;
 # - "days" keeps the width in days.
-type WidthMode = t.Literal["timestep", "fraction", "days"]
-
-# the fraction of the time that the width mode "fraction" takes before the user gives one
-DEFAULT_WIDTH_FRACTION: t.Final = 0.1
-# the largest fraction of the width slider
-MAX_WIDTH_FRACTION: t.Final = 1.0
+type WidthMode = t.Literal["timestep", "dlogt", "days"]
 
 
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
@@ -215,7 +210,8 @@ class ControlValues:
     # the rule of the width of a continuous range. The command gives the width that the rule gives, thus the mode
     # itself is not in the command
     widthmode: WidthMode
-    widthfraction: float
+    # the Δ ln t of the width mode "dlogt". It starts with the Δ ln t of a logarithmic grid of the run
+    dlogt: float
     # True for the gamma-ray spectrum of the gamma packets, and False for the UVOIR spectrum of the r-packets
     gamma: bool
     xmin: str
@@ -660,7 +656,7 @@ class SpectrumViewer:
             # a continuous range of the command keeps its width in days. A continuous single time takes the width of
             # its timestep, because a width of 0 reads the whole timestep, which is the clamped range
             widthmode="days" if width > 0.0 else "timestep",
-            widthfraction=DEFAULT_WIDTH_FRACTION,
+            dlogt=self.dlogt,
             gamma=bool(args.gamma),
             xmin=format(args.xmin, ".10g"),
             xmax=format(args.xmax, ".10g"),
@@ -731,6 +727,9 @@ class SpectrumViewer:
                         timebounds[1] = min(timebounds[1], float(validend))
         self.runfolders, self.tmids, self.tstarts, self.tends = runfolders, tmids, tstarts, tends
         self.twidths = get_timestep_times(runfolders[0], loc="delta")
+        # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps. A constant grid or a
+        # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with this one
+        self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
         self.timebounds = (timebounds[0], timebounds[1])
         self.validtimesteps = [
             timestep
@@ -988,8 +987,9 @@ class SpectrumViewer:
         if widthmode == "timestep":
             nearest = min(self.validtimesteps, key=lambda timestep: abs(self.tmids[timestep] - centre))
             width = float(f"{self.twidths[nearest]:.4g}")
-        elif widthmode == "fraction":
-            width = float(f"{values.widthfraction * centre:.4g}")
+        elif widthmode == "dlogt":
+            # this width gives (centre + width / 2) / (centre - width / 2) = exp(dlogt), and the start stays above 0
+            width = float(f"{2.0 * centre * math.tanh(values.dlogt / 2.0):.4g}")
         else:
             width = values.width
         if (centre, width, widthmode) == (values.centre, values.width, values.widthmode):
@@ -1108,6 +1108,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     helptexts = viewer.helptexts
     logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
     widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
+    dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
     nvalid = len(viewer.validtimesteps)
 
     _, timegrid = add_section(panellayout, "Time")
@@ -1134,7 +1135,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 " range stay continuous"
             ),
         ),
-        ("fraction", "Δt / t", "Δt is a fraction of the time t. The field gives the fraction Δt / t"),
+        (
+            "dlogt",
+            "Δ ln t",
+            (
+                "The range has ln(t_end / t_start) = Δ ln t, as the logarithmic timesteps of ARTIS do. The field gives"
+                " Δ ln t, and it starts with the Δ ln t of a logarithmic grid with the timesteps of the run"
+            ),
+        ),
         ("days", "Δt", "Δt is a width in days. The field gives the width"),
     ):
         widthmodebox.addItem(widthmodetext, widthmode)
@@ -1152,8 +1160,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
     widthtip = (
         'The width of the time range. With "Snap to Timesteps", the width is a count of timesteps. A continuous range'
-        " takes the rule of the box on the left: a width Δt in days, a fraction Δt / t of the time t, or the width of the"
-        " nearest timestep. The Up key and the Down key change the width by one timestep."
+        " takes the rule of the box on the left: a width Δt in days, a width Δ ln t in ln t, or the width of the nearest"
+        " timestep. The Up key and the Down key change the width by one timestep."
     )
     for row, (label, slider, edit, tip) in enumerate(
         [
@@ -1546,9 +1554,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         The ranges of the sliders and the direction bins came from the models of the command only.
         """
-        nonlocal logtrange, widthmax, nvalid, slidermode, shownchoices, shownruns
+        nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownchoices, shownruns
         logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
         widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
+        dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
         nvalid = len(viewer.validtimesteps)
         # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
         slidermode, shownchoices = None, None
@@ -1702,10 +1711,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthmodebox.setCurrentIndex(widthmodebox.findData(values.widthmode))
-            # the field and the slider give the quantity of the width mode: a fraction, or a width in days
-            if values.widthmode == "fraction":
-                widthslider.setValue(to_position(values.widthfraction, 0.0, MAX_WIDTH_FRACTION))
-                set_edit_text(widthedit, f"{values.widthfraction:g}")
+            # the field and the slider give the quantity of the width mode: Δ ln t, or a width in days
+            if values.widthmode == "dlogt":
+                widthslider.setValue(to_position(values.dlogt, 0.0, dlogtmax))
+                set_edit_text(widthedit, f"{values.dlogt:g}")
             else:
                 widthslider.setValue(to_position(values.width, 0.0, widthmax))
                 set_edit_text(widthedit, f"{values.width:.2f}")
@@ -1855,20 +1864,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_widthmode() -> None:
         values = viewer.values
         widthmode: WidthMode = widthmodebox.currentData()
-        # the new rule starts from the width on the screen, thus the plot does not change at the switch
-        fraction = float(f"{values.width / values.centre:.4g}") if values.centre > 0.0 else values.widthfraction
-        apply(
-            dc.replace(
-                values, widthmode=widthmode, widthfraction=fraction if widthmode == "fraction" else values.widthfraction
-            )
-        )
+        # Δ ln t keeps its last value, which starts as the Δ ln t of a logarithmic grid of the run
+        apply(dc.replace(values, widthmode=widthmode))
 
     def on_width(position: int) -> None:
         values = viewer.values
         if values.notimeclamp:
-            if values.widthmode == "fraction":
-                fraction = from_position(position, 0.0, MAX_WIDTH_FRACTION)
-                apply(dc.replace(values, widthfraction=float(f"{fraction:.3g}")))
+            if values.widthmode == "dlogt":
+                dlogt = from_position(position, 0.0, dlogtmax)
+                apply(dc.replace(values, dlogt=float(f"{dlogt:.3g}")))
             else:
                 width = from_position(position, 0.0, widthmax)
                 apply(dc.replace(values, widthmode="days", width=float(f"{width:.3g}")))
@@ -1903,8 +1907,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             elif not float(f"{width:.3g}") > 0.0:
                 show_error("Give a width above 0. A continuous range of width 0 reads the whole timestep")
                 return
-            elif values.widthmode == "fraction":
-                newvalues = dc.replace(values, centre=centre, widthfraction=float(f"{width:.3g}"))
+            elif values.widthmode == "dlogt":
+                newvalues = dc.replace(values, centre=centre, dlogt=float(f"{width:.4g}"))
             else:
                 newvalues = dc.replace(values, centre=centre, width=float(f"{width:.3g}"))
         else:

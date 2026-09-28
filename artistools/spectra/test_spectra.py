@@ -2327,9 +2327,11 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     assert viewer.values.widthmode == "timestep"
     nearest = min(viewer.validtimesteps, key=lambda timestep: abs(viewer.tmids[timestep] - viewer.values.centre))
     assert viewer.values.width == float(f"{viewer.twidths[nearest]:.4g}")
-    # a fraction of the time follows the time
-    assert viewer.change(dc.replace(viewer.values, widthmode="fraction", widthfraction=0.01, centre=290.0)) is None
-    assert viewer.values.width == pytest.approx(2.9, rel=1e-12)
+    # Δ ln t starts with the Δ ln t of each timestep of the logarithmic grid, and the width follows the time
+    assert viewer.values.dlogt == pytest.approx(math.log(viewer.tends[0] / viewer.tstarts[0]), rel=1e-3)
+    assert viewer.change(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)) is None
+    low, high = (viewer.values.centre + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
+    assert math.log(high / low) == pytest.approx(0.01, rel=1e-3)
     # the Down key never gives a width of 0 or less, and it gives a width in days
     assert viewer.change(dc.replace(viewer.values, widthmode="days", width=0.001)) is None
     assert viewer.step_width(-1).width == 0.001
