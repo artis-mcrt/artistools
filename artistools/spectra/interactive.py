@@ -1187,6 +1187,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
     for yscale in viewer.yscalechoices:
         yscalebox.addItem(yscale.capitalize(), yscale)
+    # the text of the "auto" item changes after each plot, and the box keeps a width for the longest text
+    yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
     logscalexcheck = QtWidgets.QCheckBox("--logscalex")
     setyrangebutton = QtWidgets.QPushButton("Set current y range")
     setyrangebutton.setToolTip(
