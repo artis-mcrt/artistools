@@ -301,15 +301,15 @@ def apply_time_range_args(
 def get_time_range_text(
     timestepmin: int, timestepmax: int, daysmin: float, daysmax: float, *, clamped: bool = True
 ) -> str:
-    """Return the text of a time range for a log line or a viewer, e.g. "Timesteps 58 to 62, from 303.9 to 308.9 d".
+    """Return the text of a time range for a log line or a viewer, e.g. "Timesteps 58 to 62, from 303.90 to 308.90 d".
 
-    A range that is not clamped to whole timesteps (--notimeclamp) reads the packets that arrive inside it, thus its
-    text gives the days and the width Δt and no timestep.
+    Each time has two decimal places. A range that is not clamped to whole timesteps (--notimeclamp) reads the packets
+    that arrive inside it, thus its text gives the days and the width Δt and no timestep.
     """
     if not clamped:
-        return f"Packets from {daysmin:.4g} to {daysmax:.4g} d (Δt = {daysmax - daysmin:.4g} d)"
+        return f"Packets from {daysmin:.2f} to {daysmax:.2f} d (Δt = {daysmax - daysmin:.2f} d)"
     timesteps = f"Timestep {timestepmin}" if timestepmin == timestepmax else f"Timesteps {timestepmin} to {timestepmax}"
-    return f"{timesteps}, from {daysmin:.4g} to {daysmax:.4g} d"
+    return f"{timesteps}, from {daysmin:.2f} to {daysmax:.2f} d"
 
 
 def get_time_range(

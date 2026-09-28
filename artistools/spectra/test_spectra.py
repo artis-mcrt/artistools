@@ -2379,7 +2379,7 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     assert viewer.change(continuous) is None
     assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
     # a continuous range reads the packets that arrive inside it, and not whole timesteps
-    assert viewer.get_time_range_text() == "Packets from 303.9 to 308.9 d (Δt = 5 d)"
+    assert viewer.get_time_range_text() == "Packets from 303.90 to 308.90 d (Δt = 5.00 d)"
     assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
     assert "Timesteps 58 to 62" in viewer.get_time_range_text()
     command = viewer.get_command()
