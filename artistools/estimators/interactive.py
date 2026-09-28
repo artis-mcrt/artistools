@@ -58,6 +58,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
@@ -963,8 +964,7 @@ class EstimatorViewer:
     def get_timesteps_text(self) -> str:
         """Return the timesteps and the days that the plot reads."""
         first, last = self.values.first, self.values.last
-        timesteps = f"Timestep {first}" if first == last else f"Timesteps {first} to {last}"
-        return f"{timesteps}, from {self.tstarts[first]:.4g} to {self.tends[last]:.4g} d"
+        return get_time_range_text(first, last, self.tstarts[first], self.tends[last])
 
     def select_centre(self, days: float) -> ControlValues:
         """Return the values with a time range of the same width that has its centre nearest to the time.

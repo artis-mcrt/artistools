@@ -59,6 +59,7 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_vpkt_config
 from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
@@ -590,9 +591,8 @@ def plot_artis_spectrum(
 
         # the label carries LaTeX for the figure, thus the log line shows the plain form
         print_heading(
-            f"'{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} "
-            f"({timemin:.3f} to {timemax:.3f}d"
-            f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+            f"'{plain_label(linelabel)}': "
+            + get_time_range_text(timestepmin, timestepmax, timemin, timemax, clamped=clamp_to_timesteps)
         )
         print_detail(f"modelpath: {modelpath}")
 
@@ -1293,8 +1293,7 @@ def make_emissionabsorption_plot(
     assert timemax is not None
 
     print(
-        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({timemin:.3f} to {timemax:.3f}d"
-        f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+        f"'{modelname}': {get_time_range_text(timestepmin, timestepmax, timemin, timemax, clamped=clamp_to_timesteps)}"
     )
 
     xmin, xmax = axis.get_xlim()

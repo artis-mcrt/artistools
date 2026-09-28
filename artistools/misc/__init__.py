@@ -127,6 +127,7 @@ from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep
 from artistools.misc.timesteps import get_time_range as get_time_range
+from artistools.misc.timesteps import get_time_range_text as get_time_range_text
 from artistools.misc.timesteps import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc.timesteps import get_timestep_time as get_timestep_time
 from artistools.misc.timesteps import get_timestep_times as get_timestep_times

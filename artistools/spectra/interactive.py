@@ -20,6 +20,7 @@ from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import separate_trailing_folders
@@ -850,12 +851,7 @@ class SpectrumViewer:
         timestepmin, timestepmax, daysmin, daysmax = get_time_range(
             self.runfolders[0], timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
         )
-        if self.values.notimeclamp:
-            return f"Packets from {daysmin:.4g} to {daysmax:.4g} d (Δt = {daysmax - daysmin:.4g} d)"
-        timesteps = (
-            f"Timestep {timestepmin}" if timestepmin == timestepmax else f"Timesteps {timestepmin} to {timestepmax}"
-        )
-        return f"{timesteps}, from {daysmin:.4g} to {daysmax:.4g} d"
+        return get_time_range_text(timestepmin, timestepmax, daysmin, daysmax, clamped=not self.values.notimeclamp)
 
     def get_nearest_position(self) -> int:
         """Return the position in the valid timesteps of the timestep with the middle nearest to the time."""

@@ -72,6 +72,7 @@ from artistools.misc import format_frame_path
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_timesteps
@@ -2796,8 +2797,8 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
 
     if not wantslisting:
         print(
-            f"Plotting estimators for '{get_model_name(modelpath)}' timesteps {timestepmin} to "
-            f"{timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)"
+            f"'{get_model_name(modelpath)}': "
+            + get_time_range_text(timestepmin, timestepmax, args.timemin, args.timemax)
         )
         print_modelpath(modelpath)
 
