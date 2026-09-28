@@ -963,8 +963,8 @@ class EstimatorViewer:
     def get_timesteps_text(self) -> str:
         """Return the timesteps and the days that the plot reads."""
         first, last = self.values.first, self.values.last
-        timesteps = f"timestep {first}" if first == last else f"timesteps {first} to {last}"
-        return f"The plot reads {timesteps}, from {self.tstarts[first]:.4g} to {self.tends[last]:.4g} d"
+        timesteps = f"Timestep {first}" if first == last else f"Timesteps {first} to {last}"
+        return f"{timesteps}, from {self.tstarts[first]:.4g} to {self.tends[last]:.4g} d"
 
     def select_centre(self, days: float) -> ControlValues:
         """Return the values with a time range of the same width that has its centre nearest to the time.
@@ -979,11 +979,11 @@ class EstimatorViewer:
     def get_cell_text(self) -> str:
         """Return the cells of the plot, with the radial velocity of a single cell."""
         if not self.values.cells:
-            return "The plot reads all the cells"
+            return "All cells"
         cell = get_single_cell(self.values.cells)
         if cell is not None and (velocity := self.cellvelocities.get(cell)) is not None:
             return f"Cell {self.values.cells} at v_r = {velocity / C_cm_per_s:.3g}c ({velocity / km_to_cm:.4g} km/s)"
-        return f"The plot reads the cells {self.values.cells}"
+        return f"Cells {self.values.cells}"
 
     def select_timesteps(self, values: ControlValues, firstpos: int, count: int) -> ControlValues:
         """Return the values with count valid timesteps from the position firstpos in the valid timesteps."""

@@ -2309,8 +2309,31 @@ def test_interactive_continuous_range_keeps_its_bounds() -> None:
     tokens = shlex.split(viewer.get_command())
     assert tokens[tokens.index("-t") + 1] == "299.5-301"
 
+    # a continuous single time takes the width of its timestep, because a width of 0 reads the whole timestep
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
-    assert viewer.values.width == 0.0
+    assert viewer.values.widthmode == "timestep"
+    assert viewer.values.width > 0.0
+
+
+def test_interactive_continuous_width_is_never_zero() -> None:
+    """Each width mode of a continuous range gives a width above 0, and the width follows the time.
+
+    A continuous width of 0 selected the whole timestep that holds the time, which is the clamped range.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
+    assert (viewer.values.widthmode, viewer.values.width) == ("days", 2.0)
+    # a width of 0 in days changes to the width of the nearest timestep
+    assert viewer.change(dc.replace(viewer.values, width=0.0)) is None
+    assert viewer.values.widthmode == "timestep"
+    nearest = min(viewer.validtimesteps, key=lambda timestep: abs(viewer.tmids[timestep] - viewer.values.centre))
+    assert viewer.values.width == float(f"{viewer.twidths[nearest]:.4g}")
+    # a fraction of the time follows the time
+    assert viewer.change(dc.replace(viewer.values, widthmode="fraction", widthfraction=0.01, centre=290.0)) is None
+    assert viewer.values.width == pytest.approx(2.9, rel=1e-12)
+    # the Down key never gives a width of 0 or less, and it gives a width in days
+    assert viewer.change(dc.replace(viewer.values, widthmode="days", width=0.001)) is None
+    assert viewer.step_width(-1).width == 0.001
+    assert viewer.step_width(1).widthmode == "days"
 
 
 def test_interactive_valid_timesteps() -> None:
@@ -2324,13 +2347,16 @@ def test_interactive_valid_timesteps() -> None:
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
 
-    # a continuous time alone selects the whole timestep that holds it. At each end of the valid times, that
-    # timestep is only in part valid, thus plotspectra rejected the command
+    # a continuous range at each end of the valid times takes the width of the nearest valid timestep, and
+    # plotspectra accepts it
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    # each end starts from the values of the command, thus it does not keep the width mode of the other end
+    base = viewer.values
     for bound, timestep in ((validstart, viewer.validtimesteps[0]), (validend, viewer.validtimesteps[-1])):
-        assert viewer.change(dc.replace(viewer.values, centre=bound, width=0.0)) is None
-        assert viewer.values.centre == viewer.tmids[timestep]
-        assert viewer.change(dc.replace(viewer.values, centre=bound, width=1.0)) is None
+        assert viewer.change(dc.replace(base, centre=bound)) is None
+        assert viewer.values.centre == bound
+        assert viewer.values.width == float(f"{viewer.twidths[timestep]:.4g}")
+        assert viewer.change(dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
 def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
@@ -2347,11 +2373,15 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     """The command that the viewer shows must draw the same data as the viewer."""
     viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
     # a continuous range gives --notimeclamp, and the snapped range below gives whole timesteps
-    continuous = dc.replace(viewer.values, notimeclamp=True, centre=306.4, width=5.0, xmin="3000", xmax="9000")
+    continuous = dc.replace(
+        viewer.values, notimeclamp=True, widthmode="days", centre=306.4, width=5.0, xmin="3000", xmax="9000"
+    )
     assert viewer.change(continuous) is None
     assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
+    # a continuous range reads the packets that arrive inside it, and not whole timesteps
+    assert viewer.get_time_range_text() == "Packets from 303.9 to 308.9 d (Δt = 5 d)"
     assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
-    assert "timesteps 58 to 62" in viewer.get_timesteps_text()
+    assert "Timesteps 58 to 62" in viewer.get_time_range_text()
     command = viewer.get_command()
 
     # each plot clears the frame first, thus the frame holds only the series of the model
@@ -2466,7 +2496,7 @@ def test_interactive_paths_keep_their_place() -> None:
     assert viewer.modelpathtokens == [str(modelpath)]
     # the command without the option starts with the path, and the viewer still reads the time of the command
     assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
-    assert "timestep 54" in viewer.get_timesteps_text()
+    assert "Timestep 54" in viewer.get_time_range_text()
 
     # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
     viewer = make_headless_viewer([
