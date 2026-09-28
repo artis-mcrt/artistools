@@ -1935,19 +1935,23 @@ VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
 
 
 def exit_if_no_emission_position(args: argparse.Namespace) -> None:
-    """Stop if the user gives a shell grouping or a velocity range with gamma packets or virtual packets."""
+    """Stop if a shell grouping or a velocity range needs an emission position that the packets do not hold.
+
+    A virtual packet holds no emission position. A gamma packet holds the position of its decay, of its pair
+    annihilation, or of its last Compton scattering, but it has no thermal emission.
+    """
     if args.groupby in SHELLCOLUMNS:
         option = f"-groupby {args.groupby}"
-        gammahelp = "Give -groupby nuc or -groupby nucmass"
     elif args.velocityranges_kmps:
         option = " and ".join(f"-{VELOCITYRANGEARGS[rangegrouping][0]}" for rangegrouping in args.velocityranges_kmps)
-        gammahelp = f"Remove {option}, or remove --gamma"
     else:
         return
 
-    if args.gamma:
-        # no test covers these options on gamma packets, thus the command refuses the combination
-        exit_with_error(f"a gamma-ray spectrum does not accept {option}", gammahelp)
+    if args.gamma and args.use_thermalemissiontype:
+        exit_with_error(
+            f"a gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
+            "Remove --use_thermalemissiontype. The gamma packets then use the position of the last interaction",
+        )
 
     if args.plotvspecpol is not None:
         exit_with_error(
@@ -2088,6 +2092,13 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             f"a gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
             f" {args.groupby}",
             "Give -groupby nuc or -groupby nucmass",
+        )
+
+    # ARTIS gives each escaped gamma packet the absorption type 0, which is the first line of the line list
+    if args.gamma and args.showabsorption:
+        exit_with_error(
+            "a gamma packet holds no absorption record, thus a gamma-ray spectrum does not accept --showabsorption",
+            "Remove --showabsorption",
         )
 
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets

@@ -59,6 +59,7 @@ from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
+from artistools.packets import has_emission_record_expr
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -1627,6 +1628,22 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     return lzdfpackets
 
 
+def check_gamma_emission_record(lzdfpackets: pl.LazyFrame) -> None:
+    """Stop if the gamma packets hold no emission position, which a shell and a velocity range need.
+
+    ARTIS records the emission position of a gamma packet since artis-mcrt/artis#637 (2026-09-28). A packet of an
+    older run has no record, thus each packet would lie outside every shell. A newer run gives a record to each
+    gamma packet, thus the first packet shows which type of run it is.
+    """
+    firstpacket = lzdfpackets.select(has_emission_record_expr("em")).head(1).collect()
+    if not firstpacket.is_empty() and not firstpacket.item():
+        msg = (
+            "The gamma packets of this run hold no emission position, thus a shell and a velocity range cannot"
+            " select them. ARTIS records that position since artis-mcrt/artis#637"
+        )
+        raise ValueError(msg)
+
+
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -1707,7 +1724,8 @@ def get_flux_contributions_from_packets(
         )
 
     if gamma:
-        assert groupby in {"nuc", "nucmass"}
+        assert groupby in {"nuc", "nucmass", *SHELLCOLUMNS}
+        assert not (usethermal and (groupby in SHELLCOLUMNS or velocityranges))
 
     if directionbins_are_vpkt_observers and use_time != "arrival":
         msg = "Virtual packet contributions support only observer arrival time"
@@ -1753,6 +1771,8 @@ def get_flux_contributions_from_packets(
                 )
 
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        if gamma and (groupby in SHELLCOLUMNS or velocityranges):
+            check_gamma_emission_record(lzdfpackets)
 
         lzdfpackets, inverse_solidangle_fraction = filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta

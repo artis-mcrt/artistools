@@ -669,15 +669,28 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
     assert len(mockstackplot.call_args_list[0].args[2]) == 4
 
 
-@pytest.mark.parametrize("packetargs", [{"gamma": True}, {"plotvspecpol": [0]}])
+@pytest.mark.parametrize(
+    ("packetargs", "message"),
+    [
+        ({"gamma": True, "use_thermalemissiontype": True}, "has no thermal emission"),
+        ({"plotvspecpol": [0]}, "does not accept"),
+    ],
+)
 @pytest.mark.parametrize(
     "optionargs",
     [{"groupby": "velocity"}, {"emissionvelocityrange": [5000, 10000]}, {"emissionlosvelocityrange": [-5000, 5000]}],
 )
 def test_spectraemissionplot_refuses_packets_with_no_emission_position(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], optionargs: dict[str, t.Any], packetargs: dict[str, t.Any]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    optionargs: dict[str, t.Any],
+    packetargs: dict[str, t.Any],
+    message: str,
 ) -> None:
-    """A shell grouping and a velocity range stop with a message for gamma packets and for virtual packets."""
+    """A shell grouping and a velocity range stop with a message for a position that the packets do not hold.
+
+    A virtual packet holds no emission position. A gamma packet holds no thermal emission position.
+    """
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],
@@ -689,7 +702,7 @@ def test_spectraemissionplot_refuses_packets_with_no_emission_position(
             **optionargs,
             **packetargs,
         )
-    assert "does not accept" in capsys.readouterr().err
+    assert message in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("groupby", ["ion", "line"])
@@ -712,6 +725,74 @@ def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
             outputfile=tmp_path / "gammaions.pdf",
         )
     assert f"does not accept -groupby {groupby}" in capsys.readouterr().err
+
+
+def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each gamma packet goes to the shell of the velocity of its decay, and the shells sum to the whole spectrum.
+
+    ARTIS records the decay position of a gamma packet since artis-mcrt/artis#637. Before that change, plotspectra
+    refused a shell grouping for gamma packets.
+    """
+    emtime = 2.0 * at.constants.day_to_s
+    speeds_kmps = [5000.0, 15000.0, 25000.0]
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0, 4.0],
+        "t_arrive_d": [2.0, 2.0, 2.0],
+        "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 3,
+        "em_posx": [speed * at.constants.km_to_cm * emtime for speed in speeds_kmps],
+        "em_posy": [0.0] * 3,
+        "em_posz": [0.0] * 3,
+        "em_time": [emtime] * 3,
+        # the first packet moves away from the observer, thus its line-of-sight velocity is negative
+        "dirx": [-1.0, 1.0, 1.0],
+        "diry": [0.0] * 3,
+        "dirz": [0.0] * 3,
+    })
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
+    expected = {
+        "velocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+        "losvelocity": {"[-10000, 0) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+    }
+    for groupby, expectedenergies in expected.items():
+        contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
+            modelpath=Path(),
+            timelowdays=1.5,
+            timehighdays=2.5,
+            lambda_bin_edges=lambda_bin_edges,
+            getabsorption=False,
+            groupby=groupby,
+            gamma=True,
+            shelledges=[-10000.0, 0.0, 10000.0, 20000.0, 30000.0],
+        )
+        energies = {
+            contribution.linelabel: float(np.sum(contribution.array_flambda_emission)) for contribution in contributions
+        }
+        total = float(np.sum(array_flambda_emission_total))
+        assert set(energies) == set(expectedenergies)
+        for label, energy in expectedenergies.items():
+            assert np.isclose(energies[label] / total, energy / 7.0, rtol=1e-12, atol=0.0)
+
+
+def test_spectraemissionplot_gamma_shells_need_an_emission_position(tmp_path: Path) -> None:
+    """A run from before artis-mcrt/artis#637 stops with a message, because its gamma packets have no position.
+
+    Without the message, each packet lay outside every shell and the plot had no series.
+    """
+    with pytest.raises(ValueError, match="hold no emission position"):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath,
+            timedays=300,
+            showemission=True,
+            gamma=True,
+            groupby="velocity",
+            outputfile=tmp_path / "gammashells.pdf",
+        )
 
 
 def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
