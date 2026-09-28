@@ -903,3 +903,23 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])
     )
+
+
+def get_lineindices(
+    modelpath: Path | str,
+    atomic_numbers: Collection[int] | None,
+    ion_stages: Collection[int] | None,
+    linefilter: pl.Expr | None = None,
+) -> pl.Series:
+    """Return the lineindex of each line of the given elements and ion stages. A None collection selects all.
+
+    linefilter selects a part of those lines, e.g. by the levels of each line.
+    """
+    dflinelist = get_linelist_pldf(modelpath)
+    if atomic_numbers is not None:
+        dflinelist = dflinelist.filter(pl.col("atomic_number").is_in(atomic_numbers))
+    if ion_stages is not None:
+        dflinelist = dflinelist.filter(pl.col("ion_stage").is_in(ion_stages))
+    if linefilter is not None:
+        dflinelist = dflinelist.filter(linefilter)
+    return dflinelist.select("lineindex").collect().get_column("lineindex")

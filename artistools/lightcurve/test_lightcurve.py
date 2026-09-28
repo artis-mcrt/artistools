@@ -76,6 +76,37 @@ def test_lightcurve_plot_frompackets(mockplot: mock.MagicMock, benchmark: Benchm
     assert np.isclose(arr_lum.std(), 3.614004402353378e38, rtol=1e-4)
 
 
+def test_lightcurve_of_a_virtual_observer_holds_the_energy_of_its_packets() -> None:
+    """The light curve of a virtual observer bins the arrival time and the energy of that observer, times 4 pi.
+
+    Each observer and each opacity choice has its own columns. The columns of a different observer, or no factor of
+    4 pi, give a different energy.
+    """
+    modelpath = at.get_path("testdata") / "vpktcontrib"
+    nprocs_read, dfvpackets = at.packets.get_virtual_packets(modelpath)
+    # observer 1 with opacity choice 1
+    dirbin = at.misc.get_vpkt_config(modelpath)["nspectraperobs"] + 1
+
+    dflightcurve = at.lightcurve.get_from_packets(
+        modelpath, directionbins=[dirbin], directionbins_are_vpkt_observers=True
+    )[dirbin].collect()
+
+    dftimesteps = at.misc.get_timesteps(modelpath).collect()
+    assert dflightcurve["timestep"].to_list() == dftimesteps["timestep"].to_list()
+    dfinrange = dfvpackets.filter(
+        pl.col("dir1_t_arrive_d").is_between(dftimesteps["tstart_days"].min(), dftimesteps["tend_days"].max())
+    ).collect()
+    assert dflightcurve["packetcount"].sum() == dfinrange.height > 0
+    energy = (
+        np.sum(dflightcurve["luminosity_Lsun"].to_numpy() * dftimesteps["twidth_days"].to_numpy())
+        * at.constants.day_to_s
+        * Lsun_to_erg_per_s
+        * nprocs_read
+        / (4 * np.pi)
+    )
+    assert np.isclose(energy, dfinrange["dir1_e_rf_1"].to_numpy().sum(dtype=np.float64), rtol=1e-10, atol=0.0)
+
+
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.MagicMock) -> None:
     """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""

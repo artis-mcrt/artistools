@@ -13,7 +13,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
-from artistools.atomic import get_linelist_pldf
+from artistools.atomic import get_lineindices
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.estimators import scan_estimators
@@ -196,17 +196,15 @@ def bin_packets_by_direction(
         aggs.append(energyweightedstd("TR").alias("temperature_sigma"))
 
     if atomic_number is not None or ion_stage is not None:
-        dflinelist = get_linelist_pldf(modelpath)
         elem_cond = f"Z={atomic_number} {get_elsymbol(atomic_number)}" if atomic_number is not None else ""
         ion_stage_cond = f"ion stage {ion_stage}" if ion_stage is not None else ""
         condition = f"last emitted/absorbed by {elem_cond} {ion_stage_cond}"
         print(f"Including only packets {condition}")
-        if atomic_number is not None:
-            dflinelist = dflinelist.filter(pl.col("atomic_number") == atomic_number)
-        if ion_stage is not None:
-            dflinelist = dflinelist.filter(pl.col("ion_stage") == ion_stage)
-
-        selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
+        selected_emtypes = get_lineindices(
+            modelpath,
+            [atomic_number] if atomic_number is not None else None,
+            [ion_stage] if ion_stage is not None else None,
+        )
         dfpackets = dfpackets.filter(
             pl.col("emissiontype").is_in(selected_emtypes) | pl.col("absorption_type").is_in(selected_emtypes)
         )

@@ -209,7 +209,8 @@ def plot_opacities(
         dfmovingaverages = df_filter_minmax_bracketed(
             dfmovingaverages, "lambda_angstroms_bin_mid", args.xmin, args.xmax
         ).collect()
-    fig, ax, ratioaxis = make_frame_figure_with_residuals(args)
+    # the frame takes one column of the page, as the plots of the other ejecta properties do, e.g. plotdensity
+    fig, ax, ratioaxis = make_frame_figure_with_residuals(args, fullwidth=False)
 
     # a NaN after each bin breaks the line, thus each series stays one line for the legend and for the y scale
     binbreaks = np.full(dfopacities.height, np.nan)
@@ -437,7 +438,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_yscale(parser, default="log")
     addarg_notitle(parser)
     addarg_nolegend(parser)
-    addarg_figscale(parser)
+    addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
     addarg_output(parser, kind="file", defaultname="plotopacity.pdf", helptext="Path/filename for PDF file")
 
@@ -469,9 +470,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
     )
 
+    # the frame takes one column of the page, thus the cells take a second line of the title
     title = (
-        f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep}),"
-        f" {get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperature)}"
+        f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep})\n"
+        f"{get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperature)}"
     )
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None

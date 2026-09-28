@@ -390,6 +390,12 @@ def plot_deposition_thermalisation(
             )
 
 
+def get_time_range_days(dflightcurve: pl.DataFrame) -> tuple[float | None, float | None]:
+    """Return the first and the last time of a light curve in days, or None for a light curve with no rows."""
+    tmin, tmax = dflightcurve.select(pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max")).row(0)
+    return tmin, tmax
+
+
 def plot_artis_lightcurve(
     modelpath: str | Path,
     axis: mplax.Axes,
@@ -506,11 +512,7 @@ def plot_artis_lightcurve(
             strict=True,
         )
     )
-    lctimemin, lctimemax = (
-        lcdataframes[dirbins[0]]
-        .select(pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max"))
-        .row(0)
-    )
+    lctimemin, lctimemax = get_time_range_days(lcdataframes[dirbins[0]])
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
@@ -565,9 +567,7 @@ def plot_artis_lightcurve(
         if pellet_nucname is not None:
             plotkwargs["color"] = None
 
-        lcdata_tmin, lcdata_tmax = lcdata.select(
-            pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max")
-        ).row(0)
+        lcdata_tmin, lcdata_tmax = get_time_range_days(lcdata)
         lcdata = lcdata.with_columns(time_s=pl.col("time_days") * day_to_s)
         katz_integral = np.trapezoid(
             (
@@ -611,9 +611,7 @@ def plot_artis_lightcurve(
             )
         )
 
-        lcdata_valid_tmin, lcdata_valid_tmax = lcdata_valid.select(
-            pl.col("time_days").min(), pl.col("time_days").max().alias("time_days_max")
-        ).row(0)
+        lcdata_valid_tmin, lcdata_valid_tmax = get_time_range_days(lcdata_valid)
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
             print_detail(
                 f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"

@@ -11,7 +11,7 @@ import polars as pl
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
-from artistools.atomic import get_linelist_pldf
+from artistools.atomic import get_lineindices
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
@@ -26,6 +26,8 @@ from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_packets
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
+from artistools.rustext import get_bin_indices
+from artistools.rustext import sum_weights_in_bins
 
 
 def get_required_packets(
@@ -45,23 +47,17 @@ def get_required_packets(
         # that no line absorbed has a negative absorption_type
         return nprocs_read, dfpackets.filter(pl.col("absorption_type") >= 0)
 
-    linelist_lazyframe = get_linelist_pldf(modelpath)
     if srII_triplet:
-        linelist_lazyframe = linelist_lazyframe.filter(
-            (pl.col("atomic_number") == 38)
-            & (pl.col("ion_stage") == 2)
-            & (
-                ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
-                | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
-                | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
-            )
+        lineindices = get_lineindices(
+            modelpath,
+            [38],
+            [2],
+            linefilter=((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
+            | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
+            | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4)),
         )
     else:
-        if Z_list is not None:
-            linelist_lazyframe = linelist_lazyframe.filter(pl.col("atomic_number").is_in(Z_list))
-        if ion_stage_list is not None:
-            linelist_lazyframe = linelist_lazyframe.filter(pl.col("ion_stage").is_in(ion_stage_list))
-    lineindices = linelist_lazyframe.select("lineindex").collect().get_column("lineindex")
+        lineindices = get_lineindices(modelpath, Z_list, ion_stage_list)
 
     return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
 
@@ -174,13 +170,22 @@ def packets_2d_hist_bin_and_ejecta_vel(
     )
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
-    weights = dfpackets_selected["e_rf"] / dfpackets_selected["hollow_cyl_vol_em"]
-    # derive the emission velocity for each packet from the emission position
-    hist2D, xedges, yedges = np.histogram2d(
-        dfpackets_selected["beta_r_cyl_em"],
-        dfpackets_selected["beta_z_em"],
-        bins=[np.linspace(0, 0.5, num=26), np.linspace(-0.5, 0.5, num=51)],
-        weights=weights,
+    # the kernel gives the bins of np.histogram2d. np.histogram2d took 0.13 s for 2.5 million packets at 2 days of
+    # a 3D kilonova run. The kernel made the command 0.11 s faster
+    xedges = np.linspace(0, 0.5, num=26)
+    yedges = np.linspace(-0.5, 0.5, num=51)
+    xbinindex = get_bin_indices(dfpackets_selected.select("beta_r_cyl_em"), "beta_r_cyl_em", xedges.tolist())[
+        "binindex"
+    ]
+    dfinxrange = dfpackets_selected.select(
+        pl.col("beta_z_em").cast(pl.Float64),
+        weight=(pl.col("e_rf") / pl.col("hollow_cyl_vol_em")).cast(pl.Float64),
+        xbinindex=xbinindex,
+    ).filter(pl.col("xbinindex") >= 0)
+    hist2D = (
+        sum_weights_in_bins(dfinxrange, "beta_z_em", "weight", yedges.tolist(), "xbinindex", len(xedges) - 1)["sum"]
+        .to_numpy()
+        .reshape(len(xedges) - 1, len(yedges) - 1)
     )
     heatmap = hist2D / Delta_t_secs / nprocs_read * inverse_solidangle_fraction
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
