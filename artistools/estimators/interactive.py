@@ -1099,6 +1099,9 @@ class EstimatorViewer:
                 make_room_for_title(fig)
             if (darkcolours := self.darkcolours) is not None:
                 apply_dark_colours(fig, *darkcolours)
+            # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
+            # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
+            fig.draw_without_rendering()
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
             plots.append(
                 RenderedPlot(
