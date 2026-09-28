@@ -274,6 +274,17 @@ def get_packets_reason(tokens: "Sequence[str]") -> str | None:
     return reasons[0] if reasons else None
 
 
+def get_thermal_emission_reason(values: "ControlValues") -> str | None:
+    """Return why the choice of the last thermal emission does not change the plot, or None if it changes the plot."""
+    if values.gamma:
+        return "A gamma packet has no thermal emission"
+    if (groupby := values.groupby or get_default_groupby(gamma=values.gamma)) in {"nuc", "nucmass"}:
+        return f"-groupby {groupby} takes the nuclide of the pellet, and not an emission"
+    if not values.showemission:
+        return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
+    return None
+
+
 def get_default_groupby(*, gamma: bool) -> str:
     """Return the -groupby that plotspectra takes for an emission plot when the command gives none."""
     return "nuc" if gamma else "ion"
@@ -294,6 +305,7 @@ def set_packet_type(
         values,
         gamma=gamma,
         datasource="packets" if gamma and gammareader == "packets" else values.datasource,
+        usethermalemissiontype=values.usethermalemissiontype and not gamma,
         xunit=xunit,
         xmin=format(xmin, ".10g"),
         xmax=format(xmax, ".10g"),
@@ -1217,13 +1229,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(emissiongrid, 0, [emissioncheck, absorptioncheck, nostackcheck])
     hidenetcheck = QtWidgets.QCheckBox("--hidenetspectrum")
     hideothercheck = QtWidgets.QCheckBox("--hideother")
-    thermalcheck = QtWidgets.QCheckBox("--use_thermalemissiontype")
-    for widget, dest in (
-        (hidenetcheck, "hidenetspectrum"),
-        (hideothercheck, "hideother"),
-        (thermalcheck, "use_thermalemissiontype"),
-    ):
+    for widget, dest in ((hidenetcheck, "hidenetspectrum"), (hideothercheck, "hideother")):
         widget.setToolTip(helptexts.get(dest, ""))
+    # the index of an item: 0 for the last emission, and 1 for the last thermal emission (--use_thermalemissiontype)
+    thermalbox = QtWidgets.QComboBox()
+    thermaltooltip = f"--use_thermalemissiontype: {helptexts.get('use_thermalemissiontype', '')}"
+    for text, tooltip in (
+        ("Last emission", "The last emission or scattering of each packet"),
+        ("Last thermal emission", thermaltooltip),
+    ):
+        thermalbox.addItem(text)
+        thermalbox.setItemData(thermalbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    thermalbox.setToolTip("The emission of each packet that gives its emission series and its shell")
+    thermalmodel = thermalbox.model()
+    assert isinstance(thermalmodel, QtGui.QStandardItemModel)
+    thermalitem = thermalmodel.item(1)
     # these rows apply only to an emission or absorption plot, thus they show only for such a plot
     emissionoptions = QtWidgets.QWidget()
     emissionoptionslayout = QtWidgets.QVBoxLayout(emissionoptions)
@@ -1232,7 +1252,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     emissionoptionslayout.addLayout(
         make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
     )
-    emissionoptionslayout.addLayout(make_row_layout([hidenetcheck, hideothercheck, thermalcheck]))
+    emissionoptionslayout.addLayout(
+        make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("--use_thermalemissiontype"), thermalbox])
+    )
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
     _, bingrid = add_section(panellayout, "Bins of the packet spectrum")
@@ -1378,7 +1400,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         normalisedcheck,
         hidenetcheck,
         hideothercheck,
-        thermalcheck,
+        thermalbox,
         directionkindbox,
         usedegreescheck,
     ]
@@ -1665,7 +1687,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         normalisedcheck.setChecked(values.normalised)
         hidenetcheck.setChecked(values.hidenetspectrum)
         hideothercheck.setChecked(values.hideother)
-        thermalcheck.setChecked(values.usethermalemissiontype)
+        thermalbox.setCurrentIndex(1 if values.usethermalemissiontype else 0)
+        # the current choice stays available, thus the user can switch back from it
+        thermalreason = get_thermal_emission_reason(values)
+        if thermalitem.isEnabled() != (thermalavailable := thermalreason is None or values.usethermalemissiontype):
+            thermalitem.setEnabled(thermalavailable)
+        thermalitem.setToolTip(thermaltooltip if thermalreason is None else thermalreason)
         directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
         usedegreescheck.setChecked(values.usedegrees)
         usedegreescheck.setEnabled(bool(values.directionkind))
@@ -1970,7 +1997,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             datasource=datasourcebox.currentData(),
             hidenetspectrum=hidenetcheck.isChecked(),
             hideother=hideothercheck.isChecked(),
-            usethermalemissiontype=thermalcheck.isChecked(),
+            usethermalemissiontype=thermalbox.currentIndex() == 1,
         )
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
@@ -2256,8 +2283,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     binmodebox.currentIndexChanged.connect(on_binmode)
     binwidthbox.valueChanged.connect(on_emission_options)
     datasourcebox.currentIndexChanged.connect(on_emission_options)
-    for checkbox in (hidenetcheck, hideothercheck, thermalcheck):
+    for checkbox in (hidenetcheck, hideothercheck):
         checkbox.toggled.connect(on_emission_options)
+    thermalbox.currentIndexChanged.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)
     normalisedcheck.toggled.connect(on_axes)
     directionkindbox.currentIndexChanged.connect(on_direction)
