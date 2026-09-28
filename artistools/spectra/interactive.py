@@ -1173,14 +1173,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, spectragrid = add_section(panellayout, "Spectra")
     spectralist = QtWidgets.QListWidget()
-    # the ✕ of each row removes its spectrum, thus the list has no selection
-    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+    # a drag of a row moves its spectrum, and a drag needs the selection of the row
+    spectralist.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+    spectralist.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+    spectralist.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
     # the widget of each row shows the text beside its ✕, thus the list draws no text of its own
     spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     spectralist.setToolTip(
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. The command gives a file from the reference data of artistools by"
-        " its name alone."
+        " -label and the style of each series. Drag a row to change the order. The command gives a file from the"
+        " reference data of artistools by its name alone."
     )
     addmodelbutton = QtWidgets.QPushButton("Add Model…")
     addmodelbutton.setToolTip("Add the folder of an ARTIS run")
@@ -1881,6 +1883,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         QtCore.QTimer.singleShot(0, referenceedit.clear)
         add_reference_name(name)
 
+    def on_spectra_moved() -> None:
+        """Apply the order of the rows after a drag in the list of spectra."""
+        order = [spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())]
+        if order != list(viewer.values.spectra):
+            apply(dc.replace(viewer.values, spectra=tuple(order)))
+
     def on_remove_spectrum(path: str) -> None:
         spectra = tuple(other for other in viewer.values.spectra if other != path)
         # the time controls read the timesteps of a run, thus the plot needs an ARTIS model
@@ -2046,6 +2054,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionkindbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
     addmodelbutton.clicked.connect(on_add_model)
+    # the list moves the row at the end of the drop, thus the new order applies after the drop
+    spectralist.model().rowsMoved.connect(lambda: QtCore.QTimer.singleShot(0, window, on_spectra_moved))
     openreferencebutton.clicked.connect(on_open_reference)
     referencecompleter.activated.connect(on_complete_reference)
     referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
