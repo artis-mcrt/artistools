@@ -12,8 +12,10 @@ import polars as pl
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
+from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
+from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_expansion_opacities
 from artistools.ejectaopacity import get_expopac_grid
 from artistools.ejectaopacity import get_lambda_bin_edges
@@ -320,20 +322,20 @@ def select_velocity_range(
     return dfselected
 
 
-def get_average_cell(dfestimators: pl.DataFrame) -> pl.DataFrame:
+def get_average_cell(dfestimators: pl.DataFrame, temperaturecolumn: str) -> pl.DataFrame:
     """Return one cell with the mass-weighted mean composition, temperature, and density of the cells, and log them.
 
     The opacity per gram depends on the ion densities per gram, thus the mean takes each n_ion / rho. The expansion
-    opacity also depends on the density, thus the cell takes the mean density. A cell with no temperature does not
-    count in the mean temperature.
+    opacity also depends on the density, thus the cell takes the mean density. A cell with no T_exc does not count in
+    the mean T_exc. temperaturecolumn is the estimator that gives T_exc, which the log names.
     """
     mass = pl.col("mass_g")
-    hastemperature = pl.col("Te") > 0.0
+    hastemperature = pl.col("T_exc") > 0.0
     meanrho = (mass * pl.col("rho")).sum() / mass.sum()
     dfcell = dfestimators.select(
         pl.col("modelgridindex").first(),
         pl.col("timestep").first(),
-        (mass * pl.col("Te")).filter(hastemperature).sum().truediv(mass.filter(hastemperature).sum()).alias("Te"),
+        (mass * pl.col("T_exc")).filter(hastemperature).sum().truediv(mass.filter(hastemperature).sum()).alias("T_exc"),
         meanrho.alias("rho"),
         mass.sum(),
         *(
@@ -342,13 +344,14 @@ def get_average_cell(dfestimators: pl.DataFrame) -> pl.DataFrame:
             if column.startswith("nnion_")
         ),
     )
-    temperature = dfcell["Te"].item()
+    temperature = dfcell["T_exc"].item()
     if temperature is None or not math.isfinite(temperature):
-        msg = "No cell has a temperature, thus the mean cell has no temperature"
+        msg = f"No cell has a value of {temperaturecolumn}, thus the mean cell has no temperature"
         raise ValueError(msg)
     print(
-        f"  one cell of the mass-weighted mean of {dfestimators.height} cells: Te = {temperature:.0f} K,"
-        f" rho = {dfcell['rho'].item():.3g} g/cm^3"
+        f"  --averagecell: one cell with the mass-weighted means of {dfestimators.height} cells. These are the"
+        " ion densities per gram, the density, and the linear mean of T_exc over the cells with T_exc > 0:"
+        f" {temperaturecolumn} = {temperature:.0f} K, rho = {dfcell['rho'].item():.3g} g/cm^3"
     )
     return dfcell
 
@@ -357,19 +360,19 @@ def get_cells_text(
     modelgridindex: int | None,
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
-    averagetemperature: float | None = None,
+    averagetemperaturetext: str | None = None,
 ) -> str:
     """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user.
 
-    averagetemperature is the temperature of the mean cell of --averagecell.
+    averagetemperaturetext gives T_exc of the mean cell of --averagecell, e.g. "TJ = 5000 K".
     """
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
     boundstext = get_velocity_bounds_text(vmin, vmax)
     cellstext = f"the cells with {boundstext}" if boundstext else "all cells"
-    if averagetemperature is None:
+    if averagetemperaturetext is None:
         return f"mass-weighted mean of {cellstext}"
-    return f"mean composition of {cellstext} at {averagetemperature:.0f} K"
+    return f"mean composition of {cellstext} at {averagetemperaturetext}"
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -426,7 +429,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--averagecell",
         action="store_true",
         help=(
-            "Replace the cells with one cell of their mass-weighted mean composition, temperature, and density. The"
+            "Replace the cells with one cell of their mass-weighted mean composition, T_exc, and density. The"
             " calculation then takes the time of one cell"
         ),
     )
@@ -435,6 +438,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Draw a line at the mass-weighted Planck mean of the expansion opacity over the wavelength range",
     )
+    addarg_excitationtemperature(parser)
     addarg_yscale(parser, default="log")
     addarg_notitle(parser)
     addarg_nolegend(parser)
@@ -455,13 +459,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath, args.xmin, args.xmax, args.deltalambda, args.movingaveragewidth
     )
 
+    temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
     dfestimators = select_velocity_range(
-        get_cell_estimators(args.modelpath, timestep, modelgridindex), args.vmin, args.vmax
+        get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn), args.vmin, args.vmax
     )
-    averagetemperature = None
+    averagetemperaturetext = None
     if args.averagecell and modelgridindex is None:
-        dfestimators = get_average_cell(dfestimators)
-        averagetemperature = dfestimators["Te"].item()
+        dfestimators = get_average_cell(dfestimators, temperaturecolumn)
+        averagetemperaturetext = f"{temperaturecolumn} = {dfestimators['T_exc'].item():.0f} K"
+    elif dfestimators.height > 1:
+        print(f"  The curves are the mass-weighted mean of the opacities of {dfestimators.height} cells")
+    if args.showplanckmean:
+        print(
+            f"  The Planck mean of each cell weights the bins from {args.xmin:g} to {args.xmax:g} Angstroms with the"
+            " Planck function at T_exc. The line gives the mass-weighted mean of these values"
+        )
 
     dfopacities, planckmean = get_massweighted_opacities(
         adata=get_opacity_atomic_data(args.modelpath),
@@ -474,7 +486,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the frame takes one column of the page, thus the cells take a second line of the title
     title = (
         f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep})\n"
-        f"{get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperature)}"
+        f"{get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperaturetext)}"
     )
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
     dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None

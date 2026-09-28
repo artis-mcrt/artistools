@@ -161,7 +161,8 @@ fn sum_cell_group(
 /// - the time;
 /// - the density.
 ///
-/// The rows are in the order [cell][bin]. The level populations are the LTE populations at the cell temperature.
+/// The rows are in the order [cell][bin]. The level populations are the LTE populations at the excitation temperature
+/// `T_exc` of each cell.
 /// `lower` and `upper` give the row of each level in `dflevels`.
 ///
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.
@@ -207,7 +208,7 @@ pub fn sum_binned_line_opacities(
                 polars_bail!(ComputeError: "a line names a bin or a level that does not exist");
             }
 
-            let te = f64_column(&dfcells, "Te")?;
+            let te = f64_column(&dfcells, "T_exc")?;
             let nnion: Vec<&[f64]> = nnioncolumns
                 .iter()
                 .map(|name| f64_column(&dfcells, name))
