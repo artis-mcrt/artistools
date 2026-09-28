@@ -86,14 +86,13 @@ from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import FLAG_LABELS
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
-from artistools.viewertools import get_bool_setting
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
-from artistools.viewertools import get_flag_label
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
@@ -2604,11 +2603,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 # a popup of a completer gives the focus back when it hides, thus the control takes it after the popup
                 QtCore.QTimer.singleShot(0, target, target.setFocus)
 
-    showflags = get_bool_setting("flaglabels", default=False)
-    flaglabels = {
-        flag: get_flag_label(flag, showflags=showflags) for flag in ("-xmin", "-xmax", "--markers", "--colorbyion")
-    }
-
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
@@ -2702,8 +2696,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
-        xminlabel.setText(f"{flaglabels['-xmin']}{xunit}")
-        xmaxlabel.setText(f"{flaglabels['-xmax']}{xunit}")
+        xminlabel.setText(f"{FLAG_LABELS['-xmin']}{xunit}")
+        xmaxlabel.setText(f"{FLAG_LABELS['-xmax']}{xunit}")
         axisisbeta = viewer.xlimitscale != 1.0
         unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
@@ -2719,10 +2713,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             xbinsedit.setPlaceholderText("auto: no bins" if viewer.plotxbins is None else f"auto: {viewer.plotxbins}")
         markerscheck.setChecked(values.markers)
         markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
-        markerscheck.setText(flaglabels["--markers"] + markersnote)
+        markerscheck.setText(FLAG_LABELS["--markers"] + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
         colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
-        colorbyioncheck.setText(flaglabels["--colorbyion"] + colorbyionnote)
+        colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
         skippeddefaultslabel.setText(

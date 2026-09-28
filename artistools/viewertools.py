@@ -2804,12 +2804,6 @@ def show_settings_window() -> None:
     reopencheck.toggled.connect(partial(settings.setValue, "reopenwindows"))
     form.addRow(reopencheck)
 
-    flagcheck = QtWidgets.QCheckBox("Label the controls with the flags of the command, e.g. --showemission")
-    flagcheck.setToolTip("A new window shows the change. The tooltip of a control always gives its flag.")
-    flagcheck.setChecked(get_bool_setting("flaglabels", default=False))
-    flagcheck.toggled.connect(partial(settings.setValue, "flaglabels"))
-    form.addRow(flagcheck)
-
     for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
         box = QtWidgets.QDoubleSpinBox()
         # the box shows the text "Default", which is wider than a number
@@ -3878,8 +3872,7 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
     return parts
 
 
-# the readable text of the label or the checkbox of each flag. The tooltip then gives the flag, and the setting
-# "flaglabels" shows the flags in place of these texts
+# the readable text of the label or the checkbox of each flag. The tooltip then gives the flag
 FLAG_LABELS: t.Final = MappingProxyType({
     "--colorbyion": "Colour by ion",
     "--frompackets": "Data source",
@@ -3916,15 +3909,6 @@ FLAG_LABELS: t.Final = MappingProxyType({
 })
 
 
-def get_flag_label(flag: str, *, showflags: bool) -> str:
-    """Return the text of the control of a flag: a readable text, or the flag if showflags is True.
-
-    The setting "flaglabels" gives showflags. A new window shows a change of the setting, thus a window reads the
-    setting one time.
-    """
-    return flag if showflags else FLAG_LABELS.get(flag, flag)
-
-
 def show_flag_labels(window: "QtWidgets.QWidget") -> None:
     """Give each label and each checkbox of a flag its readable text, and add the flag to its tooltip."""
     from PySide6 import QtWidgets
@@ -3933,10 +3917,9 @@ def show_flag_labels(window: "QtWidgets.QWidget") -> None:
         *window.findChildren(QtWidgets.QLabel),
         *window.findChildren(QtWidgets.QCheckBox),
     ]
-    showflags = get_bool_setting("flaglabels", default=False)
     for widget in widgets:
         flag = widget.text()
-        if (text := get_flag_label(flag, showflags=showflags)) != flag:
+        if (text := FLAG_LABELS.get(flag, flag)) != flag:
             widget.setText(text)
             tooltip = widget.toolTip()
             # a label whose text changes later, e.g. -xmin with a unit, already gives the flag in its tooltip
