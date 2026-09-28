@@ -269,13 +269,13 @@ def get_cell_estimators(modelpath: Path | str, timestep: int, modelgridindex: in
         cellstr = "any cell" if modelgridindex is None else f"cell {modelgridindex}"
         msg = f"The estimators hold no values for {cellstr} at timestep {timestep}. An empty cell has no estimators"
         if modelgridindex is not None:
-            msg += f". {get_next_nonempty_cell_text(modelpath, timestep, modelgridindex)}"
+            msg += f". {get_next_cell_with_estimators_text(modelpath, timestep, modelgridindex)}"
         raise ValueError(msg)
 
     return dfestimators
 
 
-def get_next_nonempty_cell_text(modelpath: Path | str, timestep: int, modelgridindex: int) -> str:
+def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, modelgridindex: int) -> str:
     """Return a sentence that names the first cell after modelgridindex that has estimators at the timestep."""
     nextcell = (
         scan_estimators(modelpath, timestep=timestep)

@@ -1744,10 +1744,16 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
     The command stopped with "cannot concat empty list" before.
     """
     lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
-    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).collect()
-    emptycell = dfmodel.filter(pl.col("rho") == 0.0)["modelgridindex"].min()
-    assert isinstance(emptycell, int)
-    nextcell = dfmodel.filter(pl.col("rho") > 0.0, pl.col("modelgridindex") > emptycell)["modelgridindex"].min()
+    emptycell = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("rho") == 0.0)
+        .select(pl.col("modelgridindex").min())
+        .collect()
+        .item()
+    )
+    estimatorcells = at.scan_estimators(modelpath_classic_3d, timestep=5).select("modelgridindex").collect()
+    nextcell = estimatorcells.filter(pl.col("modelgridindex") > emptycell)["modelgridindex"].min()
     with pytest.raises(ValueError, match=rf"hold no values for cell {emptycell} .* is cell {nextcell}$"):
         at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell)
 
