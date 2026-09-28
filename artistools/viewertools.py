@@ -3131,8 +3131,10 @@ def add_figure_section(
     dpibox.setKeyboardTracking(False)
     dpibox.setToolTip("The resolution of a PNG file (-dpi)")
     shortcuts = get_menu_shortcut_texts()
-    copybutton = QtWidgets.QPushButton("Copy Figure")
+    copybutton = QtWidgets.QPushButton("Copy")
     copybutton.setToolTip(f"Put the figure on the clipboard ({shortcuts['Copy Figure']})")
+    # the Figure section tells a sighted user what the button copies, and a screen reader reads the whole name
+    copybutton.setAccessibleName("Copy Figure")
     savebutton = QtWidgets.QPushButton("Save…")
     savebutton.setToolTip(f"Save the figure in a file ({shortcuts['Save Figure…']})")
 
@@ -3875,7 +3877,7 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 # the readable text of the label or the checkbox of each flag. The tooltip then gives the flag
 FLAG_LABELS: t.Final = MappingProxyType({
     "--colorbyion": "Colour by ion",
-    "--frompackets": "Data source",
+    "--frompackets": "ARTIS data source",
     "--hidenetspectrum": "Hide net spectrum",
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
