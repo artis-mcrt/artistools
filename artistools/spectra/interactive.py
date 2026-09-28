@@ -1184,12 +1184,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     _, axesgrid = add_section(panellayout, "Axes")
     xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
-    yscalebox.addItems(viewer.yscalechoices)
+    # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
+    for yscale in viewer.yscalechoices:
+        yscalebox.addItem(yscale.capitalize(), yscale)
     logscalexcheck = QtWidgets.QCheckBox("--logscalex")
-    fixycheck = QtWidgets.QCheckBox("Fix the y axis")
-    fixycheck.setToolTip(
-        "Keep the y limits of the plot when the time or a different option changes. The command gives the limits"
-        " with -ymin and -ymax."
+    setyrangebutton = QtWidgets.QPushButton("Set current y range")
+    setyrangebutton.setToolTip(
+        "Set y min and y max to the current range of the y axis. The axis then stays the same when the time or a"
+        " different option changes. Clear a field to get the automatic limit at that end again."
     )
     yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     for widget, dest in (
@@ -1202,9 +1204,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         widget.setToolTip(helptexts.get(dest, ""))
     for edit in (yminedit, ymaxedit):
         edit.setFixedWidth(110)
+        edit.setPlaceholderText("auto")
     add_row(axesgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, logscalexcheck])
     # the limits of the y axis go on the row below the y axis boxes
-    add_row(axesgrid, 2, [fixycheck, QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit])
+    add_row(axesgrid, 2, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
     yvariablebox = QtWidgets.QComboBox()
     yvariablebox.addItems(viewer.yvariablechoices)
     normalisedcheck = QtWidgets.QCheckBox("--normalised")
@@ -1215,11 +1218,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     gammatooltip = f"--gamma: {helptexts.get('gamma', '')}"
     for text, tooltip in (
         ("UVOIR", "The ultraviolet, optical, and infrared (UVOIR) spectrum of the radiation packets (r-packets)"),
-        ("gamma-rays", gammatooltip),
+        ("\N{GREEK SMALL LETTER GAMMA}-rays", gammatooltip),
     ):
         packetbox.addItem(text)
         packetbox.setItemData(packetbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    packetbox.setToolTip("The spectrum of the r-packets (UVOIR), or of the gamma packets (gamma-rays, --gamma)")
+    packetbox.setToolTip(
+        "The spectrum of the r-packets (UVOIR), or of the gamma packets (\N{GREEK SMALL LETTER GAMMA}-rays, --gamma)"
+    )
     packetmodel = packetbox.model()
     assert isinstance(packetmodel, QtGui.QStandardItemModel)
     gammaitem = packetmodel.item(1)
@@ -1388,7 +1393,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xunitbox,
         yscalebox,
         logscalexcheck,
-        fixycheck,
         emissioncheck,
         absorptioncheck,
         groupbybox,
@@ -1660,14 +1664,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
         xunitbox.setCurrentText(values.xunit)
-        yscalebox.setCurrentText(values.yscale)
+        yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
         logscalexcheck.setChecked(values.logscalex)
-        isyfixed = bool(values.ymin or values.ymax)
-        fixycheck.setChecked(isyfixed)
         set_edit_text(yminedit, values.ymin)
         set_edit_text(ymaxedit, values.ymax)
-        for edit in (yminedit, ymaxedit):
-            edit.setEnabled(isyfixed)
         emissioncheck.setChecked(values.showemission)
         absorptioncheck.setChecked(values.showabsorption)
         groupbybox.setCurrentText(values.groupby or get_default_groupby(gamma=values.gamma))
@@ -1724,6 +1724,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def after_draw(message: str | None) -> None:
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
+        # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
+        if message is None and viewer.values.yscale == "auto" and plot_shows_values():
+            yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axes[0].get_yscale()})")
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
         # each change starts the timer again, thus the full plot follows after the last change
@@ -1936,10 +1939,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g"))
         apply(values)
 
-    def on_fixy(checked: bool) -> None:
-        if not checked:
-            apply(dc.replace(viewer.values, ymin="", ymax=""))
-            return
+    def on_set_y_range() -> None:
         if not plot_shows_values():
             show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
             return
@@ -1950,16 +1950,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_yedit() -> None:
         yminedit.setModified(False)
         ymaxedit.setModified(False)
-        try:
-            low, high = float(yminedit.text()), float(ymaxedit.text())
-        except ValueError:
-            show_error("Give two numbers for -ymin and -ymax")
-            return
-        if not low < high:
+        # an empty field gives the automatic limit at that end of the y axis
+        limits: list[str] = []
+        for edit, flag in ((yminedit, "-ymin"), (ymaxedit, "-ymax")):
+            text = edit.text().strip()
+            try:
+                limits.append(format(float(text), ".10g") if text else "")
+            except ValueError:
+                show_error(f"Give a number for {flag}, or clear the field for the automatic limit")
+                return
+        low, high = limits
+        if low and high and not float(low) < float(high):
             show_error("Give a -ymin that is less than -ymax")
             return
-        values = dc.replace(viewer.values, ymin=format(low, ".10g"), ymax=format(high, ".10g"))
-        apply(values)
+        apply(dc.replace(viewer.values, ymin=low, ymax=high))
 
     def on_axes() -> None:
         values = viewer.values
@@ -1967,7 +1971,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values = convert_xunit(values, xunitbox.currentText(), gamma=values.gamma)
         values = dc.replace(
             values,
-            yscale=yscalebox.currentText(),
+            yscale=yscalebox.currentData(),
             logscalex=logscalexcheck.isChecked(),
             yvariable=yvariablebox.currentText(),
             normalised=normalisedcheck.isChecked(),
@@ -2271,9 +2275,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
     xunitbox.currentTextChanged.connect(on_axes)
-    yscalebox.currentTextChanged.connect(on_axes)
+    yscalebox.currentIndexChanged.connect(on_axes)
     logscalexcheck.toggled.connect(on_axes)
-    fixycheck.toggled.connect(on_fixy)
+    setyrangebutton.clicked.connect(on_set_y_range)
     yminedit.editingFinished.connect(on_yedit)
     ymaxedit.editingFinished.connect(on_yedit)
     emissioncheck.toggled.connect(on_emission_options)
