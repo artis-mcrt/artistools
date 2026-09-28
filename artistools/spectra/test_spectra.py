@@ -377,6 +377,27 @@ def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) ->
         assert np.isclose(fractions[label], energy / 15.0, rtol=1e-12, atol=0.0)
 
 
+def test_spectra_emission_text_files_fill_the_plot_range() -> None:
+    """The contributions from emission.out cover the bins of the packets, which reach beyond each edge of the plot.
+
+    The text files gave the bins with a centre inside the range only, thus each series stopped short of the edges,
+    and the plot differed from the plot of the packets.
+    """
+    lambda_min, lambda_max = 4000.0, 6000.0
+    _, _, arraylambda = atspectra.get_flux_contributions(
+        modelpath_classic_3d, timestepmin=10, timestepmax=12, lambda_min=lambda_min, lambda_max=lambda_max
+    )
+    packetedges = atspectra.get_lambda_bin_edges(
+        lambda_min, lambda_max, None, None, None, "angstroms", modelpath_classic_3d
+    )
+    assert arraylambda.min() < lambda_min
+    assert arraylambda.max() > lambda_max
+    # the text files give the centre of each bin, and the packets give the edges of the same bins
+    centres = np.sort(arraylambda)
+    assert len(centres) == len(packetedges) - 1
+    assert np.all((packetedges[:-1] < centres) & (centres < packetedges[1:]))
+
+
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
         get_contributions_classic_3d(groupby="nuc")
@@ -914,7 +935,10 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 
 
 def test_spectra_get_flux_contributions_wavelength_window() -> None:
-    """A wavelength window restricts the spectra and the flux contributions used for ranking."""
+    """A wavelength window restricts the spectra and the flux contributions used for ranking.
+
+    The window holds the bins with a centre inside it and the nearest bin beyond each bound, as the packets do.
+    """
     timestepmin = 40
     timestepmax = 80
     lambda_min = 3500.0
@@ -933,7 +957,9 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
         lambda_max=lambda_max,
     )
 
-    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    below = arraylambda_full[arraylambda_full <= lambda_min].max()
+    above = arraylambda_full[arraylambda_full >= lambda_max].min()
+    nu_select = (arraylambda_full >= below) & (arraylambda_full <= above)
     assert np.array_equal(arraylambda_window, arraylambda_full[nu_select])
     assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12, atol=0.0)
 
@@ -1566,19 +1592,23 @@ def test_plotspectra_resolves_both_bounds_of_a_one_sided_time_range(tmp_path: Pa
     assert "None" not in pdfnames[0]
 
 
-def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -> None:
-    """An x range that holds no wavelength bin must stop with a message, not with an error in the flux sums."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath,
-            outputfile=tmp_path,
-            timedays=300,
-            emissionabsorption=True,
-            use_thermalemissiontype=True,
-            xmin=5000.0,
-            xmax=5000.5,
-        )
+def test_plotspectra_emission_draws_the_bins_around_a_narrow_x_range(tmp_path: Path) -> None:
+    """An x range that holds no centre of a bin draws the bin on each side of it, as a plot of the packets does.
+
+    The text files gave no bin for such a range, and the command stopped.
+    """
+    outputfile = tmp_path / "narrow.pdf"
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=outputfile,
+        timedays=300,
+        emissionabsorption=True,
+        use_thermalemissiontype=True,
+        xmin=5000.0,
+        xmax=5000.5,
+    )
+    assert outputfile.is_file()
 
 
 @mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")

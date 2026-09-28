@@ -1239,14 +1239,27 @@ def get_flux_contributions_cached(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The returned spectra are restricted to lambda_min to lambda_max [Å], so that the flux contributions used for
-    ranking count only the plotted window, matching get_flux_contributions_from_packets.
+    The returned spectra hold the bins with a centre from lambda_min to lambda_max [Å], and the nearest bin beyond
+    each bound. These are the bins of get_lambda_bin_edges, thus a series fills the plotted range, and the ranking of
+    the contributions counts the bins of get_flux_contributions_from_packets. Before, the spectra ended at the last
+    centre inside the range, thus each series stopped short of the edges of the plot.
     """
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu_full = get_nu_grid(modelpath)
     arraylambda_full = constants.c_ang_per_s / arraynu_full
-    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    selectedbins = (
+        df_filter_minmax_bracketed(
+            pl.DataFrame({"binindex": np.arange(len(arraylambda_full)), "lambda": arraylambda_full}),
+            "lambda",
+            lambda_min,
+            lambda_max,
+        )
+        .collect()["binindex"]
+        .to_numpy()
+    )
+    nu_select = np.zeros(len(arraylambda_full), dtype=bool)
+    nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
     if not Path(modelpath, "compositiondata.txt").is_file():
@@ -1418,8 +1431,9 @@ def get_flux_contributions(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The spectra cover lambda_min to lambda_max [Å] only, thus the ranking of the contributions counts the plotted
-    window alone. The cache takes the absolute path, thus a change of the working folder gives the new model.
+    The spectra cover lambda_min to lambda_max [Å], and the nearest bin beyond each bound, as in
+    get_flux_contributions_cached. The cache takes the absolute path, thus a change of the working folder gives the
+    new model.
     """
     return get_flux_contributions_cached(
         resolve_modelpath(modelpath),

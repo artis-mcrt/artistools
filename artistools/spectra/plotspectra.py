@@ -1122,8 +1122,9 @@ def plot_contributions_unstacked(
             if not args.showemission:
                 linecolor = absorptioncomponentplot.get_color()
 
-            # an x range that holds no bin gives None, thus the largest absorption stays where it was
-            this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+            # the drawn line reaches the nearest bin beyond each edge of the x range, thus the maximum reads those
+            # bins too
+            this_max_absorption = df_filter_minmax_bracketed(dfspec, "x", xmin, xmax).collect()["y"].max()
             if isinstance(this_max_absorption, float):
                 max_absorption = max(max_absorption, this_max_absorption)
 
@@ -1181,7 +1182,7 @@ def plot_contributions_stacked(
         max_absorption = (
             pl
             .DataFrame({
-                f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
+                f"y{i}": df_filter_minmax_bracketed(df, "x", xmin, xmax).collect().get_column("y")
                 for i, df in enumerate(dfabsorptionspectra)
             })
             .select(pl.sum_horizontal(pl.all()).max())
@@ -1328,7 +1329,8 @@ def make_emissionabsorption_plot(
 
     dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, args).collect()
 
-    max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+    # a narrow x range can hold no centre of a bin, and the drawn line then runs between the bins beyond its edges
+    max_f_emission_total = df_filter_minmax_bracketed(dfspectotal, "x", xmin, xmax).collect()["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
     max_f_emission_total = float(max_f_emission_total)
 
