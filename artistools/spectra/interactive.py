@@ -1213,20 +1213,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     packetbox = QtWidgets.QComboBox()
     gammatooltip = f"--gamma: {helptexts.get('gamma', '')}"
     for text, tooltip in (
-        ("r-packets", "The UVOIR spectrum of the radiation packets (r-packets)"),
-        ("\N{GREEK SMALL LETTER GAMMA}-packets", gammatooltip),
+        ("UVOIR", "The ultraviolet, optical, and infrared (UVOIR) spectrum of the radiation packets (r-packets)"),
+        ("gamma-rays", gammatooltip),
     ):
         packetbox.addItem(text)
         packetbox.setItemData(packetbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    packetbox.setToolTip("The packets of the spectrum: the r-packets, or the gamma packets (--gamma)")
+    packetbox.setToolTip("The spectrum of the r-packets (UVOIR), or of the gamma packets (gamma-rays, --gamma)")
     packetmodel = packetbox.model()
     assert isinstance(packetmodel, QtGui.QStandardItemModel)
     gammaitem = packetmodel.item(1)
-    add_row(
-        axesgrid,
-        2,
-        [QtWidgets.QLabel("Packets:"), packetbox, QtWidgets.QLabel("-yvariable"), yvariablebox, normalisedcheck],
-    )
+    # the packets select the quantity of the y axis, thus the two boxes share one label
+    add_row(axesgrid, 2, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, normalisedcheck])
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
