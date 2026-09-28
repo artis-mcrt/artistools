@@ -62,6 +62,7 @@ from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_bool_setting
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
+from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -105,13 +106,13 @@ from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
-from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_play_timer
 
@@ -125,6 +126,8 @@ if t.TYPE_CHECKING:
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
+    # the Resolution box of the Figure section gives -dpi
+    "dpi",
     "timestep",
     "timedays",
     "timemin",
@@ -172,8 +175,6 @@ DAYS_DECIMALS: t.Final = 6
 # these options give a different action from one plot of spectra, thus the table of the window does not offer them
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
-    # the Figure section gives the resolution of a PNG file
-    "dpi",
     "timedayslist",
     "multispecplot",
     "makevspecpol",
@@ -229,6 +230,8 @@ class ControlValues:
     # the paths of the ARTIS models and the reference spectra, in the order of the command
     spectra: tuple[str, ...]
     figwidthscale: float
+    # the resolution of a PNG file (-dpi), or None for the default of the command
+    dpi: int | None
     otheroptions: OptionRows
 
 
@@ -604,6 +607,7 @@ class SpectrumViewer:
             fixedionlist=tuple(args.fixedionlist or ()),
             spectra=tuple(startpaths) or DEFAULT_SPECTRA,
             figwidthscale=args.figwidthscale,
+            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
         self.values = self.clamp_time(values) if values.notimeclamp else self.snap(values, *self.get_selection(values))
@@ -744,6 +748,8 @@ class SpectrumViewer:
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
         if values.figwidthscale != 1.0:
             options += ["-figwidthscale", format(values.figwidthscale, "g")]
+        if values.dpi is not None:
+            options += ["-dpi", str(values.dpi)]
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["-fixedionlist", *values.fixedionlist]
@@ -1251,9 +1257,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     spectragrid.addWidget(spectralist, 0, 0, 1, -1)
     spectragrid.addLayout(addrow, 1, 0, 1, -1)
     referencefolder = get_path("artistools_dir") / "data" / "refspectra"
-    figuresection = add_figure_section(
-        window, panellayout, split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1]
-    )
+    defaultdpi: int = viewer.parser.get_default("dpi")
+    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
     _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
@@ -1272,6 +1277,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
+        figuresection.dpibox,
         modesegments,
         packetbox,
         timeslider,
@@ -1566,6 +1572,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if shownspectra != list(values.spectra):
             show_spectra(values.spectra)
         set_option_rows(values.otheroptions)
+        set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
         show_rejections()
@@ -1959,16 +1966,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def get_figure_tokens() -> list[str]:
         """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
-        rows, _ = split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))
-        return viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
+
+    def get_figure_choice() -> tuple[str, int]:
+        """Return the format of the Figure section and the resolution of the command."""
+        return get_figure_format(), viewer.values.dpi or defaultdpi
+
+    def on_resolution(resolution: int) -> None:
+        apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
 
     def on_copy_figure() -> None:
         from artistools.spectra.plotspectra import main as plotspectra_main
 
         plottokens = get_figure_tokens()
-        copy_figure_of_command(
-            queue, statusbar, plotspectra_main, viewer.parser, plottokens, figuresection.get_choice()
-        )
+        copy_figure_of_command(queue, statusbar, plotspectra_main, viewer.parser, plottokens, get_figure_choice())
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
@@ -1979,7 +1990,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         plottokens = get_figure_tokens()
         save_figure_of_command(
-            window, statusbar, plotspectra_main, "plotspectra", plottokens, viewer.parser, figuresection.get_choice()
+            window, statusbar, plotspectra_main, "plotspectra", plottokens, viewer.parser, get_figure_choice()
         )
 
     def on_open_model() -> None:
@@ -2084,6 +2095,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     widthedit.editingFinished.connect(on_timeedit)
     playbutton.toggled.connect(on_play)
     figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.dpibox.valueChanged.connect(on_resolution)
     figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)

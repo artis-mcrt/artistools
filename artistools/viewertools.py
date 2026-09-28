@@ -3013,13 +3013,6 @@ def copy_text(text: str) -> None:
     QtWidgets.QApplication.clipboard().setText(text)
 
 
-def split_dpi_row(rows: OptionRows, defaultdpi: int) -> tuple[OptionRows, int]:
-    """Return the rows without -dpi, and the resolution that -dpi gives, or defaultdpi for rows with no -dpi."""
-    dpivalues = next((values for flag, values in rows if flag == "-dpi"), None)
-    dpi = int(dpivalues[0]) if dpivalues and dpivalues[0].isdecimal() else defaultdpi
-    return tuple(row for row in rows if row[0] != "-dpi"), dpi
-
-
 # the Figure section selects PNG at the start, because each application can paste a PNG image
 DEFAULT_FIGURE_FORMAT: t.Final = "png"
 
@@ -3041,12 +3034,11 @@ def set_figure_format(suffix: str) -> None:
 
 
 class FigureSection(t.NamedTuple):
-    """The buttons of the Figure section, and the function that gives its choice of the format and the resolution."""
+    """The buttons of the Figure section and its Resolution box, which gives the -dpi of the command."""
 
     copybutton: "QtWidgets.QPushButton"
     savebutton: "QtWidgets.QPushButton"
-    get_choice: "Callable[[], tuple[str, int]]"
-    """Return the suffix of the format and the resolution in dots per inch."""
+    dpibox: "QtWidgets.QSpinBox"
 
 
 def add_figure_section(
@@ -3054,9 +3046,9 @@ def add_figure_section(
 ) -> FigureSection:
     """Add the Figure section: the format of a copied or saved figure, its resolution for PNG, and two buttons.
 
-    dpi is the resolution of the command. The Resolution box shows only for a PNG file. A PDF or an SVG file takes
-    the resolution of the command for its raster parts, e.g. a colour image, and its lines and its text have no
-    resolution. The figure has the size of the plot in the window.
+    dpi is the resolution of the command, and the window connects the Resolution box to the -dpi of its values. The
+    box shows only for a PNG file. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour
+    image, and its lines and its text have no resolution. The figure has the size of the plot in the window.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -3097,15 +3089,11 @@ def add_figure_section(
     def on_format(index: int) -> None:
         set_figure_format(str(formatbox.itemData(index)))
 
-    def get_choice() -> tuple[str, int]:
-        suffix = str(formatbox.currentData())
-        return suffix, dpibox.value() if suffix == "png" else dpi
-
     add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, resolutionlabel, dpibox, copybutton, savebutton])
     show_format(get_figure_format())
     formatbox.currentIndexChanged.connect(on_format)
     window.setProperty("figureformathandler", show_format)
-    return FigureSection(copybutton=copybutton, savebutton=savebutton, get_choice=get_choice)
+    return FigureSection(copybutton=copybutton, savebutton=savebutton, dpibox=dpibox)
 
 
 # a GIF file shows on a screen, thus its frames take the resolution of a screen

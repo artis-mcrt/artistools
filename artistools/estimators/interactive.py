@@ -90,6 +90,7 @@ from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
+from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_flag_label
 from artistools.viewertools import get_helptexts
@@ -140,7 +141,6 @@ from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
-from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_play_timer
 
@@ -159,6 +159,8 @@ if t.TYPE_CHECKING:
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
+    # the Resolution box of the Figure section gives -dpi
+    "dpi",
     "plotitems",
     "plotlist",
     "modelpath",
@@ -216,15 +218,13 @@ SMOOTHING_MODES: t.Final = MappingProxyType({
 LEVEL_CHOICES_PER_ION: t.Final = 20
 
 # the option table does not offer these options, but it shows their rows from the command. Some give a
-# different action from one plot, and --verbose and --quiet change only the hidden output. The Figure section gives
-# the resolution of a PNG file (-dpi)
+# different action from one plot, and --verbose and --quiet change only the hidden output
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
     "multiplot",
     "makegif",
     "listvariables",
     "listnuclides",
-    "dpi",
     "quiet",
     "verbose",
 })
@@ -257,6 +257,8 @@ class ControlValues:
     xbins: str
     colorbyion: bool
     figwidthscale: float
+    # the resolution of a PNG file (-dpi), or None for the default of the command
+    dpi: int | None
     otheroptions: OptionRows
 
 
@@ -895,6 +897,7 @@ class EstimatorViewer:
             xbins="" if args.xbins is None else str(args.xbins),
             colorbyion=bool(args.colorbyion),
             figwidthscale=args.figwidthscale,
+            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
 
@@ -962,6 +965,8 @@ class EstimatorViewer:
             tokens.append("--colorbyion")
         if values.figwidthscale != 1.0:
             tokens += ["-figwidthscale", format(values.figwidthscale, "g")]
+        if values.dpi is not None:
+            tokens += ["-dpi", str(values.dpi)]
         tokens += get_option_row_tokens(values.otheroptions)
         for subplot in subplots[1:] if firstpositional else subplots:
             tokens += ["-plot", *subplot]
@@ -2117,9 +2122,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
-    figuresection = add_figure_section(
-        window, panellayout, split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))[1]
-    )
+    defaultdpi: int = viewer.parser.get_default("dpi")
+    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
     _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
@@ -2146,6 +2150,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
+        figuresection.dpibox,
         timeslider,
         widthslider,
         cellslider,
@@ -2716,6 +2721,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
+        set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
 
@@ -3147,16 +3153,20 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def get_figure_tokens() -> list[str]:
         """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
-        rows, _ = split_dpi_row(viewer.values.otheroptions, viewer.parser.get_default("dpi"))
-        return viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
+        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
+
+    def get_figure_choice() -> tuple[str, int]:
+        """Return the format of the Figure section and the resolution of the command."""
+        return get_figure_format(), viewer.values.dpi or defaultdpi
+
+    def on_resolution(resolution: int) -> None:
+        apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
 
     def on_copy_figure() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
         plottokens = get_figure_tokens()
-        copy_figure_of_command(
-            queue, statusbar, plotestimators_main, viewer.parser, plottokens, figuresection.get_choice()
-        )
+        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, plottokens, get_figure_choice())
 
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
@@ -3167,13 +3177,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         plottokens = get_figure_tokens()
         save_figure_of_command(
-            window,
-            statusbar,
-            plotestimators_main,
-            "plotestimators",
-            plottokens,
-            viewer.parser,
-            figuresection.get_choice(),
+            window, statusbar, plotestimators_main, "plotestimators", plottokens, viewer.parser, get_figure_choice()
         )
 
     def on_open_model() -> None:
@@ -3406,6 +3410,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
     figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.dpibox.valueChanged.connect(on_resolution)
     figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     previousbutton.clicked.connect(lambda: on_step_time(-1))

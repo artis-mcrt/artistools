@@ -3944,14 +3944,12 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 
 
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
-    """The Figure section starts with the -dpi of the command, and each format of file takes it.
+    """Each format of file takes the resolution of the Figure section.
 
-    The spectrum viewer proposed the default of 250 and kept -dpi 300 of the command, thus the file had 300 dpi. The
-    estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
+    The estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    rows, dpi = viewertools.split_dpi_row((("-xmin", ("5",)), ("-dpi", ("300",))), 250)
-    assert (rows, dpi) == ((("-xmin", ("5",)),), 300)
+    dpi = 300
     savedtokens: list[list[str]] = []
 
     def commandmain(argsraw: Sequence[str]) -> None:
