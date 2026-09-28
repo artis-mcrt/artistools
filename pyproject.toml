@@ -145,6 +145,15 @@ audit-command = ""
 source = ["artistools"]
 omit = ["*/test_*.py", "*/conftest.py"]
 
+[tool.uv]
+# uv tracks only pyproject.toml by default, thus a change in the Rust crate installed a cached build of the extension
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "rust/Cargo.toml" },
+    { file = "rust/Cargo.lock" },
+    { file = "rust/src/**/*.rs" },
+]
+
 [tool.maturin]
 bindings = "pyo3"
 profile = "release"
