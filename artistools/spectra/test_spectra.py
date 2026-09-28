@@ -310,6 +310,94 @@ def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
         assert not any("λ" in label for label in labels)
 
 
+def test_spectra_element_contributions_sum_the_ions() -> None:
+    """Each element series holds the emission and the absorption of all the ions of that element."""
+    contributions, array_flambda_emission_total, _ = get_contributions_classic_3d(groupby="element")
+    contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
+
+    assert np.allclose(array_flambda_emission_total, array_flambda_emission_total_ion, rtol=1e-6, atol=0.0)
+    elements = {contribution.linelabel: contribution for contribution in contributions}
+    assert set(elements) == {"Co", "Fe", "Ni", "free-free"}
+    for label, contribution in elements.items():
+        # "Fe II" belongs to "Fe", and "Fe II bound-free" belongs to "Fe bound-free"
+        ions = [
+            ion
+            for ion in contributions_ion
+            if ion.linelabel == label
+            or (
+                ion.linelabel.split(" ")[0] == label.split(" ")[0]
+                and ("bound-free" in ion.linelabel) == ("bound-free" in label)
+            )
+        ]
+        assert ions
+        for arrayname in ("array_flambda_emission", "array_flambda_absorption"):
+            iontotal = sum(getattr(ion, arrayname) for ion in ions)
+            assert np.allclose(getattr(contribution, arrayname), iontotal, rtol=1e-6, atol=0.0)
+
+
+def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The element of a gamma packet is the element of its nuclide, thus Ni56 and Ni57 give one series."""
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0, 4.0, 8.0],
+        "t_arrive_d": [2.0] * 4,
+        "pellet_nucindex": [0, 1, 2, -1],
+        "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 4,
+    })
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+        del modelpath
+        return pl.LazyFrame({
+            "pellet_nucindex": [-1, 0, 1, 2],
+            "elsymbol": ["initial energy", "Ni", "Co", "Ni"],
+            "nucname": ["initial energy", "Ni56", "Co56", "Ni57"],
+        })
+
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
+    contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=np.array([4000.0, 5000.0, 6000.0]),
+        getabsorption=False,
+        groupby="element",
+        gamma=True,
+    )
+
+    total = float(np.sum(array_flambda_emission_total))
+    fractions = {
+        contribution.linelabel: float(np.sum(contribution.array_flambda_emission)) / total
+        for contribution in contributions
+    }
+    assert set(fractions) == {"Ni", "Co", "initial energy"}
+    for label, energy in (("Ni", 5.0), ("Co", 2.0), ("initial energy", 8.0)):
+        assert np.isclose(fractions[label], energy / 15.0, rtol=1e-12, atol=0.0)
+
+
+def test_spectra_emission_text_files_fill_the_plot_range() -> None:
+    """The contributions from emission.out cover the bins of the packets, which reach beyond each edge of the plot.
+
+    The text files gave the bins with a centre inside the range only, thus each series stopped short of the edges,
+    and the plot differed from the plot of the packets.
+    """
+    lambda_min, lambda_max = 4000.0, 6000.0
+    _, _, arraylambda = atspectra.get_flux_contributions(
+        modelpath_classic_3d, timestepmin=10, timestepmax=12, lambda_min=lambda_min, lambda_max=lambda_max
+    )
+    packetedges = atspectra.get_lambda_bin_edges(
+        lambda_min, lambda_max, None, None, None, "angstroms", modelpath_classic_3d
+    )
+    assert arraylambda.min() < lambda_min
+    assert arraylambda.max() > lambda_max
+    # the text files give the centre of each bin, and the packets give the edges of the same bins
+    centres = np.sort(arraylambda)
+    assert len(centres) == len(packetedges) - 1
+    assert np.all((packetedges[:-1] < centres) & (centres < packetedges[1:]))
+
+
 def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
     with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
         get_contributions_classic_3d(groupby="nuc")
@@ -441,11 +529,15 @@ def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     assert len(set(labels)) == 2
 
 
-def test_spectra_velocity_shell_expr_labels_a_packet_with_no_thermal_emission() -> None:
-    """A packet with a NaN velocity takes the label NOT SET, and a packet outside every shell takes null."""
-    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9, None]})
-    labels = dfpackets.select(atspectra.get_shell_expr("v", [0.0, 10000.0, 20000.0])).to_series().to_list()
-    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s", "NOT SET"]
+def test_spectra_velocity_shell_index_of_a_packet_with_no_thermal_emission() -> None:
+    """A packet with a NaN velocity takes the index of NOT SET, and a packet outside every shell takes null."""
+    shells = [0.0, 10000.0, 20000.0]
+    dfpackets = pl.DataFrame({"v": [5.0e8, float("nan"), 5.0e10, 1.5e9, None, 0.0, 2.0e9]})
+    indices = dfpackets.select(atspectra.get_shell_index_expr("v", shells)).to_series().to_list()
+    labelofindex = atspectra.get_shell_label_of_index(shells, "kmps")
+    labels = [None if index is None else labelofindex[index] for index in indices]
+    # a shell holds its lower edge, and the last edge is outside every shell
+    assert labels == ["[0, 10000) km/s", "NOT SET", None, "[10000, 20000) km/s", "NOT SET", "[0, 10000) km/s", None]
 
 
 def test_spectra_velocity_shell_order_counts_not_set_against_the_limit() -> None:
@@ -669,15 +761,28 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
     assert len(mockstackplot.call_args_list[0].args[2]) == 4
 
 
-@pytest.mark.parametrize("packetargs", [{"gamma": True}, {"plotvspecpol": [0]}])
+@pytest.mark.parametrize(
+    ("packetargs", "message"),
+    [
+        ({"gamma": True, "use_thermalemissiontype": True}, "has no thermal emission"),
+        ({"plotvspecpol": [0]}, "does not accept"),
+    ],
+)
 @pytest.mark.parametrize(
     "optionargs",
     [{"groupby": "velocity"}, {"emissionvelocityrange": [5000, 10000]}, {"emissionlosvelocityrange": [-5000, 5000]}],
 )
 def test_spectraemissionplot_refuses_packets_with_no_emission_position(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], optionargs: dict[str, t.Any], packetargs: dict[str, t.Any]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    optionargs: dict[str, t.Any],
+    packetargs: dict[str, t.Any],
+    message: str,
 ) -> None:
-    """A shell grouping and a velocity range stop with a message for gamma packets and for virtual packets."""
+    """A shell grouping and a velocity range stop with a message for a position that the packets do not hold.
+
+    A virtual packet holds no emission position. A gamma packet holds no thermal emission position.
+    """
     with pytest.raises(SystemExit):
         at.spectra.plot(
             argsraw=[],
@@ -689,7 +794,97 @@ def test_spectraemissionplot_refuses_packets_with_no_emission_position(
             **optionargs,
             **packetargs,
         )
-    assert "does not accept" in capsys.readouterr().err
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("groupby", ["ion", "line"])
+def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], groupby: str
+) -> None:
+    """A gamma-ray spectrum stops with a message for -groupby ion and line, because a gamma packet has no ion.
+
+    The spectrum viewer offered these choices in the mode of the gamma packets, and the plot then failed.
+    """
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            gamma=True,
+            groupby=groupby,
+            outputfile=tmp_path / "gammaions.pdf",
+        )
+    assert f"does not accept -groupby {groupby}" in capsys.readouterr().err
+
+
+def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each gamma packet goes to the shell of the velocity of its decay, and the shells sum to the whole spectrum.
+
+    ARTIS records the decay position of a gamma packet since artis-mcrt/artis#637. Before that change, plotspectra
+    refused a shell grouping for gamma packets.
+    """
+    emtime = 2.0 * at.constants.day_to_s
+    speeds_kmps = [5000.0, 15000.0, 25000.0]
+    dfpackets = pl.DataFrame({
+        "e_rf": [1.0, 2.0, 4.0],
+        "t_arrive_d": [2.0, 2.0, 2.0],
+        "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 3,
+        "em_posx": [speed * at.constants.km_to_cm * emtime for speed in speeds_kmps],
+        "em_posy": [0.0] * 3,
+        "em_posz": [0.0] * 3,
+        "em_time": [emtime] * 3,
+        # the first packet moves away from the observer, thus its line-of-sight velocity is negative
+        "dirx": [-1.0, 1.0, 1.0],
+        "diry": [0.0] * 3,
+        "dirz": [0.0] * 3,
+    })
+
+    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        return 1, dfpackets.lazy()
+
+    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
+    expected = {
+        "velocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+        "losvelocity": {"[-10000, 0) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+    }
+    for groupby, expectedenergies in expected.items():
+        contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
+            modelpath=Path(),
+            timelowdays=1.5,
+            timehighdays=2.5,
+            lambda_bin_edges=lambda_bin_edges,
+            getabsorption=False,
+            groupby=groupby,
+            gamma=True,
+            shelledges=[-10000.0, 0.0, 10000.0, 20000.0, 30000.0],
+        )
+        energies = {
+            contribution.linelabel: float(np.sum(contribution.array_flambda_emission)) for contribution in contributions
+        }
+        total = float(np.sum(array_flambda_emission_total))
+        assert set(energies) == set(expectedenergies)
+        for label, energy in expectedenergies.items():
+            assert np.isclose(energies[label] / total, energy / 7.0, rtol=1e-12, atol=0.0)
+
+
+def test_spectraemissionplot_gamma_shells_need_an_emission_position(tmp_path: Path) -> None:
+    """A run from before artis-mcrt/artis#637 stops with a message, because its gamma packets have no position.
+
+    Without the message, each packet lay outside every shell and the plot had no series.
+    """
+    with pytest.raises(ValueError, match="hold no emission position"):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath,
+            timedays=300,
+            showemission=True,
+            gamma=True,
+            groupby="velocity",
+            outputfile=tmp_path / "gammashells.pdf",
+        )
 
 
 def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
@@ -740,7 +935,10 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
 
 
 def test_spectra_get_flux_contributions_wavelength_window() -> None:
-    """A wavelength window restricts the spectra and the flux contributions used for ranking."""
+    """A wavelength window restricts the spectra and the flux contributions used for ranking.
+
+    The window holds the bins with a centre inside it and the nearest bin beyond each bound, as the packets do.
+    """
     timestepmin = 40
     timestepmax = 80
     lambda_min = 3500.0
@@ -759,7 +957,9 @@ def test_spectra_get_flux_contributions_wavelength_window() -> None:
         lambda_max=lambda_max,
     )
 
-    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    below = arraylambda_full[arraylambda_full <= lambda_min].max()
+    above = arraylambda_full[arraylambda_full >= lambda_max].min()
+    nu_select = (arraylambda_full >= below) & (arraylambda_full <= above)
     assert np.array_equal(arraylambda_window, arraylambda_full[nu_select])
     assert np.allclose(flambda_total_window, flambda_total_full[nu_select], rtol=1e-12, atol=0.0)
 
@@ -1392,19 +1592,23 @@ def test_plotspectra_resolves_both_bounds_of_a_one_sided_time_range(tmp_path: Pa
     assert "None" not in pdfnames[0]
 
 
-def test_plotspectra_emission_refuses_an_x_range_without_a_bin(tmp_path: Path) -> None:
-    """An x range that holds no wavelength bin must stop with a message, not with an error in the flux sums."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath,
-            outputfile=tmp_path,
-            timedays=300,
-            emissionabsorption=True,
-            use_thermalemissiontype=True,
-            xmin=5000.0,
-            xmax=5000.5,
-        )
+def test_plotspectra_emission_draws_the_bins_around_a_narrow_x_range(tmp_path: Path) -> None:
+    """An x range that holds no centre of a bin draws the bin on each side of it, as a plot of the packets does.
+
+    The text files gave no bin for such a range, and the command stopped.
+    """
+    outputfile = tmp_path / "narrow.pdf"
+    at.spectra.plot(
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=outputfile,
+        timedays=300,
+        emissionabsorption=True,
+        use_thermalemissiontype=True,
+        xmin=5000.0,
+        xmax=5000.5,
+    )
+    assert outputfile.is_file()
 
 
 @mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
@@ -2105,8 +2309,31 @@ def test_interactive_continuous_range_keeps_its_bounds() -> None:
     tokens = shlex.split(viewer.get_command())
     assert tokens[tokens.index("-t") + 1] == "299.5-301"
 
+    # a continuous single time takes the width of Δ ln t, because a width of 0 reads the whole timestep
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
-    assert viewer.values.width == 0.0
+    assert viewer.values.widthmode == "dlogt"
+    assert viewer.values.width > 0.0
+
+
+def test_interactive_continuous_width_is_never_zero() -> None:
+    """Each width mode of a continuous range gives a width above 0, and the width follows the time.
+
+    A continuous width of 0 selected the whole timestep that holds the time, which is the clamped range.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
+    assert (viewer.values.widthmode, viewer.values.width) == ("days", 2.0)
+    # a width of 0 in days changes to Δ ln t, which starts with the Δ ln t of each timestep of the logarithmic grid
+    assert viewer.change(dc.replace(viewer.values, width=0.0)) is None
+    assert viewer.values.widthmode == "dlogt"
+    assert viewer.values.dlogt == pytest.approx(math.log(viewer.tends[0] / viewer.tstarts[0]), rel=1e-3)
+    # the width follows the time
+    assert viewer.change(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)) is None
+    low, high = (viewer.values.centre + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
+    assert math.log(high / low) == pytest.approx(0.01, rel=1e-3)
+    # the Down key never gives a width of 0 or less, and it gives a width in days
+    assert viewer.change(dc.replace(viewer.values, widthmode="days", width=0.001)) is None
+    assert viewer.step_width(-1).width == 0.001
+    assert viewer.step_width(1).widthmode == "days"
 
 
 def test_interactive_valid_timesteps() -> None:
@@ -2120,13 +2347,16 @@ def test_interactive_valid_timesteps() -> None:
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
 
-    # a continuous time alone selects the whole timestep that holds it. At each end of the valid times, that
-    # timestep is only in part valid, thus plotspectra rejected the command
+    # a continuous range at each end of the valid times keeps its Δ ln t, and plotspectra accepts it
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
-    for bound, timestep in ((validstart, viewer.validtimesteps[0]), (validend, viewer.validtimesteps[-1])):
-        assert viewer.change(dc.replace(viewer.values, centre=bound, width=0.0)) is None
-        assert viewer.values.centre == viewer.tmids[timestep]
-        assert viewer.change(dc.replace(viewer.values, centre=bound, width=1.0)) is None
+    # each end starts from the values of the command, thus it does not keep the width mode of the other end
+    base = viewer.values
+    for bound in (validstart, validend):
+        assert viewer.change(dc.replace(base, centre=bound)) is None
+        assert viewer.values.centre == bound
+        low, high = (bound + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
+        assert math.log(high / low) == pytest.approx(viewer.values.dlogt, rel=1e-3)
+        assert viewer.change(dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
 def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
@@ -2143,11 +2373,15 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     """The command that the viewer shows must draw the same data as the viewer."""
     viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
     # a continuous range gives --notimeclamp, and the snapped range below gives whole timesteps
-    continuous = dc.replace(viewer.values, notimeclamp=True, centre=306.4, width=5.0, xmin="3000", xmax="9000")
+    continuous = dc.replace(
+        viewer.values, notimeclamp=True, widthmode="days", centre=306.4, width=5.0, xmin="3000", xmax="9000"
+    )
     assert viewer.change(continuous) is None
     assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
+    # a continuous range reads the packets that arrive inside it, and not whole timesteps
+    assert viewer.get_time_range_text() == "Packets from 303.90 to 308.90 d (Δt = 5.00 d)"
     assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
-    assert "timesteps 58 to 62" in viewer.get_timesteps_text()
+    assert "Timesteps 58 to 62" in viewer.get_time_range_text()
     command = viewer.get_command()
 
     # each plot clears the frame first, thus the frame holds only the series of the model
@@ -2199,11 +2433,44 @@ def test_interactive_xunit_and_references() -> None:
     assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
 
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
-    assert viewer.change(dc.replace(inhertz, references=(reference,))) is None
+    assert viewer.change(dc.replace(inhertz, spectra=(*inhertz.spectra, reference))) is None
     tokens = shlex.split(viewer.get_command())[2:]
     assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
     assert "-xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
+
+
+def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The list of spectra holds each ARTIS model and each reference, also the model of the working folder.
+
+    A command with no path reads the model of the working folder, thus the list shows that model first and the
+    command still gives no path. A model that the user adds reaches the command and the plot.
+    """
+    monkeypatch.chdir(modelpath)
+    viewer = make_headless_viewer(["-t", "300", "--interactive"])
+    assert viewer.values.spectra == (".",)
+    assert interactive.get_spectrum_item_text(".") == f"Model: {modelpath.absolute()}"
+    assert shlex.split(viewer.get_command())[2:4] == ["-t", "300"]
+
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    # the second model is the same run, because the other test runs do not cover 300 days
+    spectra = (*viewer.values.spectra, str(modelpath), reference)
+    assert viewer.change(dc.replace(viewer.values, spectra=spectra)) is None
+    assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
+    assert len(viewer.axes[0].get_lines()) == 3
+    assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
+
+
+def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
+    """Each name that the reference field offers names a spectrum that plotspectra finds by that name.
+
+    The folder holds compressed files and metadata files with no data file, which plotspectra cannot read by
+    their own names.
+    """
+    names = interactive.get_reference_spectrum_names()
+    assert "AT2017gfo_ENGRAVE_v1.0_XSHOOTER_MJD-57983.969_Phase+1.43d.dat" in names
+    assert not any(name.endswith((".meta.yml", ".xz", ".gz", ".zst")) for name in names)
+    assert all(plotspectra.find_reference_spectrum_file_or_none(name) is not None for name in names)
 
 
 def test_interactive_paths_keep_their_place() -> None:
@@ -2229,7 +2496,7 @@ def test_interactive_paths_keep_their_place() -> None:
     assert viewer.modelpathtokens == [str(modelpath)]
     # the command without the option starts with the path, and the viewer still reads the time of the command
     assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
-    assert "timestep 54" in viewer.get_timesteps_text()
+    assert "Timestep 54" in viewer.get_time_range_text()
 
     # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
     viewer = make_headless_viewer([
@@ -2299,50 +2566,24 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
         assert args.maxseriescount == maxseriescount
 
 
-def test_interactive_preview_reads_the_first_batch_of_ranks() -> None:
-    """A preview of a plot of the packets reads the first batch of ranks, and the command keeps all the packets."""
-    from artistools.packets.core import RANKS_PER_BATCH
+def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() -> None:
+    """A render draws a new figure and changes nothing of the viewer. Only the function that it returns shows the plot.
 
-    getcontributions = plotspectra.get_flux_contributions_from_packets
-    # the test model has few ranks, thus a model of more than one batch comes from a patch of the rank count
-    with (
-        mock.patch.object(interactive, "get_nprocs", return_value=10 * RANKS_PER_BATCH),
-        mock.patch.object(plotspectra, "get_flux_contributions_from_packets", wraps=getcontributions) as mockget,
-    ):
-        viewer = make_headless_viewer([
-            str(modelpath_classic_3d),
-            "-t",
-            "4",
-            "--showemission",
-            "--frompackets",
-            "--interactive",
-        ])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert viewer.drewpreview
-        assert mockget.call_args.kwargs["maxpacketfiles"] == RANKS_PER_BATCH
-        assert "-maxpacketfiles" not in viewer.get_command()
+    The worker thread runs the render while the window reads the viewer. Thus a render that changed the figure or the
+    frames gave the window a plot in progress. The spectrum viewer drew in the thread of the window for this reason.
+    """
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    oldfig, oldaxes = viewer.fig, viewer.axes
+    newvalues = viewer.step_time(1)
+    assert newvalues is not None
 
-        assert viewer.change(viewer.values) is None
-        assert not viewer.drewpreview
-        assert mockget.call_args.kwargs["maxpacketfiles"] is None
+    show_plot = viewer.render(newvalues)
+    assert viewer.fig is oldfig
+    assert viewer.axes is oldaxes
 
-        # a plot of the spectrum files reads no packets, thus it has no faster preview
-        viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert not viewer.drewpreview
-
-        # the reader divides the flux by the number of ranks, but not a count of packets
-        viewer = make_headless_viewer([
-            str(modelpath_classic_3d),
-            "-t",
-            "4",
-            "--frompackets",
-            "-yvariable",
-            "packetcount",
-            "--interactive",
-        ])
-        assert viewer.change(viewer.values, preview=True) is None
-        assert not viewer.drewpreview
+    assert show_plot() is None
+    assert viewer.fig is not oldfig
+    assert viewer.fig.canvas is oldfig.canvas, "the canvas of the window must show the new figure"
 
 
 def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
@@ -2504,15 +2745,30 @@ def test_interactive_unlock_gives_the_default_count() -> None:
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_frompackets_box() -> None:
-    """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
+def test_interactive_data_source() -> None:
+    """The data source gives --frompackets, Auto names the files that it selects, and Text files refuses the packets.
+
+    The --frompackets box showed only the flag of the user. An option that needs the packets, e.g. -groupby element,
+    made plotspectra read them with the box empty.
+    """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
-    assert viewer.values.frompackets
+    assert viewer.values.datasource == "packets"
     assert not viewer.values.otheroptions
     assert "--frompackets" in shlex.split(viewer.get_command())
 
-    assert viewer.change(dc.replace(viewer.values, frompackets=False)) is None
+    assert viewer.change(dc.replace(viewer.values, datasource="auto")) is None
     assert "--frompackets" not in shlex.split(viewer.get_command())
+    assert interactive.get_packets_reason(viewer.get_plot_tokens()) is None
+    elementvalues = dc.replace(viewer.values, showemission=True, groupby="element")
+    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "-groupby element"
+
+    assert viewer.change(dc.replace(viewer.values, datasource="text")) is None
+    textelement = dc.replace(elementvalues, datasource="text")
+    oldvalues = viewer.values
+    for message in (viewer.get_rejection(textelement), viewer.change(textelement)):
+        assert message is not None
+        assert message.startswith("-groupby element needs the packets files")
+    assert viewer.values == oldvalues
 
 
 def test_interactive_direction_and_bin_controls() -> None:
@@ -2597,7 +2853,7 @@ def test_interactive_option_rows() -> None:
         "list",
         "text",
     ]
-    # an option with no default needs a value from the user before the command can give it. Save Figure asks for
+    # an option with no default needs a value from the user before the command can give it. Export Figure asks for
     # -dpi, thus the table does not offer it
     assert "-dpi" not in actions
     assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
@@ -2669,3 +2925,101 @@ def test_interactive_lock_series() -> None:
     shared = set(colours) & set(latercolours)
     assert shared
     assert all(colours[name] == latercolours[name] for name in shared)
+
+
+def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> None:
+    """A model that the user adds can have a shorter valid time, and the time controls then stay inside it.
+
+    The viewer read the valid times of the models of the command only. After Add Model, the first time of the slider
+    was before the valid range of the new model, and plotspectra rejected it.
+    """
+    # a copy of the model with a smaller maximum velocity gives a longer range of arrival times
+    widemodel = tmp_path / "widemodel"
+    widemodel.mkdir()
+    for path in modelpath.iterdir():
+        if path.name != "model.txt":
+            (widemodel / path.name).symlink_to(path.absolute())
+    modeltext = (modelpath / "model.txt").read_text(encoding="utf-8")
+    (widemodel / "model.txt").write_text(modeltext.replace("8000.", "1000.", 1), encoding="utf-8")
+
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
+    widestart = viewer.timebounds[0]
+    viewer.load_runs((str(widemodel), str(modelpath)))
+    assert viewer.timebounds[0] > widestart
+    firsttime = viewer.move_to_end(last=False)
+    assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
+
+
+def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two spellings of one spectrum give the same path, thus the list of spectra does not show it two times.
+
+    A drop of the working folder added it again next to ".", and the plot then drew the same run two times.
+    """
+    monkeypatch.chdir(modelpath)
+    assert interactive.get_spectrum_path(".") == interactive.get_spectrum_path(str(modelpath.absolute()))
+    assert interactive.get_spectrum_path(".") != interactive.get_spectrum_path(str(modelpath.parent))
+
+
+def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
+    """The packet control switches the plot between the r-packets and the gamma packets, with the units of each.
+
+    --gamma was an option of the table, thus the x unit, the x range, and the grouping kept the defaults of the
+    r-packets after a switch.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    assert not viewer.values.gamma
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=True)) is None
+    tokens = viewer.get_plot_tokens()
+    assert "--gamma" in tokens
+    assert "-xunit" not in tokens, "keV is the default x unit of a gamma-ray spectrum"
+    assert viewer.values.xunit == "kev"
+    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=False)) is None
+    assert "--gamma" not in viewer.get_plot_tokens()
+    assert viewer.values.xunit == "angstroms"
+    # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
+    gammaviewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
+    assert gammaviewer.values.gamma
+    assert all(flag != "--gamma" for flag, _ in gammaviewer.values.otheroptions)
+    # the test model has packets and no gamma_spec.out, thus plotspectra reads the packets of its gamma-ray spectrum.
+    # The viewer set --frompackets for the gamma packets, and that flag stayed after the switch back to the r-packets
+    packetsviewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    assert packetsviewer.hasgammaspectrum
+    gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True)
+    assert gammavalues.datasource == "auto"
+    assert (
+        interactive.get_packets_reason(packetsviewer.get_plot_tokens(gammavalues)) == "--gamma with no gamma_spec.out"
+    )
+    assert packetsviewer.change(gammavalues) is None
+    assert packetsviewer.change(interactive.set_packet_type(packetsviewer.values, gamma=False)) is None
+    assert packetsviewer.values.datasource == "auto"
+    assert "--frompackets" not in packetsviewer.get_plot_tokens()
+    # a run with neither file has no gamma-ray spectrum, thus the window disables the gamma packets
+    assert not interactive.has_gamma_spectrum([at.get_path("testdata") / "test-classicmode_1d"])
+
+
+def test_interactive_gamma_spectrum_needs_one_source_for_all_runs(tmp_path: Path) -> None:
+    """The gamma packets need gamma_spec.out in each run, or the packets of each run.
+
+    plotspectra reads the packets of each run when one run has no gamma_spec.out. A list with gamma_spec.out alone in
+    one run and packets alone in the other run enabled the gamma packets, and the plot then failed.
+    """
+    specrun, packetsrun = tmp_path / "specrun", tmp_path / "packetsrun"
+    for runfolder, filename in ((specrun, "gamma_spec.out"), (packetsrun, "packets00_0000.out")):
+        runfolder.mkdir()
+        (runfolder / filename).write_text("", encoding="utf-8")
+    assert interactive.has_gamma_spectrum([specrun])
+    assert interactive.has_gamma_spectrum([packetsrun])
+    assert not interactive.has_gamma_spectrum([specrun, packetsrun])
+
+
+def test_interactive_direction_kinds_follow_the_first_run() -> None:
+    """The kinds of viewing direction come from the first run of the list, also after a change of the list.
+
+    The kinds came from the first run of the command, thus a new first run with no vpkt.txt kept -plotvspecpol.
+    """
+    viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
+    assert "vpkt" in viewer.directionkinds
+    viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
+    assert "vpkt" not in viewer.directionkinds

@@ -2250,3 +2250,15 @@ def test_split_multitable_dataframe_tables_collect_together() -> None:
     for together, table in zip(pl.collect_all(plans), plans, strict=True):
         pltest.assert_frame_equal(together, table.collect())
     assert pl.collect_all(plans)[1]["value"].to_list() == [103, 104, 105, 106]
+
+
+def test_costheta_bin_labels_have_no_negative_zero() -> None:
+    """The edge of the cos θ bins at the middle is 0, and its label must not read "-0.0".
+
+    np.arange gave -1.1e-16 for that edge, and the format of one decimal wrote "-0.0 ≤ cos θ < 0.2".
+    """
+    from artistools.misc.dirbins import get_costheta_bins
+
+    lowers, _, labels = get_costheta_bins(usedegrees=False)
+    assert not any("-0.0" in label for label in labels), labels
+    assert 0.0 in lowers

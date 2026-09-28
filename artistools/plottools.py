@@ -492,6 +492,7 @@ def make_frame_figure(
     sharey: bool = False,
     fullwidth: bool = True,
     rowheights: Sequence[float] | None = None,
+    framescale: float = 1.0,
     fig: mplfig.Figure | None = None,
 ) -> "tuple[mplfig.Figure, npt.NDArray[t.Any]]":
     """Return a figure whose frames each hold exactly the same size, and the axes of that figure.
@@ -511,15 +512,16 @@ def make_frame_figure(
     A plot that draws few series gives fullwidth=False, and its frame then fills one column of the
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
-    residual panel below the main frame. If the caller gives an empty figure as fig, the function sets its
-    size and adds the frames to it, e.g. for a window that stays open.
+    residual panel below the main frame. framescale multiplies the size of each frame of the command before
+    -figscale, and the margins of the labels keep their size. If the caller gives an empty figure as fig, the
+    function sets its size and adds the frames to it, e.g. for a window that stays open.
     """
     from mpl_toolkits.axes_grid1 import Divider
     from mpl_toolkits.axes_grid1 import Size
 
     set_mpl_style()
 
-    figscale = getattr(args, "figscale", 1.0)
+    figscale = getattr(args, "figscale", 1.0) * framescale
     basewidth = FRAMEWIDTH_INCHES if fullwidth else COLUMNFRAMEWIDTH_INCHES
     framewidth = basewidth * getattr(args, "figwidthscale", 1.0) * figscale
     frameheight = basewidth * aspect * figscale
@@ -1460,6 +1462,9 @@ def set_axis_properties(
 
         if labelfontsize is not None:
             axis.tick_params(axis="both", which="both", labelsize=labelfontsize)
+            # a later set_xlabel or set_ylabel changes the text of the label and keeps its size
+            axis.xaxis.label.set_fontsize(labelfontsize)
+            axis.yaxis.label.set_fontsize(labelfontsize)
 
         # scale first: a limit turns autoscaling off, so setting one before the scale keeps the linear
         # padding on a log axis. A limit of None on both sides is left alone for the same reason

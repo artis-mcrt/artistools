@@ -20,9 +20,12 @@ from artistools.atomic import get_ionstring
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
+from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
+from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.core import split_species_suffix
@@ -55,6 +58,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
@@ -68,17 +72,27 @@ from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
+from artistools.viewertools import add_default_options
+from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_menus
+from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import copy_figure_of_command
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
+from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import FLAG_LABELS
+from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
+from artistools.viewertools import get_dark_plot_colours
+from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_keyboard_help
@@ -88,38 +102,49 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
+from artistools.viewertools import get_row_values
 from artistools.viewertools import get_short_number
-from artistools.viewertools import get_table_actions
 from artistools.viewertools import make_central_splitter
+from artistools.viewertools import make_completer
+from artistools.viewertools import make_drag_header
 from artistools.viewertools import make_flow_layout
+from artistools.viewertools import make_fps_box
+from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
+from artistools.viewertools import make_play_button
+from artistools.viewertools import make_play_row
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
+from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
+from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
+from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
-from artistools.viewertools import PLAY_MILLISECONDS
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools import run_viewer_application
 from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
+from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
+from artistools.viewertools import set_row_values
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_spin_value
+from artistools.viewertools import set_window_document
+from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
-from artistools.viewertools import split_dpi_row
 from artistools.viewertools import split_option_rows
-from artistools.viewertools import start_application
 from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
@@ -137,6 +162,8 @@ if t.TYPE_CHECKING:
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
+    # the Resolution box of the Figure section gives -dpi
+    "dpi",
     "plotitems",
     "plotlist",
     "modelpath",
@@ -158,33 +185,16 @@ CONTROLLED_DESTS: t.Final = frozenset({
 # these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
 OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
 
-# a section of the window sets these options. Their rows stay in the command, but the option table does not show or
-# offer them. The window reads the run in the format of --classicartis when it opens, thus that row also stays
-SECTION_DESTS: t.Final = frozenset({
-    "axis",
-    "classicartis",
-    "coneangle",
-    "dimensionreduce",
-    "figscale",
-    "filtermovingavg",
-    "filtersavgol",
-    "hidexlabel",
-    "labelfontsize",
-    "legendframe",
-    "nolegend",
-    "notitle",
-    "readonlymgi",
-    "projection",
-    "slice",
-    "subplotsperrow",
-})
+# the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
+# table neither shows nor offers this row, and the row stays in the command
+RUN_DESTS: t.Final = frozenset({"classicartis"})
 
 # the ways to select the cells of the plot, by the key of the selector of the window
 GEOMETRY_MODES: t.Final = MappingProxyType({
     "all": "The cells inside the sphere of radius v_max",
     "cells": "Selected cells (-cell)",
     "alongaxis": "A half line of cells from the centre along an axis (-readonlymgi alongaxis)",
-    "cone": "The cells in a cone around an axis (-readonlymgi cone)",
+    "cone": "The cells in a cone around a half-axis (-readonlymgi cone)",
     "plane": "A 2D plane slice of cells as an image (-slice)",
     "line": "A full line of cells through the grid along an axis (-slice)",
     "average": "The mean over rings around the z axis as an image (-dimensionreduce 2)",
@@ -211,15 +221,13 @@ SMOOTHING_MODES: t.Final = MappingProxyType({
 LEVEL_CHOICES_PER_ION: t.Final = 20
 
 # the option table does not offer these options, but it shows their rows from the command. Some give a
-# different action from one plot, and --verbose and --quiet change only the hidden output. Save Figure asks for the
-# resolution of a PNG file (-dpi)
+# different action from one plot, and --verbose and --quiet change only the hidden output
 TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "help",
     "multiplot",
     "makegif",
     "listvariables",
     "listnuclides",
-    "dpi",
     "quiet",
     "verbose",
 })
@@ -252,6 +260,8 @@ class ControlValues:
     xbins: str
     colorbyion: bool
     figwidthscale: float
+    # the resolution of a PNG file (-dpi), or None for the default of the command
+    dpi: int | None
     otheroptions: OptionRows
 
 
@@ -338,11 +348,8 @@ def is_evolution(values: ControlValues) -> bool:
 
 
 def get_time_text(tmids: "Sequence[float]", values: ControlValues) -> str:
-    """Return the text of the time field, which is the centre of the middle times of the range.
-
-    EstimatorViewer.select_centre reads the same centre, thus a Return in the field with no edit keeps the range.
-    """
-    return f"{(tmids[values.first] + tmids[values.last]) / 2.0:.4g}"
+    """Return the text of the time field: the centre of the middle times of the range, with two decimal places."""
+    return f"{(tmids[values.first] + tmids[values.last]) / 2.0:.2f}"
 
 
 def get_single_cell(cells: str) -> int | None:
@@ -443,24 +450,6 @@ def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
     else:
         firstpos, lastpos = viewer.get_selection_positions()
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
-
-
-def get_row_values(rows: OptionRows, flag: str) -> tuple[str, ...] | None:
-    """Return the values of the row of an option, or None if the rows have no such option."""
-    return next((values for rowflag, values in rows if rowflag == flag), None)
-
-
-def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | None]") -> OptionRows:
-    """Return the rows with new values of some options, in their old places. None removes an option.
-
-    A new option goes after the other rows.
-    """
-    changed = [
-        (flag, changes.get(flag, values)) for flag, values in rows if not (flag in changes and changes[flag] is None)
-    ]
-    present = {flag for flag, _ in rows}
-    added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
-    return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
 
 
 def get_geometry_choices(dimensions: int) -> list[str]:
@@ -629,9 +618,9 @@ def get_geometry_description(
         signedname = f"{name}_c" if sign == "+" else f"-{name}_c"
         if math.isclose(halfangle, 90.0):
             # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
-            return f"The cells in front of the {axis} axis: {signedname} > 0, and the cell at the centre."
+            return f"The cells on the side of the {axis} half-axis: {signedname} > 0, and the cell at the centre."
         return (
-            f"The cells whose centre lies within {halfangle:g}° of the {axis} axis:"
+            f"The cells whose centre lies within {halfangle:g}° of the {axis} half-axis:"
             f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
         )
     if mode == "plane":
@@ -831,9 +820,9 @@ class EstimatorViewer:
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
         set_run(self, read_run(self.modelpath, args, len(self.tmids)))
-        # a section of the window sets the rows of these flags, and the option table does not show them
-        self.sectionflags = frozenset(
-            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in SECTION_DESTS
+        # the option table does not show the rows of these flags, see RUN_DESTS
+        self.runflags = frozenset(
+            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in RUN_DESTS
         )
         # the size of the grid, which gives the edges of the cells that a selection of the window reads
         self.modelmeta: dict[str, t.Any] = get_modeldata(self.modelpath)[1]
@@ -890,6 +879,7 @@ class EstimatorViewer:
             xbins="" if args.xbins is None else str(args.xbins),
             colorbyion=bool(args.colorbyion),
             figwidthscale=args.figwidthscale,
+            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
 
@@ -905,6 +895,8 @@ class EstimatorViewer:
         self.plotcolorbyion = False
         # the last warning of the last plot, which the status bar shows
         self.warning = ""
+        # the colours of the window in Dark Mode, which the window sets and the worker thread reads
+        self.darkcolours: tuple[str, str] | None = None
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -920,18 +912,23 @@ class EstimatorViewer:
             return []
         return ["-timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
 
-    def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
+    def get_plot_tokens(self, values: ControlValues | None = None, modeltoken: str | None = None) -> list[str]:
         """Return the plotestimators arguments of the values, or of the current values if the caller gives none.
 
         The first subplot comes before the folder, e.g. "Te TR mymodel", and each other subplot follows -plot at the
         end. A -plot takes each word up to the next flag, thus nothing can follow the last -plot. The command gives
         each subplot also when the subplots are the default of plotestimators. The command then states the plot in
-        full, and a later change of the default does not change it.
+        full, and a later change of the default does not change it. modeltoken replaces the folder of the command,
+        e.g. the full path of the working folder for the next start.
         """
         if values is None:
             values = self.values
-        subplots = values.subplots
-        tokens = [*(subplots[0] if subplots else ()), *([self.modeltoken] if self.modeltoken else [])]
+        if modeltoken is None:
+            modeltoken = self.modeltoken
+        subplots = [get_command_items(subplot, self.estimatorcolumns) for subplot in values.subplots]
+        # a first subplot with no item cannot go before the folder, thus it follows -plot as the others do
+        firstpositional = bool(subplots and subplots[0])
+        tokens = [*(subplots[0] if firstpositional else ()), *([modeltoken] if modeltoken else [])]
         timetokens = self.get_time_tokens(values)
         tokens += timetokens
         if values.x != self.get_default_xvariable(values.otheroptions, timegiven=bool(timetokens)):
@@ -950,8 +947,10 @@ class EstimatorViewer:
             tokens.append("--colorbyion")
         if values.figwidthscale != 1.0:
             tokens += ["-figwidthscale", format(values.figwidthscale, "g")]
+        if values.dpi is not None:
+            tokens += ["-dpi", str(values.dpi)]
         tokens += get_option_row_tokens(values.otheroptions)
-        for subplot in subplots[1:]:
+        for subplot in subplots[1:] if firstpositional else subplots:
             tokens += ["-plot", *subplot]
         return tokens
 
@@ -959,11 +958,10 @@ class EstimatorViewer:
         """Return the command that draws the plot of the values."""
         return shlex.join(["artistools", "plotestimators", *self.get_plot_tokens()])
 
-    def get_timesteps_text(self) -> str:
+    def get_time_range_text(self) -> str:
         """Return the timesteps and the days that the plot reads."""
         first, last = self.values.first, self.values.last
-        timesteps = f"timestep {first}" if first == last else f"timesteps {first} to {last}"
-        return f"The plot reads {timesteps}, from {self.tstarts[first]:.4g} to {self.tends[last]:.4g} d"
+        return get_time_range_text(first, last, self.tstarts[first], self.tends[last])
 
     def select_centre(self, days: float) -> ControlValues:
         """Return the values with a time range of the same width that has its centre nearest to the time.
@@ -978,11 +976,11 @@ class EstimatorViewer:
     def get_cell_text(self) -> str:
         """Return the cells of the plot, with the radial velocity of a single cell."""
         if not self.values.cells:
-            return "The plot reads all the cells"
+            return "All cells"
         cell = get_single_cell(self.values.cells)
         if cell is not None and (velocity := self.cellvelocities.get(cell)) is not None:
             return f"Cell {self.values.cells} at v_r = {velocity / C_cm_per_s:.3g}c ({velocity / km_to_cm:.4g} km/s)"
-        return f"The plot reads the cells {self.values.cells}"
+        return f"Cells {self.values.cells}"
 
     def select_timesteps(self, values: ControlValues, firstpos: int, count: int) -> ControlValues:
         """Return the values with count valid timesteps from the position firstpos in the valid timesteps."""
@@ -1080,6 +1078,11 @@ class EstimatorViewer:
             # the constrained layout of a colour image keeps the title inside the figure
             if not isimage:
                 make_room_for_title(fig)
+            if (darkcolours := self.darkcolours) is not None:
+                apply_dark_colours(fig, *darkcolours)
+            # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
+            # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
+            fig.draw_without_rendering()
             xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
             plots.append(
                 RenderedPlot(
@@ -1101,13 +1104,8 @@ class EstimatorViewer:
             plot = plots[0]
             fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
             self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion
-            canvas = self.fig.canvas
-            fig.set_canvas(canvas)
-            canvas.figure = fig
+            self.figsize = show_figure_in_canvas(self.fig, fig)
             self.fig = fig
-            figwidth, figheight = fig.get_size_inches()
-            self.figsize = (float(figwidth), float(figheight))
-            canvas.draw_idle()
             return None
 
         return show_plot
@@ -1325,6 +1323,36 @@ def get_variable_choices(estimatorcolumns: tuple[str, ...]) -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=4)
+def get_variable_menu_groups(estimatorcolumns: tuple[str, ...]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return the groups of the menu of the variables, as pairs of a title and the columns of the group.
+
+    The first group holds the temperatures, and the second group holds the other variables of one column. They have
+    no title, thus the menu shows them at its top. Each family of columns with a shared start, e.g. heating_,
+    gives a submenu. A species column goes to a subplot of its series type, thus the menu leaves it out.
+    """
+    temperatures: list[str] = []
+    plain: list[str] = []
+    families: dict[str, list[str]] = {}
+    for column in sorted(estimatorcolumns, key=str.lower):
+        if column in BOOKKEEPING_COLUMNS or split_species_suffix(column) is not None:
+            continue
+        if prefix := get_prefix_group(column):
+            families.setdefault(prefix, []).append(column)
+        elif get_ylabel(column).strip() == "Temperature [K]":
+            temperatures.append(column)
+        else:
+            plain.append(column)
+    return (
+        ("", tuple(temperatures)),
+        ("", tuple(plain)),
+        *(
+            (f"{PREFIX_GROUPS[prefix].capitalize()} ({prefix}…)", tuple(families[prefix]))
+            for prefix in sorted(families)
+        ),
+    )
+
+
+@lru_cache(maxsize=4)
 def get_variables_of_ylabels(estimatorcolumns: tuple[str, ...]) -> "Mapping[str, tuple[str, ...]]":
     """Return the columns that suit a series of their own, by the label of their y axis."""
     variables: dict[str, list[str]] = {}
@@ -1512,6 +1540,40 @@ def change_subplot_type(
     return (seriestype, *(kept or get_first_choice(choices)), *directives)
 
 
+def get_moved_rows(
+    oldsubplots: "Sequence[Sequence[str]]", newsubplots: "Sequence[Sequence[str]]", rows: "Collection[int]"
+) -> set[int]:
+    """Return the new rows of the subplots at rows, after a change of the subplots from oldsubplots to newsubplots.
+
+    A subplot goes to the nearest row that has the same items and that no other subplot of rows took, e.g. after a
+    move, an insert, a delete, or Undo. If no such row exists, the subplot keeps its row when the count of subplots
+    stays the same, e.g. after a new y scale. If not, the subplot has no new row.
+    """
+    newrows: set[int] = set()
+    for row in sorted(rows):
+        if not 0 <= row < len(oldsubplots):
+            continue
+        matches = [
+            newrow
+            for newrow, subplot in enumerate(newsubplots)
+            if tuple(subplot) == tuple(oldsubplots[row]) and newrow not in newrows
+        ]
+        if matches:
+            newrows.add(min(matches, key=lambda newrow: abs(newrow - row)))
+        elif len(newsubplots) == len(oldsubplots):
+            newrows.add(row)
+    return newrows
+
+
+def get_card_summary(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str:
+    """Return the text that the header of a collapsed card shows in place of its controls, e.g. "Te, TR · log"."""
+    items = [item for _, item in get_chip_items(subplot, estimatorcolumns)]
+    maxshown = 4
+    text = ", ".join(items[:maxshown]) + (f" +{len(items) - maxshown}" if len(items) > maxshown else "")
+    yscale = get_directive_value(subplot, "yscale")
+    return f"{text} · {yscale}" if yscale else text
+
+
 def get_chip_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[tuple[int, str]]:
     """Return the position and the text of each item of a subplot that shows as a chip.
 
@@ -1557,27 +1619,29 @@ def move_poptype_to_subplots(
     ), rows
 
 
-def remove_subplot_item(
-    subplots: "Sequence[tuple[str, ...]]", row: int, index: int, estimatorcolumns: "Collection[str]"
-) -> tuple[tuple[str, ...], ...]:
+def remove_subplot_item(subplots: "Sequence[tuple[str, ...]]", row: int, index: int) -> tuple[tuple[str, ...], ...]:
     """Return the subplots without one item of a subplot.
 
-    A subplot with no name left, or with its series type alone, has nothing to plot, thus it goes with its
-    directives.
+    A subplot with no series left stays, and it draws an empty frame until the user adds a series. Only the ✕ of
+    the card deletes a subplot.
     """
     subplot = subplots[row][:index] + subplots[row][index + 1 :]
+    return (*subplots[:row], subplot, *subplots[row + 1 :])
+
+
+def get_command_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> tuple[str, ...]:
+    """Return the items of a subplot that the command gives.
+
+    A series type with no names has nothing to plot, and plotestimators rejects it. The card keeps the type, and the
+    command gives the directives alone, which draw an empty frame.
+    """
     names = get_subplot_names(subplot)
     seriestypeonly = (
         len(names) == 1
         and names[0] not in estimatorcolumns
         and (is_seriestype(names[0], estimatorcolumns) or bool(get_species_choices(names[0], estimatorcolumns)))
     )
-    keep = bool(names) and not seriestypeonly
-    return (
-        tuple(item for position, item in enumerate(subplots) if position != row)
-        if not keep
-        else (*subplots[:row], subplot, *subplots[row + 1 :])
-    )
+    return tuple(item for item in subplot if item not in names) if seriestypeonly else tuple(subplot)
 
 
 def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
@@ -1664,16 +1728,9 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     " QFrame#chip { border: 1px solid palette(mid); border-radius: 10px; background: palette(base); }"
     " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
     " QToolButton#suggestion:hover { border-style: solid; }"
+    " QFrame#dropline { background: palette(highlight); border: none; }"
+    " QWidget#dragheader:focus { border: 2px solid palette(highlight); border-radius: 4px; }"
 )
-
-
-def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWidgets.QCompleter":
-    """Return a completer that finds each name that holds the typed text, e.g. "ion" finds averageionisation."""
-    from PySide6 import QtWidgets
-
-    completer = QtWidgets.QCompleter(list(names), parent)
-    set_search_completion(completer)
-    return completer
 
 
 def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWidgets.QFrame":
@@ -1686,14 +1743,11 @@ def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWi
     chip = QtWidgets.QFrame()
     chip.setObjectName("chip")
     layout = QtWidgets.QHBoxLayout(chip)
-    layout.setContentsMargins(8, 0, 0, 0)
+    layout.setContentsMargins(8, 1, 2, 1)
     layout.setSpacing(0)
     label = QtWidgets.QLabel(text)
     label.setToolTip(tooltip)
-    removebutton = QtWidgets.QToolButton()
-    removebutton.setText("✕")
-    removebutton.setAutoRaise(True)
-    removebutton.setToolTip(f"Remove {text} from the subplot")
+    removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
     layout.addWidget(removebutton)
@@ -1720,6 +1774,11 @@ def get_image_value(cursordata: t.Any) -> float | None:
     return float(values[0]) if values.size else None
 
 
+def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
+    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    return dc.replace(restored, figwidthscale=current.figwidthscale)
+
+
 def get_icon_curve() -> "npt.NDArray[np.float64]":
     """Return the curve of the icon of the viewer, which is a temperature that decreases as the velocity increases."""
     xvalues = np.linspace(0.0, 1.0, 200)
@@ -1740,16 +1799,13 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Shift-drag</b> up or down a subplot", "Select the y range of the subplot (ymin= and ymax=)"),
     ("<b>Double-click</b> a plot", "Show the x range of the data"),
     ("<b>Right-click</b> a subplot", "Show the menu of the subplot, e.g. the y scale"),
+    ("<b>Alt-Up</b>, <b>Alt-Down</b> on the header of a subplot", "Move the subplot up or down (Option on a Mac)"),
 )
 
 
 def run_viewer(tokens: "Sequence[str]") -> None:
     """Open the window of the viewer, and print the command of the last plot when the window closes."""
-    app = start_application(APPLICATION_NAME, get_icon_curve())
-    # the list holds a reference to each window, thus Python keeps the window while it is open
-    windows: list[QtWidgets.QMainWindow] = []
-    open_window(tokens, windows)
-    app.exec()
+    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens)
 
 
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
@@ -1760,19 +1816,22 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    viewer = EstimatorViewer(tokens, mplfig.Figure())
+    # the Settings window can give a new window options, e.g. -figscale, that the command does not give
+    viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
-    window.setWindowTitle(f"{APPLICATION_NAME} {viewer.modelpath.resolve().name}")
+    set_window_document(window, viewer.modelpath, viewer.modelpath.resolve().name)
     canvas = FigureCanvasQTAgg(viewer.fig)
+    viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:
         # the arguments of the user give the error, and the terminal shows it
         if not windows:
             raise SystemExit(1)
         return message
     windows.append(window)
+    add_recent_model(viewer.modelpath)
 
     fittimer = make_timer(window, FIT_MILLISECONDS)
-    playtimer = make_timer(window, PLAY_MILLISECONDS)
+    playtimer = make_timer(window, 0)
 
     def on_resize() -> None:
         fit_canvas(canvas, viewer.figsize, plotarea)
@@ -1793,13 +1852,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timeedit = QtWidgets.QLineEdit()
     timeedit.setFixedWidth(110)
     timeedit.setToolTip("A time in days. The time range moves to the timestep that holds it.")
-    widthlabel = QtWidgets.QLabel()
+    # the width row has the same label and field as the width row of the spectrum viewer
+    widthlabel = QtWidgets.QLabel("Δ timesteps:")
+    widthedit = QtWidgets.QLineEdit()
+    widthedit.setFixedWidth(110)
+    widthedit.setToolTip("The number of timesteps of the time range. The Up key and the Down key change it.")
     timestepslabel = QtWidgets.QLabel()
-    playbutton = QtWidgets.QPushButton("Play")
-    playbutton.setCheckable(True)
-    playbutton.setToolTip(
-        "Move a snapshot through the timesteps of the run, or move a plot against time through the cells (Space)"
+    playbutton = make_play_button(
+        "Move a snapshot through the timesteps of the run, or move a plot against time through the cells. After the"
+        " last step, Play starts again at the first step (Space)"
     )
+    fpsbox = make_fps_box()
     # a plot against time takes a range of timesteps, as the x range of plotspectra. A snapshot takes a time and a width
     trangebox = QtWidgets.QWidget()
     trangelayout = QtWidgets.QHBoxLayout(trangebox)
@@ -1814,29 +1877,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
     for widget in (tminedit, trangeslider, tmaxedit):
         trangelayout.addWidget(widget)
-    # a button beside the slider moves the time range by one timestep, as the Left key and the Right key do
-    previousbutton, nextbutton = QtWidgets.QToolButton(), QtWidgets.QToolButton()
-    previousbutton.setText("◀")
-    previousbutton.setToolTip("Move the time range to the previous timestep (Left key)")
-    nextbutton.setText("▶")
-    nextbutton.setToolTip("Move the time range to the next timestep (Right key)")
-    timesliderbox = QtWidgets.QWidget()
-    timesliderlayout = QtWidgets.QHBoxLayout(timesliderbox)
-    timesliderlayout.setContentsMargins(0, 0, 0, 0)
-    timesliderlayout.addWidget(previousbutton)
-    timesliderlayout.addWidget(timeslider, 1)
-    timesliderlayout.addWidget(nextbutton)
-    timegrid.addWidget(QtWidgets.QLabel("Time [d]"), 0, 0)
-    timegrid.addWidget(timesliderbox, 0, 1)
+    # a step button moves the time range by one timestep, as the Left key and the Right key do
+    previousbutton, nextbutton = make_step_button(forward=False), make_step_button(forward=True)
+    timegrid.addWidget(QtWidgets.QLabel("Time [d]:"), 0, 0)
+    timegrid.addWidget(timeslider, 0, 1)
     timegrid.addWidget(timeedit, 0, 2)
     timegrid.addWidget(trangebox, 0, 1, 1, 2)
     timegrid.addWidget(widthlabel, 1, 0)
-    timegrid.addWidget(widthslider, 1, 1, 1, 2)
-    timegrid.addWidget(timestepslabel, 2, 0, 1, 2)
-    timegrid.addWidget(playbutton, 2, 2)
+    timegrid.addWidget(widthslider, 1, 1)
+    timegrid.addWidget(widthedit, 1, 2)
+    timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 2, 0, 1, -1)
 
     _, cellgrid = add_section(panellayout, "Cells")
     geometrybox = QtWidgets.QComboBox()
+    # the box fills the width of the sidebar, and a narrow sidebar cuts its long texts
+    geometrybox.setMinimumWidth(120)
     for mode in get_geometry_choices(viewer.dimensions):
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
@@ -1854,7 +1909,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     axisbox = QtWidgets.QComboBox()
     axisbox.addItems(["+x", "-x", "+y", "-y", "+z", "-z"])
     axisbox.setToolTip(helptexts.get("axis", ""))
-    coneanglelabel = QtWidgets.QLabel("Full angle")
+    coneanglelabel = QtWidgets.QLabel("Full angle:")
     coneanglebox = QtWidgets.QDoubleSpinBox()
     coneanglebox.setRange(1.0, 180.0)
     coneanglebox.setSuffix("°")
@@ -1885,12 +1940,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     axisparameters = make_parameter_row([QtWidgets.QLabel("-axis"), axisbox, coneanglelabel, coneanglebox])
     # show_blocked_values names the axis that is normal to the plane, e.g. "at z ="
     planeatlabel = QtWidgets.QLabel()
-    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane"), planebox, planeatlabel, offsetedit])
-    lineparameters = make_parameter_row([QtWidgets.QLabel("Line along"), lineaxisbox])
+    planeparameters = make_parameter_row([QtWidgets.QLabel("Plane:"), planebox, planeatlabel, offsetedit])
+    lineparameters = make_parameter_row([QtWidgets.QLabel("Line along:"), lineaxisbox])
     projectionaxisbox = QtWidgets.QComboBox()
     projectionaxisbox.addItems(["x", "y", "z"])
     projectionaxisbox.setToolTip(helptexts.get("projection", ""))
-    projectionparameters = make_parameter_row([QtWidgets.QLabel("Mean along"), projectionaxisbox])
+    projectionparameters = make_parameter_row([QtWidgets.QLabel("Mean along:"), projectionaxisbox])
     add_row(cellgrid, 0, [geometrybox])
     cellgrid.addWidget(cellnamelabel, 1, 0)
     cellgrid.addWidget(cellslider, 1, 1)
@@ -1914,29 +1969,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xbox.setToolTip(helptexts.get("x", ""))
     xminedit, xmaxedit, xbinsedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     xminlabel, xmaxlabel = QtWidgets.QLabel("-xmin"), QtWidgets.QLabel("-xmax")
+    # show_values adds the unit to the text, thus the tooltip gives the flag here
+    xminlabel.setToolTip("-xmin")
+    xmaxlabel.setToolTip("-xmax")
     zoomtip = " Drag across a plot to select a range. Double-click a plot to show the range of the data."
     for edit in (xminedit, xmaxedit):
         edit.setFixedWidth(100)
         edit.setPlaceholderText("auto")
     # a field takes each value of -xbins, e.g. a negative value for the automatic bins
-    xbinsedit.setFixedWidth(80)
+    # the placeholder gives the bins of the plot, e.g. "auto: no bins", and the field shows it in full
+    xbinsedit.setFixedWidth(110)
     xbinsedit.setPlaceholderText("default")
     # an empty field removes -xbins. QIntValidator gives the Intermediate state for an empty text, and the field
     # then sends no editingFinished signal
     xbinsedit.setValidator(QtGui.QRegularExpressionValidator(QtCore.QRegularExpression(r"(-?\d+)?"), xbinsedit))
     xbinsedit.setToolTip(helptexts.get("xbins", ""))
     markerscheck = QtWidgets.QCheckBox("--markers")
-    markerscheck.setToolTip(helptexts.get("markers", ""))
     colorbyioncheck = QtWidgets.QCheckBox("--colorbyion")
-    colorbyioncheck.setToolTip(helptexts.get("colorbyion", ""))
+    # show_values adds a note to the text of these checkboxes, thus the tooltip gives the flag here
+    markerscheck.setToolTip(f"{helptexts.get('markers', '')} (--markers)")
+    colorbyioncheck.setToolTip(f"{helptexts.get('colorbyion', '')} (--colorbyion)")
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck])
     smoothingbox = QtWidgets.QComboBox()
+    smoothingbox.setMinimumWidth(120)
     for mode, modetext in SMOOTHING_MODES.items():
         smoothingbox.addItem(modetext, mode)
     smoothingbox.setToolTip("Smooth the line of each series")
-    smoothinglengthlabel, smoothingorderlabel = QtWidgets.QLabel("Length"), QtWidgets.QLabel("Order")
+    smoothinglengthlabel, smoothingorderlabel = QtWidgets.QLabel("Length:"), QtWidgets.QLabel("Order:")
     smoothinglengthbox, smoothingorderbox = QtWidgets.QSpinBox(), QtWidgets.QSpinBox()
     # show_blocked_values gives the length box its range and its step for the mode
     smoothinglengthbox.setRange(2, 999)
@@ -1949,7 +2010,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xgrid,
         3,
         [
-            QtWidgets.QLabel("Smoothing"),
+            QtWidgets.QLabel("Smoothing:"),
             smoothingbox,
             smoothinglengthlabel,
             smoothinglengthbox,
@@ -1971,7 +2032,29 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "Type a variable, a type of series and its names, or an ion. Press Return to add the subplot. Part of a name"
         " shows the names that hold it."
     )
-    addsubplotbutton = QtWidgets.QPushButton("Add subplot")
+    # the + button of a card opens this field under the card, and Return inserts the new subplot there
+    insertbox = QtWidgets.QWidget()
+    insertlayout = QtWidgets.QHBoxLayout(insertbox)
+    insertlayout.setContentsMargins(0, 0, 0, 0)
+    insertedit = QtWidgets.QLineEdit()
+    insertedit.setPlaceholderText("Insert a subplot, e.g. nne, or populations Fe II")
+    insertedit.setToolTip("Type a variable, a type of series and its names, or an ion. Press Return to insert it.")
+    insertcancel = make_glyph_button("✕", "Close the field (Escape)", "Close")
+    insertlayout.addWidget(insertedit, 1)
+    insertlayout.addWidget(insertcancel)
+    insertbox.hide()
+    # the row of the new subplot, or None while the field is closed
+    insertrow: int | None = None
+    # the rows of the cards that show only their header
+    collapsedrows: set[int] = set()
+    # the subplots of the cards on the screen. After each change, e.g. a move, Undo, or a rejected change,
+    # show_subplots moves the collapsed cards and the insert field with their subplots
+    shownsubplots: tuple[tuple[str, ...], ...] = ()
+    # the line that shows where a dragged card goes
+    dropline = QtWidgets.QFrame(subplotsbox)
+    dropline.setObjectName("dropline")
+    dropline.hide()
+    addsubplotbutton = QtWidgets.QPushButton("Add Subplot")
     addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
     defaultbutton.setToolTip("Show the default subplots of plotestimators for this model")
@@ -2023,29 +2106,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
-    optionheader, optiongrid = add_section(panellayout, "Other options")
-    optioncontent = optiongrid.parentWidget()
-    assert optioncontent is not None
-    # the sections of the window set each option that the table offered. The table thus shows only the rows of an
-    # option that no section sets, e.g. of a new option of plotestimators
-    tableoffers = bool(
-        get_table_actions(viewer.parser, CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS)
-    )
+    defaultdpi: int = viewer.parser.get_default("dpi")
+    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
+    _, optiongrid = add_section(panellayout, "Other options")
+    # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
+    # each option of the command there. A section and the table show the same rows
+    tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | RUN_DESTS
 
     def get_table_rows(rows: OptionRows) -> OptionRows:
-        """Return the rows that the option table shows, which are the rows that no section sets."""
-        return tuple(row for row in rows if row[0] not in viewer.sectionflags)
+        """Return the rows that the option table shows, which are all the rows except those of RUN_DESTS."""
+        return tuple(row for row in rows if row[0] not in viewer.runflags)
 
     def on_option_rows(rows: OptionRows) -> None:
-        sectionrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.sectionflags)
-        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *sectionrows)))
+        runrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.runflags)
+        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *runrows)))
 
     optiontable, set_option_rows = make_option_table(
-        window,
-        viewer.parser,
-        CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | SECTION_DESTS,
-        get_table_rows(viewer.values.otheroptions),
-        on_option_rows,
+        window, viewer.parser, tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows
     )
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
     commandtext, copybutton = add_command_section(panellayout)
@@ -2057,6 +2134,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
+        figuresection.dpibox,
         timeslider,
         widthslider,
         cellslider,
@@ -2146,9 +2224,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         names = get_subplot_names(subplot)
         card = QtWidgets.QFrame()
         card.setObjectName("subplotcard")
-        cardlayout = QtWidgets.QVBoxLayout(card)
-        cardlayout.setContentsMargins(6, 4, 4, 6)
-        cardlayout.setSpacing(4)
+        framelayout = QtWidgets.QVBoxLayout(card)
+        framelayout.setContentsMargins(6, 4, 4, 6)
+        framelayout.setSpacing(4)
 
         typebox = QtWidgets.QComboBox()
         typebox.setObjectName("type")
@@ -2160,25 +2238,63 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         typebox.setCurrentText(currenttype)
         typebox.setToolTip("The type of the subplot. A new type keeps the names that still apply.")
         typebox.textActivated.connect(partial(on_subplot_type, row))
-        quantity = QtWidgets.QLabel(plain_label(get_ylabel(names[0])).strip() if seriestype is None and names else "")
+        iscollapsed = row in collapsedrows
+        quantity = QtWidgets.QLabel(
+            get_card_summary(subplot, columns)
+            if iscollapsed
+            else plain_label(get_ylabel(names[0])).strip()
+            if seriestype is None and names
+            else ""
+        )
         quantity.setEnabled(False)
-        header = QtWidgets.QHBoxLayout()
-        header.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
-        header.addWidget(typebox)
-        header.addWidget(quantity, 1)
-        for text, tooltip, callback, enabled in (
-            ("▲", "Move the subplot up", partial(on_move_subplot, row, -1), row > 0),
-            ("▼", "Move the subplot down", partial(on_move_subplot, row, 1), row < len(viewer.values.subplots) - 1),
-            ("✕", "Delete the subplot", partial(on_delete_subplot, row), True),
+        # a narrow sidebar cuts the text of the header and the type, and the buttons of the header stay in view
+        quantity.setMinimumWidth(1)
+        typebox.setMinimumWidth(100)
+        disclosure = QtWidgets.QToolButton()
+        disclosure.setArrowType(QtCore.Qt.ArrowType.RightArrow if iscollapsed else QtCore.Qt.ArrowType.DownArrow)
+        disclosure.setStyleSheet("QToolButton { border: none; }")
+        disclosure.setToolTip("Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot")
+        disclosure.setAccessibleName("Expand" if iscollapsed else "Collapse")
+        disclosure.clicked.connect(partial(on_collapse_subplot, row))
+        header = make_drag_header(
+            partial(on_drag_subplot, row), partial(on_drop_subplot, row), partial(on_move_key, row)
+        )
+        header.setToolTip("Drag the header to move the subplot. Alt-Up and Alt-Down (Option on a Mac) also move it.")
+        headerlayout = QtWidgets.QHBoxLayout(header)
+        headerlayout.setContentsMargins(0, 0, 0, 0)
+        headerlayout.addWidget(disclosure)
+        headerlayout.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
+        headerlayout.addWidget(typebox)
+        headerlayout.addWidget(quantity, 1)
+        for text, tooltip, callback in (
+            ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
+            ("✕", "Delete the subplot", partial(on_delete_subplot, row)),
         ):
-            button = QtWidgets.QToolButton()
-            button.setText(text)
-            button.setAutoRaise(True)
-            button.setToolTip(tooltip)
-            button.setEnabled(enabled)
+            button = make_glyph_button(text, tooltip, tooltip)
             button.clicked.connect(callback)
-            header.addWidget(button)
-        cardlayout.addLayout(header)
+            headerlayout.addWidget(button)
+        grip = QtWidgets.QLabel("≡")
+        grip.setEnabled(False)
+        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        headerlayout.addWidget(grip)
+        # the keyboard and VoiceOver reach the moves through the menu of the header
+        header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+        for text, target, enabled in (
+            ("Move Up", row - 1, row > 0),
+            ("Move Down", row + 1, row < len(viewer.values.subplots) - 1),
+        ):
+            action = QtGui.QAction(text, header)
+            action.setEnabled(enabled)
+            action.triggered.connect(partial(move_subplot, row, target))
+            header.addAction(action)
+        framelayout.addWidget(header)
+        # a collapsed card shows only its header
+        body = QtWidgets.QWidget()
+        body.setVisible(not iscollapsed)
+        cardlayout = QtWidgets.QVBoxLayout(body)
+        cardlayout.setContentsMargins(0, 0, 0, 0)
+        cardlayout.setSpacing(4)
+        framelayout.addWidget(body)
 
         chipsbox = QtWidgets.QWidget()
         chipslayout = make_flow_layout()
@@ -2218,10 +2334,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             " ymin=1e-16 also goes here."
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
-        listbutton = QtWidgets.QToolButton()
-        listbutton.setText("▾")
-        listbutton.setToolTip("Show each name that the subplot can take")
-        listbutton.clicked.connect(partial(show_all_choices, addedit))
+        listbutton = make_glyph_button("▾", "Show each name that the subplot can take", "Show All Names")
+        if currenttype == VARIABLES_TYPE:
+            listbutton.clicked.connect(partial(show_variable_menu, row, listbutton))
+        else:
+            listbutton.clicked.connect(partial(show_all_choices, addedit))
         addrow = QtWidgets.QHBoxLayout()
         addrow.addWidget(addedit, 1)
         addrow.addWidget(listbutton)
@@ -2241,7 +2358,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         # a colour image shows the values as colours, and its vertical axis is a velocity. Thus the directives of the
         # y axis set the colour scale
-        quantityname = "value" if isimage else "y"
         yscalebox = make_selector(
             "yscale",
             ("auto", "linear", "log"),
@@ -2251,7 +2367,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "The scale of the y axis (yscale=). Auto takes log for ions and linear for the other series.",
             partial(on_directive_selector, row, "yscale", "auto"),
         )
-        selectorwidgets: list[QtWidgets.QWidget] = [QtWidgets.QLabel(f"{quantityname} scale"), yscalebox]
         poptypebox = None
         if currenttype == "populations":
             poptypebox = make_selector(
@@ -2261,13 +2376,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 f"The quantity of each ion of this subplot (ionpoptype=). {DEFAULT_POPTYPE} needs no directive.",
                 partial(on_directive_selector, row, "ionpoptype", DEFAULT_POPTYPE),
             )
-            selectorwidgets += [QtWidgets.QLabel("Quantity"), poptypebox]
-        cardlayout.addLayout(make_row_layout(selectorwidgets))
+            cardlayout.addLayout(make_row_layout([QtWidgets.QLabel("Quantity:"), poptypebox]))
 
         yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
         for edit, directive in ((yminedit, "ymin"), (ymaxedit, "ymax")):
             edit.setObjectName(directive)
-            edit.setFixedWidth(90)
+            edit.setFixedWidth(70)
             edit.setPlaceholderText("auto")
             edit.setText(get_directive_value(subplot, directive) or "")
             extent = f"{directive[1:]}imum"
@@ -2277,13 +2391,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 else f"The {extent} of the y axis ({directive}=). Shift-drag on the subplot sets it."
             )
             edit.editingFinished.connect(partial(on_yrange, row, yminedit, ymaxedit))
-        yrangewidgets: list[QtWidgets.QWidget] = [
-            QtWidgets.QLabel(f"{quantityname} min"),
-            yminedit,
-            QtWidgets.QLabel(f"{quantityname} max"),
-            ymaxedit,
-        ]
-        setrangebutton = QtWidgets.QPushButton("Set current min,max" if isimage else "Set current y min,max")
+        setrangebutton = QtWidgets.QPushButton("Current")
         setrangebutton.setToolTip(
             "Set the value min and max to the current range of the colour scale. The colours then keep their"
             " meaning at each timestep."
@@ -2291,9 +2399,29 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else "Set the y min and max to the current range of the y axis. The axis then stays the same at each"
             " timestep."
         )
+        setrangebutton.setAccessibleName("Set Current Range")
         setrangebutton.clicked.connect(partial(on_set_current_range, row))
-        yrangewidgets.append(setrangebutton)
-        cardlayout.addLayout(make_row_layout(yrangewidgets))
+        autorangebutton = QtWidgets.QPushButton("Auto")
+        autorangebutton.setToolTip(
+            "Remove the value min and max, thus the colour scale follows the values of each timestep."
+            if isimage
+            else "Remove the y min and max, thus the y axis follows the data of each timestep."
+        )
+        autorangebutton.setAccessibleName("Automatic Range")
+        autorangebutton.clicked.connect(partial(set_directives, row, {"ymin": None, "ymax": None}))
+        quantityname = "value" if isimage else "y"
+        cardlayout.addLayout(
+            make_row_layout([
+                QtWidgets.QLabel(f"{quantityname} scale:"),
+                yscalebox,
+                QtWidgets.QLabel("min:"),
+                yminedit,
+                QtWidgets.QLabel("max:"),
+                ymaxedit,
+                setrangebutton,
+                autorangebutton,
+            ])
+        )
         return SubplotCard(
             key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit
         )
@@ -2315,6 +2443,31 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             run_command_step(lambda: names.extend(get_level_names(viewer.modelpath, timestep, cell)))
             levelnamescache.append(names)
         return levelnamescache[0]
+
+    def show_variable_menu(row: int, button: QtWidgets.QToolButton) -> None:
+        """Show a menu of the variables in groups, with the units of each variable at the right.
+
+        A variable that the subplot shows has a check mark, and the menu does not offer it again.
+        """
+        names = set(get_subplot_names(viewer.values.subplots[row]))
+        # a plot that ends while the menu shows can make the card again, and that deletes the children of the card
+        menu = QtWidgets.QMenu(window)
+        for title, columns in get_variable_menu_groups(tuple(viewer.estimatorcolumns)):
+            if not columns:
+                continue
+            # a line separates the groups at the top, and the submenus stay together below them
+            if not menu.isEmpty() and not (title and menu.actions()[-1].menu() is not None):
+                menu.addSeparator()
+            target = menu.addMenu(title) if title else menu
+            for column in columns:
+                # the text after a tab goes to the right edge of the menu, as a shortcut does
+                action = target.addAction(f"{column}\t{format_units(column).strip()}")
+                action.setCheckable(True)
+                action.setChecked(column in names)
+                action.setEnabled(column not in names)
+                action.triggered.connect(partial(add_item, row, column))
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+        menu.deleteLater()
 
     def show_all_choices(edit: QtWidgets.QLineEdit) -> None:
         if (completer := edit.completer()) is not None:
@@ -2351,6 +2504,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             newsubplotedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], newsubplotedit))
             if oldcompleter is not None:
                 oldcompleter.deleteLater()
+            oldcompleter = insertedit.completer()
+            insertedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], insertedit))
+            if oldcompleter is not None:
+                oldcompleter.deleteLater()
         oldbuttons = [
             item.widget()
             for index in range(newsuggestionslayout.count())
@@ -2375,14 +2532,27 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         A card with the same key stays, and its controls show the new directives. A new card of the same row gives
         the focus to the control that had it in the old card.
         """
-        nonlocal shownnewkey, pendingfocus
+        nonlocal shownnewkey, pendingfocus, shownsubplots, insertrow
         subplots, columns = viewer.values.subplots, viewer.estimatorcolumns
+        if subplots != shownsubplots:
+            movedcollapsed = get_moved_rows(shownsubplots, subplots, collapsedrows)
+            collapsedrows.clear()
+            collapsedrows.update(movedcollapsed)
+            # the insert field stays under its card, and it closes when its card goes
+            if insertrow is not None:
+                movedcard = get_moved_rows(shownsubplots, subplots, {insertrow - 1})
+                insertrow = min(movedcard) + 1 if movedcard else None
+            shownsubplots = subplots
         subplottypes = get_subplot_types(columns, viewer.nltetypes)
         isimage = get_geometry_mode(viewer.values) in IMAGE_MODES
         focuswidget = QtWidgets.QApplication.focusWidget()
         focus, pendingfocus = pendingfocus, None
+        # the cards take their places by the row, thus the insert field leaves the layout during the rebuild
+        subplotslayout.removeWidget(insertbox)
         for row, subplot in enumerate(subplots):
-            key = get_card_key(row, subplots, columns, isimage=isimage)
+            # the header of a collapsed card shows the summary, which holds the y scale
+            summary = get_card_summary(subplot, columns) if row in collapsedrows else None
+            key = (*get_card_key(row, subplots, columns, isimage=isimage), summary)
             if row < len(cards) and cards[row].key == key:
                 show_card_directives(cards[row], subplot)
                 continue
@@ -2400,6 +2570,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for card in cards[len(subplots) :]:
             remove_widget(subplotslayout, card.frame)
         del cards[len(subplots) :]
+        if insertrow is not None and insertrow <= len(cards):
+            subplotslayout.insertWidget(insertrow, insertbox)
+        else:
+            insertbox.hide()
         newkey = (subplots, viewer.defaultsubplots, columns)
         if newkey != shownnewkey:
             show_new_subplot_suggestions(subplottypes, columnschanged=newkey[2:] != shownnewkey[2:])
@@ -2424,7 +2598,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = viewer.values
         firstpos, lastpos = viewer.get_selection_positions()
         evolution = is_evolution(values)
-        for widget in (timesliderbox, timeedit, widthlabel, widthslider):
+        for widget in (timeslider, timeedit, widthlabel, widthslider, widthedit):
             widget.setVisible(not evolution)
         previousbutton.setEnabled(firstpos > 0)
         nextbutton.setEnabled(lastpos < len(viewer.validtimesteps) - 1)
@@ -2464,7 +2638,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         geometrydescription.setText(description)
         geometrydescription.setVisible(bool(description))
         normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
-        planeatlabel.setText(f"at {normal} =")
+        planeatlabel.setText(f"at {normal}:")
         set_edit_text(offsetedit, offset)
         for index, axis in enumerate("xyz"):
             lineaxisbox.setItemText(index, get_line_label(axis, slicetext))
@@ -2494,17 +2668,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
-        widthlabel.setText(f"Timesteps: {lastpos - firstpos + 1}")
+        set_edit_text(widthedit, str(lastpos - firstpos + 1))
         set_edit_text(timeedit, get_time_text(viewer.tmids, values))
-        timestepslabel.setText(viewer.get_timesteps_text())
+        timestepslabel.setText(viewer.get_time_range_text())
         set_edit_text(celledit, values.cells)
         if (cell := get_single_cell(values.cells)) is not None and cell in viewer.cells:
             cellslider.setValue(viewer.cells.index(cell))
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
-        xminlabel.setText(f"-xmin{xunit}")
-        xmaxlabel.setText(f"-xmax{xunit}")
+        xminlabel.setText(f"{FLAG_LABELS['-xmin']}{xunit}:")
+        xmaxlabel.setText(f"{FLAG_LABELS['-xmax']}{xunit}:")
         axisisbeta = viewer.xlimitscale != 1.0
         unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
@@ -2519,15 +2693,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         else:
             xbinsedit.setPlaceholderText("auto: no bins" if viewer.plotxbins is None else f"auto: {viewer.plotxbins}")
         markerscheck.setChecked(values.markers)
-        markerscheck.setText(
-            "--markers (on for -xbins 0)" if viewer.plotmarkers and not values.markers else "--markers"
-        )
+        markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
+        markerscheck.setText(FLAG_LABELS["--markers"] + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
-        colorbyioncheck.setText(
-            "--colorbyion (on for automatic bins)"
-            if viewer.plotcolorbyion and not values.colorbyion
-            else "--colorbyion"
-        )
+        colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
+        colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
         skippeddefaultslabel.setText(
@@ -2535,8 +2705,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
-        for widget in (optionheader, optioncontent):
-            widget.setVisible(tableoffers or bool(get_table_rows(values.otheroptions)))
+        set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
 
@@ -2550,9 +2719,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             playbutton.setChecked(False)
         elif playbutton.isChecked():
             # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds)
+            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
 
-    queue = DrawQueue(window, viewer, statusbar, show_values, after_draw, render=viewer.render)
+    queue = DrawQueue(
+        window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
+    )
     apply = queue.apply
 
     def fit_figwidthscale() -> None:
@@ -2561,7 +2732,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
         )
         if figwidthscale is not None:
-            apply(dc.replace(viewer.values, figwidthscale=figwidthscale))
+            # the window sets the width, thus Undo does not return to an old width
+            apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
 
     fittimer.timeout.connect(fit_figwidthscale)
 
@@ -2578,7 +2750,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         firstpos, _ = viewer.get_selection_positions()
         apply(viewer.select_timesteps(viewer.values, firstpos, count))
 
+    def on_widthedit() -> None:
+        # a later plot can show new text in the field only when the field has no edit of the user
+        widthedit.setModified(False)
+        text = widthedit.text().strip()
+        if not (text.isascii() and text.isdecimal()) or int(text) < 1:
+            show_error("The number of timesteps must be a whole number of 1 or more")
+            return
+        on_width(int(text))
+
     def on_timeedit() -> None:
+        # the field shows a rounded time, thus a Return in the field with no edit keeps the range
+        if not timeedit.isModified():
+            return
         # a later plot can show new text in the field only when the field has no edit of the user
         timeedit.setModified(False)
         try:
@@ -2619,17 +2803,29 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if (values := viewer.step_cell(step)) is not None:
             apply(values)
 
+    def get_play_values() -> ControlValues | None:
+        """Return the values of the next step of Play, or None if Play has no step.
+
+        After the last cell or the last timestep, Play starts again at the first one.
+        """
+        if not is_evolution(viewer.values):
+            return viewer.step_time(1) or viewer.move_to_end(last=False)
+        # -cell does not select the cells of some plots, e.g. of a plane
+        if not viewer.cells or not cells_apply(viewer.values):
+            return None
+        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.cells[0]))
+
     def play_step() -> None:
         if not playbutton.isChecked():
             return
-        values = viewer.step_cell(1) if is_evolution(viewer.values) else viewer.step_time(1)
-        if values is None:
+        values = get_play_values()
+        # a time range that covers every valid timestep, or a model of one cell, has no other step
+        if values is None or values == viewer.values:
             playbutton.setChecked(False)
             return
-        apply(values)
+        apply(values, undoable=False)
 
     def on_play(checked: bool) -> None:
-        playbutton.setText("Pause" if checked else "Play")
         if checked:
             play_step()
 
@@ -2754,7 +2950,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         -ionpoptype of the command waits for a populations subplot, and then it goes to each one.
         """
-        newsubplots = tuple(subplot for subplot in subplots if subplot) or viewer.defaultsubplots
+        # a subplot with no item stays, and it draws an empty frame
+        newsubplots = tuple(subplots) or viewer.defaultsubplots
         if not newsubplots:
             show_error("Give the items of at least one subplot")
             return
@@ -2829,16 +3026,61 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         add_item(row, item)
 
     def on_remove_item(row: int, position: int) -> None:
-        apply_subplots(remove_subplot_item(viewer.values.subplots, row, position, viewer.estimatorcolumns))
+        apply_subplots(remove_subplot_item(viewer.values.subplots, row, position))
+
+    def apply_subplot_order(order: "Sequence[int | tuple[str, ...]]") -> None:
+        """Apply the subplots in a new order. Each item of order is the old row of a subplot, or a new subplot."""
+        subplots = viewer.values.subplots
+        apply_subplots([subplots[item] if isinstance(item, int) else item for item in order])
 
     def on_delete_subplot(row: int) -> None:
-        apply_subplots([subplot for position, subplot in enumerate(viewer.values.subplots) if position != row])
+        apply_subplot_order([oldrow for oldrow in range(len(viewer.values.subplots)) if oldrow != row])
 
-    def on_move_subplot(row: int, step: int) -> None:
-        subplots = list(viewer.values.subplots)
-        if 0 <= row + step < len(subplots):
-            subplots[row], subplots[row + step] = subplots[row + step], subplots[row]
-            apply_subplots(subplots)
+    def move_subplot(row: int, newrow: int) -> None:
+        order = list(range(len(viewer.values.subplots)))
+        if row != newrow and 0 <= newrow < len(order):
+            order.insert(newrow, order.pop(row))
+            apply_subplot_order(order)
+
+    def on_move_key(row: int, step: int) -> None:
+        """Move the subplot one row up or down, and keep the focus on its header for the next key."""
+        nonlocal pendingfocus
+        if 0 <= row + step < len(viewer.values.subplots):
+            pendingfocus = (row + step, "dragheader")
+            move_subplot(row, row + step)
+
+    def on_collapse_subplot(row: int) -> None:
+        collapsedrows.symmetric_difference_update({row})
+        show_subplots()
+
+    def get_drop_index(position: QtCore.QPoint) -> int:
+        """Return the index of the gap between the cards that is nearest to a position on the screen."""
+        y = subplotsbox.mapFromGlobal(position).y()
+        return sum(card.frame.geometry().center().y() < y for card in cards)
+
+    def on_drag_subplot(row: int, position: QtCore.QPoint) -> None:
+        index = get_drop_index(position)
+        spacing = subplotslayout.spacing()
+        if index < len(cards):
+            y = cards[index].frame.geometry().top() - (spacing + 2) // 2
+        else:
+            y = cards[-1].frame.geometry().bottom() + (spacing + 2) // 2
+        dropline.setGeometry(0, min(max(y, 0), subplotsbox.height() - 2), subplotsbox.width(), 2)
+        dropline.show()
+        dropline.raise_()
+        # a disabled header gets no mouse events, thus the dragged card fades but stays enabled
+        if (fade := cards[row].frame.graphicsEffect()) is None:
+            fade = QtWidgets.QGraphicsOpacityEffect(cards[row].frame)
+            fade.setOpacity(0.5)
+            cards[row].frame.setGraphicsEffect(fade)
+        fade.setEnabled(True)
+
+    def on_drop_subplot(row: int, position: QtCore.QPoint) -> None:
+        dropline.hide()
+        if (fade := cards[row].frame.graphicsEffect()) is not None:
+            fade.setEnabled(False)
+        index = get_drop_index(position)
+        move_subplot(row, index if index <= row else index - 1)
 
     def on_directive_selector(row: int, directive: str, defaulttext: str, text: str) -> None:
         subplot = viewer.values.subplots[row]
@@ -2850,6 +3092,38 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # the field of the new card takes the focus, thus the user can add more names
             pendingfocus = (len(viewer.values.subplots), "add")
             apply_subplots([*viewer.values.subplots, subplot])
+
+    def open_insert_field(row: int) -> None:
+        """Show the field of a new subplot under the card above row, and give it the keyboard."""
+        nonlocal insertrow
+        insertrow = row
+        subplotslayout.removeWidget(insertbox)
+        subplotslayout.insertWidget(row, insertbox)
+        insertbox.show()
+        insertedit.clear()
+        insertedit.setFocus()
+
+    def close_insert_field() -> None:
+        nonlocal insertrow
+        insertrow = None
+        insertedit.clear()
+        subplotslayout.removeWidget(insertbox)
+        insertbox.hide()
+
+    def on_insert_subplot() -> None:
+        nonlocal pendingfocus
+        # a name that the user picks in the popup goes into the field, and the next Return inserts the subplot
+        if popup_has_pick(insertedit) or insertrow is None:
+            return
+        row, text = insertrow, insertedit.text()
+        words = text.split()
+        subplot = make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else ""))
+        close_insert_field()
+        if subplot:
+            # the field of the new card takes the focus, thus the user can add more names
+            pendingfocus = (row, "add")
+            oldrows = range(len(viewer.values.subplots))
+            apply_subplot_order([*oldrows[:row], subplot, *oldrows[row:]])
 
     def on_new_subplot() -> None:
         # a name that the user picks in the popup goes into the field, and the next Return adds the subplot
@@ -2864,6 +3138,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
+    def get_figure_tokens() -> list[str]:
+        """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
+        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
+
+    def get_figure_choice() -> tuple[str, int]:
+        """Return the format of the Figure section and the resolution of the command."""
+        return get_figure_format(), viewer.values.dpi or defaultdpi
+
+    def on_resolution(resolution: int) -> None:
+        apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
+
+    def on_copy_figure() -> None:
+        from artistools.estimators.plotestimators import main as plotestimators_main
+
+        plottokens = get_figure_tokens()
+        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, plottokens, get_figure_choice())
+
     def on_copy_python() -> None:
         copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
         show_status_note(statusbar, "Copied the Python code")
@@ -2871,10 +3162,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_save() -> None:
         from artistools.estimators.plotestimators import main as plotestimators_main
 
-        defaultdpi = viewer.parser.get_default("dpi")
-        rows, dpi = split_dpi_row(viewer.values.otheroptions, defaultdpi)
-        plottokens = viewer.get_plot_tokens(dc.replace(viewer.values, otheroptions=rows))
-        save_figure_of_command(window, statusbar, plotestimators_main, "plotestimators", plottokens, dpi, defaultdpi)
+        plottokens = get_figure_tokens()
+        save_figure_of_command(
+            window, statusbar, plotestimators_main, "plotestimators", plottokens, viewer.parser, get_figure_choice()
+        )
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
@@ -2906,7 +3197,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(
-            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menucallbacks)
+            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menutexts)
         )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
@@ -2979,16 +3270,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             set_directives(row, {"ymin": ymin, "ymax": ymax})
 
     def on_menu(frameindex: int, event: t.Any) -> None:
-        """Show the menu of a subplot: the y scale, the y range, and the plot of a cell or of a snapshot."""
+        """Show the menu of a subplot: the y scale, the y range, the plot of a cell or of a snapshot, and the figure."""
         if not plot_shows_values():
             return
         menu = QtWidgets.QMenu(window)
         row = get_subplot_row(frameindex)
         if row is not None:
             islog = get_plot_frames(viewer.fig)[frameindex].get_yscale() == "log"
-            scaleaction = menu.addAction("Linear scale" if islog else "Log scale")
+            scaleaction = menu.addAction("Linear Scale" if islog else "Log Scale")
             scaleaction.triggered.connect(lambda: set_directives(row, {"yscale": "linear" if islog else "log"}))
-            resetaction = menu.addAction("Show the y range of the data")
+            resetaction = menu.addAction("Auto Y Range")
             resetaction.setEnabled(
                 any(get_item_directive(item) in {"ymin", "ymax"} for item in viewer.values.subplots[row])
             )
@@ -2997,20 +3288,71 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if is_evolution(viewer.values):
             snapshot = get_snapshot_values(viewer, event.xdata)
             if snapshot is not None:
-                snapshotaction = menu.addAction(f"Plot a snapshot at {viewer.tmids[snapshot.first]:.4g} d")
+                snapshotaction = menu.addAction(f"Plot a Snapshot at {viewer.tmids[snapshot.first]:.4g} d")
                 snapshotaction.triggered.connect(lambda: apply(snapshot))
         elif cells_apply(viewer.values):
             cell = get_nearest_cell(viewer, event.xdata)
             if cell is not None:
-                cellaction = menu.addAction(f"Plot cell {cell} against time")
+                cellaction = menu.addAction(f"Plot Cell {cell} Against Time")
                 cellaction.triggered.connect(lambda: apply(get_evolution_values(viewer, str(cell))))
             if viewer.values.cells:
-                cellsaction = menu.addAction(f"Plot the cells {viewer.values.cells} against time")
+                cellsaction = menu.addAction(f"Plot Cells {viewer.values.cells} Against Time")
                 cellsaction.triggered.connect(lambda: apply(get_evolution_values(viewer, viewer.values.cells)))
+        # a context menu of a Mac app gives the actions on the object under the pointer, here the figure
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
+        menu.addAction("Export Animation…").triggered.connect(on_export_animation)
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
+
+    def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
+        """Return the count of the steps of Play and the command of each step.
+
+        For a snapshot, each step shows the next timestep. For a plot against time, each step shows the next cell.
+        """
+        values = viewer.values
+        if is_evolution(values):
+            cells = list(viewer.cells)
+            # -cell does not select the cells of some plots, e.g. of a plane
+            if not cells or not cells_apply(values):
+                return 1, lambda _index: viewer.get_plot_tokens(values)
+            return len(cells), lambda index: viewer.get_plot_tokens(dc.replace(values, cells=str(cells[index])))
+        firstpos, lastpos = viewer.get_selection_positions(values)
+        count = lastpos - firstpos + 1
+        return (
+            len(viewer.validtimesteps) - count + 1,
+            lambda index: viewer.get_plot_tokens(viewer.select_timesteps(values, index, count)),
+        )
+
+    def on_export_animation() -> None:
+        from artistools.estimators.plotestimators import main as plotestimators_main
+
+        export_animation(
+            window,
+            queue,
+            statusbar,
+            plotestimators_main,
+            "plotestimators",
+            get_animation_frames(),
+            fpsbox.value(),
+            viewer.parser,
+        )
+
+    def on_open_recent(folder: str) -> None:
+        if (message := open_model_folder(folder, open_window, windows)) is not None:
+            show_error(message)
+
+    def on_drop(paths: list[str]) -> None:
+        """Open a new window for each dropped folder of a run."""
+        for path in paths:
+            if not Path(path).is_dir():
+                show_error(f"plotestimators reads the folder of an ARTIS run, and {Path(path).name} is a file")
+            elif (message := open_model_folder(path, open_window, windows)) is not None:
+                show_error(message)
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -3024,22 +3366,39 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         windows.remove(window)
 
     menucallbacks = {
-        "Open Model...": on_open_model,
+        "Open Model…": on_open_model,
         "Reload Data": on_reload,
-        "Save Figure...": on_save,
-        "Copy Command": on_copy,
+        "Save Figure…": on_save,
+        "Export Animation…": on_export_animation,
         "Close Window": window.close,
+        "Copy Figure": on_copy_figure,
+        "Copy Command": on_copy,
+        "Copy Python": on_copy_python,
         "Keys and Mouse Actions": on_help,
     }
-    add_menus(window, menucallbacks)
+    menutexts = add_menus(window, menucallbacks, queue, playbutton, open_folder=on_open_recent)
+    set_drop_handler(window, on_drop)
+    follow_colour_scheme(window, viewer, queue)
+
+    # the window keeps its command at a quit, and the next start opens the window again
+    def get_session_tokens() -> list[str]:
+        # a command with no folder reads the working folder, and the next start can be in a different folder. The
+        # folder takes the place of the folder of the command, because a folder after an empty -plot removes that -plot
+        return viewer.get_plot_tokens(modeltoken=viewer.modeltoken or str(Path.cwd()))
+
+    window.setProperty("sessiontokens", get_session_tokens)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
+    widthedit.editingFinished.connect(on_widthedit)
     timeedit.editingFinished.connect(on_timeedit)
     connect_trange(on_trange)
     tminedit.editingFinished.connect(on_trangeedit)
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
+    figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.dpibox.valueChanged.connect(on_resolution)
+    figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     previousbutton.clicked.connect(lambda: on_step_time(-1))
     nextbutton.clicked.connect(lambda: on_step_time(1))
@@ -3069,6 +3428,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
     newsubplotedit.returnPressed.connect(on_new_subplot)
+    insertedit.returnPressed.connect(on_insert_subplot)
+    insertcancel.clicked.connect(close_insert_field)
+    QtGui.QShortcut(
+        QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), insertedit, context=QtCore.Qt.ShortcutContext.WidgetShortcut
+    ).activated.connect(close_insert_field)
     addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
     copybutton.clicked.connect(on_copy)
@@ -3086,6 +3450,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         can_select=lambda: not viewer.isimage,
         on_select_y=on_select_y,
         on_menu=on_menu,
+        show_tag=make_readout_tag(canvas),
     )
     # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
     for key, callback in (
@@ -3097,7 +3462,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         (QtCore.Qt.Key.Key_End, lambda: apply(viewer.move_to_end(last=True))),
         (QtCore.Qt.Key.Key_PageUp, lambda: on_step_cell(-1)),
         (QtCore.Qt.Key.Key_PageDown, lambda: on_step_cell(1)),
-        (QtCore.Qt.Key.Key_Space, playbutton.toggle),
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 

@@ -21,6 +21,7 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
+from artistools import viewertools
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 
@@ -3230,6 +3231,36 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     assert_same_lines(viewer.fig, savedfigure)
 
 
+def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Path) -> None:
+    """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
+
+    The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
+    -plot, and a series type with no names gives only its directives to the command.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = ((), ("TR", "yscale=linear"), ("populations", "yscale=log"))
+    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
+    assert viewer.values.subplots == subplots
+    assert len(interactive.get_plot_frames(viewer.fig)) == 3
+    tokens = viewer.get_plot_tokens()
+    assert tokens[-6:] == ["-plot", "-plot", "TR", "yscale=linear", "-plot", "yscale=log"]
+
+    assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
+
+
+def test_interactive_session_keeps_an_empty_last_subplot() -> None:
+    """The command of the next start keeps a last subplot with no item, also when the window read the working folder.
+
+    The session put the working folder after the last -plot. plotestimators then took the folder out of that -plot and
+    removed the -plot, which was empty, thus the next start lost the subplot.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    subplots = (("TR",), ())
+    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
+    tokens = viewer.get_plot_tokens(modeltoken=str(modelpath_classic_3d.absolute()))
+    assert make_headless_viewer([*tokens, "--interactive"]).values.subplots == subplots
+
+
 def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
 
@@ -3424,7 +3455,11 @@ def test_interactive_converts_stale_batches_in_a_child_process() -> None:
 
 
 def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
-    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion."""
+    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion.
+
+    -xbins N also draws a shaded area for each bin, and the area has no dash to separate the ions of an element. It
+    turned --colorbyion on only for automatic bins. -xbins 0 draws the points alone, and it keeps the colours.
+    """
     viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert viewer.plotxbins is not None
     assert viewer.plotxbins > 3
@@ -3432,6 +3467,8 @@ def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
     assert not viewer.values.colorbyion
     assert viewer.change(dc.replace(viewer.values, xbins="8")) is None
     assert viewer.plotxbins == 8
+    assert viewer.plotcolorbyion
+    assert viewer.change(dc.replace(viewer.values, xbins="0")) is None
     assert not viewer.plotcolorbyion
     assert interactive.get_xunit_text(1.0, "velocity") == " [km/s]"
     assert interactive.get_xunit_text(1.0, "Te") == " [K]"
@@ -3632,9 +3669,10 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
     # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
     assert interactive.change_subplot_type(populations, "populations", columns) == populations
-    # a subplot with only its type left has nothing to plot, thus it goes
-    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1, columns) == (("Te",),)
-    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0, columns) == (("TR",),)
+    # a subplot with no series left stays, and the command gives it with no item, which draws an empty frame
+    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1) == (("Te",), ("gamma_NT",))
+    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0) == (("TR",),)
+    assert interactive.get_command_items(("gamma_NT", "yscale=log"), columns) == ("yscale=log",)
 
     for subplot in (
         interactive.change_subplot_type(populations, "gamma_NT", columns),
@@ -3716,11 +3754,13 @@ def test_interactive_geometry_modes_draw() -> None:
         "The half line of cells from the centre along the -y axis, with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and"
         " -0.09647c ≤ y < 0."
     )
-    assert describe("cone") == "The cells whose centre lies within 15° of the -y axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
+    assert describe("cone") == (
+        "The cells whose centre lies within 15° of the -y half-axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
+    )
     # 1 / tan 90° is not 0 in floating point, thus the cone of 180° leaves out the central plane
     values180 = interactive.set_geometry_mode(viewer, viewer.values, "cone")
     assert interactive.get_geometry_description(values180, viewer.modelmeta, "+z", 180.0) == (
-        "The cells in front of the +z axis: z_c > 0, and the cell at the centre."
+        "The cells on the side of the +z half-axis: z_c > 0, and the cell at the centre."
     )
     assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
     # a position between two edges selects the layer that holds it, in the unit of the position
@@ -3752,7 +3792,7 @@ def test_interactive_geometry_modes_draw() -> None:
     oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
     assert "-0.006967c ≤ x < 0.006967c" in oddtext
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
-    assert interactive.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
+    assert viewertools.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
         ("-axis", ("-x",)),
     )
@@ -3798,13 +3838,15 @@ def test_interactive_smoothing_and_section_rows() -> None:
         "--interactive",
     ])
     assert {"-dpi", "--verbose"} <= set(viewer.get_plot_tokens())
-    assert "--verbose" not in viewer.sectionflags
+    assert "--verbose" not in viewer.runflags
     for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
         rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))
         assert interactive.get_smoothing(rows) == (mode, numbers)
         assert viewer.change(dc.replace(viewer.values, otheroptions=(*rows, ("--notitle", ())))) is None
     assert "--notitle" in viewer.get_plot_tokens()
-    assert "--notitle" in viewer.sectionflags
+    # the option table shows the rows that a section sets too, and only the row of --classicartis stays out
+    assert "--notitle" not in viewer.runflags
+    assert viewer.runflags == {"--classicartis"}
 
 
 def test_interactive_level_populations() -> None:
@@ -3857,7 +3899,7 @@ def test_subplots_per_row_fill_each_row() -> None:
 
 
 def test_interactive_image_panels_name_their_subplot() -> None:
-    """Each panel of a colour image names its subplot, thus Set current min,max finds the colour scale of each subplot.
+    """Each panel of a colour image names its subplot, thus Set current range finds the colour scale of each subplot.
 
     A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
     """
@@ -3967,3 +4009,34 @@ def test_interactive_x_variable_with_no_value_names_the_variable() -> None:
     message = viewer.change(dc.replace(viewer.values, x="tmid_days_prevtimestep", first=first, last=first))
     assert message is not None
     assert "tmid_days_prevtimestep has no value" in message
+
+
+def test_variable_menu_groups_the_columns() -> None:
+    """The menu of the variables gives the temperatures first, then the other variables, then a submenu per family.
+
+    A species column belongs to a subplot of its series type, and a column of the grid is not a variable.
+    """
+    columns = ("timestep", "modelgridindex", "Te", "TR", "nne", "rho", "heating_ff", "heating_bf", "nnion_Fe_II")
+    groups = interactive.get_variable_menu_groups(columns)
+    assert groups[:2] == (("", ("Te", "TR")), ("", ("nne", "rho")))
+    assert len(groups) == 3
+    assert groups[2][0].endswith("(heating_…)")
+    assert groups[2][1] == ("heating_bf", "heating_ff")
+
+
+def test_card_state_follows_its_subplot() -> None:
+    """A collapsed card and the insert field stay with their subplot after each change of the subplots.
+
+    The window moved the rows only for a move, an insert, or a delete of the window. After Undo of a delete, the
+    window collapsed a different card, and it put the insert field below a different card.
+    """
+    before = (("Te",), ("TR",), ("nne",))
+    # a delete of the first subplot, then Undo of the delete
+    assert interactive.get_moved_rows(before, before[1:], {2}) == {1}
+    assert interactive.get_moved_rows(before[1:], before, {1}) == {2}
+    # a move of the last subplot to the top
+    assert interactive.get_moved_rows(before, (("nne",), ("Te",), ("TR",)), {0, 2}) == {0, 1}
+    # a new y scale changes the items of the subplot, and the subplot keeps its row
+    assert interactive.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
+    # the change removes the subplot of the row
+    assert not interactive.get_moved_rows(before, before[1:], {0})

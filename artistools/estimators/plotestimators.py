@@ -72,6 +72,7 @@ from artistools.misc import format_frame_path
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_timesteps
@@ -900,9 +901,9 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         if not isinstance(plotvar, str) or "=" not in plotvar
     ]
 
+    # a subplot with no series draws an empty frame, e.g. in the viewer after the user removed its last series
     if not plotvars:
-        msg = "Empty plot item list; provide at least one plot variable after -plot (e.g. -plot Te)."
-        raise ValueError(msg)
+        return plot_directives
 
     # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
     if is_seriestype(plotvars[0], estimatorcolumns):
@@ -1226,7 +1227,6 @@ def get_xlist(
     if args.xbins is None and xstats["multiple_points_per_xvalue"]:
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
-        args.colorbyion = True
 
     if args.xbins is not None and args.xbins < 0:
         xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
@@ -1245,6 +1245,9 @@ def get_xlist(
                 args.xbins = 25
 
     if args.xbins:
+        # the ions of an element have one colour and a different dash, and a shaded area or a marker of a bin has no
+        # dash. Thus each ion of a plot with bins takes a colour of its own
+        args.colorbyion = True
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
         # a range of zero width gives equal edges, and cut() gives an error for equal breaks.
@@ -1538,6 +1541,11 @@ def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
     return math.ceil(nsubplots / ncols), ncols
 
 
+# a figure of estimators often has several columns of subplots, and a frame of the full text width then gives
+# labels that are small beside the data. Each frame thus takes 0.7 of the size that -figscale gives
+SUBPLOT_FRAMESCALE: t.Final = 0.7
+
+
 def draw_figure(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1556,7 +1564,9 @@ def draw_figure(
 
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
     nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow)
-    fig, axesgrid = make_frame_figure(args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, fig=fig)
+    fig, axesgrid = make_frame_figure(
+        args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, framescale=SUBPLOT_FRAMESCALE, fig=fig
+    )
     axes = axesgrid.ravel()[: len(plotlist)]
     for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
         emptyaxis.set_visible(False)
@@ -1929,8 +1939,9 @@ def draw_image_figure(
 
     nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
     # the image at each cylindrical radius has half the width of a plane
-    panelwidth = (4.6 if isplane else 3.8) * args.figscale * (getattr(args, "figwidthscale", None) or 1.0)
-    figsize = (panelwidth * ncols, 4.2 * nrows * args.figscale)
+    figscale = args.figscale * SUBPLOT_FRAMESCALE
+    panelwidth = (4.6 if isplane else 3.8) * figscale * (getattr(args, "figwidthscale", None) or 1.0)
+    figsize = (panelwidth * ncols, 4.2 * nrows * figscale)
     if fig is None:
         fig = plt.figure(figsize=figsize)
     else:
@@ -2225,7 +2236,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
 
     parser.add_argument(
-        "--colorbyion", action="store_true", help="Populations plots colored by ion rather than element"
+        "--colorbyion",
+        action="store_true",
+        help=(
+            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this"
+        ),
     )
 
     parser.add_argument(
@@ -2526,7 +2541,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
         )
         dfselectedcells = get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
-        print(f"Getting mgi lying within a cone around {args.axis} axis")
+        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
         lzmodel, modelmeta = get_modeldata(modelpath)
         # the cone selection reads the mid-point positions, which are derived columns
         lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
@@ -2782,8 +2797,8 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
 
     if not wantslisting:
         print(
-            f"Plotting estimators for '{get_model_name(modelpath)}' timesteps {timestepmin} to "
-            f"{timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)"
+            f"'{get_model_name(modelpath)}': "
+            + get_time_range_text(timestepmin, timestepmax, args.timemin, args.timemax)
         )
         print_modelpath(modelpath)
 

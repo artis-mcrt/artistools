@@ -1627,6 +1627,61 @@ def test_expansion_opacity_keeps_a_weak_line() -> None:
     assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
 
 
+@pytest.mark.parametrize("edges", [[0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 2.0, 3.0]])
+def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
+    """The Rust kernel of the packet spectra gives the bins of bin_and_sum, for uniform and for other edges.
+
+    A bin is [lower, upper), the last bin also holds its upper edge, and a value outside the edges or NaN is in no
+    bin. The uniform edges take a guess that the exact edges correct, thus a value on an inner edge tests it.
+    """
+    from artistools.rustext import sum_weights_in_bins
+
+    values = [-0.1, 0.0, 0.5, 0.9999999, 1.0, 2.0, 2.5, 3.0, 3.0000001, math.nan]
+    df = pl.DataFrame({"x": values, "e": [float(2**index) for index in range(len(values))]})
+    # 3.0000001 is 3.0 in 32 bits, thus each type of value has its own reference
+    for dtype in (pl.Float64, pl.Float32):
+        dftyped = df.with_columns(pl.col("x").cast(dtype))
+        reference = at.packets.bin_and_sum(dftyped, bincol="x", bins=edges, sumcols=["e"], getcounts=True).collect()
+        sums = sum_weights_in_bins(dftyped, "x", "e", edges)
+        assert sums["sum"].to_list() == reference["e_sum"].to_list(), dtype
+        assert sums["count"].to_list() == reference["count"].to_list(), dtype
+
+    # each group has its own bins, in the order [group][bin]
+    rng = np.random.default_rng(seed=1)
+    dfgroups = pl.DataFrame({
+        "x": rng.uniform(-0.5, 3.5, 100_000),
+        "e": rng.uniform(0.0, 1.0, 100_000),
+        "group": rng.integers(0, 3, 100_000, dtype=np.int32),
+    })
+    grouped = sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 3)
+    for group in range(3):
+        expected = at.packets.bin_and_sum(
+            dfgroups.filter(pl.col("group") == group), bincol="x", bins=edges, sumcols=["e"], getcounts=True
+        ).collect()
+        rows = slice(group * (len(edges) - 1), (group + 1) * (len(edges) - 1))
+        assert np.allclose(grouped["sum"].to_numpy()[rows], expected["e_sum"].to_numpy(), rtol=1e-12, atol=0.0)
+        assert grouped["count"].to_numpy()[rows].tolist() == expected["count"].to_list()
+    # pyo3-polars raises its own ComputeError, which is not the class of the polars package
+    with pytest.raises(Exception, match="a group is outside"):
+        sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 2)
+
+
+def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
+    """get_bin_indices gives the bin of each value with the rules of sum_weights_in_bins, and -1 outside the edges."""
+    from artistools.rustext import get_bin_indices
+    from artistools.rustext import sum_weights_in_bins
+
+    rng = np.random.default_rng(seed=2)
+    edges = [0.0, 0.5, 2.0, 3.0]
+    values = np.concatenate([rng.uniform(-0.5, 3.5, 10_000), edges, [math.nan]])
+    df = pl.DataFrame({"x": values, "e": np.ones(len(values))})
+    bins = get_bin_indices(df, "x", edges)["binindex"].to_numpy()
+    counts = sum_weights_in_bins(df, "x", "e", edges)["count"].to_numpy()
+    assert np.array_equal(np.bincount(bins[bins >= 0], minlength=len(edges) - 1), counts)
+    # each edge starts its bin, the last edge is in the last bin, and NaN is in no bin
+    assert bins[-5:].tolist() == [0, 1, 2, 2, -1]
+
+
 def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
     """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
 
@@ -3530,14 +3585,214 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     The queue returned before it showed the values, thus a slider stayed at a position that the plot did not show.
     """
     # PySide6 is an optional dependency. CI does not install it for each Python version, and a CI machine with no
-    # libEGL.so.1 raises an ImportError that is not a ModuleNotFoundError
+    # libEGL.so.1 gives an ImportError that is not a ModuleNotFoundError. The spinner and the banner of the queue
+    # need QtWidgets, which needs libEGL.so.1, thus each queue test skips without QtWidgets
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=5)
     showvalues = mock.Mock()
-    queue = viewertools.DrawQueue(mock.Mock(), viewer, mock.Mock(), showvalues, mock.Mock())
+    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=mock.Mock())
     queue.apply(5)
     showvalues.assert_called_once_with()
     assert queue.requestedvalues is None, "unchanged values must draw no plot"
+    queue.close()
+
+
+def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() -> None:
+    """One step of Undo reverts all the changes of a drag, and Undo skips a change that the command rejected.
+
+    A rejected change leaves the old values, thus its step of Undo holds the current values and changes nothing.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    viewer = mock.Mock(values=1)
+    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    # the test needs no plot, and a timer of a plot that stays in the process crashed a later test of this worker
+    with mock.patch.object(queue, "redraw"):
+        # a drag gives a new value at each movement of the mouse
+        for values in (2, 3, 4):
+            queue.apply(values)
+        # the user stops for a time that is longer than the merge time
+        queue.lastchangetime -= 10.0 * viewertools.UNDO_MERGE_SECONDS
+        queue.apply(5)
+        # the command rejected 5, thus the viewer kept the values of the last plot
+        viewer.values = 4
+
+        queue.undo()
+        assert viewer.values == 1
+        queue.redo()
+        assert viewer.values == 4
+        queue.apply(7)
+        assert not queue.can_redo(), "a new change must remove the steps of Redo"
+        queue.apply(8, undoable=False)
+        queue.undo()
+        assert viewer.values == 4, "a change of the window, e.g. a step of Play, must give no step of Undo"
+    queue.close()
+
+
+def test_viewer_cancel_keeps_the_history_of_the_plot_on_the_screen() -> None:
+    """Cancel Plot after Undo keeps the step of Undo, because the plot on the screen did not change.
+
+    The cancel returned to the values of the plot but kept the lists of Undo and Redo of the cancelled step. Thus
+    Undo lost the step back to the earlier values.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    viewer = mock.Mock(values=1, warning="")
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    with mock.patch.object(queue, "redraw"), mock.patch.object(viewertools, "set_plot_busy"):
+        queue.apply(2)
+        # the plot of 2 is on the screen, then Undo asks for a plot of 1, which waits
+        queue.drawnvalues = 2
+        queue.undo()
+        assert viewer.values == 1
+        queue.requestedvalues = 1
+        queue.cancel()
+        assert viewer.values == 2
+        assert queue.can_undo()
+        assert not queue.can_redo()
+        queue.undo()
+        assert viewer.values == 1
+    queue.close()
+
+
+def test_viewer_undo_ignores_the_parts_that_the_window_sets() -> None:
+    """A step of Undo that differs only in a part that the window sets, e.g. the width of the figure, is no step.
+
+    keep_on_undo gives such a part its current value. Undo compared the entries before it applied keep_on_undo.
+    Thus a resize of the window after a rejected change enabled Undo, and Undo only drew the same plot again.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    def keep_width(restored: tuple[int, float], current: tuple[int, float]) -> tuple[int, float]:
+        return restored[0], current[1]
+
+    viewer = mock.Mock(values=(1, 1.0))
+    queue = viewertools.DrawQueue(
+        QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock(), keep_on_undo=keep_width
+    )
+    with mock.patch.object(queue, "redraw") as mockredraw:
+        queue.apply((2, 1.0))
+        # the command rejected the change, thus the viewer kept the values of the plot
+        viewer.values = (1, 1.0)
+        queue.apply((1, 1.3), undoable=False)
+        assert not queue.can_undo()
+        mockredraw.reset_mock()
+        queue.undo()
+        assert viewer.values == (1, 1.3)
+        mockredraw.assert_not_called()
+    queue.close()
+
+
+def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
+    """A rejection marks the text field that gave its own change, and a field that Qt deleted gets no mark.
+
+    The queue kept one field for all the plots, thus a second edit during a plot took the mark of the first plot. A
+    new card of a subplot replaces its fields, and a mark of the deleted field raised an error, so the window then
+    showed the rejected values.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+
+    def render(values: int) -> Callable[[], str | None]:
+        time.sleep(0.2)
+        return lambda: f"rejected {values}" if values >= 2 else None
+
+    fields = [mock.Mock(name=f"field{index}") for index in range(4)]
+    deletedfield = fields[3]
+    viewer = mock.Mock(values=0, warning="")
+    showvalues = mock.Mock()
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    def is_live(field: object) -> bool:
+        return field is not deletedfield
+
+    with (
+        mock.patch.object(viewertools, "get_edited_field", side_effect=fields),
+        mock.patch.object(viewertools, "is_live", side_effect=is_live),
+        mock.patch.object(viewertools, "mark_field_error") as mockmark,
+        mock.patch.object(viewertools, "clear_field_error"),
+        mock.patch.object(viewertools, "set_plot_busy"),
+        mock.patch.object(viewertools, "show_plot_banner"),
+    ):
+        queue.apply(1)
+        app.processEvents()
+        # the plot of 1 is in progress, and the command accepts it. The command rejects the next change
+        queue.apply(2)
+        wait_for_plots()
+        mockmark.assert_called_once_with(fields[1], "rejected 2")
+        queue.apply(3)
+        wait_for_plots()
+        assert mockmark.call_args == mock.call(fields[2], "rejected 3")
+        showvalues.reset_mock()
+        queue.apply(4)
+        wait_for_plots()
+        assert mockmark.call_count == 2, "a field that Qt deleted must get no mark"
+        assert showvalues.called, "the window must show the values of the plot after a rejection"
+    queue.close()
+
+
+def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
+    """In Dark Mode, a black line and a black text take the colour of the text, and a coloured series keeps its colour.
+
+    A black line on the dark background of the window cannot show, and a series needs its colour for the legend. A
+    dark colour of an element, e.g. of O, Si, or S, is a colour of a series too.
+    """
+    import matplotlib.colors as mcolors
+    import matplotlib.figure as mplfig
+
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    blackline = axis.plot([0, 1], [0, 1], color="black", label="model")[0]
+    blueline = axis.plot([0, 1], [1, 0], color="tab:blue", label="reference")[0]
+    # the colour of sulphur is dark, and it made the series grey
+    sulphurline = axis.plot([0, 1], [0.5, 0.5], color="#7d0200", label="S")[0]
+    axis.set_xlabel("velocity")
+    legend = axis.legend()
+
+    viewertools.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
+
+    assert mcolors.same_color(blackline.get_color(), "#dddddd")
+    assert mcolors.same_color(blueline.get_color(), "tab:blue")
+    assert mcolors.same_color(sulphurline.get_color(), "#7d0200")
+    assert mcolors.same_color(axis.xaxis.label.get_color(), "#dddddd")
+    assert mcolors.same_color(axis.get_facecolor(), "#1e1e1e")
+    # the frame of the legend keeps its transparency
+    assert mcolors.to_hex(legend.get_frame().get_facecolor()) == "#1e1e1e"
+    assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())
+
+
+def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command has priority.
+
+    plotspectra has no -labelfontsize, thus its window gets no such option.
+    """
+    settings = {"default-figscale": 1.5, "default-labelfontsize": 12.0}
+
+    def get_float_setting(key: str, default: float) -> float:
+        return settings.get(key, default)
+
+    monkeypatch.setattr(viewertools, "get_float_setting", get_float_setting)
+    estimatorparser = viewertools.make_parser(at.estimators.addargs)
+    assert viewertools.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
+        "-labelfontsize",
+        "12",
+        "Te",
+        "-figscale",
+        "2",
+    ]
+    spectraparser = viewertools.make_parser(at.spectra.plotspectra.addargs)
+    assert viewertools.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
 
 
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3567,13 +3822,60 @@ def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytes
     assert terminal.getvalue() == "a line of the window\n"
 
 
+def test_viewer_cancel_discards_the_plot_in_progress() -> None:
+    """Cancel Plot keeps the plot on the screen, and the plot in progress does not replace it when it ends.
+
+    A change after Cancel Plot waits for the end of the discarded plot, and then the queue draws it.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    shown: list[int] = []
+
+    def render(values: int) -> "Callable[[], str | None]":
+        time.sleep(0.3)
+
+        def show() -> str | None:
+            shown.append(values)
+            return None
+
+        return show
+
+    viewer = mock.Mock(values=0, warning="")
+    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=render)
+
+    def wait_for_plots() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    queue.apply(1)
+    app.processEvents()
+    assert queue.is_busy()
+    queue.cancel()
+    assert viewer.values == 0, "the controls must show the values of the plot on the screen"
+    assert not queue.is_busy()
+    wait_for_plots()
+    assert not shown, "the discarded plot must not replace the plot on the screen"
+    queue.apply(2)
+    app.processEvents()
+    queue.cancel()
+    queue.apply(3)
+    wait_for_plots()
+    assert shown == [3]
+    assert queue.drawnvalues == viewer.values == 3
+    queue.close()
+
+
 def test_viewer_queue_draws_in_a_worker_thread() -> None:
     """The window stays free during a plot, and a drag during a plot gives a plot of the last values alone.
 
     The window thread drew each plot, thus a drag of the time slider stopped until the plot ended.
     """
     # the queue needs the timers of Qt alone, and a QCoreApplication loads no plugin of a display
-    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
@@ -3697,37 +3999,78 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 
 
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
-    """Save Figure proposes the -dpi of the command, and each type of file takes it.
+    """Each format of file takes the resolution of the Figure section.
 
-    The spectrum viewer proposed the default of 250 and kept -dpi 300 of the command, thus the file had 300 dpi. The
-    estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
+    The estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    rows, dpi = viewertools.split_dpi_row((("-xmin", ("5",)), ("-dpi", ("300",))), 250)
-    assert (rows, dpi) == ((("-xmin", ("5",)),), 300)
+    dpi = 300
     savedtokens: list[list[str]] = []
 
     def commandmain(argsraw: Sequence[str]) -> None:
         savedtokens.append(list(argsraw))
         Path(argsraw[-1]).write_text("figure", encoding="utf-8")
 
-    def accept_proposal(*args: object) -> tuple[object, bool]:
-        return args[3], True
+    from artistools.commands import SuggestingArgumentParser
 
+    parser = SuggestingArgumentParser()
+    parser.add_argument("-dpi", type=int, default=250)
+    parser.add_argument("-figscale", type=float, default=1.0)
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
-        filename = str(tmp_path / f"plot.{suffix}")
+        filename = str(tmp_path / "plot")
+
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
-            mock.patch("PySide6.QtWidgets.QInputDialog.getInt", side_effect=accept_proposal) as getint,
             mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewertools.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], dpi, 250
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, (suffix, dpi)
             )
-        assert getint.call_count == (1 if suffix == "png" else 0)
-        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", filename]
-        statusbar.message.setText.assert_called_with(f"Saved {filename}")
+        # a name with no suffix takes the suffix of the selected format
+        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
+        statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
+
+
+def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
+    """Copy Figure runs the command for a file of the selected format, and puts the file on the clipboard.
+
+    Qt gave only a TIFF image to the clipboard of macOS, thus a copy could not give a PDF or an SVG file.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
+    parser.add_argument("-dpi", type=int, default=250)
+    parser.add_argument("-figscale", type=float, default=1.0)
+    commands: list[list[str]] = []
+
+    def commandmain(argsraw: Sequence[str]) -> None:
+        commands.append(list(argsraw))
+        Path(argsraw[-1]).write_text("<svg/>", encoding="utf-8")
+
+    def run_task(task: Callable[[], str | None], _statustext: str, on_done: Callable[[str | None], None]) -> bool:
+        on_done(task())
+        return True
+
+    queue = mock.Mock(run_task=run_task)
+    statusbar = mock.Mock()
+    with mock.patch.object(viewertools, "put_file_on_clipboard", return_value=None) as mockclipboard:
+        viewertools.copy_figure_of_command(
+            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], ("svg", 150)
+        )
+    assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
+    assert commands[0][-1].endswith("figure.svg")
+    mockclipboard.assert_called_once_with(b"<svg/>", "svg")
+    statusbar.message.setText.assert_called_with("Copied the figure as SVG")
+
+
+def test_viewer_row_wraps_its_groups() -> None:
+    """A group of a row goes to a new line when the line is full, and a hidden group takes no place and no gap."""
+    assert viewertools.get_wrapped_lines([100, 100, 100], 250, 12) == [[0, 1], [2]]
+    assert viewertools.get_wrapped_lines([100, 0, 100], 212, 12) == [[0, 1, 2]]
+    # a group wider than the line has a line of its own
+    assert viewertools.get_wrapped_lines([50, 400, 50], 300, 12) == [[0], [1], [2]]
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:
@@ -3736,7 +4079,7 @@ def test_viewer_queue_runs_a_task_between_plots() -> None:
     A plot that the user asked for during a reload took the time of the reload as its plot time. Play then made no
     pause.
     """
-    pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])

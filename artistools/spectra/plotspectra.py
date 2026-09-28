@@ -7,6 +7,7 @@ import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
@@ -46,6 +47,7 @@ from artistools.misc import apply_time_range_args
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import firstexisting_or_none
 from artistools.misc import folder_is_artis_run
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -57,6 +59,7 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
+from artistools.misc import get_time_range_text
 from artistools.misc import get_vpkt_config
 from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
@@ -527,9 +530,6 @@ def plot_artis_spectrum(
     if directionbins is None:
         directionbins = [-1]
 
-    if yvariable == "packetcount":
-        from_packets = True
-
     clamp_to_timesteps = not args.notimeclamp
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None
     if from_packets and args.multispecplot and use_time == "arrival" and args.plotvspecpol is None:
@@ -591,9 +591,8 @@ def plot_artis_spectrum(
 
         # the label carries LaTeX for the figure, thus the log line shows the plain form
         print_heading(
-            f"'{plain_label(linelabel)}' timesteps {timestepmin} to {timestepmax} "
-            f"({timemin:.3f} to {timemax:.3f}d"
-            f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+            f"'{plain_label(linelabel)}': "
+            + get_time_range_text(timestepmin, timestepmax, timemin, timemax, clamped=clamp_to_timesteps)
         )
         print_detail(f"modelpath: {modelpath}")
 
@@ -625,6 +624,8 @@ def plot_artis_spectrum(
                 nprocs_read_dfpackets=nprocs_read_dfpackets,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
                 gamma=args.gamma,
+                # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
+                directionbins=directionbins,
             )
 
         elif args.plotvspecpol is not None:
@@ -1121,8 +1122,9 @@ def plot_contributions_unstacked(
             if not args.showemission:
                 linecolor = absorptioncomponentplot.get_color()
 
-            # an x range that holds no bin gives None, thus the largest absorption stays where it was
-            this_max_absorption = dfspec.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+            # the drawn line reaches the nearest bin beyond each edge of the x range, thus the maximum reads those
+            # bins too
+            this_max_absorption = df_filter_minmax_bracketed(dfspec, "x", xmin, xmax).collect()["y"].max()
             if isinstance(this_max_absorption, float):
                 max_absorption = max(max_absorption, this_max_absorption)
 
@@ -1180,7 +1182,7 @@ def plot_contributions_stacked(
         max_absorption = (
             pl
             .DataFrame({
-                f"y{i}": df.filter(pl.col("x").is_between(xmin, xmax)).get_column("y")
+                f"y{i}": df_filter_minmax_bracketed(df, "x", xmin, xmax).collect().get_column("y")
                 for i, df in enumerate(dfabsorptionspectra)
             })
             .select(pl.sum_horizontal(pl.all()).max())
@@ -1291,8 +1293,7 @@ def make_emissionabsorption_plot(
     assert timemax is not None
 
     print(
-        f"Plotting {modelname} timesteps {timestepmin} to {timestepmax} ({timemin:.3f} to {timemax:.3f}d"
-        f"{'' if clamp_to_timesteps else ' not necessarily clamped to timestep start/end'})"
+        f"'{modelname}': {get_time_range_text(timestepmin, timestepmax, timemin, timemax, clamped=clamp_to_timesteps)}"
     )
 
     xmin, xmax = axis.get_xlim()
@@ -1327,7 +1328,8 @@ def make_emissionabsorption_plot(
 
     dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, args).collect()
 
-    max_f_emission_total = dfspectotal.filter(pl.col("x").is_between(xmin, xmax))["y"].max()
+    # a narrow x range can hold no centre of a bin, and the drawn line then runs between the bins beyond its edges
+    max_f_emission_total = df_filter_minmax_bracketed(dfspectotal, "x", xmin, xmax).collect()["y"].max()
     assert isinstance(max_f_emission_total, (float, np.floating))
     max_f_emission_total = float(max_f_emission_total)
 
@@ -1747,11 +1749,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
+        choices=["element", "ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
         help=(
-            "Use a different colour for each ion, line, or nuclide with --showemission, or for each shell of the"
-            " last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of sight,"
-            " and ye the initial electron fraction of the cell. Every choice but ion implies --frompackets"
+            "Use a different colour for each element, ion, line, or nuclide with --showemission, or for each shell"
+            " of the last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of"
+            " sight, and ye the initial electron fraction of the cell. The element of a gamma packet is the element"
+            " of its nuclide. Every choice but ion implies --frompackets"
         ),
     )
 
@@ -1935,19 +1938,23 @@ VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
 
 
 def exit_if_no_emission_position(args: argparse.Namespace) -> None:
-    """Stop if the user gives a shell grouping or a velocity range with gamma packets or virtual packets."""
+    """Stop if a shell grouping or a velocity range needs an emission position that the packets do not hold.
+
+    A virtual packet holds no emission position. A gamma packet holds the position of its decay, of its pair
+    annihilation, or of its last Compton scattering, but it has no thermal emission.
+    """
     if args.groupby in SHELLCOLUMNS:
         option = f"-groupby {args.groupby}"
-        gammahelp = "Give -groupby nuc or -groupby nucmass"
     elif args.velocityranges_kmps:
         option = " and ".join(f"-{VELOCITYRANGEARGS[rangegrouping][0]}" for rangegrouping in args.velocityranges_kmps)
-        gammahelp = f"Remove {option}, or remove --gamma"
     else:
         return
 
-    if args.gamma:
-        # no test covers these options on gamma packets, thus the command refuses the combination
-        exit_with_error(f"a gamma-ray spectrum does not accept {option}", gammahelp)
+    if args.gamma and args.use_thermalemissiontype:
+        exit_with_error(
+            f"a gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
+            "Remove --use_thermalemissiontype. The gamma packets then use the position of the last interaction",
+        )
 
     if args.plotvspecpol is not None:
         exit_with_error(
@@ -1999,11 +2006,23 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
 
 
+@lru_cache(maxsize=64)
+def has_gamma_spec_file(runfolder: Path) -> bool:
+    """Return True if the run has gamma_spec.out.
+
+    The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
+    drive. Thus a file that exspec writes later stays unknown until a new window, and the plot then reads the packets.
+    """
+    return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
+
+
 def resolve_frompackets(args: argparse.Namespace) -> None:
     """Set args.frompackets and the default of -groupby, from the options that the exspec files cannot serve.
 
     Call this after main sets args.showemission and args.showabsorption. The default of -groupby
     applies to an emission plot alone, and that default selects the reader of the contributions.
+    args.frompacketsreason names the first option that needs the packets, or it is None. The spectrum viewer
+    shows it, also when the command gives --frompackets.
     """
     showcontributions = args.showemission or args.showabsorption
     if showcontributions and args.groupby is None:
@@ -2013,22 +2032,27 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     packetreasons = {
         "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
-        f"-groupby {args.groupby}": args.groupby in {"line", "nuc", "nucmass", *SHELLCOLUMNS},
+        "--gamma with no gamma_spec.out": args.gamma
+        and not all(
+            has_gamma_spec_file(runfolder)
+            for runfolder in get_artis_run_folders([
+                Path(path) for path in args.specpath if not path_is_reference_spectrum(path)
+            ])
+        ),
+        f"-groupby {args.groupby}": args.groupby in {"element", "line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),
         "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
         "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),
         # spec.out and the emission files hold whole timesteps, thus only the packets give a time range inside one
         # timestep
         "--notimeclamp": args.notimeclamp,
+        # spec.out holds a flux and no count of packets
+        "-yvariable packetcount": args.yvariable == "packetcount",
     }
-    if args.frompackets:
-        return
-
-    for option, needspackets in packetreasons.items():
-        if needspackets:
-            args.frompackets = True
-            print(f"Enabling --frompackets, since {option} was specified")
-            return
+    args.frompacketsreason = next((option for option, needspackets in packetreasons.items() if needspackets), None)
+    if args.frompacketsreason is not None and not args.frompackets:
+        args.frompackets = True
+        print(f"Enabling --frompackets, since {args.frompacketsreason} was specified")
 
 
 def check_emission_plot_args(args: argparse.Namespace) -> None:
@@ -2080,6 +2104,21 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
         exit_with_error(
             "an emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
             "Give one time with -timedays. Run the command again for each other time",
+        )
+
+    # a gamma packet comes from the decay of a nuclide, and ARTIS records no ion or line for it
+    if args.gamma and args.groupby in {"ion", "line"}:
+        exit_with_error(
+            f"a gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
+            f" {args.groupby}",
+            "Give -groupby nuc or -groupby nucmass",
+        )
+
+    # ARTIS gives each escaped gamma packet the absorption type 0, which is the first line of the line list
+    if args.gamma and args.showabsorption:
+        exit_with_error(
+            "a gamma packet holds no absorption record, thus a gamma-ray spectrum does not accept --showabsorption",
+            "Remove --showabsorption",
         )
 
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets

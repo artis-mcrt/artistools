@@ -21,6 +21,7 @@ from artistools import constants
 from artistools.atomic import add_ion_str_column
 from artistools.atomic import get_bflist
 from artistools.atomic import get_elsymbol
+from artistools.atomic import get_elsymbols_df
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
@@ -39,6 +40,7 @@ from artistools.misc import get_file_metadata
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
@@ -52,13 +54,13 @@ from artistools.misc import split_multitable_dataframe
 from artistools.misc.fileio import resolve_modelpath
 from artistools.packets import bin_and_sum
 from artistools.packets import filter_packets_dirbin
-from artistools.packets import get_bin_index_expr
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
+from artistools.packets import has_emission_record_expr
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -628,22 +630,28 @@ def get_from_packets(
 
         dfpackets = dfpackets.filter(pl.col(lambda_column).is_between(lambda_bin_edges[0], lambda_bin_edges[-1]))
 
-        for dirbin in select_dirbins(alldirbins, directionbins):
-            pldfpackets_dirbin_lazy, inverse_solidangle_fraction = filter_packets_dirbin(
-                dfpackets, dirbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
-            )
-
-            fluxexpr = (
-                pl.col(f"{energy_column}_sum")
+        dirbinsums = sum_packets_by_dirbin(
+            dfpackets,
+            select_dirbins(alldirbins, directionbins),
+            lambda_column,
+            lambda_bin_edges,
+            energy_column,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )
+        for dirbin, (energysums, packetcounts, inverse_solidangle_fraction) in dirbinsums.items():
+            flux = (
+                energysums
                 / delta_time_s
                 * inverse_solidangle_fraction
                 / (4 * math.pi * constants.megaparsec_to_cm**2)
                 / nprocs_read
             )
-
-            dirbin_fluxes[dirbin] = bin_packet_flux(
-                pldfpackets_dirbin_lazy, lambda_column, lambda_bin_edges, energy_column, fluxexpr
-            )
+            dirbin_fluxes[dirbin] = pl.LazyFrame({
+                "lambda_binindex": np.arange(len(flux), dtype=np.int32),
+                "flux": flux,
+                "packetcount": packetcounts,
+            })
 
     dirbin_spectra = {
         dirbin: (
@@ -669,6 +677,69 @@ def get_from_packets(
         dirbin: dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
         for dirbin, dfspectrum in dirbin_spectra.items()
     }
+
+
+def sum_packets_by_dirbin(
+    dfpackets: pl.LazyFrame,
+    dirbins: Sequence[int],
+    lambda_column: str,
+    lambda_bin_edges: npt.NDArray[np.floating],
+    energy_column: str,
+    *,
+    average_over_phi: bool,
+    average_over_theta: bool,
+) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
+    """Return the packet energy and the packet count of each wavelength bin, and the solid-angle factor, of each dirbin.
+
+    dirbin -1 selects all directions, as in filter_packets_dirbin. The Rust kernel bins the packets of all the
+    requested direction bins in one pass. For 65 million packets of a 3D kilonova run, the polars group_by took
+    0.40 s, and the read and the kernel took 0.13 s.
+    """
+    from artistools.rustext import sum_weights_in_bins
+
+    edges = [float(edge) for edge in lambda_bin_edges]
+    nbins = len(edges) - 1
+    directional = [dirbin for dirbin in dirbins if dirbin != -1]
+    if not directional:
+        dfsums = sum_weights_in_bins(
+            dfpackets.select(pl.col(lambda_column), pl.col(energy_column).cast(pl.Float64)).collect(),
+            lambda_column,
+            energy_column,
+            edges,
+        )
+        return {-1: (dfsums["sum"].to_numpy(), dfsums["count"].to_numpy(), 1.0)}
+
+    # each packet has one group, thus a group holds the packets of a direction bin or of an averaged set of them
+    if average_over_phi:
+        assert not average_over_theta
+        groupcolumn, ngroups = "costhetabin", get_viewingdirection_costhetabincount()
+        groupofdirbin = {dirbin: dirbin // get_viewingdirection_phibincount() for dirbin in directional}
+    elif average_over_theta:
+        groupcolumn, ngroups = "phibin", get_viewingdirection_phibincount()
+        groupofdirbin = {dirbin: dirbin for dirbin in directional}
+    else:
+        groupcolumn, ngroups = "dirbin", get_viewingdirectionbincount()
+        groupofdirbin = {dirbin: dirbin for dirbin in directional}
+
+    # all directions need every packet, and a few direction bins need only their own packets. The filter comes
+    # before the cast of the group column, thus polars applies it while it reads the files
+    if -1 not in dirbins:
+        dfpackets = dfpackets.filter(pl.col(groupcolumn).is_in(list(groupofdirbin.values())))
+    dfselected = dfpackets.select(
+        pl.col(lambda_column), pl.col(energy_column).cast(pl.Float64), pl.col(groupcolumn).cast(pl.Int32)
+    )
+    dfsums = sum_weights_in_bins(dfselected.collect(), lambda_column, energy_column, edges, groupcolumn, ngroups)
+    groupsums = dfsums["sum"].to_numpy().reshape(ngroups, nbins)
+    groupcounts = dfsums["count"].to_numpy().reshape(ngroups, nbins)
+
+    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+    for dirbin in dirbins:
+        if dirbin == -1:
+            result[dirbin] = (groupsums.sum(axis=0), groupcounts.sum(axis=0), 1.0)
+        else:
+            group = groupofdirbin[dirbin]
+            result[dirbin] = (groupsums[group], groupcounts[group], float(ngroups))
+    return result
 
 
 def bin_packet_flux(
@@ -1168,14 +1239,27 @@ def get_flux_contributions_cached(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The returned spectra are restricted to lambda_min to lambda_max [Å], so that the flux contributions used for
-    ranking count only the plotted window, matching get_flux_contributions_from_packets.
+    The returned spectra hold the bins with a centre from lambda_min to lambda_max [Å], and the nearest bin beyond
+    each bound. These are the bins of get_lambda_bin_edges, thus a series fills the plotted range, and the ranking of
+    the contributions counts the bins of get_flux_contributions_from_packets. Before, the spectra ended at the last
+    centre inside the range, thus each series stopped short of the edges of the plot.
     """
     arr_tmid = get_timestep_times(modelpath, loc="mid")
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu_full = get_nu_grid(modelpath)
     arraylambda_full = constants.c_ang_per_s / arraynu_full
-    nu_select = (arraylambda_full >= lambda_min) & (arraylambda_full <= lambda_max)
+    selectedbins = (
+        df_filter_minmax_bracketed(
+            pl.DataFrame({"binindex": np.arange(len(arraylambda_full)), "lambda": arraylambda_full}),
+            "lambda",
+            lambda_min,
+            lambda_max,
+        )
+        .collect()["binindex"]
+        .to_numpy()
+    )
+    nu_select = np.zeros(len(arraylambda_full), dtype=bool)
+    nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
     if not Path(modelpath, "compositiondata.txt").is_file():
@@ -1347,8 +1431,9 @@ def get_flux_contributions(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The spectra cover lambda_min to lambda_max [Å] only, thus the ranking of the contributions counts the plotted
-    window alone. The cache takes the absolute path, thus a change of the working folder gives the new model.
+    The spectra cover lambda_min to lambda_max [Å], and the nearest bin beyond each bound, as in
+    get_flux_contributions_cached. The cache takes the absolute path, thus a change of the working folder gives the
+    new model.
     """
     return get_flux_contributions_cached(
         resolve_modelpath(modelpath),
@@ -1373,14 +1458,14 @@ def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFr
     Thus this frame can be hundreds of megabytes. The emission labels and the absorption labels both use it.
     """
     linecolumns = ["atomic_number", "ion_stage"]
-    if groupby != "ion":
+    if groupby not in {"element", "ion"}:
         linecolumns += ["lambda_angstroms_air", "upperlevelindex", "lowerlevelindex"]
 
     return get_linelist_pldf(modelpath=modelpath).select(linecolumns).collect()
 
 
 def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str, labelcolumn: str) -> pl.LazyFrame:
-    """Return a frame that gives the ion label or the line label of each supplied line index.
+    """Return a frame that gives the element label, the ion label, or the line label of each supplied line index.
 
     A linelist can have tens of millions of lines. One spectrum uses only a small part of them.
     Thus the code gets the line data at the supplied indices. It does not join the packets to the full linelist.
@@ -1392,12 +1477,15 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
     # end of the linelist. For an index after the last row, gather() makes an error. Remove both types of index here.
     # The join of the caller then finds no label for these codes.
     lineindices = lineindices.filter(lineindices.is_between(0, dflines.height - 1)).unique()
-
-    return add_ion_str_column(
-        pl.LazyFrame({typecolumn: lineindices.cast(pl.Int32)}).select(
-            typecolumn, *[pl.lit(dflines[col]).gather(pl.col(typecolumn)).alias(col) for col in dflines.columns]
+    linedata = pl.LazyFrame({typecolumn: lineindices.cast(pl.Int32)}).select(
+        typecolumn, *[pl.lit(dflines[col]).gather(pl.col(typecolumn)).alias(col) for col in dflines.columns]
+    )
+    if groupby == "element":
+        return linedata.join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left").select(
+            typecolumn, pl.col("elsymbol").alias(labelcolumn)
         )
-    ).select(
+
+    return add_ion_str_column(linedata).select(
         typecolumn,
         pl.col("ion_str").alias(labelcolumn)
         if groupby == "ion"
@@ -1534,27 +1622,38 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
     return [f"[{vlow}, {vhigh}) {unitlabel}" for vlow, vhigh in itertools.pairwise(edges)]
 
 
-def get_shell_expr(column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> pl.Expr:
-    """Return the label of the shell that holds the value of each packet, or null outside every shell.
+# the shell index of a packet with no thermal emission record, which takes the label NOT SET as in the ion grouping
+SHELL_NOT_SET: t.Final = -1
+
+
+def get_shell_index_expr(
+    column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps"
+) -> pl.Expr:
+    """Return the index of the shell that holds the value of each packet, or null outside every shell.
 
     A velocity column holds cm/s, and the edges are in km/s. A packet with no thermal emission record
     has a value of NaN or null, which the packets module gives. A packet from an old cache with no
-    thermal column also has a value of null. Such a packet takes the label NOT SET, as the ion grouping
-    gives it.
+    thermal column also has a value of null. Such a packet takes the index SHELL_NOT_SET. The index is an integer
+    and not a label, because an integer bins much faster, and only the binned rows then need a label.
     """
     scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
-    labels = ["below", *get_shell_labels(shelledges, unit), "above"]
     value = pl.col(column)
-    shell = value.cut(breaks=edges, labels=labels, left_closed=True).cast(pl.String)
+    # the first category of cut() holds the values below the first edge, thus the first shell has the index 1
+    shell = value.cut(breaks=edges, left_closed=True).to_physical().cast(pl.Int32) - 1
 
     return (
         pl
         .when(value.is_null() | value.is_nan())
-        .then(pl.lit("NOT SET"))
+        .then(pl.lit(SHELL_NOT_SET, dtype=pl.Int32))
         .when(value.is_between(edges[0], edges[-1], closed="left"))
         .then(shell)
     )
+
+
+def get_shell_label_of_index(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"]) -> dict[int, str]:
+    """Return the label of each shell index of get_shell_index_expr, and NOT SET for SHELL_NOT_SET."""
+    return {**dict(enumerate(get_shell_labels(shelledges, unit))), SHELL_NOT_SET: "NOT SET"}
 
 
 def add_ye_columns(
@@ -1627,6 +1726,22 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     return lzdfpackets
 
 
+def check_gamma_emission_record(lzdfpackets: pl.LazyFrame) -> None:
+    """Stop if the gamma packets hold no emission position, which a shell and a velocity range need.
+
+    ARTIS records the emission position of a gamma packet since artis-mcrt/artis#637 (2026-09-28). A packet of an
+    older run has no record, thus each packet would lie outside every shell. A newer run gives a record to each
+    gamma packet, thus the first packet shows which type of run it is.
+    """
+    firstpacket = lzdfpackets.select(has_emission_record_expr("em")).head(1).collect()
+    if not firstpacket.is_empty() and not firstpacket.item():
+        msg = (
+            "The gamma packets of this run hold no emission position, thus a shell and a velocity range cannot"
+            " select them. ARTIS records that position since artis-mcrt/artis#637"
+        )
+        raise ValueError(msg)
+
+
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -1671,7 +1786,7 @@ def get_flux_contributions_from_packets(
     range. The keys name the radial velocity and the velocity along the line of sight. Each contribution
     then holds only the packets inside each range. The lower edge is inside the range.
     """
-    assert groupby in {"ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
+    assert groupby in {"element", "ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
     assert use_time in {"arrival", "emission", "escape"}
     if groupby in SHELLCOLUMNS:
         emtypecolumn = SHELLCOLUMNS[groupby][1 if usethermal else 0]
@@ -1682,7 +1797,8 @@ def get_flux_contributions_from_packets(
             msg = f"groupby {groupby} needs the shell edges in shelledges"
             raise ValueError(msg)
         check_edges_increase(shelledges, "shell edges")
-    elif groupby in {"nuc", "nucmass"}:
+    elif groupby in {"nuc", "nucmass"} or (groupby == "element" and gamma):
+        # a gamma packet comes from the decay of a nuclide, thus its element is the element of that nuclide
         emtypecolumn = "pellet_nucindex"
     else:
         emtypecolumn = "trueemissiontype" if usethermal else "emissiontype"
@@ -1707,7 +1823,8 @@ def get_flux_contributions_from_packets(
         )
 
     if gamma:
-        assert groupby in {"nuc", "nucmass"}
+        assert groupby in {"element", "nuc", "nucmass", *SHELLCOLUMNS}
+        assert not (usethermal and (groupby in SHELLCOLUMNS or velocityranges))
 
     if directionbins_are_vpkt_observers and use_time != "arrival":
         msg = "Virtual packet contributions support only observer arrival time"
@@ -1753,6 +1870,8 @@ def get_flux_contributions_from_packets(
                 )
 
         lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        if gamma and (groupby in SHELLCOLUMNS or velocityranges):
+            check_gamma_emission_record(lzdfpackets)
 
         lzdfpackets, inverse_solidangle_fraction = filter_packets_dirbin(
             lzdfpackets, directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
@@ -1805,21 +1924,23 @@ def get_flux_contributions_from_packets(
     # The code reads these columns one time. The emission labels and the absorption labels both use them.
     # The memory becomes free when this function returns. Each absorption label is a line label.
     # Thus only an emission-only plot with a nuclide group can omit the linelist.
-    needs_linelist = groupby not in SHELLCOLUMNS and (getabsorption or (getemission and groupby in {"ion", "line"}))
+    needs_linelist = groupby not in SHELLCOLUMNS and (
+        getabsorption or (getemission and emtypecolumn in {"emissiontype", "trueemissiontype"})
+    )
     dflines = get_linelist_label_columns(modelpath, groupby) if needs_linelist else pl.DataFrame()
 
     if groupby in SHELLCOLUMNS:
         assert shelledges is not None
         shellexprs = {}
         if getemission:
-            shellexprs["emissiontype_str"] = get_shell_expr(emtypecolumn, shelledges, shellunit)
+            shellexprs["emissionshell"] = get_shell_index_expr(emtypecolumn, shelledges, shellunit)
         if getabsorption:
-            shellexprs["absorptiontype_str"] = get_shell_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)
+            shellexprs["absorptionshell"] = get_shell_index_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)
         dfpackets = dfpackets.with_columns(**shellexprs).drop(*SHELLCOLUMNS[groupby], "absorption_type", strict=False)
-        labelcolumns = pl.col(list(shellexprs))
+        shellcolumns = pl.col(list(shellexprs))
         counts = dfpackets.select(
-            noutside=pl.all_horizontal(labelcolumns.is_null()).sum(),
-            nnotset=pl.any_horizontal(labelcolumns == "NOT SET").sum(),
+            noutside=pl.all_horizontal(shellcolumns.is_null()).sum(),
+            nnotset=pl.any_horizontal(shellcolumns == SHELL_NOT_SET).sum(),
         ).row(0)
         noutside, nnotset = counts
         if nnotset > 0:
@@ -1847,20 +1968,41 @@ def get_flux_contributions_from_packets(
     def bin_by_type(dfpkts: pl.DataFrame, typecolumn: str, nucolumn: str) -> pl.DataFrame:
         """Return the packet energy of each type and wavelength bin.
 
-        The type is a code or the label of a shell. For 3e7 packets of a 3D kilonova model, the old method took 2.4 s.
-        It gave a string label to each packet, then a frame and a spectrum to each label. This group_by of the integer
-        code of each packet takes 0.4 s. The steps are eager, because one lazy query with cut() in the keys took 0.9 s.
+        The type is a code or the label of a shell. The Rust function gives the bins of the spectrum kernel. An
+        integer type and its bin then form one Int64 key, because one key groups faster than two. For 65 million
+        packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with polars 1.44
+        and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s.
         """
+        from artistools.rustext import get_bin_indices
+
         dfinrange = dfpkts.select(
             typecolumn, energy_column, lambda_angstroms=constants.c_ang_per_s / pl.col(nucolumn)
         ).filter(
             pl.col(typecolumn).is_not_null() & pl.col("lambda_angstroms").is_between(sorted_edges[0], sorted_edges[-1])
         )
+        binindex = get_bin_indices(dfinrange, "lambda_angstroms", sorted_edges.tolist())["binindex"]
+        typedtype = dfinrange.schema[typecolumn]
+        if not typedtype.is_integer():
+            return (
+                dfinrange
+                .with_columns(binindex=binindex)
+                .group_by(typecolumn, "binindex")
+                .agg(pl.col(energy_column).sum())
+            )
+        nbins = len(sorted_edges) - 1
+        code = pl.col("key").floordiv(nbins)
         return (
             dfinrange
-            .with_columns(binindex=get_bin_index_expr("lambda_angstroms", sorted_edges.tolist()))
-            .group_by(typecolumn, "binindex")
-            .agg(pl.col(energy_column).sum())
+            .lazy()
+            .select(key=pl.col(typecolumn).cast(pl.Int64) * nbins + binindex, energy=pl.col(energy_column))
+            .group_by("key")
+            .agg(pl.col("energy").sum())
+            .select(
+                code.cast(typedtype).alias(typecolumn),
+                (pl.col("key") - code * nbins).cast(pl.Int32).alias("binindex"),
+                pl.col("energy").alias(energy_column),
+            )
+            .collect()
         )
 
     def sum_by_label(dfbinned: pl.DataFrame, labelcolumn: str) -> pl.DataFrame:
@@ -1902,12 +2044,20 @@ def get_flux_contributions_from_packets(
                     pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
                 ).alias("emissiontype_str")
             )
+        elif emtypecolumn == "pellet_nucindex":
+            # the nuclide table gives "initial energy" as the element of the initial energy
+            emtypelabels = get_nuclides(modelpath=modelpath).rename({"elsymbol": "emissiontype_str"})
         else:
-            expr_bflist_to_str = (
-                pl.col("ion_str") + " bound-free"
-                if groupby == "ion"
-                else pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel"))
-            )
+            bflabels = {
+                "element": pl.col("elsymbol") + " bound-free",
+                "ion": pl.col("ion_str") + " bound-free",
+                "line": pl.format(
+                    "{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")
+                ),
+            }
+            bflist = get_bflist(modelpath)
+            if groupby == "element":
+                bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
 
             emtypelabels = pl.concat([
                 get_line_labels(linelist, typecodes, groupby, "emissiontype_str"),
@@ -1916,9 +2066,9 @@ def get_flux_contributions_from_packets(
                     schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
                     orient="col",
                 ),
-                get_bflist(modelpath).select(
+                bflist.select(
                     (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn),
-                    expr_bflist_to_str.alias("emissiontype_str"),
+                    bflabels[groupby].alias("emissiontype_str"),
                 ),
             ])
 
@@ -1945,18 +2095,32 @@ def get_flux_contributions_from_packets(
             keptlabel = pl.col("emissiontype_str").str.contains("bound-free").not_()
         elif z_exclude > 0:
             elsymb = get_elsymbol(z_exclude)
-            keptlabel = pl.col("emissiontype_str").str.starts_with(f"{elsymb} ").not_()
+            # an element label is the symbol alone, and an ion label or a line label starts with the symbol
+            label = pl.col("emissiontype_str")
+            keptlabel = ((label == elsymb) | label.str.starts_with(f"{elsymb} ")).not_()
         if keptlabel is not None:
             # the filter drops a code with no label, as the filter of the labelled packets did
             keptcodes = get_emission_labels(dfpackets[emtypecolumn], dflines).filter(keptlabel)[emtypecolumn]
             dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(keptcodes.implode()))
 
-    # a shell label comes from the position of each packet, thus the label is the type of the packet
-    emission_typecolumn = "emissiontype_str" if groupby in SHELLCOLUMNS else emtypecolumn
-    absorption_typecolumn = "absorptiontype_str" if groupby in SHELLCOLUMNS else "absorption_type"
+    # a shell index comes from the position of each packet, thus the index is the type of the packet
+    emission_typecolumn = "emissionshell" if groupby in SHELLCOLUMNS else emtypecolumn
+    absorption_typecolumn = "absorptionshell" if groupby in SHELLCOLUMNS else "absorption_type"
     dfemission = bin_by_type(dfpackets, emission_typecolumn, dirbin_nu_column) if getemission else None
     dfabsorption = bin_by_type(dfpackets, absorption_typecolumn, "absorption_freq") if getabsorption else None
     del dfpackets
+
+    if groupby in SHELLCOLUMNS:
+        assert shelledges is not None
+        shelllabels = get_shell_label_of_index(shelledges, shellunit)
+        if dfemission is not None:
+            dfemission = dfemission.with_columns(
+                emissiontype_str=pl.col("emissionshell").replace_strict(shelllabels, return_dtype=pl.String)
+            ).drop("emissionshell")
+        if dfabsorption is not None:
+            dfabsorption = dfabsorption.with_columns(
+                absorptiontype_str=pl.col("absorptionshell").replace_strict(shelllabels, return_dtype=pl.String)
+            ).drop("absorptionshell")
 
     # The code adds the labels after it bins the packets. Thus it finds a label only for a code that a packet uses.
     if dfemission is not None and groupby not in SHELLCOLUMNS:
