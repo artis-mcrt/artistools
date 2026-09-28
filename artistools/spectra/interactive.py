@@ -314,18 +314,20 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
 
 
 def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
-    """Return True if each run has the files of a gamma-ray spectrum.
+    """Return True if one type of file gives the gamma-ray spectrum of each run.
 
-    plotspectra reads gamma_spec.out, or the packets when a run has no gamma_spec.out. A run can keep only the parquet
+    plotspectra reads gamma_spec.out of each run, or the packets of each run when a run has no gamma_spec.out.
+    Thus a run with gamma_spec.out alone and a run with packets alone give no plot. A run can keep only the parquet
     cache of its packets.
     """
-    for runfolder in runfolders:
-        if firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None:
-            continue
-        hastextpackets = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=runfolder) is not None
-        if not hastextpackets and not any((runfolder / "packets").glob("packetsbatch00_*.parquet.tmp")):
-            return False
-    return True
+
+    def has_packets(runfolder: Path) -> bool:
+        textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=runfolder)
+        return textfile is not None or any((runfolder / "packets").glob("packetsbatch00_*.parquet.tmp"))
+
+    return all(
+        firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None for runfolder in runfolders
+    ) or all(has_packets(runfolder) for runfolder in runfolders)
 
 
 def get_direction_kinds(runfolder: Path) -> list[str]:
@@ -2102,7 +2104,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(viewer.clamp_time(values) if values.notimeclamp else viewer.snap(values, *viewer.get_selection(values)))
 
     def add_spectra(paths: "Sequence[str]") -> None:
-        """Add each spectrum whose full path the list does not hold yet, e.g. "." for the working folder."""
+        """Add each spectrum whose full path the list does not hold yet, e.g. "." for the working folder.
+
+        A cancelled dialog gives no path, and the list then stays with no message.
+        """
+        if not paths:
+            return
         spectra = viewer.values.spectra
         shown = {get_spectrum_path(path) for path in spectra}
         newpaths: list[str] = []

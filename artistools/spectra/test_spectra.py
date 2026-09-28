@@ -2981,6 +2981,21 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     assert not interactive.has_gamma_spectrum([at.get_path("testdata") / "test-classicmode_1d"])
 
 
+def test_interactive_gamma_spectrum_needs_one_source_for_all_runs(tmp_path: Path) -> None:
+    """The gamma packets need gamma_spec.out in each run, or the packets of each run.
+
+    plotspectra reads the packets of each run when one run has no gamma_spec.out. A list with gamma_spec.out alone in
+    one run and packets alone in the other run enabled the gamma packets, and the plot then failed.
+    """
+    specrun, packetsrun = tmp_path / "specrun", tmp_path / "packetsrun"
+    for runfolder, filename in ((specrun, "gamma_spec.out"), (packetsrun, "packets00_0000.out")):
+        runfolder.mkdir()
+        (runfolder / filename).write_text("", encoding="utf-8")
+    assert interactive.has_gamma_spectrum([specrun])
+    assert interactive.has_gamma_spectrum([packetsrun])
+    assert not interactive.has_gamma_spectrum([specrun, packetsrun])
+
+
 def test_interactive_direction_kinds_follow_the_first_run() -> None:
     """The kinds of viewing direction come from the first run of the list, also after a change of the list.
 
