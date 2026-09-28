@@ -3024,6 +3024,7 @@ def add_figure_section(
     resolution. The figure has the size of the plot in the window.
     """
     from PySide6 import QtCore
+    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     _, grid = add_section(panellayout, "Figure")
@@ -3051,8 +3052,12 @@ def add_figure_section(
         blocker = QtCore.QSignalBlocker(formatbox)
         formatbox.setCurrentIndex(max(formatbox.findData(suffix), 0))
         blocker.unblock()
-        for widget in (resolutionlabel, dpibox):
-            widget.setVisible(suffix == "png")
+        # make_row_layout puts the label and the box in one group widget, and a hidden group leaves no gap in the row
+        if (resolutiongroup := dpibox.parentWidget()) is not None:
+            resolutiongroup.setVisible(suffix == "png")
+            # the row puts its groups on lines at a resize only, thus a narrow sidebar needs a new arrangement now
+            if (row := resolutiongroup.parentWidget()) is not None:
+                QtWidgets.QApplication.sendEvent(row, QtGui.QResizeEvent(row.size(), row.size()))
 
     def on_format(index: int) -> None:
         set_figure_format(str(formatbox.itemData(index)))
@@ -3061,11 +3066,10 @@ def add_figure_section(
         suffix = str(formatbox.currentData())
         return suffix, dpibox.value() if suffix == "png" else dpi
 
+    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, resolutionlabel, dpibox, copybutton, savebutton])
     show_format(get_figure_format())
     formatbox.currentIndexChanged.connect(on_format)
     window.setProperty("figureformathandler", show_format)
-    add_row(grid, 0, [QtWidgets.QLabel("Format"), formatbox, resolutionlabel, dpibox])
-    add_row(grid, 1, [copybutton, savebutton])
     return FigureSection(copybutton=copybutton, savebutton=savebutton, get_choice=get_choice)
 
 
