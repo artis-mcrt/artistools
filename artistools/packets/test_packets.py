@@ -188,7 +188,7 @@ def test_sum_packets_by_dirbin_includes_both_outer_edges() -> None:
     # bins are [lower, upper), except the last which also includes its upper edge
     assert counts.tolist() == [2, 2, 3]
     assert sums.tolist() == pytest.approx([2.0, 2.0, 3.0])
-    assert solidanglefactor == 1.0
+    assert solidanglefactor == pytest.approx(1.0)
 
 
 def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:

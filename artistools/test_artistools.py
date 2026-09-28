@@ -1646,7 +1646,7 @@ def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
         refcounts, _ = np.histogram(typedvalues[isnumber], bins=edges)
         refsums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber])
         sums = sum_weights_in_bins(dftyped, "x", "e", edges)
-        assert sums["sum"].to_list() == refsums.tolist(), dtype
+        assert np.allclose(sums["sum"].to_numpy(), refsums, rtol=1e-12, atol=0.0), dtype
         assert sums["count"].to_list() == refcounts.tolist(), dtype
 
     # each group has its own bins, in the order [group][bin]

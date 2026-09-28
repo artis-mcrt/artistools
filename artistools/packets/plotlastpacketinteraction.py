@@ -12,7 +12,6 @@ import polars as pl
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_lineindices
-from artistools.atomic import get_linelist_pldf
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
@@ -49,20 +48,13 @@ def get_required_packets(
         return nprocs_read, dfpackets.filter(pl.col("absorption_type") >= 0)
 
     if srII_triplet:
-        lineindices = (
-            get_linelist_pldf(modelpath)
-            .filter(
-                (pl.col("atomic_number") == 38)
-                & (pl.col("ion_stage") == 2)
-                & (
-                    ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
-                    | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
-                    | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4))
-                )
-            )
-            .select("lineindex")
-            .collect()
-            .get_column("lineindex")
+        lineindices = get_lineindices(
+            modelpath,
+            [38],
+            [2],
+            linefilter=((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 3))
+            | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
+            | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4)),
         )
     else:
         lineindices = get_lineindices(modelpath, Z_list, ion_stage_list)
@@ -182,7 +174,9 @@ def packets_2d_hist_bin_and_ejecta_vel(
     # a 3D kilonova run. The kernel made the command 0.11 s faster
     xedges = np.linspace(0, 0.5, num=26)
     yedges = np.linspace(-0.5, 0.5, num=51)
-    xbinindex = get_bin_indices(dfpackets_selected, "beta_r_cyl_em", xedges.tolist())["binindex"]
+    xbinindex = get_bin_indices(dfpackets_selected.select("beta_r_cyl_em"), "beta_r_cyl_em", xedges.tolist())[
+        "binindex"
+    ]
     dfinxrange = dfpackets_selected.select(
         pl.col("beta_z_em").cast(pl.Float64),
         weight=(pl.col("e_rf") / pl.col("hollow_cyl_vol_em")).cast(pl.Float64),

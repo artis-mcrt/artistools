@@ -582,7 +582,6 @@ def get_from_packets(
         )
 
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
-    dirbinsums: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))

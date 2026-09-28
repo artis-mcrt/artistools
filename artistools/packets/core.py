@@ -978,6 +978,10 @@ def filter_packets_dirbin(
     return dfpackets.filter(pl.col("dirbin") == dirbin), float(get_viewingdirectionbincount())
 
 
+# the weight sum of each bin, the packet count of each bin, and the solid-angle factor
+type DirbinSums = tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]
+
+
 def sum_packets_by_dirbin(
     dfpackets: pl.LazyFrame,
     dirbins: Sequence[int],
@@ -987,7 +991,7 @@ def sum_packets_by_dirbin(
     *,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
+) -> dict[int, DirbinSums]:
     """For each direction bin, return the weight sum and the packet count of each value bin, and the solid-angle factor.
 
     bin_edges gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which
@@ -1034,7 +1038,7 @@ def sum_packets_by_dirbin(
     groupsums = dfsums["sum"].to_numpy().reshape(ngroups, nbins)
     groupcounts = dfsums["count"].to_numpy().reshape(ngroups, nbins)
 
-    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+    result: dict[int, DirbinSums] = {}
     for dirbin in dirbins:
         if dirbin == -1:
             result[dirbin] = (groupsums.sum(axis=0), groupcounts.sum(axis=0), 1.0)
@@ -1051,14 +1055,14 @@ def sum_virtual_packets_by_observer(
     valueexpr: Callable[[int], pl.Expr],
     bin_edges: Sequence[float] | npt.NDArray[np.floating],
     arrivaltimerange_days: tuple[float, float] | None = None,
-) -> dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]]:
+) -> dict[int, DirbinSums]:
     """Return the sum of the energies and the packet count of each bin, and the solid-angle factor, of each observer.
 
     A vspecindex gives an observer direction and an opacity choice. valueexpr gives the binned value of the virtual
     packets of an observer direction, e.g. the arrival time. Each observer direction has its own columns, thus each
     vspecindex needs its own pass over the packets.
     """
-    result: dict[int, tuple[npt.NDArray[np.float64], npt.NDArray[np.uint64], float]] = {}
+    result: dict[int, DirbinSums] = {}
     for vspecindex in vspecindices:
         obsdirindex, opacchoiceindex = divmod(vspecindex, nspectraperobs)
         dfobserver = dfvpackets
