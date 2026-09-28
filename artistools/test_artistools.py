@@ -2277,6 +2277,31 @@ def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
     assert set(after) == {loc for loc in before if loc > 1e-10}
 
 
+def test_log_ticks_every_decade_on_a_short_axis() -> None:
+    """A short log axis of many decades labels each power of ten, and it has minor ticks between them.
+
+    The default locator counted the decades that fit the axis length, thus the opacity frame labelled
+    every second decade and the ratio panel below it had no minor ticks.
+    """
+    fig, ax = plt.subplots(figsize=(3.0, 0.7))
+    ax.set_yscale("log")
+    ax.set_ylim(0.4, 2e8)
+    fig.canvas.draw()
+    assert len([loc for loc in ax.yaxis.get_majorticklocs() if 0.4 <= loc <= 2e8]) < 9
+
+    at.plottools.set_log_ticks_every_decade(ax.yaxis)
+    fig.canvas.draw()
+    majors = [loc for loc in ax.yaxis.get_majorticklocs() if 0.4 <= loc <= 2e8]
+    assert majors == pytest.approx([10.0**exponent for exponent in range(9)])
+    minors = [loc for loc in ax.yaxis.get_minorticklocs() if 1.0 <= loc <= 10.0]
+    assert minors == pytest.approx([2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+
+    # a range below one decade holds no power of ten, thus the minor ticks carry the labels
+    ax.set_ylim(1.2, 8.0)
+    fig.canvas.draw()
+    assert [label.get_text() for label in ax.yaxis.get_minorticklabels() if label.get_text()]
+
+
 def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
     """A log axis of few major ticks keeps them all, rather than end with too few to read."""
     from artistools.plottools import PrunedLogLocator

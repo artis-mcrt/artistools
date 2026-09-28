@@ -52,6 +52,7 @@ from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
+from artistools.plottools import set_log_ticks_every_decade
 from artistools.plottools import set_plot_title
 from artistools.spectra import get_velocity_label
 from artistools.spectra import parse_velocity_argument
@@ -281,6 +282,8 @@ def plot_opacities(
     set_auto_yscale(ax, args)
     set_axis_properties(ax, args)
     set_axis_properties(ratioaxis, args, setyaxis=False)
+    set_log_ticks_every_decade(ax.yaxis)
+    set_log_ticks_every_decade(ratioaxis.yaxis)
     set_plot_title(ax, title, args)
     set_legend(ax, args, title=get_smoothing_text(dfopacities, args.movingaveragewidth), alignment="left")
 
