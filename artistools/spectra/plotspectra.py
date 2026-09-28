@@ -527,9 +527,6 @@ def plot_artis_spectrum(
     if directionbins is None:
         directionbins = [-1]
 
-    if yvariable == "packetcount":
-        from_packets = True
-
     clamp_to_timesteps = not args.notimeclamp
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None
     if from_packets and args.multispecplot and use_time == "arrival" and args.plotvspecpol is None:
@@ -2009,6 +2006,8 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
 
     Call this after main sets args.showemission and args.showabsorption. The default of -groupby
     applies to an emission plot alone, and that default selects the reader of the contributions.
+    args.frompacketsreason names the first option that needs the packets, or it is None. The spectrum viewer
+    shows it, also when the command gives --frompackets.
     """
     showcontributions = args.showemission or args.showabsorption
     if showcontributions and args.groupby is None:
@@ -2025,15 +2024,13 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         # spec.out and the emission files hold whole timesteps, thus only the packets give a time range inside one
         # timestep
         "--notimeclamp": args.notimeclamp,
+        # spec.out holds a flux and no count of packets
+        "-yvariable packetcount": args.yvariable == "packetcount",
     }
-    if args.frompackets:
-        return
-
-    for option, needspackets in packetreasons.items():
-        if needspackets:
-            args.frompackets = True
-            print(f"Enabling --frompackets, since {option} was specified")
-            return
+    args.frompacketsreason = next((option for option, needspackets in packetreasons.items() if needspackets), None)
+    if args.frompacketsreason is not None and not args.frompackets:
+        args.frompackets = True
+        print(f"Enabling --frompackets, since {args.frompacketsreason} was specified")
 
 
 def check_emission_plot_args(args: argparse.Namespace) -> None:

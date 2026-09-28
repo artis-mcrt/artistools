@@ -189,6 +189,9 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 FULL_DRAW_MILLISECONDS: t.Final = 250
 
 
+type DataSource = t.Literal["auto", "text", "packets"]
+
+
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
 class ControlValues:
     """The values of the controls of the viewer, which give the options of the plotspectra command.
@@ -215,7 +218,9 @@ class ControlValues:
     nostack: bool
     deltax: str
     deltalogx: str
-    frompackets: bool
+    # "packets" gives --frompackets. "auto" and "text" give no flag, but "text" rejects an option that needs the
+    # packets files
+    datasource: DataSource
     yvariable: str
     normalised: bool
     hidenetspectrum: bool
@@ -243,6 +248,32 @@ def get_default_xunit(*, gamma: bool) -> str:
     return "kev" if gamma else "angstroms"
 
 
+def get_text_source_conflict(values: "ControlValues", plotargs: argparse.Namespace) -> str | None:
+    """Return why the plot needs the packets files when the user selected the text files, or None."""
+    if values.datasource == "text" and plotargs.frompacketsreason is not None:
+        return (
+            f"{plotargs.frompacketsreason} needs the packets files, and the data source is Text files. Select Auto"
+            " or Packets files"
+        )
+    return None
+
+
+def get_packets_reason(tokens: "Sequence[str]") -> str | None:
+    """Return the option that makes plotspectra read the packets files, or None if the text files serve the plot.
+
+    A command that plotspectra rejects gives None.
+    """
+    reasons: list[str | None] = []
+
+    def check() -> None:
+        plotargs = parse_cli_args(addargs, None, None, tokens)
+        resolve_plot_args(plotargs)
+        reasons.append(plotargs.frompacketsreason)
+
+    run_command_step(check, echo=False)
+    return reasons[0] if reasons else None
+
+
 def get_default_groupby(*, gamma: bool) -> str:
     """Return the -groupby that plotspectra takes for an emission plot when the command gives none."""
     return "nuc" if gamma else "ion"
@@ -262,7 +293,7 @@ def set_packet_type(
     return dc.replace(
         values,
         gamma=gamma,
-        frompackets=values.frompackets or (gamma and gammareader == "packets"),
+        datasource="packets" if gamma and gammareader == "packets" else values.datasource,
         xunit=xunit,
         xmin=format(xmin, ".10g"),
         xmax=format(xmax, ".10g"),
@@ -553,8 +584,8 @@ class SpectrumViewer:
         args = parse_cli_args(addargs, None, None, usertokens)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
-        # -deltax and --notimeclamp also make plotspectra read the packets, thus the box shows only a --frompackets that
-        # the user gave
+        # -deltax and --notimeclamp also make plotspectra read the packets, thus only a --frompackets that the user
+        # gave selects the packets files, and the other commands start with the automatic choice
         givesfrompackets = bool(args.frompackets)
         # with --notimeclamp, a range of days keeps its bounds, and a single time or a timestep reads a whole timestep
         givesdaysrange = args.timemin is not None or (args.timedays is not None and "-" in args.timedays)
@@ -619,7 +650,7 @@ class SpectrumViewer:
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
             deltalogx="" if args.deltalogx is None else format(args.deltalogx, ".10g"),
-            frompackets=givesfrompackets,
+            datasource="packets" if givesfrompackets else "auto",
             yvariable=args.yvariable,
             normalised=bool(args.normalised),
             hidenetspectrum=bool(args.hidenetspectrum),
@@ -752,7 +783,7 @@ class SpectrumViewer:
             options += ["-deltax", values.deltax]
         if values.deltalogx:
             options += ["-deltalogx", values.deltalogx]
-        if values.frompackets:
+        if values.datasource == "packets":
             options.append("--frompackets")
         if values.yvariable != self.defaultyvariable:
             options += ["-yvariable", values.yvariable]
@@ -856,7 +887,7 @@ class SpectrumViewer:
             check_viewer_args(plotargs)
             if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
                 return "A different option of the command keeps the emission plot on"
-            return None
+            return get_text_source_conflict(values, plotargs)
 
         return run_command_step(check, echo=False)
 
@@ -885,6 +916,8 @@ class SpectrumViewer:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
             resolve_plot_args(plotargs)
             check_viewer_args(plotargs)
+            if (conflict := get_text_source_conflict(values, plotargs)) is not None:
+                return conflict
             ispreview = bool(
                 preview
                 and plotargs.frompackets
@@ -1222,9 +1255,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     binwidthbox = BinWidthSpinBox()
     # each arrow step is one power of ten below the value, thus the arrows reach each bin width
     binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
-    frompacketscheck = QtWidgets.QCheckBox("--frompackets")
-    frompacketscheck.setToolTip(helptexts.get("frompackets", ""))
-    add_row(bingrid, 0, [frompacketscheck, binmodebox, binwidthbox])
+    datasourcebox = QtWidgets.QComboBox()
+    for text, source, tooltip in (
+        ("Auto", "auto", "Read the packets files only when an option needs them"),
+        ("Text files", "text", "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"),
+        ("Packets files", "packets", f"--frompackets: {helptexts.get('frompackets', '')}"),
+    ):
+        datasourcebox.addItem(text, source)
+        datasourcebox.setItemData(datasourcebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    datasourcebox.setToolTip(
+        "The files of the plot. Auto shows in brackets the files that it selected for the current options"
+    )
+    datasourcemodel = datasourcebox.model()
+    assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
+    autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
+    add_row(bingrid, 0, [QtWidgets.QLabel("--frompackets"), datasourcebox, binmodebox, binwidthbox])
 
     _, directiongrid = add_section(panellayout, "Viewing direction")
     directionkindbox = QtWidgets.QComboBox()
@@ -1328,7 +1373,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lockbutton,
         binmodebox,
         binwidthbox,
-        frompacketscheck,
+        datasourcebox,
         yvariablebox,
         normalisedcheck,
         hidenetcheck,
@@ -1452,6 +1497,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values.showemission,
             values.showabsorption,
             values.groupby,
+            values.datasource,
+            values.notimeclamp,
             values.spectra,
             bool(values.deltax or values.deltalogx),
             values.yvariable,
@@ -1471,6 +1518,33 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             )
             rejections[key] = (groupbys, emission, absorption)
         return rejections[key]
+
+    # the time does not change the files that Auto selects, thus the key of a result holds no time
+    autoreasons: dict[ControlValues, str | None] = {}
+
+    def show_data_source(values: ControlValues) -> None:
+        """Select the data source of the values, and show the files that Auto selects for the other options.
+
+        Text files stays available while it is the source of the values, thus the user can change it in either
+        direction.
+        """
+        key = dc.replace(values, datasource="auto", centre=0.0, width=0.0)
+        if key not in autoreasons:
+            autoreasons[key] = get_packets_reason(viewer.get_plot_tokens(dc.replace(values, datasource="auto")))
+        reason = autoreasons[key]
+        autoitem.setText(f"Auto ({'packets' if reason else 'text files'})")
+        autoitem.setToolTip(
+            f"Read the packets files, because {reason} needs them"
+            if reason
+            else "Read the text files of exspec. Auto reads the packets files when an option needs them"
+        )
+        textitem.setEnabled(reason is None or values.datasource == "text")
+        textitem.setToolTip(
+            f"{reason} needs the packets files"
+            if reason
+            else "Read the spectra and the emission files of exspec, e.g. spec.out and emission.out"
+        )
+        datasourcebox.setCurrentIndex(datasourcebox.findData(values.datasource))
 
     def show_rejections() -> None:
         """Disable each choice that plotspectra rejects, and give the reason in its tooltip."""
@@ -1586,7 +1660,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the disabled box keeps the last -deltax, thus that width applies again when the user selects -deltax
         set_binwidth_box(binmode or "deltax")
         binwidthbox.setEnabled(bool(binmode))
-        frompacketscheck.setChecked(values.frompackets)
+        show_data_source(values)
         yvariablebox.setCurrentText(values.yvariable)
         normalisedcheck.setChecked(values.normalised)
         hidenetcheck.setChecked(values.hidenetspectrum)
@@ -1893,7 +1967,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             nostack=nostackcheck.isChecked(),
             deltax=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltax" else "",
             deltalogx=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltalogx" else "",
-            frompackets=frompacketscheck.isChecked(),
+            datasource=datasourcebox.currentData(),
             hidenetspectrum=hidenetcheck.isChecked(),
             hideother=hideothercheck.isChecked(),
             usethermalemissiontype=thermalcheck.isChecked(),
@@ -2181,7 +2255,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     lockbutton.toggled.connect(on_lock)
     binmodebox.currentIndexChanged.connect(on_binmode)
     binwidthbox.valueChanged.connect(on_emission_options)
-    frompacketscheck.toggled.connect(on_emission_options)
+    datasourcebox.currentIndexChanged.connect(on_emission_options)
     for checkbox in (hidenetcheck, hideothercheck, thermalcheck):
         checkbox.toggled.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)

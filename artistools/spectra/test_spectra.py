@@ -2727,15 +2727,30 @@ def test_interactive_unlock_gives_the_default_count() -> None:
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_frompackets_box() -> None:
-    """The --frompackets box, and not the table of the other options, shows the --frompackets that the user gave."""
+def test_interactive_data_source() -> None:
+    """The data source gives --frompackets, Auto names the files that it selects, and Text files refuses the packets.
+
+    The --frompackets box showed only the flag of the user. An option that needs the packets, e.g. -groupby element,
+    made plotspectra read them with the box empty.
+    """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
-    assert viewer.values.frompackets
+    assert viewer.values.datasource == "packets"
     assert not viewer.values.otheroptions
     assert "--frompackets" in shlex.split(viewer.get_command())
 
-    assert viewer.change(dc.replace(viewer.values, frompackets=False)) is None
+    assert viewer.change(dc.replace(viewer.values, datasource="auto")) is None
     assert "--frompackets" not in shlex.split(viewer.get_command())
+    assert interactive.get_packets_reason(viewer.get_plot_tokens()) is None
+    elementvalues = dc.replace(viewer.values, showemission=True, groupby="element")
+    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "-groupby element"
+
+    assert viewer.change(dc.replace(viewer.values, datasource="text")) is None
+    textelement = dc.replace(elementvalues, datasource="text")
+    oldvalues = viewer.values
+    for message in (viewer.get_rejection(textelement), viewer.change(textelement)):
+        assert message is not None
+        assert message.startswith("-groupby element needs the packets files")
+    assert viewer.values == oldvalues
 
 
 def test_interactive_direction_and_bin_controls() -> None:
@@ -2955,7 +2970,7 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     packetsviewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     assert packetsviewer.gammareader == "packets"
     gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True, gammareader=packetsviewer.gammareader)
-    assert gammavalues.frompackets
+    assert gammavalues.datasource == "packets"
     assert packetsviewer.change(gammavalues) is None
     # a run with neither file has no gamma-ray spectrum, thus the window disables the gamma packets
     assert interactive.get_gamma_reader([at.get_path("testdata") / "test-classicmode_1d"]) is None

@@ -3882,7 +3882,7 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 # "flaglabels" shows the flags in place of these texts
 FLAG_LABELS: t.Final = MappingProxyType({
     "--colorbyion": "Colour by ion",
-    "--frompackets": "From packets",
+    "--frompackets": "Data source",
     "--hidenetspectrum": "Hide net spectrum",
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
