@@ -624,6 +624,8 @@ def plot_artis_spectrum(
                 nprocs_read_dfpackets=nprocs_read_dfpackets,
                 directionbins_are_vpkt_observers=args.plotvspecpol is not None,
                 gamma=args.gamma,
+                # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
+                directionbins=directionbins,
             )
 
         elif args.plotvspecpol is not None:

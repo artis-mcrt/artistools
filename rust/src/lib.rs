@@ -1,10 +1,12 @@
 use crate::estimators::estimparse;
 use crate::opacities::sum_binned_line_opacities;
+use crate::packetbins::sum_weights_in_bins;
 use crate::transitions::read_transitiondata;
 use pyo3::prelude::*;
 
 mod estimators;
 mod opacities;
+mod packetbins;
 mod parse;
 mod transitions;
 
@@ -14,5 +16,6 @@ fn rustext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(estimparse, m)?)?;
     m.add_function(wrap_pyfunction!(read_transitiondata, m)?)?;
     m.add_function(wrap_pyfunction!(sum_binned_line_opacities, m)?)?;
+    m.add_function(wrap_pyfunction!(sum_weights_in_bins, m)?)?;
     Ok(())
 }
