@@ -983,8 +983,12 @@ class SpectrumViewer:
         low, high = self.timebounds
         centre = min(max(values.centre, low), high)
         widthmode = "dlogt" if values.widthmode == "days" and not values.width > 0.0 else values.widthmode
-        # the width of Δ ln t gives (centre + width / 2) / (centre - width / 2) = exp(dlogt), and the start stays above 0
-        width = float(f"{2.0 * centre * math.tanh(values.dlogt / 2.0):.4g}") if widthmode == "dlogt" else values.width
+        width = values.width
+        if widthmode == "dlogt":
+            # this width gives (centre + width / 2) / (centre - width / 2) = exp(dlogt). The rounding never makes the
+            # width larger, thus the start stays above 0
+            exactwidth = 2.0 * centre * math.tanh(values.dlogt / 2.0)
+            width = min(float(f"{exactwidth:.4g}"), exactwidth)
         if (centre, width, widthmode) == (values.centre, values.width, values.widthmode):
             return values
         return dc.replace(values, centre=centre, width=width, widthmode=widthmode)
@@ -1823,10 +1827,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_time_mode() -> None:
         values = viewer.values
         if modesegments.currentIndex() == 1 and not values.notimeclamp:
-            # a snapped range of one timestep has a width of 0, and clamp_time then takes the width of Δ ln t
+            # a snapped range of several timesteps keeps its width in days. A snapped range of one timestep has a
+            # width of 0, thus it takes Δ ln t
+            width = float(f"{values.width:.3g}")
             apply(
                 dc.replace(
-                    values, notimeclamp=True, centre=float(f"{values.centre:.4g}"), width=float(f"{values.width:.3g}")
+                    values,
+                    notimeclamp=True,
+                    centre=float(f"{values.centre:.4g}"),
+                    width=width,
+                    widthmode="days" if width > 0.0 else "dlogt",
                 )
             )
         elif modesegments.currentIndex() == 0 and values.notimeclamp:
@@ -1854,10 +1864,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values.notimeclamp:
             if values.widthmode == "dlogt":
                 dlogt = from_position(position, 0.0, dlogtmax)
-                apply(dc.replace(values, dlogt=float(f"{dlogt:.3g}")))
+                apply(dc.replace(values, dlogt=float(f"{dlogt:.4g}")))
             else:
                 width = from_position(position, 0.0, widthmax)
-                apply(dc.replace(values, widthmode="days", width=float(f"{width:.3g}")))
+                apply(dc.replace(values, width=float(f"{width:.3g}")))
             return
         first = viewer.validtimesteps.index(viewer.get_selection(values)[0])
         last = min(first + position - 1, nvalid - 1)
@@ -1874,7 +1884,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         values = viewer.values
         try:
-            centre = float(f"{float(timeedit.text()):.4g}") if timeedited else values.centre
+            centre = float(timeedit.text()) if timeedited else values.centre
             width = float(widthedit.text()) if widthedited else None
         except ValueError:
             show_error("Give a number of days for the time, and a number for the width")
@@ -1886,13 +1896,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values.notimeclamp:
             if width is None:
                 newvalues = dc.replace(values, centre=centre)
-            elif not float(f"{width:.3g}") > 0.0:
+            elif not width > 0.0:
                 show_error("Give a width above 0. A continuous range of width 0 reads the whole timestep")
                 return
+            elif values.widthmode == "dlogt" and not width <= (dlogtlimit := math.log(high / low)):
+                # a larger Δ ln t covers more than all the valid times, and a very large one gives a start of 0
+                show_error(f"Give a Δ ln t above 0 and up to {dlogtlimit:.4g}, which covers all the valid times")
+                return
             elif values.widthmode == "dlogt":
-                newvalues = dc.replace(values, centre=centre, dlogt=float(f"{width:.4g}"))
+                newvalues = dc.replace(values, centre=centre, dlogt=width)
             else:
-                newvalues = dc.replace(values, centre=centre, width=float(f"{width:.3g}"))
+                newvalues = dc.replace(values, centre=centre, width=width)
         else:
             firstpos, lastpos = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
             count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), nvalid)

@@ -958,7 +958,7 @@ class EstimatorViewer:
         """Return the command that draws the plot of the values."""
         return shlex.join(["artistools", "plotestimators", *self.get_plot_tokens()])
 
-    def get_timesteps_text(self) -> str:
+    def get_time_range_text(self) -> str:
         """Return the timesteps and the days that the plot reads."""
         first, last = self.values.first, self.values.last
         return get_time_range_text(first, last, self.tstarts[first], self.tends[last])
@@ -2670,7 +2670,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         widthslider.setValue(lastpos - firstpos + 1)
         set_edit_text(widthedit, str(lastpos - firstpos + 1))
         set_edit_text(timeedit, get_time_text(viewer.tmids, values))
-        timestepslabel.setText(viewer.get_timesteps_text())
+        timestepslabel.setText(viewer.get_time_range_text())
         set_edit_text(celledit, values.cells)
         if (cell := get_single_cell(values.cells)) is not None and cell in viewer.cells:
             cellslider.setValue(viewer.cells.index(cell))
