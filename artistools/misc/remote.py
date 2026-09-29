@@ -87,6 +87,16 @@ def to_server_path(leaf: t.Any) -> t.Any:
     return leaf
 
 
+def get_server_argv(host: str) -> list[str]:
+    """Return the command line that starts the artistools server on the host.
+
+    ssh gives the command to the shell of the remote host, thus the command is one string.
+    """
+    import os
+
+    return ["ssh", host, os.environ.get(SERVER_COMMAND_ENVVAR, DEFAULT_SERVER_COMMAND)]
+
+
 @functools.cache
 def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     """Start the artistools server on the host, and return the process and the lock of its pipes.
@@ -104,14 +114,9 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
     from artistools.misc.cliutils import print_warning
 
     assert pid == os.getpid()
-    servercommand = os.environ.get(SERVER_COMMAND_ENVVAR, DEFAULT_SERVER_COMMAND)
-    print_detail(f"Starting the artistools server on {host} with: ssh {host} {servercommand}")
-    # ssh gives the command to the shell of the remote host, thus the command is one string
-    process = subprocess.Popen(  # ruff:ignore[subprocess-without-shell-equals-true]
-        ["ssh", host, servercommand],  # ruff:ignore[start-process-with-partial-path]
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-    )
+    argv = get_server_argv(host)
+    print_detail(f"Starting the artistools server on {host} with: {' '.join(argv)}")
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
     assert process.stdout is not None
 
     try:
@@ -119,7 +124,7 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
     except (EOFError, pickle.UnpicklingError):
         process.kill()
         msg = (
-            f"The artistools server on {host} did not start. The command was: ssh {host} {servercommand}. "
+            f"The artistools server on {host} did not start. The command was: {' '.join(argv)}. "
             f"Install artistools {version('artistools')} on {host}, or set {SERVER_COMMAND_ENVVAR} to the command "
             "that starts it"
         )
