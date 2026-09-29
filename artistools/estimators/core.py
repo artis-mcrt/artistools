@@ -38,9 +38,9 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
+from artistools.misc.modelinfo import get_nonempty_cellcounts
 from artistools.rustext import estimparse
 from artistools.rustext import estimparse_allranks
 from artistools.rustext import estimtimesteps
@@ -437,7 +437,8 @@ def get_estimator_textsource(folderpath: Path | str, mpiranks: Sequence[int]) ->
     textfile = get_allranks_textfile(folderpath)
     if textfile is not None:
         textfile_mtime = textfile.stat().st_mtime
-        if not rankfile_mtimes or max(rankfile_mtimes.values()) <= textfile_mtime + MTIME_TOLERANCE_S:
+        # no tolerance here: a rank file that sn3d wrote soon after the script combined the files holds more timesteps
+        if not rankfile_mtimes or max(rankfile_mtimes.values()) <= textfile_mtime:
             return textfile, textfile_mtime, True
 
     if not mpiranks:
@@ -602,7 +603,7 @@ def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
     return None if textfile is None else tuple(estimtimesteps(textfile))
 
 
-def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
+def read_estimator_text(modelpath: Path, state: "EstimatorBatchState") -> pl.DataFrame:
     """Read the estimator text of a cache: the estimator file of all ranks, or the files of the ranks of the cache.
 
     The cache of all the estimators holds the rows in the order of the timesteps and then of the cells, whatever the
@@ -617,23 +618,37 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
 
     if not state.allranks:
         return dfestimators
-    return drop_incomplete_last_timestep(dfestimators.sort("timestep", "modelgridindex"), state.runfolder)
+    return drop_incomplete_last_timestep(
+        dfestimators.sort("timestep", "modelgridindex"), state.runfolder, get_nonempty_cellcounts(modelpath)
+    )
 
 
-def drop_incomplete_last_timestep(dfestimators: pl.DataFrame, runfolder: Path) -> pl.DataFrame:
-    """Return the rows without the last timestep when it holds fewer cells than the other timesteps of the job.
+def drop_incomplete_last_timestep(
+    dfestimators: pl.DataFrame, runfolder: Path, nonempty_cellcounts: Mapping[int, int] | None
+) -> pl.DataFrame:
+    """Return the rows without the last timestep when it holds fewer cells than a complete timestep.
 
-    Each timestep of a job holds the same cells. A job that stopped during the write of a timestep leaves that
-    timestep with the cells of some ranks only. The next job writes the timestep again after the restart, thus the
-    reader loses no data.
+    Each timestep holds a row for each cell that holds matter. A job that stopped during the write of a timestep leaves
+    that timestep with the cells of some ranks only. The next job writes the timestep again after the restart, thus the
+    reader loses no data. nonempty_cellcounts gives the count of cells that hold matter for each rank. The sum is the
+    same for each number of ranks, thus it also finds an incomplete timestep in a job of only one timestep. Without
+    these counts, the other timesteps of the job give the count.
     """
     cellcounts = dfestimators.group_by("timestep").len().sort("timestep")
-    if cellcounts.height < 2 or cellcounts["len"][-1] >= cellcounts["len"].max():
+    if cellcounts.is_empty():
+        return dfestimators
+    if nonempty_cellcounts is not None:
+        complete_cellcount = sum(nonempty_cellcounts.values())
+    elif cellcounts.height >= 2:
+        complete_cellcount = max(cellcounts["len"].to_list())
+    else:
+        return dfestimators
+    if cellcounts["len"][-1] >= complete_cellcount:
         return dfestimators
 
     lasttimestep = cellcounts["timestep"][-1]
     print_warning(
-        f"{runfolder}: timestep {lasttimestep} holds {cellcounts['len'][-1]} of {cellcounts['len'].max()} cells. The job"
+        f"{runfolder}: timestep {lasttimestep} holds {cellcounts['len'][-1]} of {complete_cellcount} cells. The job"
         " stopped during the write of this timestep, thus artistools drops it."
     )
     return dfestimators.filter(pl.col("timestep") != lasttimestep)
@@ -685,7 +700,7 @@ def get_estimators_parquetfile(modelpath: Path, state: "EstimatorBatchState", ve
 
         time_start = time.perf_counter()
 
-        pldf_batch = read_estimator_text(state)
+        pldf_batch = read_estimator_text(modelpath, state)
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
@@ -1195,12 +1210,7 @@ def scan_artis_estimators(
         scans = [
             pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
         ]
-        # A cell that writes no line of a quantity gets zero. The caches of the batches of an earlier artistools
-        # version, and the join of run folders that lack a quantity, give a null there instead. A zero replaces it,
-        # thus the values do not depend on the history of the caches.
-        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep).with_columns(
-            cs.float().fill_null(0)
-        )
+        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep)
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached

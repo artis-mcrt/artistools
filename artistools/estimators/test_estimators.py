@@ -674,7 +674,9 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     write_zstd_frames(allranksfile, celltexts[:40])
     rankfile = tmp_path / "estimators_0000.out"
     rankfile.write_text("".join(celltexts), encoding="utf-8")
+    # a rank file that sn3d wrote a short time after the combination also wins
     os.utime(allranksfile, (1000.0, 1000.0))
+    os.utime(rankfile, (1001.0, 1001.0))
 
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
     assert dfestim["timestep"].n_unique() == 100
@@ -794,11 +796,27 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     assert dfestim.height == 2 * (len(celltexts) - 1)
 
 
-def test_scan_gives_zero_for_a_null_of_an_old_batch_cache(tmp_path: Path) -> None:
+def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_path: Path) -> None:
+    """modelgridrankassignments.out gives the count of cells in a complete timestep.
+
+    A job of one timestep has no other timestep to give this count. The restart writes the timestep again, but the
+    reader keeps the timestep of the earlier job, thus the conversion must drop the incomplete timestep.
+    """
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
+    celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
+    write_zstd_frames(tmp_path / "estimators_allranks.out.zst", [celltext])
+
+    assert at.estimators.scan_estimators(tmp_path).collect().is_empty()
+    assert pl.read_parquet(tmp_path / "estimators_allranks.out.parquet").is_empty()
+
+
+def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None:
     """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
 
-    A new conversion gives zero there, thus the scan must also give zero for the null of a current batch cache.
-    Otherwise the values depend on the history of the caches.
+    ARTIS omits an ion with no abundance, thus a null of a population means zero. A null of Te means missing data, and
+    it must stay a null.
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
@@ -808,9 +826,9 @@ def test_scan_gives_zero_for_a_null_of_an_old_batch_cache(tmp_path: Path) -> Non
     os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
     dfbatch = at.rustext.estimparse(tmp_path, 0, 0).with_columns(
         pl.col("timestep", "modelgridindex").cast(pl.Int32),
-        gamma_R_Fe_II=pl.when(pl.col("timestep") == 0).then(None).otherwise(pl.col("gamma_R_Fe_II")),
+        pl.when(pl.col("timestep") == 0).then(None).otherwise(pl.col("nnion_Fe_II", "Te")).name.keep(),
     )
-    assert dfbatch["gamma_R_Fe_II"].null_count() == 1
+    assert dfbatch["nnion_Fe_II"].null_count() == 1
     write_parquet_atomic(
         dfbatch,
         tmp_path / "estimbatch00_0000_0000.out.parquet.tmp",
@@ -819,8 +837,9 @@ def test_scan_gives_zero_for_a_null_of_an_old_batch_cache(tmp_path: Path) -> Non
 
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
     assert not (tmp_path / "estimators_allranks.out.parquet").exists()
-    assert dfestim["gamma_R_Fe_II"].null_count() == 0
-    assert dfestim.filter(pl.col("timestep") == 0)["gamma_R_Fe_II"].item() == 0.0
+    assert dfestim.filter(pl.col("timestep") == 0)["nnion_Fe_II"].item() == 0.0
+    assert dfestim.filter(pl.col("timestep") == 0)["Te"].item() is None
+    assert dfestim["Te"].null_count() == 1
 
 
 def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
