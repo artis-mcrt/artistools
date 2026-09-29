@@ -59,7 +59,7 @@ plotlightcurve and plotspectra accept a model path of the form `host:path`, wher
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
 ```
 
-The command starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host. To use a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
+artistools starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host. Some options still read their files on the local host, e.g. `-filter` of plotlightcurve. Such an option stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 
 ```sh
 export ARTISTOOLS_REMOTE_COMMAND='~/artistools/.venv/bin/artistools server'

@@ -164,6 +164,7 @@ def get_dfspectrum_x_y_with_units(
     return dfspectrum.sort("x")
 
 
+@on_model_host
 def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     try:
@@ -674,7 +675,6 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-@on_model_host
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
 
@@ -959,6 +959,7 @@ def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
     return read_specpol_res_cached(resolve_modelpath(modelpath))
 
 
+@on_model_host
 def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
@@ -1640,6 +1641,7 @@ def check_gamma_emission_record(lzdfpackets: pl.LazyFrame) -> None:
         raise ValueError(msg)
 
 
+@on_model_host
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,

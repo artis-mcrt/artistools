@@ -27,6 +27,7 @@ from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
+from artistools.misc.remote import on_model_host
 from artistools.rustext import read_transitiondata
 
 # The version of the line list parquet cache format. Increase it for a change that makes an older
@@ -714,6 +715,7 @@ def get_ionstring(
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
+@on_model_host
 def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
     """Return LazyFrame with columns: pellet_nucindex, atomic_number, A, nucname from nuclides.out file and the -1 initial energy special case."""
     filepath = firstexisting_or_none("nuclides.out", folder=modelpath, tryzipped=True, search_subfolders=False)

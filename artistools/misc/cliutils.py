@@ -138,10 +138,12 @@ class KeepGivenPaths(argparse.Action):
 def trailing_folder_count(values: list[t.Any]) -> int:
     """Return how many values at the end of a list name an ARTIS run folder."""
     from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.remote import is_remote_path
 
     count = 0
+    # a remote path counts with no test, because a test of the folder asks the host through ssh
     for value in reversed(values):
-        if not isinstance(value, str) or not folder_is_artis_run(value):
+        if not isinstance(value, str) or not (is_remote_path(value) or folder_is_artis_run(value)):
             break
         count += 1
 
@@ -1326,12 +1328,17 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 
 def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
-    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
+    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given.
+
+    A remote path gets the canonical form of get_canonical_path, thus its parent keeps the host.
+    """
+    from artistools.misc.remote import get_canonical_path
+
     if not paths:
         return [Path(default)]
     if isinstance(paths, str | Path):
-        return [Path(paths)]
-    return [Path(p) for p in flatten_list(list(paths))]
+        return [get_canonical_path(Path(paths))]
+    return [get_canonical_path(Path(p)) for p in flatten_list(list(paths))]
 
 
 def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":

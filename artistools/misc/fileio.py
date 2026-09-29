@@ -21,6 +21,7 @@ from pathlib import Path
 import polars as pl
 import polars.selectors as cs
 
+from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
@@ -146,6 +147,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, e
     This is the same precedence that read_wsv and firstexisting use. The errors argument takes the value
     that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
+    check_local_path(filename)
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
@@ -167,6 +169,7 @@ def polars_source(filename: Path | str, mode: str = "r") -> t.IO[bytes] | Path:
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
     The caller gives the name of a file that exists. Use zopenpl to also find a compressed sibling.
     """
+    check_local_path(filename)
     filepath = Path(filename)
     if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
         return filepath
@@ -515,6 +518,12 @@ def path_is_dir(path: Path) -> bool:
     return path.is_dir()
 
 
+@on_model_host
+def folder_holds_match(folder: Path, pattern: str) -> bool:
+    """Return whether a file in the folder matches the glob pattern. The host of a remote path gives the answer."""
+    return any(folder.glob(pattern))
+
+
 @cache
 def find_bundled_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
     """Return the path of a file in the named data folder of the package, or None when the folder holds none."""
@@ -574,7 +583,7 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
         return True
 
     # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
-    return not any(path_is_file(folder / "input.txt") for folder in (path.parent, path.parent.parent))
+    return not any(folder_is_artis_run(folder) for folder in (path.parent, path.parent.parent))
 
 
 def get_model_folder(modelpath: str | Path) -> Path:
@@ -591,7 +600,8 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     """
     filepath = Path(filepath)
 
-    return path_is_dir(filepath) or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
+    # the test of the name comes first, because the test of a remote folder asks its host
+    return filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS))) or path_is_dir(filepath)
 
 
 @on_model_host

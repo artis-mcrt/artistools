@@ -536,7 +536,7 @@ def plot_artis_spectrum(
     modelpath = Path(modelpath)
     if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
         print_warning(f"ignoring filename of {modelpath.name}")
-        modelpath = get_model_folder(modelpath)
+        modelpath = modelpath.parent
 
     if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")

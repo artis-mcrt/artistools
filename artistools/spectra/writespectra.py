@@ -14,6 +14,7 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc.remote import is_remote_path
 from artistools.spectra.core import get_spectra
 
 
@@ -37,7 +38,9 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
     outdirectory, or to the spectra folder of the model when the caller gives none.
     """
     if outdirectory is None:
-        outdirectory = Path(modelpath, "spectra")
+        # a folder below a remote path would make a local folder of the same name, and that folder would then hide
+        # the remote model. Thus the files of a remote model go to the working folder
+        outdirectory = Path("spectra") if is_remote_path(modelpath) else Path(modelpath, "spectra")
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 

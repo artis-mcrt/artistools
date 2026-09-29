@@ -19,6 +19,7 @@ from artistools.lightcurve.core import get_phillips_relation_data
 from artistools.lightcurve.core import scan_lightcurve
 from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
+from artistools.misc import folder_holds_match
 from artistools.misc import get_costhetabin_phibin_labels
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -27,10 +28,10 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import match_closest_time
+from artistools.misc import path_is_file
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc.remote import on_model_host
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -42,15 +43,14 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
-@on_model_host
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
     check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
 
-    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
+    viewing_angle_data_exists = args.frompackets or folder_holds_match(modelpath, "*_res.out*")
     dirbins: list[int] = []
-    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
+    if args.plotvspecpol and path_is_file(modelpath / "vpkt.txt"):
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
         dirbins = get_dirbins(

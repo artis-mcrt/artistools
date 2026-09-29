@@ -1205,36 +1205,46 @@ def test_set_args_from_dict() -> None:
         at.misc.set_args_from_dict(parser, {"nonexistent": 1})
 
 
-def test_reader_of_a_remote_model_runs_on_the_server() -> None:
+def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
 
     A local server process takes the place of ssh. The filter function and the exception must go
-    through pickle, and the LazyFrames come back collected.
+    through pickle, and the LazyFrames come back collected. The command runs through the dispatcher,
+    because its Namespace holds the parser and, with --quiet, a stream that pickle cannot send. The
+    folder comes after a list option, thus the dispatcher must see that it names the model.
     """
+    from artistools.__main__ import main
+
     modelpath = at.get_path("testartismodel").resolve()
     remotepath = Path(f"testhost:{modelpath}")
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
 
     remote.get_server.cache_clear()
     with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
-        assert at.misc.path_is_dir(remotepath)
-        assert not at.misc.path_is_file(remotepath)
-        remotespectra = at.spectra.get_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
-        remotelightcurve = at.lightcurve.scan_lightcurve(remotepath / "light_curve.out")
-        # a caller skips a model on FileNotFoundError, thus the server must give back the same type
-        with pytest.raises(FileNotFoundError, match="nosuchfile"):
-            at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
-
         process, _ = remote.get_server("testhost", os.getpid())
-        assert process.stdin is not None
-        process.stdin.close()
-        assert process.wait(timeout=30) == 0
-    remote.get_server.cache_clear()
+        try:
+            assert at.misc.path_is_dir(remotepath)
+            assert not at.misc.path_is_file(remotepath)
+            remotespectra = at.spectra.get_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
+            remotelightcurve = at.lightcurve.scan_lightcurve(remotepath / "light_curve.out")
+            # a caller skips a model on FileNotFoundError, thus the server must give back the same type
+            with pytest.raises(FileNotFoundError, match="nosuchfile"):
+                at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
+            main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.get_server.cache_clear()
 
+    assert (tmp_path / "plotlightcurves.pdf").is_file()
     localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
-    pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect())
+    # the fluxes are far below the default absolute tolerance, thus the comparison has none
+    pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect(), abs_tol=0.0)
     pltest.assert_frame_equal(
-        remotelightcurve[-1].collect(), at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect()
+        remotelightcurve[-1].collect(),
+        at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect(),
+        abs_tol=0.0,
     )
 
 

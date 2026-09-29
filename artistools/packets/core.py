@@ -40,6 +40,7 @@ from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import read_parquet_cache_metadata
+from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
@@ -717,6 +718,7 @@ def get_packets_batch_parquet_paths(
     when the text file of the first rank of a batch changes, when a cache changes, or when a folder of the scan
     changes.
     """
+    check_local_path(modelpath)
     modelpath = Path(modelpath).absolute()
     mpirank_groups = get_packets_mpirank_groups(modelpath, maxpacketfiles)
     fingerprint = get_packets_cache_fingerprint(modelpath, mpirank_groups, virtual)

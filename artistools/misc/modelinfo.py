@@ -27,12 +27,14 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
+from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+@on_model_host
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     """Return the virtual packet settings from a model's vpkt.txt."""
     from artistools.make_vpkt_input import parse_vpkt_input
@@ -247,6 +249,7 @@ def get_npts_model_cached(modelpath: Path) -> int:
 
 def get_inputfilepath(modelpath: Path | str) -> Path:
     """Return the path to input.txt, raising a helpful error if it does not exist."""
+    check_local_path(modelpath)
     inputfilepath = Path(modelpath, "input.txt")
     if not inputfilepath.is_file():
         msg = f"{inputfilepath} not found. Is {Path(modelpath).resolve()} an ARTIS folder?"

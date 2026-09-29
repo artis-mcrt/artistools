@@ -51,6 +51,7 @@ def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
 
 
 @lru_cache(maxsize=16)
+@on_model_host
 def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
     """Return the deposition data of the model at an absolute path."""
     if Path(modelpath).is_file():
