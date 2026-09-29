@@ -23,6 +23,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import extra_csv_columns_ignored
 from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
 from artistools.misc import get_nprocs
 from artistools.misc import get_timestep_times
@@ -39,6 +40,7 @@ from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import read_parquet_cache_metadata
+from artistools.misc.remote import on_model_host
 
 type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
 
@@ -486,6 +488,16 @@ def get_packets_rankbatch_parquetpath(
 def get_packets_textfilename(rank: int, virtual: bool) -> str:
     """Return the name of the text file of the packets of a rank."""
     return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
+
+
+@on_model_host
+def has_packets_files(modelpath: Path) -> bool:
+    """Return True if the run holds the packets text files, or the parquet cache of their first batch.
+
+    A run can keep only the parquet cache of its packets. The host of a remote path gives the answer.
+    """
+    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
+    return textfile is not None or any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp"))
 
 
 def get_packets_rankbatch_parquetfile(
