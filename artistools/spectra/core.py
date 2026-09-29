@@ -674,6 +674,7 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
+@on_model_host
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
 

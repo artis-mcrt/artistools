@@ -122,6 +122,7 @@ def scan_lightcurve(
     return {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdata.items()}
 
 
+@on_model_host
 def get_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",

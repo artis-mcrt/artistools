@@ -23,10 +23,8 @@ if t.TYPE_CHECKING:
 
 REMOTEPATH_PATTERN = re.compile(r"^(?P<host>[A-Za-z0-9_][A-Za-z0-9_.@-]*):(?P<path>.*)$")
 
-# the command that starts the server on the remote host. A user can give a different command, e.g. the
-# path of an artistools that is not on the PATH of a non-interactive ssh shell
+# a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
-DEFAULT_SERVER_COMMAND = "artistools server"
 
 
 def split_remote_path(path: Path) -> tuple[str, Path] | None:
@@ -90,11 +88,15 @@ def to_server_path(leaf: t.Any) -> t.Any:
 def get_server_argv(host: str) -> list[str]:
     """Return the command line that starts the artistools server on the host.
 
-    ssh gives the command to the shell of the remote host, thus the command is one string.
+    The default command runs the release of this version with uvx, thus the host needs only uv. A reader
+    must have the same signature on the two sides. ssh gives the command to the shell of the remote host,
+    thus the command is one string.
     """
     import os
+    from importlib.metadata import version
 
-    return ["ssh", host, os.environ.get(SERVER_COMMAND_ENVVAR, DEFAULT_SERVER_COMMAND)]
+    defaultcommand = f"uvx artistools@{version('artistools')} server"
+    return ["ssh", host, os.environ.get(SERVER_COMMAND_ENVVAR, defaultcommand)]
 
 
 @functools.cache
@@ -125,8 +127,8 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
         process.kill()
         msg = (
             f"The artistools server on {host} did not start. The command was: {' '.join(argv)}. "
-            f"Install artistools {version('artistools')} on {host}, or set {SERVER_COMMAND_ENVVAR} to the command "
-            "that starts it"
+            f"Install uv on {host}, or set {SERVER_COMMAND_ENVVAR} to a command that starts the server of "
+            f"artistools {version('artistools')}"
         )
         raise OSError(msg) from None
 
@@ -267,7 +269,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         try:
             request = pickle.load(requeststream)
         except EOFError:
-            return
+            # the client reports the time of its command, thus the server stops with no report of its own
+            raise SystemExit(0) from None
 
         pickle.dump(run_request(request), resultstream, protocol=pickle.HIGHEST_PROTOCOL)
         resultstream.flush()
