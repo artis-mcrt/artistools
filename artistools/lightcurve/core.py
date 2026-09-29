@@ -42,6 +42,7 @@ from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
+from artistools.misc.remote import on_model_host
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
@@ -75,6 +76,7 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
+@on_model_host
 def scan_lightcurve(
     filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:

@@ -75,6 +75,8 @@ from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_dir
+from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_heading
 from artistools.misc import print_product
@@ -420,10 +422,10 @@ def plot_artis_lightcurve(
 
     # handle e.g. modelpath = 'modelpath/light_curve.out'
     inputpath = Path(modelpath)
-    lcfilename = inputpath.name if inputpath.is_file() else None
+    lcfilename = inputpath.name if path_is_file(inputpath) else None
     modelpath = inputpath.parent if lcfilename else inputpath
 
-    if not modelpath.is_dir():
+    if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
 

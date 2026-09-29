@@ -51,6 +51,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
@@ -538,6 +539,7 @@ def filter_packets_by_time(
     )
 
 
+@on_model_host
 def get_from_packets(
     modelpath: Path | str,
     timelowdays: float,
@@ -760,6 +762,7 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
     return drop_trailing_null_column(dfemabs).collect()
 
 
+@on_model_host
 def get_spectra(
     modelpath: Path,
     timestepmin: int,
@@ -1116,6 +1119,7 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
 
 
 @lru_cache(maxsize=4)
+@on_model_host
 def get_flux_contributions_cached(
     modelpath: Path,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,

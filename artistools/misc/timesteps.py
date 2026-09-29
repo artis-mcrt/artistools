@@ -28,6 +28,7 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
+from artistools.misc.remote import on_model_host
 
 
 def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
@@ -92,6 +93,7 @@ def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
     return depdata
 
 
+@on_model_host
 def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
@@ -466,6 +468,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
 
 
 @lru_cache(maxsize=16)
+@on_model_host
 def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
     """Return the arrival time range of the model at an absolute path."""
     from artistools.inputmodel import get_modeldata

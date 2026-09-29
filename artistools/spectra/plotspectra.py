@@ -68,6 +68,8 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
+from artistools.misc import path_is_dir
+from artistools.misc import path_is_file
 from artistools.misc import path_is_reference_data
 from artistools.misc import print_detail
 from artistools.misc import print_heading
@@ -77,6 +79,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
+from artistools.misc.remote import is_remote_path
 from artistools.packets import get_packets
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
@@ -531,11 +534,11 @@ def plot_artis_spectrum(
 ) -> pl.DataFrame | None:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
     modelpath = Path(modelpath)
-    if modelpath.is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
+    if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
         print_warning(f"ignoring filename of {modelpath.name}")
         modelpath = get_model_folder(modelpath)
 
-    if not modelpath.is_dir():
+    if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
@@ -550,9 +553,16 @@ def plot_artis_spectrum(
 
     clamp_to_timesteps = not args.notimeclamp
     nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None = None
-    if from_packets and args.multispecplot and use_time == "arrival" and args.plotvspecpol is None:
-        # every panel reads the packets, thus one read of the union of the time windows serves them all. Each
-        # panel then applies its own arrival window to the frame in memory
+    # every panel reads the packets, thus one read of the union of the time windows serves them all. Each
+    # panel then applies its own arrival window to the frame in memory. The packets of a remote model stay on
+    # its host, thus each panel asks the host for its own spectrum
+    if (
+        from_packets
+        and args.multispecplot
+        and use_time == "arrival"
+        and args.plotvspecpol is None
+        and not is_remote_path(modelpath)
+    ):
         timeranges = [
             get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
             for timedays in args.timedayslist

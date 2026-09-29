@@ -91,6 +91,8 @@ from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
 from artistools.misc.fileio import path_is_codecomparison as path_is_codecomparison
+from artistools.misc.fileio import path_is_dir as path_is_dir
+from artistools.misc.fileio import path_is_file as path_is_file
 from artistools.misc.fileio import path_is_reference_data as path_is_reference_data
 from artistools.misc.fileio import polars_source as polars_source
 from artistools.misc.fileio import print_saved as print_saved

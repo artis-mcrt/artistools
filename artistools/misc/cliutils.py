@@ -1335,34 +1335,28 @@ def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]
 
 
 def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
-    """Use command line arguments to determine the appropriate filter function."""
+    """Use command line arguments to determine the appropriate filter function.
+
+    The function is a partial of a module function, thus pickle can send it to the server of a remote model.
+    """
+    import functools
+
+    from artistools.misc.general import moving_average_filter
+    from artistools.misc.general import savgol_filter
+
     filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
-
-        def movavgfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
-            import numpy as np
-
-            n = args.filtermovingavg
-            arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
-            return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
-
-        filterfunc = movavgfilterfunc
+        filterfunc = functools.partial(moving_average_filter, n=args.filtermovingavg)
 
     if dictargs.get("filtersavgol", False):
         if filterfunc is not None:
             msg = "Give only one of -filtermovingavg and -filtersavgol"
             raise ValueError(msg)
 
-        from artistools.misc.general import savgol_filter
-
         window_length, polyorder = (int(x) for x in args.filtersavgol)
-
-        def savgolfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
-            return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
-
-        filterfunc = savgolfilterfunc
+        filterfunc = functools.partial(savgol_filter, window_length=window_length, polyorder=polyorder)
 
         print("Applying Savitzky-Golay filter")
 

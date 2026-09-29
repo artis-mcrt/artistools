@@ -30,6 +30,7 @@ from artistools.misc import match_closest_time
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc.remote import on_model_host
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -41,6 +42,7 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
+@on_model_host
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)

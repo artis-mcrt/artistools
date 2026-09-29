@@ -116,7 +116,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "getpath", "timesteps", "version"),
+    "other commands": ("completions", "getpath", "server", "timesteps", "version"),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -292,6 +292,14 @@ subcommandtree: CommandTree = {
         "plotviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
+    ),
+    "server": CommandSpec(
+        "misc.remote",
+        helptext="Run the readers of a command for a model on this host.",
+        note=(
+            "A command on a different computer starts this server through ssh when it gets a model path of the"
+            " form host:path, e.g. vae26:~/scratch/mymodel. Do not run it yourself."
+        ),
     ),
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",

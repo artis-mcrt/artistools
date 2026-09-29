@@ -27,6 +27,7 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
+from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
@@ -116,6 +117,7 @@ def get_nu_grid(modelpath: Path | str) -> npt.NDArray[np.floating]:
 
 
 @lru_cache(maxsize=16)
+@on_model_host
 def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
     """Return the frequency grid of the model at an absolute path."""
     specfile = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
@@ -160,10 +162,11 @@ def get_model_name(path: Path | str) -> str:
 
     # resolve the path before the cache. The default model path is the relative Path(".").
     # A cache that holds the relative path keeps the first answer after the user changes the working folder
-    return get_model_name_cached(path.resolve())
+    return get_model_name_cached(resolve_modelpath(path))
 
 
 @lru_cache(maxsize=8)
+@on_model_host
 def get_model_name_cached(abspath: Path) -> str:
     """Return the name of the ARTIS model at an absolute path."""
     modelpath = abspath if abspath.is_dir() else abspath.parent
@@ -193,6 +196,7 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+@on_model_host
 def get_model_logname(path: Path | str, label: str | None = None) -> str:
     """Return the label of an ARTIS model and the name of its folder, for a log message.
 
