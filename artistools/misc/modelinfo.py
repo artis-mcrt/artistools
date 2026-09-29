@@ -318,20 +318,27 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 @lru_cache(maxsize=1024)
 def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     """Return the timesteps of the run folder at an absolute path."""
-    if estimparquetfiles := sorted(Path(folderpath).glob("estimbatch*.out.parquet*")):
-        # this import runs at call time, because artistools.estimators imports artistools.misc
-        from artistools.estimators import estimbatch_parquet_is_current
+    timesteps_contained = get_runfolder_timesteps_with_restart(folderpath)
+    # a restarted run repeats its first timestep, thus the function drops that timestep
+    restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
+    return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
 
-        # a stale cache can hold fewer timesteps than the text files, e.g. while ARTIS still runs.
-        # Thus only a current cache answers. For a stale cache, the text files answer instead
-        if estimbatch_parquet_is_current(estimparquetfiles[0], folderpath):
-            dfestfile = pl.scan_parquet(estimparquetfiles[0])
-            timesteps_contained = (
-                dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
-            )
-            # the first timestep of a restarted run is duplicate and should be ignored
-            restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
-            return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+
+def get_runfolder_timesteps_with_restart(folderpath: Path) -> Sequence[int]:
+    """Return the sorted timesteps of the estimators of a run folder, with the repeated timestep of a restart."""
+    # this import runs at call time, because artistools.estimators imports artistools.misc
+    from artistools.estimators import estimbatch_parquet_is_current
+    from artistools.estimators import get_allranks_timesteps
+
+    if (allranks_timesteps := get_allranks_timesteps(folderpath)) is not None:
+        return allranks_timesteps
+
+    # a stale cache can hold fewer timesteps than the text files, e.g. while ARTIS still runs.
+    # Thus the function reads only a current cache. For a stale cache, it reads the text files
+    estimparquetfiles = sorted(Path(folderpath).glob("estimbatch*.out.parquet*"))
+    if estimparquetfiles and estimbatch_parquet_is_current(estimparquetfiles[0], folderpath):
+        dfestfile = pl.scan_parquet(estimparquetfiles[0])
+        return dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
     # a leftover sibling such as estimators_0000.out.bak sorts before estimators_0000.out.zst, thus
     # the glob alone cannot pick the file. firstexisting_or_none applies the precedence that zopen reads
     estimstems = sorted({
@@ -350,10 +357,7 @@ def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     )
     if estimfilepath is not None:
         with zopen(estimfilepath) as estfile:
-            timesteps_contained = sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
-            # the first timestep of a restarted run is duplicate and should be ignored
-            restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
-            return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+            return sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
 
     return ()
 

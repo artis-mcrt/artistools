@@ -599,6 +599,106 @@ def test_estimparse_missing_file() -> None:
         at.rustext.estimparse(modelpath, 999, 999)
 
 
+def write_zstd_frames(filepath: Path, texts: Sequence[str]) -> None:
+    """Write each text as one zstd frame, one frame after the other, as ARTIS writes the estimator file of all ranks."""
+    from artistools.misc.fileio import get_decompress_open
+
+    frames: list[bytes] = []
+    for index, text in enumerate(texts):
+        framepath = filepath.with_name(f"{filepath.name}.frame{index}")
+        with get_decompress_open(".zst")(framepath, "wt", encoding="utf-8") as framefile:
+            framefile.write(text)
+        frames.append(framepath.read_bytes())
+        framepath.unlink()
+    filepath.write_bytes(b"".join(frames))
+
+
+def get_cell_texts(estimatortext: str) -> list[str]:
+    """Return the text of each cell of an estimator file. The line of a timestep starts the text of a cell."""
+    celltexts: list[str] = []
+    for line in estimatortext.splitlines(keepends=True):
+        if line.startswith("timestep ") or not celltexts:
+            celltexts.append(line)
+        else:
+            celltexts[-1] += line
+    return celltexts
+
+
+def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Path) -> None:
+    """The reader of the file of all ranks gives the rows in the order of the file.
+
+    The text is larger than one part of the parallel parse (16 MB), thus the threads parse more than one part. The
+    file holds three zstd frames, as ARTIS writes one frame for each rank and timestep. An error names the line in
+    the whole file, also in a later part.
+    """
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    ncopies = 130
+    copytexts = [
+        "".join(celltext.replace("modelgridindex 0 ", f"modelgridindex {copyindex} ") for celltext in celltexts)
+        for copyindex in range(ncopies)
+    ]
+    assert sum(len(copytext) for copytext in copytexts) > 16 * 1024 * 1024
+    allranksfile = tmp_path / "estimators.out.zst"
+    write_zstd_frames(allranksfile, ["".join(copytexts[:50]), "".join(copytexts[50:51]), "".join(copytexts[51:])])
+
+    dfallranks = at.rustext.estimparse_allranks(allranksfile)
+    dfrank0 = at.rustext.estimparse(modelpath, 0, 0)
+    assert dfallranks.height == ncopies * dfrank0.height
+    assert dfallranks["modelgridindex"].to_list() == [
+        copyindex for copyindex in range(ncopies) for _ in range(dfrank0.height)
+    ]
+    assert dfallranks["timestep"].to_list() == dfrank0["timestep"].to_list() * ncopies
+    pltest.assert_frame_equal(
+        dfallranks.filter(pl.col("modelgridindex") == ncopies - 1).drop("modelgridindex"),
+        dfrank0.drop("modelgridindex"),
+        check_column_order=False,
+    )
+    assert at.rustext.estimtimesteps(allranksfile) == sorted(set(dfrank0["timestep"].to_list()))
+
+    linecount = sum(copytext.count("\n") for copytext in copytexts)
+    write_zstd_frames(allranksfile, ["".join(copytexts), "populations Z=26  1: notanumber\n"])
+    with pytest.raises(Exception, match=f"estimators.out.zst:{linecount + 1}: could not parse"):
+        at.rustext.estimparse_allranks(allranksfile)
+
+
+def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
+    """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
+
+    The folder gets one parquet cache and no batch caches. An archived run keeps the cache and drops the text file,
+    and the cache then stays in use.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+
+    perrankfolder = tmp_path / "perrank"
+    allranksfolder = tmp_path / "allranks"
+    for folder in (perrankfolder, allranksfolder):
+        folder.mkdir()
+        for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+            shutil.copy(modelpath / name, folder / name)
+    shutil.copy(modelpath / "estimators_0000.out", perrankfolder / "estimators_0000.out")
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    write_zstd_frames(allranksfolder / "estimators.out.zst", celltexts)
+
+    assert get_runfolder_timesteps(allranksfolder) == get_runfolder_timesteps(perrankfolder)
+    dfexpected = at.estimators.scan_estimators(perrankfolder).collect().sort("timestep", "modelgridindex")
+    dfallranks = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
+    pltest.assert_frame_equal(dfallranks, dfexpected, check_column_order=False)
+
+    cachefile = allranksfolder / "estimators.out.parquet.tmp"
+    assert cachefile.is_file()
+    assert not list(allranksfolder.glob("estimbatch*"))
+    assert pl.read_parquet_metadata(cachefile)["allranks"] == "true"
+
+    cachemtime = cachefile.stat().st_mtime_ns
+    (allranksfolder / "estimators.out.zst").unlink()
+    get_runfolder_timesteps_cached.cache_clear()
+    assert get_runfolder_timesteps(allranksfolder) == get_runfolder_timesteps(perrankfolder)
+    dfarchived = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
+    pltest.assert_frame_equal(dfarchived, dfexpected, check_column_order=False)
+    assert cachefile.stat().st_mtime_ns == cachemtime
+
+
 @pytest.mark.parametrize(
     ("badline", "errormessage"),
     [

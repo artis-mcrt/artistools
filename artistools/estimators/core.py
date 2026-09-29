@@ -41,6 +41,8 @@ from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.rustext import estimparse
+from artistools.rustext import estimparse_allranks
+from artistools.rustext import estimtimesteps
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -403,6 +405,30 @@ def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[i
     return Path(folderpath) / filename
 
 
+# With the option WRITE_ESTIMATORS_ALLRANKS_FILE, ARTIS writes the estimators of all ranks into this file of a run
+# folder. Without the option, ARTIS writes one file for each rank. scripts/combine_estimator_files.py of ARTIS makes
+# the same file from the files of the ranks.
+ALLRANKS_TEXTFILENAME = "estimators.out"
+
+
+def get_allranks_textfile(folderpath: Path | str) -> Path | None:
+    """Return the estimator file of all ranks in a run folder, e.g. estimators.out.zst, or None if there is none."""
+    return firstexisting_or_none(ALLRANKS_TEXTFILENAME, folder=folderpath, tryzipped=True, search_subfolders=False)
+
+
+def get_allranks_parquetpath(folderpath: Path | str) -> Path:
+    """Return the path of the parquet cache of the estimator file of all ranks in a run folder."""
+    return Path(folderpath) / f"{ALLRANKS_TEXTFILENAME}.parquet.tmp"
+
+
+def folder_has_allranks_estimators(folderpath: Path | str) -> bool:
+    """Return True when a run folder holds the estimators of all ranks in one file, or the cache of such a file.
+
+    An archived run can keep the cache and drop the text file, thus the function also returns True for the cache alone.
+    """
+    return get_allranks_textfile(folderpath) is not None or get_allranks_parquetpath(folderpath).is_file()
+
+
 # The version of the estimator parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
 CACHEVERSION = 1
@@ -472,7 +498,7 @@ def rankbatch_parquet_is_current(
     if staleness is None:
         return True
 
-    # the same rule that get_estimators_rankbatch_parquetfile() applies, so that the two agree
+    # the same rule that get_estimators_parquetfile() applies, so that the two agree
     return rankbatch_cache_cannot_be_rebuilt(parquetfilepath, textsource_complete=textsource_complete)
 
 
@@ -490,43 +516,74 @@ def estimbatch_parquet_is_current(parquetfilepath: Path, folderpath: Path | str)
     return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete)
 
 
-def get_estimators_rankbatch_parquetfile(
-    modelpath: Path,
-    folderpath: Path,
-    batch_mpiranks: Sequence[int],
-    batchindex: int,
-    textsource_mtime: float | None,
-    textsource_complete: bool,
-    stalereason: str | None,
-    outdatedparquet: tuple[int, int] | None,
-    verbose: bool = False,
-) -> Path:
-    """Return the parquet cache of the estimator files of one batch of MPI ranks, and make it if it is stale.
+def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
+    """Return the timesteps of the estimator file of all ranks in a run folder, or None if the folder has none.
 
-    The caller reads the freshness of every batch one time with rankbatch_parquet_staleness, thus it
-    gives the reason here. A reason of None says that the cache is current. The caller also gives the
-    identity of the file that it saw, because only that file can take the place of a new cache.
+    The function reads a current cache first. A stale cache can hold fewer timesteps than the text file, e.g. while
+    ARTIS still runs, thus the function then reads the text file. The tuple keeps the repeated timestep of a restart.
+    """
+    if not folder_has_allranks_estimators(folderpath):
+        return None
+
+    parquetfilepath = get_allranks_parquetpath(folderpath)
+    textfile = get_allranks_textfile(folderpath)
+    textsource_mtime = None if textfile is None else textfile.stat().st_mtime
+    if rankbatch_parquet_is_current(parquetfilepath, textsource_mtime, textsource_complete=textfile is not None):
+        return tuple(
+            pl
+            .scan_parquet(parquetfilepath)
+            .select("timestep")
+            .unique()
+            .sort("timestep")
+            .collect()
+            .to_series()
+            .to_list()
+        )
+
+    # a damaged cache with no text file holds no timesteps
+    return () if textfile is None else tuple(estimtimesteps(textfile))
+
+
+def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
+    """Read the estimator text files of a batch of MPI ranks, or the estimator file of all ranks."""
+    if state.allranks:
+        textfile = get_allranks_textfile(state.runfolder)
+        assert textfile is not None, "artistools cannot rebuild a cache of all ranks that has no text file"
+        print(f"    reading {textfile.name} in {state.runfolder.name}...", end="", flush=True)
+        return estimparse_allranks(textfile)
+
+    print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
+    return estimparse(state.runfolder, min(state.mpiranks), max(state.mpiranks))
+
+
+def get_estimators_parquetfile(modelpath: Path, state: "EstimatorBatchState", verbose: bool = False) -> Path:
+    """Return the parquet cache of a batch of MPI ranks or of the file of all ranks, and make it if it is stale.
+
+    The state gives the reason why the cache is stale, because the caller reads the freshness of every cache one time
+    with rankbatch_parquet_staleness. A reason of None says that the cache is current. The state also gives the
+    identity of the file that the caller saw, because only that file can take the place of a new cache.
     """
 
     def printornot(msg: str) -> None:
         if verbose:
             print(msg)
 
-    parquetfilepath = get_rankbatch_parquetpath(folderpath, batch_mpiranks, batchindex)
+    parquetfilepath = state.parquetfile
+    stalereason = state.stalereason
 
-    assert len(batch_mpiranks) == max(batch_mpiranks) - min(batch_mpiranks) + 1, (
-        "batch_mpiranks must be a contiguous range of ranks"
+    assert len(state.mpiranks) == max(state.mpiranks) - min(state.mpiranks) + 1, (
+        "mpiranks must be a contiguous range of ranks"
     )
-    assert len(set(batch_mpiranks)) == len(batch_mpiranks), "batch_mpiranks must not contain duplicates"
+    assert len(set(state.mpiranks)) == len(state.mpiranks), "mpiranks must not contain duplicates"
 
     if stalereason is not None and rankbatch_cache_cannot_be_rebuilt(
-        parquetfilepath, textsource_complete=textsource_complete
+        parquetfilepath, textsource_complete=state.textsource_complete
     ):
-        # the batch holds no full set of estimator text files, thus no conversion can correct the
-        # fault. Keep the cache, because the alternative is a run folder that shows no data at all
+        # the text files are incomplete or absent, thus no conversion can correct the fault. Keep the cache.
+        # Without it, the run folder shows no data.
         print_warning(
             f"{parquetfilepath.relative_to(modelpath.parent)} is not a current cache of the estimator text"
-            f" files, because {stalereason}. The text files of the batch are incomplete, thus artistools"
+            f" files, because {stalereason}. The text files are incomplete or absent, thus artistools"
             " uses the cache as it is."
         )
         stalereason = None
@@ -535,7 +592,7 @@ def get_estimators_rankbatch_parquetfile(
         # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step, so
         # the path always resolves to a complete parquet. A delete first opens a window in which a
         # concurrent reader finds the file missing or half-swapped
-        if outdatedparquet is not None:
+        if state.outdatedparquet is not None:
             print(
                 f"  {parquetfilepath.relative_to(modelpath.parent)} is not a current cache of the estimator"
                 f" text files, because {stalereason}. File will be regenerated..."
@@ -545,9 +602,7 @@ def get_estimators_rankbatch_parquetfile(
 
         time_start = time.perf_counter()
 
-        print(f"    reading {len(batch_mpiranks)} estimator files in {folderpath.name}...", end="", flush=True)
-
-        pldf_batch = estimparse(folderpath, min(batch_mpiranks), max(batch_mpiranks))
+        pldf_batch = read_estimator_text(state)
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
@@ -558,19 +613,22 @@ def get_estimators_rankbatch_parquetfile(
         print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
         time_start = time.perf_counter()
 
-        assert pldf_batch is not None
+        rankmetadata = (
+            {"allranks": "true"}
+            if state.allranks
+            else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
+        )
         write_parquet_atomic(
             pldf_batch,
             parquetfilepath,
             metadata={
                 "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
                 "cacheversion": str(CACHEVERSION),
-                "textsource_mtime": str(textsource_mtime),
-                "batch_rank_min": str(min(batch_mpiranks)),
-                "batch_rank_max": str(max(batch_mpiranks)),
-                "batchindex": str(batchindex),
+                "textsource_mtime": str(state.textsource_mtime),
+                **rankmetadata,
+                "batchindex": str(state.batchindex),
             },
-            replaces=outdatedparquet,
+            replaces=state.outdatedparquet,
         )
 
         print(f"took {time.perf_counter() - time_start:.1f} s.")
@@ -831,7 +889,7 @@ def select_timesteps_and_cells(
 
 
 class EstimatorBatchCache(t.NamedTuple):
-    """The parquet cache of the estimators of one batch of MPI ranks in one run folder."""
+    """The parquet cache of the estimators of one batch of MPI ranks in one run folder, or of all its ranks."""
 
     runfolder: Path
     mpiranks: tuple[int, ...]
@@ -839,11 +897,16 @@ class EstimatorBatchCache(t.NamedTuple):
 
 
 class EstimatorBatchState(t.NamedTuple):
-    """The state of the parquet cache of one batch of MPI ranks in one run folder: current or stale."""
+    """The state of the parquet cache of one batch of MPI ranks in one run folder: current or stale.
+
+    A run folder with the estimator file of all ranks has one cache, and its batch holds all the ranks.
+    """
 
     runfolder: Path
     batchindex: int
     mpiranks: tuple[int, ...]
+    allranks: bool
+    parquetfile: Path
     textsource_mtime: float | None
     textsource_complete: bool
     stalereason: str | None
@@ -875,15 +938,44 @@ def get_estimator_batch_states(
     if not runfolders:
         return []
 
-    # one glob of each folder gives the text file mtimes of every batch, because a glob of a folder
-    # that holds one file for each MPI rank is slow. One metadata read of each cache then gives
-    # its freshness to the progress bar and to the conversion
-    mtimesoffolder = {runfolder: get_textsource_mtimes(runfolder) for runfolder in runfolders}
     states: list[EstimatorBatchState] = []
     for runfolder in runfolders:
-        for batchindex, mpiranks in mpirank_groups:
-            mtime, complete = get_batch_textsource_state(mtimesoffolder[runfolder], min(mpiranks), max(mpiranks))
-            cachepath = get_rankbatch_parquetpath(runfolder, mpiranks, batchindex)
+        # each tuple holds:
+        # - the batch index;
+        # - the ranks;
+        # - the path of the cache;
+        # - the mtime of the newest text file;
+        # - the completeness of the text files.
+        folderbatches: list[tuple[int, tuple[int, ...], Path, float | None, bool]]
+        allranks = folder_has_allranks_estimators(runfolder)
+        if allranks:
+            # one cache holds all the ranks of the folder, and the filter of the scan selects the cells
+            textfile = get_allranks_textfile(runfolder)
+            folderbatches = [
+                (
+                    0,
+                    tuple(mpiranklist),
+                    get_allranks_parquetpath(runfolder),
+                    None if textfile is None else textfile.stat().st_mtime,
+                    textfile is not None,
+                )
+            ]
+        else:
+            # one glob of the folder gives the text file mtimes of every batch, because a glob of a folder
+            # that holds one file for each MPI rank is slow
+            textsource_mtimes = get_textsource_mtimes(runfolder)
+            folderbatches = [
+                (
+                    batchindex,
+                    mpiranks,
+                    get_rankbatch_parquetpath(runfolder, mpiranks, batchindex),
+                    *get_batch_textsource_state(textsource_mtimes, min(mpiranks), max(mpiranks)),
+                )
+                for batchindex, mpiranks in mpirank_groups
+            ]
+
+        # one metadata read of each cache gives its freshness to the progress bar and to the conversion
+        for batchindex, mpiranks, cachepath, mtime, complete in folderbatches:
             # get the identity of the cache before the check of its age. A rewrite replaces only the file that
             # the check saw. Thus a new cache that a different process writes after the check stays
             outdatedparquet = get_file_identity(cachepath)
@@ -893,6 +985,8 @@ def get_estimator_batch_states(
                     runfolder=runfolder,
                     batchindex=batchindex,
                     mpiranks=mpiranks,
+                    allranks=allranks,
+                    parquetfile=cachepath,
                     textsource_mtime=mtime,
                     textsource_complete=complete,
                     stalereason=stalereason,
@@ -923,17 +1017,7 @@ def convert_estimator_batch_caches(
         EstimatorBatchCache(
             runfolder=state.runfolder,
             mpiranks=state.mpiranks,
-            parquetfile=get_estimators_rankbatch_parquetfile(
-                modelpath=modelpath,
-                folderpath=state.runfolder,
-                batch_mpiranks=state.mpiranks,
-                batchindex=state.batchindex,
-                textsource_mtime=state.textsource_mtime,
-                textsource_complete=state.textsource_complete,
-                stalereason=state.stalereason,
-                outdatedparquet=state.outdatedparquet,
-                verbose=verbose,
-            ),
+            parquetfile=get_estimators_parquetfile(modelpath=modelpath, state=state, verbose=verbose),
         )
         for state in batches
     ]
