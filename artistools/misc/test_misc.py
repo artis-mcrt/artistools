@@ -1206,7 +1206,7 @@ def test_set_args_from_dict() -> None:
 
 
 def test_reader_of_a_remote_model_runs_on_the_server() -> None:
-    """A reader that gets a host:path runs on the server, and it gives the data of a local read.
+    """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
 
     A local server process takes the place of ssh. The filter function and the exception must go
     through pickle, and the LazyFrames come back collected.

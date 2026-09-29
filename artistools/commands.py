@@ -297,7 +297,7 @@ subcommandtree: CommandTree = {
         "misc.remote",
         helptext="Run the readers of a command for a model on this host.",
         note=(
-            "A command on a different computer starts this server through ssh when it gets a model path of the"
+            "A command on a different host starts this server through ssh when it gets a model path of the"
             " form host:path, e.g. vae26:~/scratch/mymodel. Do not run it yourself."
         ),
     ),

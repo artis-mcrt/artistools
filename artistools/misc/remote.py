@@ -30,7 +30,7 @@ SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
 def split_remote_path(path: Path) -> tuple[str, Path] | None:
     """Return the host and the path on that host for a path of the form "host:path", or None for a local path.
 
-    A local folder can have a colon in its name, thus a path that exists on this computer stays local.
+    A local folder can have a colon in its name, thus a path that exists on this host stays local.
     """
     match = REMOTEPATH_PATTERN.match(str(path))
     if match is None or path.exists():
@@ -47,7 +47,7 @@ def is_remote_path(path: Path | str) -> bool:
 def map_leaves(value: t.Any, func: Callable[[t.Any], t.Any]) -> t.Any:
     """Apply the function to each item inside the lists, the tuples, and the dict values of the value.
 
-    Only these exact types hold the paths of an argument or a result, e.g. a list of model paths or a dict
+    Only these exact types hold the paths of an argument or a result. Examples are a list of model paths and a dict
     of LazyFrames for each direction bin. A NamedTuple or a different class stays as it is.
     """
     if type(value) is list:
@@ -118,7 +118,7 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
 
     assert pid == os.getpid()
     argv = get_server_argv(host)
-    print_detail(f"Starting the artistools server on {host} with: {' '.join(argv)}")
+    print_detail(f"The command starts the artistools server on {host} with: {' '.join(argv)}")
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
     assert process.stdout is not None
 
@@ -175,7 +175,7 @@ def on_model_host[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 
     The server gives back the result of the function, thus the result must be small and must not refer to
     a file. A LazyFrame comes back as the collected data. Put this decorator on a function that reduces
-    the data, e.g. a function that returns a spectrum, and not on a function that returns all the packets.
+    the data, e.g. a function that returns a spectrum. Do not put it on a function that returns all the packets.
     """
 
     @functools.wraps(func)
@@ -212,7 +212,7 @@ def expand_home(leaf: t.Any) -> t.Any:
 def collect_lazyframe(leaf: t.Any) -> t.Any:
     """Return the data of a LazyFrame as a LazyFrame that holds it in memory.
 
-    The plan of a LazyFrame reads the files of the server, thus the client could not collect it.
+    The plan of a LazyFrame reads the files of the server, thus the client cannot collect it.
     """
     import polars as pl
 
@@ -246,7 +246,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Run the readers that a different artistools process sends through ssh. A model path of host:path starts it."""
+    """Run the requests that an artistools client sends through ssh. A model path of the form host:path starts the server."""
     import os
     import pickle
     import sys

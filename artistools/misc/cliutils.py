@@ -1335,7 +1335,7 @@ def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]
 
 
 def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
-    """Use command line arguments to determine the appropriate filter function.
+    """Return the filter function that the command-line arguments select, or None.
 
     The function is a partial of a module function, thus pickle can send it to the server of a remote model.
     """
