@@ -112,6 +112,7 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
     import threading
     from importlib.metadata import version
 
+    from artistools.misc.cliutils import exit_with_error
     from artistools.misc.cliutils import print_detail
     from artistools.misc.cliutils import print_warning
 
@@ -125,12 +126,11 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
         serverversion = pickle.load(process.stdout)
     except (EOFError, pickle.UnpicklingError):
         process.kill()
-        msg = (
-            f"The artistools server on {host} did not start. The command was: {' '.join(argv)}. "
+        exit_with_error(
+            f"the artistools server on {host} did not start. The command was: {' '.join(argv)}",
             f"Install uv on {host}, or set {SERVER_COMMAND_ENVVAR} to a command that starts the server of "
-            f"artistools {version('artistools')}"
+            f"artistools {version('artistools')}",
         )
-        raise OSError(msg) from None
 
     if serverversion != (localversion := version("artistools")):
         print_warning(

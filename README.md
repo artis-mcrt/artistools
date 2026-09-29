@@ -51,6 +51,20 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 
 Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Most of these commands should be run either within an ARTIS simulation folder or by passing the folder path as the last argument.
 
+### A model on a different computer
+
+plotlightcurve and plotspectra accept a model path of the form `host:path`, where `host` is a name that ssh knows:
+
+```sh
+artistools plotspectra -t 300 vae26:~/scratch/mymodel
+```
+
+The command starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and does the processing, e.g. the binning of the packets. Only the results come back, and the parquet caches stay beside the data on the host. To use a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
+
+```sh
+export ARTISTOOLS_REMOTE_COMMAND='~/artistools/.venv/bin/artistools server'
+```
+
 ## Use from Python
 
 artistools is mainly a set of commands, but a script or a notebook can call the same functions. `import artistools as at` gives a small set of names at the top level. Each package holds the other names, e.g. `at.spectra` and `at.inputmodel`.
