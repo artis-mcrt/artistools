@@ -698,6 +698,14 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     pltest.assert_frame_equal(dfarchived, dfexpected, check_column_order=False)
     assert cachefile.stat().st_mtime_ns == cachemtime
 
+    # a new run of the job folder without the option removes the text file but not the cache. The files of the
+    # ranks then win over the stale cache
+    (allranksfolder / "estimators_0000.out").write_text("".join(celltexts[:10]), encoding="utf-8")
+    get_runfolder_timesteps_cached.cache_clear()
+    assert get_runfolder_timesteps(allranksfolder) == tuple(range(10))
+    dfnewrun = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
+    pltest.assert_frame_equal(dfnewrun, dfexpected.head(10), check_column_order=False)
+
 
 @pytest.mark.parametrize(
     ("badline", "errormessage"),

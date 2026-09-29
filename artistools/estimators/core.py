@@ -422,11 +422,15 @@ def get_allranks_parquetpath(folderpath: Path | str) -> Path:
 
 
 def folder_has_allranks_estimators(folderpath: Path | str) -> bool:
-    """Return True when a run folder holds the estimators of all ranks in one file, or the cache of such a file.
+    """Return True when a run folder holds the estimators of all ranks in one file, or only the cache of such a file.
 
     An archived run can keep the cache and drop the text file, thus the function also returns True for the cache alone.
+    A cache without its text file beside the files of the ranks is stale, e.g. from an earlier run of the job folder
+    with the option. ARTIS removes the text file of that run but not the cache, thus the files of the ranks win then.
     """
-    return get_allranks_textfile(folderpath) is not None or get_allranks_parquetpath(folderpath).is_file()
+    if get_allranks_textfile(folderpath) is not None:
+        return True
+    return get_allranks_parquetpath(folderpath).is_file() and not get_textsource_mtimes(folderpath)
 
 
 # The version of the estimator parquet cache format. Increase it for a change that makes an older
