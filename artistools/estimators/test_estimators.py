@@ -815,8 +815,8 @@ def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_pa
 def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None:
     """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
 
-    ARTIS omits an ion with no abundance, thus a null of a population means zero. A null of Te means missing data, and
-    it must stay a null.
+    ARTIS omits an ion with no abundance, thus a null of a quantity of an ion means zero. A new conversion gives zero
+    there. A null of Te means missing data, and it must stay a null.
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
@@ -826,7 +826,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
     dfbatch = at.rustext.estimparse(tmp_path, 0, 0).with_columns(
         pl.col("timestep", "modelgridindex").cast(pl.Int32),
-        pl.when(pl.col("timestep") == 0).then(None).otherwise(pl.col("nnion_Fe_II", "Te")).name.keep(),
+        pl.when(pl.col("timestep") == 0).then(None).otherwise(pl.col("nnion_Fe_II", "gamma_R_Fe_II", "Te")).name.keep(),
     )
     assert dfbatch["nnion_Fe_II"].null_count() == 1
     write_parquet_atomic(
@@ -838,6 +838,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
     assert not (tmp_path / "estimators_allranks.out.parquet").exists()
     assert dfestim.filter(pl.col("timestep") == 0)["nnion_Fe_II"].item() == 0.0
+    assert dfestim.filter(pl.col("timestep") == 0)["gamma_R_Fe_II"].item() == 0.0
     assert dfestim.filter(pl.col("timestep") == 0)["Te"].item() is None
     assert dfestim["Te"].null_count() == 1
 

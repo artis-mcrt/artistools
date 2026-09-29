@@ -447,6 +447,9 @@ def get_estimator_textsource(folderpath: Path | str, mpiranks: Sequence[int]) ->
     return None, mtime, complete
 
 
+# The name of a column of a quantity of one ion, e.g. gamma_R_Fe_II. The element "n" is the neutron.
+PERION_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$"
+
 # The version of the estimator parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
 CACHEVERSION = 1
@@ -1210,7 +1213,12 @@ def scan_artis_estimators(
         scans = [
             pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
         ]
-        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep)
+        # Within one file, the reader gives zero to an ion that a cell does not write. A batch cache of an earlier
+        # artistools version gives a null to such an ion when a whole rank lacks it, thus a zero replaces that null.
+        # The quantities of a cell, e.g. Te, keep their nulls, because a null there is missing data
+        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep).with_columns(
+            (cs.float() & cs.matches(PERION_COLUMN_PATTERN)).fill_null(0)
+        )
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached
