@@ -766,6 +766,35 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     pltest.assert_frame_equal(dfconverted, dfexpected, check_column_order=False)
 
 
+def test_scan_gives_zero_for_a_null_of_an_old_batch_cache(tmp_path: Path) -> None:
+    """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
+
+    A new conversion gives zero there, thus the scan must also give zero for the null of a current batch cache.
+    Otherwise the values depend on the history of the caches.
+    """
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.misc import write_parquet_atomic
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
+    dfbatch = at.rustext.estimparse(tmp_path, 0, 0).with_columns(
+        pl.col("timestep", "modelgridindex").cast(pl.Int32),
+        gamma_R_Fe_II=pl.when(pl.col("timestep") == 0).then(None).otherwise(pl.col("gamma_R_Fe_II")),
+    )
+    assert dfbatch["gamma_R_Fe_II"].null_count() == 1
+    write_parquet_atomic(
+        dfbatch,
+        tmp_path / "estimbatch00_0000_0000.out.parquet.tmp",
+        metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1000.0"},
+    )
+
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert not (tmp_path / "estimators_allranks.out.parquet").exists()
+    assert dfestim["gamma_R_Fe_II"].null_count() == 0
+    assert dfestim.filter(pl.col("timestep") == 0)["gamma_R_Fe_II"].item() == 0.0
+
+
 def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
 

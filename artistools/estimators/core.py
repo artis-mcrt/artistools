@@ -1174,7 +1174,12 @@ def scan_artis_estimators(
         scans = [
             pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
         ]
-        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep)
+        # A cell that writes no line of a quantity gets zero. The caches of the batches of an earlier artistools
+        # version, and the join of run folders that lack a quantity, give a null there instead. A zero replaces it,
+        # thus the values do not depend on the history of the caches.
+        pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep).with_columns(
+            cs.float().fill_null(0)
+        )
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
         # A run that stopped early gives a plot of a timestep that the run never reached
