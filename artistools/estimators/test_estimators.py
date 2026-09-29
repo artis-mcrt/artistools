@@ -638,7 +638,7 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
         for copyindex in range(ncopies)
     ]
     assert sum(len(copytext) for copytext in copytexts) > 16 * 1024 * 1024
-    allranksfile = tmp_path / "estimators.out.zst"
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, ["".join(copytexts[:50]), "".join(copytexts[50:51]), "".join(copytexts[51:])])
 
     dfallranks = at.rustext.estimparse_allranks(allranksfile)
@@ -657,15 +657,77 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
 
     linecount = sum(copytext.count("\n") for copytext in copytexts)
     write_zstd_frames(allranksfile, ["".join(copytexts), "populations Z=26  1: notanumber\n"])
-    with pytest.raises(Exception, match=f"estimators.out.zst:{linecount + 1}: could not parse"):
+    with pytest.raises(Exception, match=f"estimators_allranks.out.zst:{linecount + 1}: could not parse"):
         at.rustext.estimparse_allranks(allranksfile)
+
+
+def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> None:
+    """A file of all ranks that is older than a file of a rank is stale.
+
+    A run of the ARTIS script on the folder of a job that still runs gives such a file, because sn3d then adds
+    timesteps to the files of the ranks. The reader must take the files of the ranks, or it silently loses timesteps.
+    """
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, celltexts[:40])
+    rankfile = tmp_path / "estimators_0000.out"
+    rankfile.write_text("".join(celltexts), encoding="utf-8")
+    os.utime(allranksfile, (1000.0, 1000.0))
+
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert dfestim["timestep"].n_unique() == 100
+    assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "rank files"
+
+    # a file of all ranks that is newer than the files of the ranks wins
+    os.utime(rankfile, (1000.0, 1000.0))
+    os.utime(allranksfile, (2000.0, 2000.0))
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+
+    get_runfolder_timesteps_cached.cache_clear()
+    assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == 40
+    assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "allranks file"
+
+
+def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(tmp_path: Path) -> None:
+    """An earlier artistools version made one cache for each batch of ranks.
+
+    The reader takes these caches while all of them are current. A stale batch cache makes the conversion into the one
+    cache of all the ranks, and the conversion removes the batch caches.
+    """
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.misc import write_parquet_atomic
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    rankfile = tmp_path / "estimators_0000.out"
+    os.utime(rankfile, (1000.0, 1000.0))
+    batchcache = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
+    dfbatch = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
+    write_parquet_atomic(
+        dfbatch, batchcache, metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1000.0"}
+    )
+    allrankscache = tmp_path / "estimators_allranks.out.parquet"
+
+    dfexpected = at.estimators.scan_estimators(tmp_path).collect().sort("timestep", "modelgridindex")
+    assert batchcache.is_file()
+    assert not allrankscache.exists()
+
+    os.utime(rankfile, (5000.0, 5000.0))
+    get_runfolder_timesteps_cached.cache_clear()
+    dfconverted = at.estimators.scan_estimators(tmp_path).collect().sort("timestep", "modelgridindex")
+    assert not batchcache.exists()
+    assert pl.read_parquet_metadata(allrankscache)["textsource"] == "rank files"
+    pltest.assert_frame_equal(dfconverted, dfexpected, check_column_order=False)
 
 
 def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
 
-    The folder gets one parquet cache and no batch caches. An archived run keeps the cache and drops the text file,
-    and the cache then stays in use.
+    Each folder gets one parquet cache and no batch caches, from either form of text. An archived run keeps the cache
+    and drops the text file, and the cache then stays in use.
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
     from artistools.misc.modelinfo import get_runfolder_timesteps_cached
@@ -678,28 +740,27 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
             shutil.copy(modelpath / name, folder / name)
     shutil.copy(modelpath / "estimators_0000.out", perrankfolder / "estimators_0000.out")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
-    write_zstd_frames(allranksfolder / "estimators.out.zst", celltexts)
+    write_zstd_frames(allranksfolder / "estimators_allranks.out.zst", celltexts)
 
     assert get_runfolder_timesteps(allranksfolder) == get_runfolder_timesteps(perrankfolder)
     dfexpected = at.estimators.scan_estimators(perrankfolder).collect().sort("timestep", "modelgridindex")
     dfallranks = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
     pltest.assert_frame_equal(dfallranks, dfexpected, check_column_order=False)
 
-    cachefile = allranksfolder / "estimators.out.parquet.tmp"
-    assert cachefile.is_file()
-    assert not list(allranksfolder.glob("estimbatch*"))
-    assert pl.read_parquet_metadata(cachefile)["allranks"] == "true"
+    cachefile = allranksfolder / "estimators_allranks.out.parquet"
+    assert pl.read_parquet_metadata(cachefile)["textsource"] == "allranks file"
+    assert pl.read_parquet_metadata(perrankfolder / "estimators_allranks.out.parquet")["textsource"] == "rank files"
+    assert not list(tmp_path.glob("*/estimbatch*"))
 
     cachemtime = cachefile.stat().st_mtime_ns
-    (allranksfolder / "estimators.out.zst").unlink()
+    (allranksfolder / "estimators_allranks.out.zst").unlink()
     get_runfolder_timesteps_cached.cache_clear()
     assert get_runfolder_timesteps(allranksfolder) == get_runfolder_timesteps(perrankfolder)
     dfarchived = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
     pltest.assert_frame_equal(dfarchived, dfexpected, check_column_order=False)
     assert cachefile.stat().st_mtime_ns == cachemtime
 
-    # a new run of the job folder without the option removes the text file but not the cache. The files of the
-    # ranks then win over the stale cache
+    # the files of the ranks win over a cache of all ranks without its text file
     (allranksfolder / "estimators_0000.out").write_text("".join(celltexts[:10]), encoding="utf-8")
     get_runfolder_timesteps_cached.cache_clear()
     assert get_runfolder_timesteps(allranksfolder) == tuple(range(10))

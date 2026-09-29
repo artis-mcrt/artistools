@@ -375,7 +375,7 @@ impl<R: BufRead> Iterator for TextParts<R> {
     }
 }
 
-/// Read the estimator file of all ranks, e.g. estimators.out.zst, and return a `DataFrame`
+/// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
 ///
 /// ARTIS writes this file in place of one file for each rank. The threads parse the parts of the text in
 /// parallel, and the rows keep the order of the file. The parse runs without the GIL.

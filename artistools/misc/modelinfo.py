@@ -341,10 +341,11 @@ def get_runfolder_timesteps_with_restart(folderpath: Path) -> Sequence[int]:
         return dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
     # a leftover sibling such as estimators_0000.out.bak sorts before estimators_0000.out.zst, thus
     # the glob alone cannot pick the file. firstexisting_or_none applies the precedence that zopen reads
+    # the estimator file of all ranks, estimators_allranks.out, has no rank number and is not a file of a rank
     estimstems = sorted({
         name[: name.index(".out") + len(".out")]
         for name in (path.name for path in Path(folderpath).glob("estimators_*.out*"))
-        if ".out" in name
+        if ".out" in name and name[len("estimators_") : name.index(".out")].isdigit()
     })
     estimfilepath = next(
         (
