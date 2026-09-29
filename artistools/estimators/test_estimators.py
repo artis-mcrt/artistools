@@ -690,6 +690,49 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "allranks file"
 
 
+def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: Path) -> None:
+    """A cell that writes no line of a quantity gets zero, also when a whole file of a rank or a part lacks the line.
+
+    Within one file, the reader gives zero to such a cell. The boundaries of the files of the ranks and of the parts
+    of the file of all ranks are arbitrary, thus they must give the same zero and not a null.
+    """
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def without_gamma_r(celltext: str) -> str:
+        return "".join(line for line in celltext.splitlines(keepends=True) if not line.startswith("gamma_R "))
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    # rank 1 writes no gamma_R line, e.g. because its cells hold no iron
+    (tmp_path / "estimators_0000.out").write_text("".join(celltexts), encoding="utf-8")
+    (tmp_path / "estimators_0001.out").write_text(
+        "".join(without_gamma_r(relabel(celltext, 1)) for celltext in celltexts), encoding="utf-8"
+    )
+    dfranks = at.rustext.estimparse(tmp_path, 0, 1)
+    assert dfranks["gamma_R_Fe_II"].null_count() == 0
+    assert dfranks.filter(pl.col("modelgridindex") == 1)["gamma_R_Fe_II"].to_list() == [0.0] * len(celltexts)
+
+    # a part of the parallel parse holds at least 16 MB. The first 20 copies hold less, thus the first part holds all
+    # the gamma_R lines, and the later parts hold none
+    ncopies = 160
+    copytexts = [
+        "".join(
+            (relabel(celltext, copyindex) if copyindex < 20 else without_gamma_r(relabel(celltext, copyindex)))
+            for celltext in celltexts
+        )
+        for copyindex in range(ncopies)
+    ]
+    assert sum(len(copytext) for copytext in copytexts[:20]) < 16 * 1024 * 1024
+    assert sum(len(copytext) for copytext in copytexts) > 17 * 1024 * 1024
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, copytexts)
+    dfallranks = at.rustext.estimparse_allranks(allranksfile)
+    assert dfallranks.height == ncopies * len(celltexts)
+    assert dfallranks["gamma_R_Fe_II"].null_count() == 0
+    assert dfallranks.filter(pl.col("modelgridindex") >= 20)["gamma_R_Fe_II"].unique().to_list() == [0.0]
+
+
 def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(tmp_path: Path) -> None:
     """An earlier artistools version made one cache for each batch of ranks.
 

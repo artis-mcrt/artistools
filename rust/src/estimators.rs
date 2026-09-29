@@ -297,6 +297,16 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
     )
 }
 
+/// Join the `DataFrame`s of the files of the ranks, or of the parts of one file, into one `DataFrame`
+///
+/// Within one file, `EstimatorColumns` gives a zero to a cell that does not write a quantity, e.g. the ion of an
+/// element that the cell does not hold. A diagonal join gives a null to the rows of a file or a part that does not
+/// write the quantity at all. The boundaries of the ranks and of the parts are arbitrary, thus a zero replaces each
+/// such null, and both forms of the text give the same values.
+fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
+    polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero)
+}
+
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
 ///
 /// The parse runs without the GIL, thus other Python threads can run at the same time.
@@ -315,7 +325,7 @@ pub fn estimparse(
                 .map(|rank| read_estimator_file(&folderpath, rank))
                 .collect::<PolarsResult<_>>()?;
 
-            polars::functions::concat_df_diagonal(&vecdfs)
+            concat_estimator_frames(&vecdfs)
         })
         .map_err(PyPolarsErr::from)?;
 
@@ -408,7 +418,7 @@ pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyData
             }
             indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);
             let vecdfs: Vec<DataFrame> = indexeddfs.into_iter().map(|(_, dfpart)| dfpart).collect();
-            polars::functions::concat_df_diagonal(&vecdfs)
+            concat_estimator_frames(&vecdfs)
         })
         .map_err(PyPolarsErr::from)?;
 
