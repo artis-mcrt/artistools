@@ -615,7 +615,28 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
         print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
         dfestimators = estimparse(state.runfolder, min(state.mpiranks), max(state.mpiranks))
 
-    return dfestimators.sort("timestep", "modelgridindex") if state.allranks else dfestimators
+    if not state.allranks:
+        return dfestimators
+    return drop_incomplete_last_timestep(dfestimators.sort("timestep", "modelgridindex"), state.runfolder)
+
+
+def drop_incomplete_last_timestep(dfestimators: pl.DataFrame, runfolder: Path) -> pl.DataFrame:
+    """Return the rows without the last timestep when it holds fewer cells than the other timesteps of the job.
+
+    Each timestep of a job holds the same cells. A job that stopped during the write of a timestep leaves that
+    timestep with the cells of some ranks only. The next job writes the timestep again after the restart, thus the
+    reader loses no data.
+    """
+    cellcounts = dfestimators.group_by("timestep").len().sort("timestep")
+    if cellcounts.height < 2 or cellcounts["len"][-1] >= cellcounts["len"].max():
+        return dfestimators
+
+    lasttimestep = cellcounts["timestep"][-1]
+    print_warning(
+        f"{runfolder}: timestep {lasttimestep} holds {cellcounts['len'][-1]} of {cellcounts['len'].max()} cells. The job"
+        " stopped during the write of this timestep, thus artistools drops it."
+    )
+    return dfestimators.filter(pl.col("timestep") != lasttimestep)
 
 
 def get_estimators_parquetfile(modelpath: Path, state: "EstimatorBatchState", verbose: bool = False) -> Path:

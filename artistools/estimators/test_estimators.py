@@ -766,6 +766,34 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     pltest.assert_frame_equal(dfconverted, dfexpected, check_column_order=False)
 
 
+def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
+    """A job that stopped during the write of a timestep leaves that timestep with some cells only.
+
+    Each timestep of a job holds the same cells, thus the conversion drops a last timestep with fewer cells.
+    """
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    # two cells in each timestep, and the last timestep holds the first cell only
+    lasttimestep = len(celltexts) - 1
+    texts = [
+        relabel(celltext, modelgridindex)
+        for timestep, celltext in enumerate(celltexts)
+        for modelgridindex in ((0,) if timestep == lasttimestep else (0, 1))
+    ]
+    write_zstd_frames(tmp_path / "estimators_allranks.out.zst", texts)
+
+    at.estimators.scan_estimators(tmp_path).collect()
+    dfestim = pl.read_parquet(tmp_path / "estimators_allranks.out.parquet")
+    assert lasttimestep not in dfestim["timestep"].to_list()
+    assert dfestim["timestep"].n_unique() == len(celltexts) - 1
+    assert dfestim.height == 2 * (len(celltexts) - 1)
+
+
 def test_scan_gives_zero_for_a_null_of_an_old_batch_cache(tmp_path: Path) -> None:
     """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
 
