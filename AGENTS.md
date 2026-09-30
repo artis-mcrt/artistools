@@ -167,6 +167,7 @@ A command that takes only paths as positional arguments reads them first, e.g. `
 The commands plotspectra, plotlightcurves, and plotestimators each have a viewer in `artistools/<area>/interactive.py`. A viewer makes the command from its controls, then it parses the command and draws it with the code of the command. Thus the plot always agrees with the command that the window shows.
 
 - Put a new plot feature in the command first, with an option. Then give the viewer a control for that option. Do not give a viewer a feature that the command does not have.
+- A viewer calls the functions of its command in this sequence: `resolve_plot_args`, `make_plot_figure`, and `draw_plot`. Do not copy their code into the viewer. plotestimators has no `make_plot_figure`, because the data sets the number of its subplots. Thus its `draw_plot` takes an empty figure and calls `resolve_plot_args` itself.
 - Put the code that two viewers need in `artistools/viewertools.py`. Use it in each viewer that has the feature. Before you write a control, search `viewertools.py` for one that exists. Examples:
   - `add_window_actions` gives the menus, the copy actions, and the save action;
   - `add_series_list` gives the list of the models and the reference files;
