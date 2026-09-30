@@ -380,9 +380,10 @@ class RunData(t.NamedTuple):
 def read_remote_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
     """Read the data of a remote run on its host, which also converts the stale estimator caches there.
 
-    The caches of the batches stay on the host, and each plot asks the host for its columns.
+    The batch caches hold the paths on the host. The window gives them back to the host with each plot, thus the host
+    checks no text file for a plot.
     """
-    return read_run(modelpath, args, ntimesteps)._replace(batchcaches=None)
+    return read_run(modelpath, args, ntimesteps)
 
 
 def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:

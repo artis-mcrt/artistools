@@ -2831,7 +2831,7 @@ def get_plot_estimators(
     """
     if is_remote_path(modelpath):
         return scan_remote_plot_estimators(
-            modelpath, args.modelgridindex, timesteps_included, classicartis=args.classicartis
+            modelpath, args.modelgridindex, timesteps_included, classicartis=args.classicartis, batchcaches=batchcaches
         )
 
     estimators = scan_estimators(

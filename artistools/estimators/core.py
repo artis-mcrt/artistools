@@ -886,17 +886,33 @@ def get_levelpop_modeldata(modelpath: Path) -> tuple[pl.DataFrame, float]:
 
 @on_model_host
 def get_plot_estimator_schema(
-    modelpath: Path, modelgridindex: tuple[int, ...] | None, timesteps: tuple[int, ...], classicartis: bool
-) -> tuple[pl.DataFrame, dict[str, t.Any]]:
-    """Return an empty frame with the columns of the estimators and the model data, and the metadata of the model.
+    modelpath: Path,
+    modelgridindex: tuple[int, ...] | None,
+    timesteps: tuple[int, ...],
+    classicartis: bool,
+    batchcaches: "tuple[EstimatorBatchCache, ...] | None",
+) -> "tuple[pl.DataFrame, dict[str, t.Any], tuple[EstimatorBatchCache, ...] | None]":
+    """Return an empty frame with the columns of the estimators and the model data, the model metadata, and the caches.
 
     scan_remote_plot_estimators calls this on the host of a remote model, and the frame gives the schema of its source.
+    If batchcaches is None, this checks the text files of the selection and converts the stale batches. The caches of
+    the selection then come back, and each query of the source reads them with no check of the text files. A check
+    of a large run on Lustre takes 0.7 s for 3842 text files.
     """
+    if batchcaches is None and not classicartis and not path_is_codecomparison(modelpath):
+        states = get_estimator_batch_states(modelpath, modelgridindex, timesteps)
+        batchcaches = tuple(convert_estimator_batch_caches(modelpath, states, verbose=False))
     estimators, modelmeta = join_cell_modeldata(
-        scan_estimators(modelpath, modelgridindex=modelgridindex, timestep=timesteps, classicartis=classicartis),
+        scan_estimators(
+            modelpath,
+            modelgridindex=modelgridindex,
+            timestep=timesteps,
+            classicartis=classicartis,
+            batchcaches=batchcaches,
+        ),
         modelpath,
     )
-    return estimators.clear().collect(), modelmeta
+    return estimators.clear().collect(), modelmeta, batchcaches
 
 
 def read_remote_estimator_rows(
@@ -904,6 +920,7 @@ def read_remote_estimator_rows(
     cells: tuple[int, ...] | None,
     timesteps: tuple[int, ...],
     classicartis: bool,
+    batchcaches: "tuple[EstimatorBatchCache, ...] | None",
     with_columns: list[str] | None,
     predicate: pl.Expr | None,
     n_rows: int | None,
@@ -928,7 +945,10 @@ def read_remote_estimator_rows(
     remote = split_remote_path(modelpath)
     hostpath = remote[1].expanduser() if remote is not None else modelpath
     estimators, _ = join_cell_modeldata(
-        scan_estimators(hostpath, modelgridindex=cells, timestep=timesteps, classicartis=classicartis), hostpath
+        scan_estimators(
+            hostpath, modelgridindex=cells, timestep=timesteps, classicartis=classicartis, batchcaches=batchcaches
+        ),
+        hostpath,
     )
     if predicate is not None:
         estimators = estimators.filter(predicate)
@@ -938,20 +958,29 @@ def read_remote_estimator_rows(
 
 
 def scan_remote_plot_estimators(
-    modelpath: Path, modelgridindex: Sequence[int] | None, timesteps: Sequence[int], *, classicartis: bool
+    modelpath: Path,
+    modelgridindex: Sequence[int] | None,
+    timesteps: Sequence[int],
+    *,
+    classicartis: bool,
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return a LazyFrame of the estimators of a remote model with the model data, and the metadata of the model.
 
     The plot code builds its queries on this frame as for a local model. collect_on_host then sends each query to the
-    host, which runs it whole.
+    host, which runs it whole. batchcaches gives the caches of the run on the host, e.g. for a window.
     """
     import functools
 
     from polars.io.plugins import register_io_source
 
     cells = None if modelgridindex is None else tuple(modelgridindex)
-    template, modelmeta = get_plot_estimator_schema(modelpath, cells, tuple(timesteps), classicartis)
-    source = functools.partial(read_remote_estimator_rows, modelpath, cells, tuple(timesteps), classicartis)
+    template, modelmeta, selectedcaches = get_plot_estimator_schema(
+        modelpath, cells, tuple(timesteps), classicartis, None if batchcaches is None else tuple(batchcaches)
+    )
+    source = functools.partial(
+        read_remote_estimator_rows, modelpath, cells, tuple(timesteps), classicartis, selectedcaches
+    )
     return register_io_source(source, schema=template.schema, is_pure=True), modelmeta
 
 
