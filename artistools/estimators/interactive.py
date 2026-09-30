@@ -76,9 +76,11 @@ from artistools.viewertools import add_command_sections
 from artistools.viewertools import add_default_options
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import add_time_controls
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import connect_time_keys
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
@@ -99,16 +101,12 @@ from artistools.viewertools import make_completer
 from artistools.viewertools import make_drag_header
 from artistools.viewertools import make_figscale_box
 from artistools.viewertools import make_flow_layout
-from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_parser
-from artistools.viewertools import make_play_button
-from artistools.viewertools import make_play_row
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_slider
-from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import OptionRows
@@ -1801,25 +1799,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     helptexts = viewer.helptexts
 
     _, timegrid = add_section(panellayout, "Time")
-    timeslider, widthslider = make_slider(), make_slider()
-    timeslider.setToolTip(
-        "The middle of the time range. The Left key and the Right key move it to the adjacent timestep."
+    timeslider, timeedit, widthlabel, widthslider, widthedit, timestepslabel, stepbuttons, fpsbox, playbutton = (
+        add_time_controls(
+            timegrid,
+            0,
+            (
+                (
+                    "The middle of the time range in days. The Left key and the Right key move it to the adjacent"
+                    " timestep, and a typed time moves it to the timestep that holds the time."
+                ),
+                "The number of timesteps of the time range. The Up key and the Down key change it.",
+                (
+                    "Move a snapshot through the timesteps of the run, or move a plot against time through the cells."
+                    " After the last step, Play starts again at the first step (Space)"
+                ),
+            ),
+        )
     )
-    widthslider.setToolTip("The number of timesteps of the time range. The Up key and the Down key change it.")
-    timeedit = QtWidgets.QLineEdit()
-    timeedit.setFixedWidth(110)
-    timeedit.setToolTip("A time in days. The time range moves to the timestep that holds it.")
-    # the width row has the same label and field as the width row of the spectrum viewer
-    widthlabel = QtWidgets.QLabel("Δ timesteps:")
-    widthedit = QtWidgets.QLineEdit()
-    widthedit.setFixedWidth(110)
-    widthedit.setToolTip("The number of timesteps of the time range. The Up key and the Down key change it.")
-    timestepslabel = QtWidgets.QLabel()
-    playbutton = make_play_button(
-        "Move a snapshot through the timesteps of the run, or move a plot against time through the cells. After the"
-        " last step, Play starts again at the first step (Space)"
-    )
-    fpsbox = make_fps_box()
     # a plot against time takes a range of timesteps, as the x range of plotspectra. A snapshot takes a time and a width
     trangebox = QtWidgets.QWidget()
     trangelayout = QtWidgets.QHBoxLayout(trangebox)
@@ -1834,16 +1830,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
     for widget in (tminedit, trangeslider, tmaxedit):
         trangelayout.addWidget(widget)
-    # a step button moves the time range by one timestep, as the Left key and the Right key do
-    previousbutton, nextbutton = make_step_button(forward=False), make_step_button(forward=True)
-    timegrid.addWidget(QtWidgets.QLabel("Time [d]:"), 0, 0)
-    timegrid.addWidget(timeslider, 0, 1)
-    timegrid.addWidget(timeedit, 0, 2)
     timegrid.addWidget(trangebox, 0, 1, 1, 2)
-    timegrid.addWidget(widthlabel, 1, 0)
-    timegrid.addWidget(widthslider, 1, 1)
-    timegrid.addWidget(widthedit, 1, 2)
-    timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 2, 0, 1, -1)
 
     _, cellgrid = add_section(panellayout, "Cells")
     geometrybox = QtWidgets.QComboBox()
@@ -2549,8 +2536,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         evolution = is_evolution(values)
         for widget in (timeslider, timeedit, widthlabel, widthslider, widthedit):
             widget.setVisible(not evolution)
-        previousbutton.setEnabled(firstpos > 0)
-        nextbutton.setEnabled(lastpos < len(viewer.validtimesteps) - 1)
+        stepbuttons[0].setEnabled(firstpos > 0)
+        stepbuttons[1].setEnabled(lastpos < len(viewer.validtimesteps) - 1)
         trangebox.setVisible(evolution)
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
@@ -3289,8 +3276,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
     playtimer.timeout.connect(play_step)
-    previousbutton.clicked.connect(lambda: on_step_time(-1))
-    nextbutton.clicked.connect(lambda: on_step_time(1))
     cellslider.valueChanged.connect(on_cell)
     celledit.editingFinished.connect(on_celledit)
     geometrybox.activated.connect(on_geometry)
@@ -3337,18 +3322,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_menu=on_menu,
         show_tag=make_readout_tag(canvas),
     )
-    # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
-    for key, callback in (
-        (QtCore.Qt.Key.Key_Left, lambda: on_step_time(-1)),
-        (QtCore.Qt.Key.Key_Right, lambda: on_step_time(1)),
-        (QtCore.Qt.Key.Key_Up, lambda: apply(viewer.step_width(1))),
-        (QtCore.Qt.Key.Key_Down, lambda: apply(viewer.step_width(-1))),
-        (QtCore.Qt.Key.Key_Home, lambda: apply(viewer.move_to_end(last=False))),
-        (QtCore.Qt.Key.Key_End, lambda: apply(viewer.move_to_end(last=True))),
-        (QtCore.Qt.Key.Key_PageUp, lambda: on_step_cell(-1)),
-        (QtCore.Qt.Key.Key_PageDown, lambda: on_step_cell(1)),
-    ):
-        QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
+    connect_time_keys(
+        window,
+        stepbuttons,
+        on_step_time,
+        lambda step: apply(viewer.step_width(step)),
+        (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
+        extrakeys=(
+            (QtCore.Qt.Key.Key_PageUp, partial(on_step_cell, -1)),
+            (QtCore.Qt.Key.Key_PageDown, partial(on_step_cell, 1)),
+        ),
+    )
 
     finish_viewer_window(
         viewerwindow,

@@ -50,10 +50,12 @@ from artistools.viewertools import add_direction_section
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
+from artistools.viewertools import add_time_controls
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import add_y_limits_row
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import connect_time_keys
 from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
@@ -77,17 +79,12 @@ from artistools.viewertools import get_series_value
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_figscale_box
-from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_parser
-from artistools.viewertools import make_play_button
-from artistools.viewertools import make_play_row
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_series_swatch
-from artistools.viewertools import make_slider
-from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
@@ -1132,9 +1129,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         ],
     )
     timegrid.addWidget(modesegments, 0, 0, 1, 3, QtCore.Qt.AlignmentFlag.AlignLeft)
-    timeslider, widthslider = make_slider(), make_slider()
-    timeedit, widthedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    widthlabel = QtWidgets.QLabel("Δ timesteps:")
     # a continuous range takes this box in place of the label of the width
     widthmodebox = QtWidgets.QComboBox()
     for widthmode, widthmodetext, widthmodetip in (
@@ -1154,33 +1148,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         "The rule of the width Δt of the continuous time range. Δt is never 0, because a width of 0 reads the whole"
         " timestep"
     )
-    timestepslabel = QtWidgets.QLabel()
-    playbutton = make_play_button(
-        "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)"
+    timecontrols = add_time_controls(
+        timegrid,
+        1,
+        (
+            "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep.",
+            (
+                'The width of the time range. With "Snap to Timesteps", the width is a count of timesteps. A'
+                " continuous range takes the rule of the box on the left: a width Δ ln t in ln t, or a width Δt in"
+                " days. The Up key and the Down key change the width by one timestep."
+            ),
+            "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)",
+        ),
     )
-    fpsbox = make_fps_box()
-    previousbutton, nextbutton = make_step_button(forward=False), make_step_button(forward=True)
-    timetip = "The middle of the time range in days. The Left key and the Right key move it to the adjacent timestep."
-    widthtip = (
-        'The width of the time range. With "Snap to Timesteps", the width is a count of timesteps. A continuous range'
-        " takes the rule of the box on the left: a width Δ ln t in ln t, or a width Δt in days."
-        " The Up key and the Down key change the width by one timestep."
+    timeslider, timeedit, widthlabel, widthslider, widthedit, timestepslabel, stepbuttons, fpsbox, playbutton = (
+        timecontrols
     )
-    for row, (label, slider, edit, tip) in enumerate(
-        [
-            (QtWidgets.QLabel("Time [d]:"), timeslider, timeedit, timetip),
-            (widthlabel, widthslider, widthedit, widthtip),
-        ],
-        start=1,
-    ):
-        edit.setFixedWidth(110)
-        for widget in (slider, edit):
-            widget.setToolTip(tip)
-        timegrid.addWidget(label, row, 0)
-        timegrid.addWidget(slider, row, 1)
-        timegrid.addWidget(edit, row, 2)
+    # a continuous range takes the box of the width rule in place of the label of the width
     timegrid.addWidget(widthmodebox, 2, 0)
-    timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 3, 0, 1, -1)
     # the item data of each choice is the path of a model. The value "" of ControlValues.timegrid selects the first
     # model, thus the box then shows that model
     timegridbox = QtWidgets.QComboBox()
@@ -1651,8 +1636,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if gammaitem.isEnabled() != (gammaavailable := viewer.hasgammaspectrum or values.gamma):
             gammaitem.setEnabled(gammaavailable)
             gammaitem.setToolTip(gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files")
-        previousbutton.setEnabled(viewer.step_time(-1) is not None)
-        nextbutton.setEnabled(viewer.step_time(1) is not None)
+        stepbuttons[0].setEnabled(viewer.step_time(-1) is not None)
+        stepbuttons[1].setEnabled(viewer.step_time(1) is not None)
         if values.notimeclamp:
             timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
             widthmodebox.setCurrentIndex(widthmodebox.findData(values.widthmode))
@@ -2161,8 +2146,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     modesegments.currentChanged.connect(on_time_mode)
     packetbox.currentIndexChanged.connect(on_packet_type)
-    previousbutton.clicked.connect(lambda: on_arrow(-1))
-    nextbutton.clicked.connect(lambda: on_arrow(1))
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
     widthmodebox.currentIndexChanged.connect(on_widthmode)
@@ -2204,16 +2187,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )
-    # a text field takes these keys while it has the focus, and the shortcuts apply otherwise
-    for key, callback in (
-        (QtCore.Qt.Key.Key_Left, lambda: on_arrow(-1)),
-        (QtCore.Qt.Key.Key_Right, lambda: on_arrow(1)),
-        (QtCore.Qt.Key.Key_Up, lambda: on_widthstep(1)),
-        (QtCore.Qt.Key.Key_Down, lambda: on_widthstep(-1)),
-        (QtCore.Qt.Key.Key_Home, lambda: apply(viewer.move_to_end(last=False))),
-        (QtCore.Qt.Key.Key_End, lambda: apply(viewer.move_to_end(last=True))),
-    ):
-        QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
+    connect_time_keys(
+        window,
+        stepbuttons,
+        on_arrow,
+        on_widthstep,
+        (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
+    )
 
     finish_viewer_window(
         viewerwindow,

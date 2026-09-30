@@ -3171,6 +3171,98 @@ def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
     return fpsbox
 
 
+class TimeControls(t.NamedTuple):
+    """The controls of the time section of a viewer: the time, the width of the time range, and Play."""
+
+    timeslider: "QtWidgets.QSlider"
+    timeedit: "QtWidgets.QLineEdit"
+    # a viewer can put a different control in the place of the label, e.g. the rule of a continuous width
+    widthlabel: "QtWidgets.QLabel"
+    widthslider: "QtWidgets.QSlider"
+    widthedit: "QtWidgets.QLineEdit"
+    # the text of the timesteps of the time range, beside the step buttons
+    timestepslabel: "QtWidgets.QLabel"
+    stepbuttons: "tuple[QtWidgets.QToolButton, QtWidgets.QToolButton]"
+    fpsbox: "QtWidgets.QDoubleSpinBox"
+    playbutton: "QtWidgets.QToolButton"
+
+
+def add_time_controls(grid: "QtWidgets.QGridLayout", firstrow: int, tips: tuple[str, str, str]) -> TimeControls:
+    """Add the row of the time, the row of the width of the time range, and the row of Play to a grid.
+
+    tips gives the tooltip of the time, of the width, and of the Play button. A viewer can put a control of its own on
+    a row, e.g. the range of a plot against time on the row of the time.
+    """
+    from PySide6 import QtWidgets
+
+    timetip, widthtip, playtip = tips
+    timeslider, widthslider = make_slider(), make_slider()
+    timeedit, widthedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    widthlabel = QtWidgets.QLabel("Δ timesteps:")
+    for row, (label, slider, edit, tip) in enumerate(
+        [
+            (QtWidgets.QLabel("Time [d]:"), timeslider, timeedit, timetip),
+            (widthlabel, widthslider, widthedit, widthtip),
+        ],
+        start=firstrow,
+    ):
+        edit.setFixedWidth(110)
+        for widget in (slider, edit):
+            widget.setToolTip(tip)
+        grid.addWidget(label, row, 0)
+        grid.addWidget(slider, row, 1)
+        grid.addWidget(edit, row, 2)
+    timestepslabel = QtWidgets.QLabel()
+    stepbuttons = (make_step_button(forward=False), make_step_button(forward=True))
+    fpsbox = make_fps_box()
+    playbutton = make_play_button(playtip)
+    grid.addLayout(make_play_row(list(stepbuttons), timestepslabel, fpsbox, playbutton), firstrow + 2, 0, 1, -1)
+    return TimeControls(
+        timeslider=timeslider,
+        timeedit=timeedit,
+        widthlabel=widthlabel,
+        widthslider=widthslider,
+        widthedit=widthedit,
+        timestepslabel=timestepslabel,
+        stepbuttons=stepbuttons,
+        fpsbox=fpsbox,
+        playbutton=playbutton,
+    )
+
+
+def connect_time_keys(
+    window: "QtWidgets.QWidget",
+    stepbuttons: "tuple[QtWidgets.QToolButton, QtWidgets.QToolButton]",
+    step_time: "Callable[[int], None]",
+    step_width: "Callable[[int], None]",
+    move_to_ends: "tuple[Callable[[], None], Callable[[], None]]",
+    extrakeys: "Sequence[tuple[QtCore.Qt.Key, Callable[[], None]]]" = (),
+) -> None:
+    """Connect the step buttons and the keys of the time section.
+
+    Left and Right move the time by one timestep, Up and Down change the width by one timestep, and Home and End move
+    the time range to the first or to the last timestep. extrakeys gives the other keys of one viewer. A text field
+    takes these keys while it has the focus, and the shortcuts apply otherwise.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    previousbutton, nextbutton = stepbuttons
+    previousbutton.clicked.connect(partial(step_time, -1))
+    nextbutton.clicked.connect(partial(step_time, 1))
+    move_to_start, move_to_end = move_to_ends
+    for key, callback in (
+        (QtCore.Qt.Key.Key_Left, partial(step_time, -1)),
+        (QtCore.Qt.Key.Key_Right, partial(step_time, 1)),
+        (QtCore.Qt.Key.Key_Up, partial(step_width, 1)),
+        (QtCore.Qt.Key.Key_Down, partial(step_width, -1)),
+        (QtCore.Qt.Key.Key_Home, move_to_start),
+        (QtCore.Qt.Key.Key_End, move_to_end),
+        *extrakeys,
+    ):
+        QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
+
+
 class StatusBar(t.NamedTuple):
     """The labels of the status bar of a window, and its help button."""
 
