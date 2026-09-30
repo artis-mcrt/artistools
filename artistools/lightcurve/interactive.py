@@ -33,6 +33,7 @@ from artistools.misc import get_artis_run_folders
 from artistools.misc import get_deposition
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
@@ -218,8 +219,7 @@ class ControlValues:
     yscale: str
     ymin: str
     ymax: str
-    # the light curve of the r-packets (UVOIR), and of the gamma packets. At least one of the two is on
-    rpkt: bool
+    # True for the light curve of the gamma packets, and False for the UVOIR light curve of the r-packets
     gamma: bool
     frompackets: bool
     topnucs: int
@@ -393,6 +393,11 @@ class LightCurveViewer:
         args = parse_cli_args(addargs, None, None, usertokens)
         resolve_plot_args(args)
         check_viewer_args(args)
+        if args.rpkt and args.gamma:
+            print_warning(
+                "The window shows the UVOIR light curve or the gamma-ray light curve, and not both. It starts with the"
+                " UVOIR light curve"
+            )
         self.args = args
 
         if not get_artis_run_folders(args.modelpath):
@@ -430,8 +435,7 @@ class LightCurveViewer:
             yscale=args.yscale,
             ymin="" if args.ymin is None else format(args.ymin, ".10g"),
             ymax="" if args.ymax is None else format(args.ymax, ".10g"),
-            rpkt=bool(args.rpkt),
-            gamma=bool(args.gamma),
+            gamma=bool(args.gamma) and not args.rpkt,
             frompackets=bool(args.frompackets) and not args.topnucs,
             topnucs=args.topnucs,
             usepelletdecaytime=bool(args.use_pellet_decay_time),
@@ -495,7 +499,7 @@ class LightCurveViewer:
             options += ["-yscale", values.yscale]
         # plotlightcurves draws the UVOIR light curve when the command gives no --gamma
         if values.gamma:
-            options += ["--gamma", *(["--rpkt"] if values.rpkt else [])]
+            options.append("--gamma")
         # -topnucs reads the packets without --frompackets
         if values.topnucs:
             options += ["-topnucs", str(values.topnucs)]
@@ -697,7 +701,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     addrow.addWidget(addmodelbutton)
     lightcurvegrid.addWidget(lightcurvelist, 0, 0, 1, -1)
     lightcurvegrid.addLayout(addrow, 1, 0, 1, -1)
-    rpktcheck, gammacheck = QtWidgets.QCheckBox("--rpkt"), QtWidgets.QCheckBox("--gamma")
+    # the index of an item: 0 for the UVOIR light curve of the r-packets, and 1 for the gamma packets (--gamma)
+    packetbox = QtWidgets.QComboBox()
+    for text, tooltip in (
+        ("UVOIR", "The ultraviolet, optical, and infrared (UVOIR) light curve of the radiation packets (r-packets)"),
+        ("\N{GREEK SMALL LETTER GAMMA}-rays", f"--gamma: {helptexts.get('gamma', '')}"),
+    ):
+        packetbox.addItem(text)
+        packetbox.setItemData(packetbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    packetbox.setToolTip(
+        "The light curve of the r-packets (UVOIR), or of the gamma packets (\N{GREEK SMALL LETTER GAMMA}-rays, --gamma)"
+    )
     # the index of an item: 0 reads the light curve files of ARTIS, and 1 reads the packets files (--frompackets)
     datasourcebox = QtWidgets.QComboBox()
     for text, tooltip in (
@@ -714,14 +728,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     pelletcheck = QtWidgets.QCheckBox("--use_pellet_decay_time")
     cmfcheck = QtWidgets.QCheckBox("--plotcmf")
     invalidcheck = QtWidgets.QCheckBox("--plotinvalidpart")
-    for widget, dest in (
-        (rpktcheck, "rpkt"),
-        (gammacheck, "gamma"),
-        (cmfcheck, "plotcmf"),
-        (invalidcheck, "plotinvalidpart"),
-    ):
+    for widget, dest in ((cmfcheck, "plotcmf"), (invalidcheck, "plotinvalidpart")):
         widget.setToolTip(helptexts.get(dest, ""))
-    add_row(lightcurvegrid, 2, [rpktcheck, gammacheck, QtWidgets.QLabel("--frompackets"), datasourcebox])
+    add_row(
+        lightcurvegrid, 2, [QtWidgets.QLabel("Packets:"), packetbox, QtWidgets.QLabel("--frompackets"), datasourcebox]
+    )
     add_row(lightcurvegrid, 3, [QtWidgets.QLabel("-topnucs"), topnucsbox, pelletcheck])
     add_row(lightcurvegrid, 4, [cmfcheck, invalidcheck])
 
@@ -924,8 +935,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
         figuresection.dpibox,
-        rpktcheck,
-        gammacheck,
+        packetbox,
         datasourcebox,
         topnucsbox,
         pelletcheck,
@@ -1009,8 +1019,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         ]
         if shownlightcurves != list(values.lightcurves):
             show_lightcurves(values.lightcurves)
-        rpktcheck.setChecked(values.rpkt)
-        gammacheck.setChecked(values.gamma)
+        packetbox.setCurrentIndex(1 if values.gamma else 0)
         # -topnucs reads the packets, thus the box shows that and takes no choice
         datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
         datasourcebox.setEnabled(not values.topnucs)
@@ -1114,17 +1123,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return queue.drawnvalues == viewer.values
 
     def on_series() -> None:
-        rpkt, gamma = rpktcheck.isChecked(), gammacheck.isChecked()
-        if not (rpkt or gamma):
-            show_error("The plot needs the UVOIR light curve or the gamma-ray light curve")
-            return
         topnucs = topnucsbox.value()
         frompackets = datasourcebox.currentIndex() == 1 and not topnucs
         readspackets = frompackets or bool(topnucs)
         values = dc.replace(
             viewer.values,
-            rpkt=rpkt,
-            gamma=gamma,
+            gamma=packetbox.currentIndex() == 1,
             # a light curve of -topnucs reads the packets, thus the box keeps the choice of the user for later
             frompackets=frompackets or (viewer.values.frompackets and bool(topnucs)),
             topnucs=topnucs,
@@ -1419,8 +1423,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     window.setProperty("sessiontokens", get_session_tokens)
 
-    for checkbox in (rpktcheck, gammacheck, pelletcheck, cmfcheck, invalidcheck):
+    for checkbox in (pelletcheck, cmfcheck, invalidcheck):
         checkbox.toggled.connect(on_series)
+    packetbox.currentIndexChanged.connect(on_series)
     datasourcebox.currentIndexChanged.connect(on_series)
     topnucsbox.valueChanged.connect(on_series)
     for check in energychecks.values():

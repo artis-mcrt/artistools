@@ -3949,7 +3949,6 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 FLAG_LABELS: t.Final = MappingProxyType({
     "--colorbyion": "Colour by ion",
     "--frompackets": "ARTIS data source",
-    "--gamma": "\N{GREEK SMALL LETTER GAMMA}-rays",
     "--hidenetspectrum": "Hide net spectrum",
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
@@ -3962,7 +3961,6 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--notitle": "Hide title",
     "--plotcmf": "Comoving frame",
     "--plotinvalidpart": "Partial times",
-    "--rpkt": "UVOIR",
     "--showabsorption": "Show absorption",
     "--showemission": "Show emission",
     "--use_pellet_decay_time": "Pellet decay time",
