@@ -1305,17 +1305,31 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     gridrow.addWidget(validtimeslabel)
     timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
-    xheader, xgrid = add_section(panellayout, "", key="x axis")
+    # the settings keep the open state of the section by its key, which the older heading of the section gave
+    _, xgrid = add_section(panellayout, "x-axis", key="x axis")
+    xunitbox = QtWidgets.QComboBox()
+    xunitbox.addItems(list(XUNITS))
+    logscalexcheck = QtWidgets.QCheckBox("--logscalex")
+    for widget, dest in ((xunitbox, "xunit"), (logscalexcheck, "logscalex")):
+        widget.setToolTip(helptexts.get(dest, ""))
+    add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, logscalexcheck])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    # the label gives the quantity and the unit of the x axis, e.g. "Wavelength [Å]", and a new unit changes it
+    xrangelabel = QtWidgets.QLabel()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
     xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)
-    for column, (widget, dest) in enumerate(((xminedit, "xmin"), (xrangeslider, ""), (xmaxedit, "xmax"))):
+    for column, (widget, dest) in enumerate((
+        (xrangelabel, ""),
+        (xminedit, "xmin"),
+        (xrangeslider, ""),
+        (xmaxedit, "xmax"),
+    )):
         if dest:
             widget.setFixedWidth(110)
             widget.setToolTip(helptexts.get(dest, "") + zoomtip)
-        xgrid.addWidget(widget, 0, column)
-    xgrid.setColumnStretch(1, 1)
+        xgrid.addWidget(widget, 1, column)
+    xgrid.setColumnStretch(2, 1)
 
     # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
     binmodebox = QtWidgets.QComboBox()
@@ -1337,37 +1351,28 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     binwidthbox = BinWidthSpinBox()
     # each arrow step is one power of ten below the value, thus the arrows reach each bin width
     binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
-    add_row(xgrid, 1, [QtWidgets.QLabel("Bins:"), binmodebox, binwidthbox])
+    add_row(xgrid, 2, [QtWidgets.QLabel("Bins:"), binmodebox, binwidthbox])
 
-    _, axesgrid = add_section(panellayout, "Axes")
-    xunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
-    xunitbox.addItems(list(XUNITS))
+    _, axesgrid = add_section(panellayout, "y-axis")
+    yscalebox = QtWidgets.QComboBox()
     # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
     for yscale in viewer.yscalechoices:
         yscalebox.addItem(yscale.capitalize(), yscale)
     # the text of the "auto" item changes after each plot, and the box keeps a width for the longest text
     yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-    logscalexcheck = QtWidgets.QCheckBox("--logscalex")
     setyrangebutton = QtWidgets.QPushButton("Set current y range")
     setyrangebutton.setToolTip(
         "Set y min and y max to the current range of the y axis. The axis then stays the same when the time or a"
         " different option changes. Clear a field to get the automatic limit at that end again."
     )
     yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    for widget, dest in (
-        (xunitbox, "xunit"),
-        (yscalebox, "yscale"),
-        (logscalexcheck, "logscalex"),
-        (yminedit, "ymin"),
-        (ymaxedit, "ymax"),
-    ):
+    for widget, dest in ((yscalebox, "yscale"), (yminedit, "ymin"), (ymaxedit, "ymax")):
         widget.setToolTip(helptexts.get(dest, ""))
     for edit in (yminedit, ymaxedit):
         edit.setFixedWidth(110)
         edit.setPlaceholderText("auto")
-    add_row(axesgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, logscalexcheck])
     # the limits of the y axis go on the row below the y axis boxes
-    add_row(axesgrid, 2, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
+    add_row(axesgrid, 1, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
     yvariablebox = QtWidgets.QComboBox()
     yvariablebox.addItems(viewer.yvariablechoices)
     normalisedcheck = QtWidgets.QCheckBox("--normalised")
@@ -1389,7 +1394,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     assert isinstance(packetmodel, QtGui.QStandardItemModel)
     gammaitem = packetmodel.item(1)
     # the packets and the scale also describe the y axis, thus the three boxes share one label
-    add_row(axesgrid, 1, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
+    add_row(axesgrid, 0, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -1623,7 +1628,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # a -deltax of a different unit is not correct for the new unit
         lastbinwidths.pop("deltax", None)
         xunit = get_xunit(values.xunit)
-        xheader.setText(f"{xunit.kind.capitalize()} [{xunit.label}]")
+        xrangelabel.setText(f"{xunit.kind.capitalize()} [{xunit.label}]:")
         binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
         rangesunit = (values.xunit, values.gamma)
 
@@ -1652,7 +1657,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         checklayout.setContentsMargins(6, 4, 6, 4)
         checklayout.setSpacing(2)
         directionchecks.clear()
-        for dirbin, label in get_direction_choices_of_kind(directionkind, usedegrees):
+        # the average over all the directions is bin -1. An observer of the virtual packets has no such average
+        allchoice = [] if directionkind == "vpkt" else [(-1, "All directions")]
+        for dirbin, label in [*allchoice, *get_direction_choices_of_kind(directionkind, usedegrees)]:
             text = f"{dirbin}: {label}"
             check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
             # a click on a radio button also clears the previous button, thus toggled would call the handler twice
@@ -1992,7 +1999,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             with QtCore.QSignalBlocker(check):
                 check.setChecked(dirbin in values.directionbins)
         # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and (firstcheck := directionchecks.get(values.directionbins[0] if values.directionbins else -1)):
+        if isnewlist and values.directionbins and (firstcheck := directionchecks.get(values.directionbins[0])):
             QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
         # all the directions have no bin to select, thus the list of the bins shows only for a kind of direction
         directionbox.setVisible(bool(values.directionkind))
@@ -2302,7 +2309,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_direction() -> None:
         directionkind: str = directionkindbox.currentData()
         usedegrees = usedegreescheck.isChecked()
-        dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees)]
+        # a kind of direction other than the observers has the average over all the directions as bin -1
+        averagebin = [] if directionkind in {"", "vpkt"} else [-1]
+        dirbins = [*averagebin, *(dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees))]
         # an emission plot draws one direction bin, thus a click on a bin replaces the previous bin
         showscontributions = viewer.values.showemission or viewer.values.showabsorption
         if directionkind == viewer.values.directionkind:

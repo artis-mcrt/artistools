@@ -3138,3 +3138,27 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
         assert np.isclose(row_merged.fluxcontrib, row_full.fluxcontrib, rtol=1e-12, atol=0.0)
         assert np.allclose(row_merged.array_flambda_emission, row_full.array_flambda_emission, rtol=1e-12, atol=0.0)
         assert np.allclose(row_merged.array_flambda_absorption, row_full.array_flambda_absorption, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("averaging", [[], ["--average_over_phi_angle"], ["--average_over_theta_angle"]])
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+def test_emission_plot_of_all_directions(mocktitle: mock.MagicMock, averaging: list[str], tmp_path: Path) -> None:
+    """An emission plot takes bin -1, the average over all the directions, also with an average over one angle.
+
+    The window of plotspectra gives bin -1 in the list of the direction bins. The title then had no label for the bin
+    (KeyError), and an average over phi read bin -1 as the first bin of a group of phi bins (AssertionError).
+    """
+    at.spectra.plot(
+        argsraw=[
+            str(modelpath_classic_3d),
+            "-t",
+            "5",
+            "--showemission",
+            *averaging,
+            "-plotviewingangle",
+            "-1",
+            "-o",
+            str(tmp_path / "emission.pdf"),
+        ]
+    )
+    assert any("all directions" in str(callargs.args[1]) for callargs in mocktitle.call_args_list)

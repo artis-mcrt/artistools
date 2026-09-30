@@ -4013,11 +4013,11 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "-xbins": "x bins",
     "-xmax": "x max",
     "-xmin": "x min",
-    "-xunit": "x axis",
+    "-xunit": "Unit",
     "-ymax": "y max",
     "-ymin": "y min",
     "-yscale": "y scale",
-    "-yvariable": "y axis",
+    "-yvariable": "Quantity",
 })
 
 

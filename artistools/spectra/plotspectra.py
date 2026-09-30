@@ -1257,8 +1257,10 @@ def get_emission_plot_label(
         return plotlabel
 
     assert dirbin is not None
+    # a label of the bin -1, the average over all the directions, comes only for a list of bins that names it
     dirbin_definitions = get_dirbin_definitions(
         modelpath,
+        [dirbin],
         vpkt_observers=bool(args.plotvspecpol),
         average_over_phi=args.average_over_phi_angle,
         average_over_theta=args.average_over_theta_angle,

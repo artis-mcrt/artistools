@@ -816,7 +816,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xscalebox.setToolTip("The scale of the time axis. Log gives --logscalex")
     add_row(timegrid, 1, [QtWidgets.QLabel("x scale:"), xscalebox])
 
-    _, ygrid = add_section(panellayout, "y axis")
+    _, ygrid = add_section(panellayout, "y-axis", key="y axis")
     lumunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     for unit, text, flag in LUMUNITS:
         lumunitbox.addItem(text, unit)
@@ -1097,7 +1097,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for dirbin, check in directionchecks.items():
             check.setChecked(dirbin in values.directionbins)
         # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and (firstcheck := directionchecks.get(values.directionbins[0] if values.directionbins else -3)):
+        if isnewlist and values.directionbins and (firstcheck := directionchecks.get(values.directionbins[0])):
             QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
         # "All directions" has no bins, thus the list of the bins shows only for a kind of direction
         directionbox.setVisible(bool(values.directionkind))
