@@ -410,7 +410,7 @@ def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[i
     return Path(folderpath) / filename
 
 
-# With the option WRITE_ESTIMATORS_ALLRANKS_FILE, ARTIS writes the estimators of all ranks into this file of a run
+# With the option WRITE_ESTIMATORS_COMBINE_ALLRANKS, ARTIS writes the estimators of all ranks into this file of a run
 # folder. Without the option, ARTIS writes one file for each rank. scripts/combine_estimator_files.py of ARTIS makes
 # the same file from the files of the ranks.
 ALLRANKS_TEXTFILENAME = "estimators_allranks.out"
