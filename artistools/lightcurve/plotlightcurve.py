@@ -146,8 +146,9 @@ DEPOSITIONCOLUMNS: t.Final = MappingProxyType({
     "total": "total_dep_Lsun",
 })
 
-# the column of the emission rate that ARTIS counts from the packets. deposition.out holds no such rate of the
-# positrons. The emission rate of fission is its deposition rate, because the energy deposits at the decay
+# the column of the Monte Carlo emission rate, which ARTIS counts at the decays of the pellets. deposition.out holds no
+# such rate of the positrons. The emission rate of fission is its deposition rate, because the energy deposits at the
+# decay
 EMISSIONCOLUMNS: t.Final = MappingProxyType({
     "gamma": "eps_gamma_Lsun",
     "betaminus": "eps_elec_Lsun",
@@ -226,7 +227,7 @@ def shows_energy_rates(args: argparse.Namespace) -> bool:
 def get_thermalisation_emission_column(particle: str) -> str:
     """Return the column of the emission rate that the thermalisation ratio of the particle divides by.
 
-    The rate from the packets comes first. deposition.out holds no such rate of the positrons, thus they take the
+    The Monte Carlo rate comes first. deposition.out holds no such rate of the positrons, thus they take the
     analytical rate.
     """
     return EMISSIONCOLUMNS.get(particle) or ANALYTICEMISSIONCOLUMNS[particle]
@@ -444,7 +445,7 @@ def plot_thermalisation(
     if "betaplus" in args.thermalisation:
         print_detail(
             "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
-            " deposition.out holds no emission rate of the positrons from the packets"
+            " deposition.out holds no Monte Carlo emission rate of the positrons"
         )
     for particle in args.thermalisation:
         depcolumn, emissioncolumn = DEPOSITIONCOLUMNS[particle], get_thermalisation_emission_column(particle)
@@ -1501,7 +1502,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=tuple(EMISSIONCOLUMNS),
         metavar="PARTICLE",
         help=(
-            "Plot the emission rate of each particle that ARTIS counts from the packets:"
+            "Plot the Monte Carlo emission rate of each particle, which ARTIS counts at the decays of the pellets:"
             f" {', '.join(EMISSIONCOLUMNS)}. deposition.out holds no such rate of betaplus"
         ),
     )

@@ -741,7 +741,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     energychecks: dict[tuple[str, str], QtWidgets.QCheckBox] = {}
     energyheaders = {
         "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
-        "emission": ("Packets", "The emission rate that ARTIS counts from the packets"),
+        "emission": (
+            "Monte Carlo",
+            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the run",
+        ),
         "analyticemission": (
             "Analytical",
             "The analytical emission rate, which ARTIS calculates from the decay rates of the nuclides",
