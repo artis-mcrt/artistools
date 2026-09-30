@@ -80,6 +80,7 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import model_path_from_text
 from artistools.packets import get_packets
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
@@ -1593,7 +1594,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "specpath",
         default=[],
         nargs="*",
-        type=Path,
+        type=model_path_from_text,
         action=KeepGivenPaths,
         help="Paths to ARTIS folders or reference spectra filenames",
     )

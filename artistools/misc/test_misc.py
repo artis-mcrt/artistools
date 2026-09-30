@@ -1205,6 +1205,22 @@ def test_set_args_from_dict() -> None:
         at.misc.set_args_from_dict(parser, {"nonexistent": 1})
 
 
+def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A colon before the first slash makes a remote path, whether a local file of that name exists or not.
+
+    Path removes the "./" that marks a local path, thus the text of the argument decides.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "run:2").mkdir()
+    assert remote.split_remote_path("user@vae26:model") == ("user@vae26", Path("~/model"))
+    assert remote.split_remote_path(Path("vae26:/lustre/model")) == ("vae26", Path("/lustre/model"))
+    assert remote.is_remote_path("run:2")
+    assert not remote.is_remote_path("./run:2")
+    assert not remote.is_remote_path("runs/run:2")
+    assert remote.model_path_from_text("./run:2") == tmp_path / "run:2"
+    assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
+
+
 def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
 

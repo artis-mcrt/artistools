@@ -23,7 +23,9 @@ if t.TYPE_CHECKING:
 
     import polars as pl
 
-REMOTEPATH_PATTERN = re.compile(r"^(?P<host>[A-Za-z0-9_][A-Za-z0-9_.@-]*):(?P<path>.*)$")
+# the rule of rsync: a colon before the first slash makes a remote path, e.g. "vae26:~/mymodel" and
+# "user@vae26:/lustre/mymodel". A local path with such a colon starts with "./", e.g. "./run:2"
+REMOTEPATH_PATTERN = re.compile(r"^(?P<host>[^/:]+):(?P<path>.*)$", re.DOTALL)
 
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
@@ -37,15 +39,15 @@ SERVER_START_LINE = b"artistools server protocol 1\n"
 MESSAGE_LENGTH_BYTES = 8
 
 
-def split_remote_path(path: Path) -> tuple[str, Path] | None:
+def split_remote_path(path: Path | str) -> tuple[str, Path] | None:
     """Return the host and the path on that host for a path of the form "host:path", or None for a local path.
 
-    A local folder can have a colon in its name, thus a path that exists on this host stays local. ssh starts the
-    server in the home folder, thus a relative path gets "~" at its start. The path is then absolute on the
-    server, e.g. "vae26:" and "vae26:." name the home folder and not a folder with no name.
+    As for rsync, only the text decides, and the local files do not. ssh starts the server in the home folder, thus
+    a relative path gets "~" at its start. The path is then absolute on the server, e.g. "vae26:" and "vae26:." name
+    the home folder and not a folder with no name.
     """
     match = REMOTEPATH_PATTERN.match(str(path))
-    if match is None or path.exists():
+    if match is None:
         return None
 
     hostpath = Path(match["path"])
@@ -57,7 +59,18 @@ def split_remote_path(path: Path) -> tuple[str, Path] | None:
 
 def is_remote_path(path: Path | str) -> bool:
     """Return whether the path names a folder or a file on a different host."""
-    return split_remote_path(Path(path)) is not None
+    return split_remote_path(path) is not None
+
+
+def model_path_from_text(text: str) -> Path:
+    """Return the Path of a model path that a user writes.
+
+    Path removes the "./" at the start of "./run:2", and the colon of the result then makes a remote path. Thus a
+    local path with a colon before its first slash becomes absolute. argparse uses this function as the type of a
+    model path.
+    """
+    path = Path(text)
+    return path.absolute() if text.startswith("./") and is_remote_path(path) else path
 
 
 def get_canonical_path(path: Path) -> Path:

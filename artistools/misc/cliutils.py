@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
     from collections.abc import Collection
@@ -247,7 +248,7 @@ def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, 
     """
     optionkwargs: dict[str, t.Any] = {
         "dest": dest,
-        "type": Path,
+        "type": model_path_from_text,
         "default": argparse.SUPPRESS,
         "help": argparse.SUPPRESS,
     }
@@ -267,7 +268,7 @@ def addarg_modelpath(
     helptext: str = "Path to ARTIS folder",
 ) -> None:
     """Add the ARTIS model path argument (-modelpath option, or a positional path when positional=True)."""
-    kwargs: dict[str, t.Any] = {"type": Path, "default": default, "help": helptext}
+    kwargs: dict[str, t.Any] = {"type": model_path_from_text, "default": default, "help": helptext}
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
@@ -1334,11 +1335,14 @@ def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]
     """
     from artistools.misc.remote import get_canonical_path
 
+    def to_path(path: str | Path) -> Path:
+        return get_canonical_path(model_path_from_text(path) if isinstance(path, str) else Path(path))
+
     if not paths:
         return [Path(default)]
     if isinstance(paths, str | Path):
-        return [get_canonical_path(Path(paths))]
-    return [get_canonical_path(Path(p)) for p in flatten_list(list(paths))]
+        return [to_path(paths)]
+    return [to_path(p) for p in flatten_list(list(paths))]
 
 
 def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
