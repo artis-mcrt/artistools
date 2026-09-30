@@ -45,9 +45,6 @@ from artistools.rustext import estimparse
 from artistools.rustext import estimparse_allranks
 from artistools.rustext import estimtimesteps
 
-if t.TYPE_CHECKING:
-    from collections.abc import Iterable
-
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
 UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
@@ -613,7 +610,12 @@ def read_estimator_text(modelpath: Path, state: "EstimatorBatchState") -> pl.Dat
     form of the text. A filter of the timesteps can then skip most of the file.
     """
     if state.textfile is not None:
-        print(f"    reading {state.textfile.name} in {state.runfolder.name}...", end="", flush=True)
+        textsize_mib = state.textfile.stat().st_size / 1024 / 1024
+        print(
+            f"    reading {state.textfile.name} ({textsize_mib:.1f} MiB) in {state.runfolder.name}...",
+            end="",
+            flush=True,
+        )
         dfestimators = estimparse_allranks(state.textfile)
     else:
         print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
@@ -657,12 +659,15 @@ def drop_incomplete_last_timestep(
     return dfestimators.filter(pl.col("timestep") != lasttimestep)
 
 
-def get_estimators_parquetfile(modelpath: Path, state: "EstimatorBatchState", verbose: bool = False) -> Path:
+def get_estimators_parquetfile(
+    modelpath: Path, state: "EstimatorBatchState", verbose: bool = False, conversionlabel: str = ""
+) -> Path:
     """Return the parquet cache of a batch of MPI ranks or of the file of all ranks, and make it if it is stale.
 
     The state gives the reason why the cache is stale, because the caller reads the freshness of every cache one time
     with rankbatch_parquet_staleness. A reason of None says that the cache is current. The state also gives the
     identity of the file that the caller saw, because only that file can take the place of a new cache.
+    conversionlabel follows the path in the log line of a conversion, e.g. " (2 of 5)".
     """
 
     def printornot(msg: str) -> None:
@@ -699,7 +704,7 @@ def get_estimators_parquetfile(modelpath: Path, state: "EstimatorBatchState", ve
                 f" text files, because {stalereason}. File will be regenerated..."
             )
 
-        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}...")
+        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}{conversionlabel}...")
 
         time_start = time.perf_counter()
 
@@ -1139,23 +1144,27 @@ def get_estimator_batch_states(
 def convert_estimator_batch_caches(
     modelpath: Path, states: Sequence[EstimatorBatchState], verbose: bool
 ) -> list[EstimatorBatchCache]:
-    """Return the parquet cache of each batch in states, and convert the text files of each stale batch."""
-    # a progress bar is useful only when a batch converts text files, which takes minutes. The scan of a current
-    # parquet cache is lazy and reads no text, thus a progress bar shows no progress
-    batches: Iterable[EstimatorBatchState] = states
-    if len(states) > 1 and any(state.rebuild for state in states):
-        from artistools.misc.general import get_progress_class
+    """Return the parquet cache of each batch in states, and convert the text files of each stale batch.
 
-        batches = get_progress_class()(states, desc="Converting estimator files", unit="batch")
-
-    return [
-        EstimatorBatchCache(
-            runfolder=state.runfolder,
-            mpiranks=state.mpiranks,
-            parquetfile=get_estimators_parquetfile(modelpath=modelpath, state=state, verbose=verbose),
+    A conversion of one run folder can take minutes. The log line of each conversion thus gives its number and the
+    count of the conversions.
+    """
+    conversioncount = sum(state.rebuild for state in states)
+    conversionindex = 0
+    batchcaches: list[EstimatorBatchCache] = []
+    for state in states:
+        conversionindex += state.rebuild
+        conversionlabel = f" ({conversionindex} of {conversioncount})" if state.rebuild and conversioncount > 1 else ""
+        batchcaches.append(
+            EstimatorBatchCache(
+                runfolder=state.runfolder,
+                mpiranks=state.mpiranks,
+                parquetfile=get_estimators_parquetfile(
+                    modelpath=modelpath, state=state, verbose=verbose, conversionlabel=conversionlabel
+                ),
+            )
         )
-        for state in batches
-    ]
+    return batchcaches
 
 
 def select_estimator_batch_caches(

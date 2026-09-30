@@ -1306,25 +1306,6 @@ def test_the_stamp_reads_the_file_that_the_parser_reads(tmp_path: Path) -> None:
     assert get_textsource_mtimes(tmp_path)[1] == plainfile.stat().st_mtime
 
 
-def test_a_cached_scan_asks_for_no_progress_class() -> None:
-    """A scan that converts no text file must not build the progress class, which takes a lock.
-
-    The guard also counts the batches of the scan. The 1D test model gives one batch, thus it asks for
-    no class whatever the caches hold. This model has two run folders, thus its scan holds two batches.
-    """
-    import artistools.misc.general
-
-    # the first scan writes the parquet cache of each batch, and that conversion does take the class
-    at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
-
-    with mock.patch.object(
-        artistools.misc.general, "get_progress_class", side_effect=AssertionError("a cached scan made a bar")
-    ) as mockprogress:
-        at.estimators.scan_estimators(modelpath=modelpath_classic_3d).select(pl.len()).collect()
-
-    mockprogress.assert_not_called()
-
-
 def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The codecomparison branch must honour modelgridindex and timestep like the ARTIS branch does.
 
