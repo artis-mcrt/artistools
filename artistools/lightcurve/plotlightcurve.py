@@ -295,6 +295,7 @@ def plot_bol_reflightcurve(
     label: str | None = None,
     residualseries: list[ResidualSeries] | None = None,
     linewidth: float | None = None,
+    alpha: float | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
@@ -324,6 +325,7 @@ def plot_bol_reflightcurve(
             label=plotlabel,
             color=color,
             elinewidth=linewidth,
+            alpha=alpha,
             capthick=linewidth,
         )
         refartists = errorbars.get_children()
@@ -337,6 +339,7 @@ def plot_bol_reflightcurve(
                 lolims=True,
                 fmt="none",
                 color=color,
+                alpha=alpha,
             )
             # matplotlib picks the direction of the arrow from the orientation of the axis as it is now, and
             # a magnitude axis is inverted only after every series is drawn, so point it at the faint side.
@@ -346,7 +349,7 @@ def plot_bol_reflightcurve(
                 capline.set_marker(caretdown)
             refartists += limitbars.get_children()
     else:
-        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color)]
+        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color, alpha=alpha)]
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -625,6 +628,8 @@ def plot_artis_lightcurve(
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
         plotkwargs["linewidth"] = args.linewidth[lcindex]
+    if args.linealpha[lcindex] is not None:
+        plotkwargs["alpha"] = args.linealpha[lcindex]
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
@@ -836,6 +841,7 @@ def draw_plot(
                 label=args.label[lcindex],
                 residualseries=residualseries,
                 linewidth=args.linewidth[lcindex] or None,
+                alpha=args.linealpha[lcindex],
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -913,6 +919,7 @@ def draw_plot(
                 color=args.refspeccolors[refindex],
                 residualseries=residualseries,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
+                alpha=args.linealpha[len(modelpaths) + refindex],
             )
             plottedsomething = True
 
@@ -1166,6 +1173,8 @@ def make_band_lightcurves_plot(
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
                 plotkwargs["linewidth"] = args.linewidth[modelnumber] or (4 if args.subplots else 3.5)
+                if args.linealpha[modelnumber] is not None:
+                    plotkwargs["alpha"] = args.linealpha[modelnumber]
 
                 (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
                 if residualseries is not None:
@@ -1271,6 +1280,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                     color=dirbincolor,
                     linestyle=args.linestyle[modelnumber],
                     linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
+                    alpha=args.linealpha[modelnumber],
                 )
 
     # once for the whole figure, as on the band plot: the reference data does not depend on the models or
@@ -1442,7 +1452,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
     )
 
-    addarg_seriesstyle(parser)
+    addarg_seriesstyle(parser, include_linealpha=True)
 
     addarg_legend(parser)
 
@@ -1862,6 +1872,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         "linestyle",
         "dashes",
         "linewidth",
+        "linealpha",
     )
     args.color = seriescolors[:nmodels]
     args.refspeccolors = seriescolors[nmodels:]

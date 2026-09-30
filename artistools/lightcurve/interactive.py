@@ -9,6 +9,8 @@ import typing as t
 from functools import partial
 from pathlib import Path
 
+import matplotlib as mpl
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -31,6 +33,7 @@ from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_run_folders
 from artistools.misc import get_deposition
+from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -53,6 +56,7 @@ from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_figure_of_command
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
+from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
@@ -71,8 +75,10 @@ from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_path_colours
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
+from artistools.viewertools import get_series_style
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
@@ -85,10 +91,12 @@ from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_reorder_list
+from artistools.viewertools import make_series_swatch
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
+from artistools.viewertools import move_series_styles
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
@@ -97,10 +105,13 @@ from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import SERIES_LINE_FLAGS
+from artistools.viewertools import SERIES_STYLE_FLAGS
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
+from artistools.viewertools import set_series_rows
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
@@ -992,15 +1003,48 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         low, high = logtrange
         return float(10.0 ** (low + (high - low) * position / SLIDER_STEPS))
 
-    def show_lightcurves(lightcurves: "Sequence[str]") -> None:
-        """Show a row for each light curve, with a ✕ at the right end of the row that removes the light curve."""
+    # the light curves and the series styles of the rows that show_lightcurves made
+    shownlightcurves: tuple[t.Any, ...] | None = None
+
+    def get_lightcurves_key(values: ControlValues) -> tuple[t.Any, ...]:
+        """Return the parts of the values that the rows of the list of light curves show."""
+        return (values.lightcurves, tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS))
+
+    def get_lightcurve_name(values: ControlValues, path: str) -> str:
+        """Return the -label of a light curve, or the name of its model or its file."""
+        label = get_series_style(values.otheroptions, values.lightcurves, path)["-label"]
+        return label or (Path(path).name if path_is_reference_lightcurve(path) else get_model_name(path))
+
+    def show_lightcurves(values: ControlValues) -> None:
+        """Show a row for each light curve, with the image of its line, its path, and a ✕ that removes it.
+
+        A click on the image of the line opens the style dialog. The context menu of a row also gives the dialog.
+        """
+        nonlocal shownlightcurves
+        lightcurves = values.lightcurves
         lightcurvelist.clear()
         models = [path for path in lightcurves if get_artis_run_folders([path])]
+        colours = get_path_colours(
+            lightcurves, [path_is_reference_lightcurve(path) for path in lightcurves], values.otheroptions
+        )
         rowheight = lightcurvelist.fontMetrics().lineSpacing() + 4
         for path in lightcurves:
             item = QtWidgets.QListWidgetItem()
             item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            name = Path(path).name or path
+            name = get_lightcurve_name(values, path)
+            swatch = QtWidgets.QToolButton()
+            swatch.setAutoRaise(True)
+            swatch.setIconSize(QtCore.QSize(36, 14))
+            swatch.setIcon(
+                QtGui.QIcon(
+                    make_series_swatch(
+                        mplcolors.to_hex(colours[path]), get_series_style(values.otheroptions, lightcurves, path)
+                    )
+                )
+            )
+            swatch.setToolTip("The colour and the line style of the light curve in the plot. Click to change them")
+            swatch.setAccessibleName(f"Set the style of {name}")
+            swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(on_edit_style, path)))
             removebutton = make_glyph_button("✕", f"Remove {name} from the plot", f"Remove {name}")
             if models == [path]:
                 removebutton.setEnabled(False)
@@ -1013,8 +1057,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             rowlayout = QtWidgets.QHBoxLayout(row)
             # a long path shows its start and its end, and the width of the box sets the length
             rowlayout.setContentsMargins(4, 0, 2, 0)
+            rowlayout.addWidget(swatch)
             rowlayout.addWidget(make_elided_label(get_lightcurve_item_text(path)), 1)
             rowlayout.addWidget(removebutton)
+            row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+            for text, action in (("Set Label…", on_edit_label), ("Set Style…", on_edit_style)):
+                rowaction = QtGui.QAction(text, row)
+                # the new list replaces this row, thus each action waits until the menu closes
+                rowaction.triggered.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(action, path)))
+                row.addAction(rowaction)
             rowheight = max(rowheight, row.sizeHint().height())
             lightcurvelist.addItem(item)
             lightcurvelist.setItemWidget(item, row)
@@ -1024,6 +1075,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the list has the height of its light curves, from 2 to 4 rows, and a longer list scrolls
         shownrows = min(max(lightcurvelist.count(), 2), 4)
         lightcurvelist.setFixedHeight(shownrows * rowheight + 2 * lightcurvelist.frameWidth() + 4)
+        shownlightcurves = get_lightcurves_key(values)
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1034,11 +1086,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewer.load_runs(values.lightcurves)
         if viewer.runlightcurves != shownruns:
             show_run_ranges()
-        shownlightcurves = [
+        # a drag moves the rows of the list, thus the order of the rows can also differ from the values
+        roworder = [
             lightcurvelist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(lightcurvelist.count())
         ]
-        if shownlightcurves != list(values.lightcurves):
-            show_lightcurves(values.lightcurves)
+        if get_lightcurves_key(values) != shownlightcurves or roworder != list(values.lightcurves):
+            show_lightcurves(values)
         packetbox.setCurrentIndex(1 if values.gamma else 0)
         # -topnucs reads the packets, thus the box shows that and takes no choice
         datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
@@ -1275,7 +1328,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
         """Read the runs of a new list of light curves, and apply the list."""
         viewer.load_runs(lightcurves)
-        values = dc.replace(viewer.values, lightcurves=tuple(lightcurves))
+        # each series style option, e.g. -label, stays on its light curve
+        values = dc.replace(
+            viewer.values,
+            lightcurves=tuple(lightcurves),
+            otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.lightcurves, lightcurves),
+        )
         # a new first run can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
         if values.directionkind not in viewer.directionkinds:
             values = dc.replace(values, directionkind="", directionbins=())
@@ -1361,6 +1419,45 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
             return
         apply_lightcurves(lightcurves)
+
+    def on_edit_label(path: str) -> None:
+        """Ask for the -label of a light curve. An empty label gives the automatic label of plotlightcurves."""
+        values = viewer.values
+        if path not in values.lightcurves:
+            return
+        label, accepted = QtWidgets.QInputDialog.getText(
+            window,
+            "Set Label",
+            "The label of the light curve in the legend.\nClear the field for the automatic label.",
+            text=get_series_style(values.otheroptions, values.lightcurves, path)["-label"] or "",
+        )
+        if accepted:
+            rows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-label": label.strip() or None})
+            apply(dc.replace(viewer.values, otheroptions=rows))
+
+    def on_edit_style(path: str) -> None:
+        """Ask for the colour, the line style, the width, and the opacity of the series of a light curve.
+
+        A reference light curve has markers and error bars, thus it has no line style.
+        """
+        values = viewer.values
+        if path not in values.lightcurves:
+            return
+        isreference = [path_is_reference_lightcurve(other) for other in values.lightcurves]
+        # the colour of the dialog for "Default" is the colour that the light curve has with no -color of its own
+        defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
+        defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
+        changes = edit_series_style(
+            window,
+            get_lightcurve_name(values, path),
+            get_series_style(values.otheroptions, values.lightcurves, path),
+            mplcolors.to_hex(defaultcolour),
+            float(mpl.rcParams["lines.linewidth"]),
+            flags=("-color", "-linewidth", "-linealpha") if path_is_reference_lightcurve(path) else SERIES_LINE_FLAGS,
+        )
+        if changes is not None:
+            rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
+            apply(dc.replace(viewer.values, otheroptions=rows))
 
     def on_copy() -> None:
         copy_text(viewer.get_command())

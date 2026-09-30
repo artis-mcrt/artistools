@@ -27,12 +27,10 @@ from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import separate_trailing_folders
-from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.packets.core import has_packets_files
-from artistools.plottools import get_series_colors
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -69,7 +67,6 @@ from artistools.viewertools import fix_title_position
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
-from artistools.viewertools import get_dash_pattern
 from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
@@ -82,9 +79,12 @@ from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
+from artistools.viewertools import get_path_colours
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_recent_models
 from artistools.viewertools import get_row_values
+from artistools.viewertools import get_series_style
+from artistools.viewertools import get_series_value
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
@@ -92,7 +92,6 @@ from artistools.viewertools import make_completer
 from artistools.viewertools import make_elided_label
 from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_glyph_button
-from artistools.viewertools import make_line_swatch
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
@@ -103,12 +102,14 @@ from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_reorder_list
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_segmented_control
+from artistools.viewertools import make_series_swatch
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
+from artistools.viewertools import move_series_styles
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
@@ -119,10 +120,12 @@ from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import save_figure_of_command
+from artistools.viewertools import SERIES_STYLE_FLAGS
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
+from artistools.viewertools import set_series_rows
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
@@ -1057,10 +1060,6 @@ class SpectrumViewer:
         return "   ".join(parts)
 
 
-# the options that give one value for each spectrum, in the order of the spectra
-SERIES_STYLE_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-linewidth", "-linealpha", "-dashes")
-
-
 def get_series_name(path: str) -> str:
     """Return the legend name of a spectrum that has no -label, with no time in the name."""
     if path_is_reference_spectrum(path):
@@ -1070,45 +1069,9 @@ def get_series_name(path: str) -> str:
     return get_model_name(path)
 
 
-def get_series_value(values: "Sequence[str]", index: int) -> str | None:
-    """Return the value of a series style option for the spectrum at index, or None if the option gives none."""
-    value = values[index] if index < len(values) else None
-    return None if value == SERIES_DEFAULT else value
-
-
 def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
     """Return the colour of the plot of each spectrum, as plotspectra gives it."""
-    isreference = [path_is_reference_spectrum(path) for path in spectra]
-    usercolours = get_row_values(rows, "-color") or ()
-    colours = get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(spectra))])
-    return dict(zip(spectra, colours, strict=True))
-
-
-def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
-    """Return the values of a series style option in the order of the spectra, or None for no option.
-
-    A spectrum with no value in front of a spectrum with a value takes the token SERIES_DEFAULT.
-    """
-    values = list(values)
-    while values and values[-1] is None:
-        values.pop()
-    return tuple(SERIES_DEFAULT if value is None else value for value in values) or None
-
-
-def move_series_styles(rows: OptionRows, oldspectra: "Sequence[str]", newspectra: "Sequence[str]") -> OptionRows:
-    """Return the option rows with the value of each series style option on the same spectrum in the new list.
-
-    Thus a -label stays on its spectrum when the order changes. The values of a removed spectrum go out of the rows.
-    """
-    changes: dict[str, tuple[str, ...] | None] = {}
-    for flag in SERIES_STYLE_FLAGS:
-        if not (values := get_row_values(rows, flag)):
-            continue
-        byspectrum = {path: get_series_value(values, index) for index, path in enumerate(oldspectra)}
-        newvalues = get_series_tokens([byspectrum.get(path) for path in newspectra])
-        if newvalues != values:
-            changes[flag] = newvalues
-    return set_row_values(rows, changes)
+    return get_path_colours(spectra, [path_is_reference_spectrum(path) for path in spectra], rows)
 
 
 def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, str | None]") -> ControlValues:
@@ -1117,22 +1080,7 @@ def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, s
     changes gives each option by its flag, e.g. -label. A value of None gives the spectrum the default of plotspectra,
     and the other spectra keep their values.
     """
-    rowchanges: dict[str, tuple[str, ...] | None] = {}
-    for flag, value in changes.items():
-        oldvalues = get_row_values(values.otheroptions, flag) or ()
-        newvalues = [
-            value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(values.spectra)
-        ]
-        rowchanges[flag] = get_series_tokens(newvalues)
-    return dc.replace(values, otheroptions=set_row_values(values.otheroptions, rowchanges))
-
-
-def get_series_style(values: ControlValues, path: str) -> dict[str, str | None]:
-    """Return the value of each series style option of one spectrum, or None where it takes the default."""
-    index = values.spectra.index(path)
-    return {
-        flag: get_series_value(get_row_values(values.otheroptions, flag) or (), index) for flag in SERIES_STYLE_FLAGS
-    }
+    return dc.replace(values, otheroptions=set_series_rows(values.otheroptions, values.spectra, path, changes))
 
 
 def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
@@ -1877,20 +1825,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             rowlayout.setContentsMargins(4, 0, 2, 0)
             rowlayout.setSpacing(2)
             rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
-            style = get_series_style(values, path)
+            style = get_series_style(values.otheroptions, values.spectra, path)
             swatch = QtWidgets.QToolButton()
             swatch.setAutoRaise(True)
             swatch.setIconSize(QtCore.QSize(36, 14))
-            swatch.setIcon(
-                QtGui.QIcon(
-                    make_line_swatch(
-                        mplcolors.to_hex(colours[path]),
-                        float(style["-linealpha"] or 1.0),
-                        float(style["-linewidth"] or mpl.rcParams["lines.linewidth"]),
-                        get_dash_pattern(style["-linestyle"], style["-dashes"]),
-                    )
-                )
-            )
+            swatch.setIcon(QtGui.QIcon(make_series_swatch(mplcolors.to_hex(colours[path]), style)))
             swatch.setToolTip("The colour and the line style of the spectrum in the plot. Click to change them")
             swatch.setAccessibleName(f"Set the style of {name}")
             swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(on_edit_style, path)))
@@ -2509,7 +2448,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         defaultcolours = get_series_colours(
             values.spectra, set_series_values(values, path, {"-color": None}).otheroptions
         )
-        style = get_series_style(values, path)
+        style = get_series_style(values.otheroptions, values.spectra, path)
         name = style["-label"] or get_series_name(path)
         changes = edit_series_style(
             window, name, style, mplcolors.to_hex(defaultcolours[path]), float(mpl.rcParams["lines.linewidth"])

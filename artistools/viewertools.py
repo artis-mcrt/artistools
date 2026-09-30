@@ -37,9 +37,11 @@ from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc import write_gif
 from artistools.misc.cliutils import dashes_arg
+from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import get_series_colors
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -547,6 +549,77 @@ def get_option_row_tokens(rows: OptionRows) -> list[str]:
         for flag, optionvalues in rows
         for token in (get_option_tokens(flag, *optionvalues) if len(optionvalues) == 1 else (flag, *optionvalues))
     ]
+
+
+# the options that give one value for each series, e.g. each spectrum, in the order of the paths of the command
+SERIES_STYLE_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-linewidth", "-linealpha", "-dashes")
+
+
+def get_series_value(values: "Sequence[str]", index: int) -> str | None:
+    """Return the value of a series style option for the series at index, or None if the option gives none."""
+    value = values[index] if index < len(values) else None
+    return None if value == SERIES_DEFAULT else value
+
+
+def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
+    """Return the values of a series style option in the order of the series, or None for no option.
+
+    A series with no value in front of a series with a value takes the token SERIES_DEFAULT.
+    """
+    values = list(values)
+    while values and values[-1] is None:
+        values.pop()
+    return tuple(SERIES_DEFAULT if value is None else value for value in values) or None
+
+
+def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
+    """Return the option rows with the value of each series style option on the same path in the new list.
+
+    Thus a -label stays on its series when the order changes. The values of a removed series go out of the rows.
+    """
+    changes: dict[str, tuple[str, ...] | None] = {}
+    for flag in SERIES_STYLE_FLAGS:
+        if not (values := get_row_values(rows, flag)):
+            continue
+        bypath = {path: get_series_value(values, index) for index, path in enumerate(oldpaths)}
+        newvalues = get_series_tokens([bypath.get(path) for path in newpaths])
+        if newvalues != values:
+            changes[flag] = newvalues
+    return set_row_values(rows, changes)
+
+
+def set_series_rows(
+    rows: OptionRows, paths: "Sequence[str]", path: str, changes: "Mapping[str, str | None]"
+) -> OptionRows:
+    """Return the option rows with the value of each series style option in changes for the series of one path.
+
+    changes gives each option by its flag, e.g. -label. A value of None gives the series the default of the command,
+    and the other series keep their values.
+    """
+    rowchanges: dict[str, tuple[str, ...] | None] = {}
+    for flag, value in changes.items():
+        oldvalues = get_row_values(rows, flag) or ()
+        newvalues = [
+            value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(paths)
+        ]
+        rowchanges[flag] = get_series_tokens(newvalues)
+    return set_row_values(rows, rowchanges)
+
+
+def get_series_style(rows: OptionRows, paths: "Sequence[str]", path: str) -> dict[str, str | None]:
+    """Return the value of each series style option of the series of one path, or None where it takes the default."""
+    index = list(paths).index(path)
+    return {flag: get_series_value(get_row_values(rows, flag) or (), index) for flag in SERIES_STYLE_FLAGS}
+
+
+def get_path_colours(paths: "Sequence[str]", isreference: "Sequence[bool]", rows: OptionRows) -> dict[str, str]:
+    """Return the colour of the series of each path, as the command gives it with the -color of the rows.
+
+    A reference series takes black and greys, and a model takes the colours of the cycle.
+    """
+    usercolours = get_row_values(rows, "-color") or ()
+    colours = get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(paths))])
+    return dict(zip(paths, colours, strict=True))
 
 
 def get_helptexts(parser: argparse.ArgumentParser) -> dict[str, str]:
@@ -1359,6 +1432,18 @@ def make_line_swatch(
     return pixmap
 
 
+def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui.QPixmap":
+    """Return the image of the line of a series from its colour and the values of its series style options."""
+    import matplotlib as mpl
+
+    return make_line_swatch(
+        colour,
+        float(style.get("-linealpha") or 1.0),
+        float(style.get("-linewidth") or mpl.rcParams["lines.linewidth"]),
+        get_dash_pattern(style.get("-linestyle"), style.get("-dashes")),
+    )
+
+
 # the options of the style dialog of a series, which each give one value for each series
 SERIES_LINE_FLAGS: t.Final = ("-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
 
@@ -1369,11 +1454,13 @@ def edit_series_style(
     style: "Mapping[str, str | None]",
     defaultcolour: str,
     defaultlinewidth: float,
+    flags: "Collection[str]" = SERIES_LINE_FLAGS,
 ) -> dict[str, str | None] | None:
-    """Ask for the line style of one series, and return the value of each option of SERIES_LINE_FLAGS.
+    """Ask for the line style of one series, and return the value of each option of flags.
 
     style gives the current value of each option, or None for the default of the command. A field with the default
-    gives None, thus the command then gives the series no value. A cancelled dialog gives None.
+    gives None, thus the command then gives the series no value. A cancelled dialog gives None. The dialog shows only
+    the fields of flags, e.g. a series of markers has no line style.
     """
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -1468,7 +1555,7 @@ def edit_series_style(
                 colour,
                 alphabox.value() or 1.0,
                 widthbox.value() or defaultlinewidth,
-                get_dash_pattern(linestylebox.currentData(), dashes),
+                get_dash_pattern(linestylebox.currentData(), dashes) if "-linestyle" in flags else None,
             )
         )
 
@@ -1509,6 +1596,14 @@ def edit_series_style(
     buttons.rejected.connect(dialog.reject)
     if (restorebutton := buttons.button(QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults)) is not None:
         restorebutton.clicked.connect(on_restore_defaults)
+    for flag, field in (
+        ("-color", colourrow),
+        ("-linestyle", linestylebox),
+        ("-dashes", dashesedit),
+        ("-linewidth", widthbox),
+        ("-linealpha", alphabox),
+    ):
+        form.setRowVisible(field, flag in flags)
     show_preview()
 
     accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
@@ -1516,13 +1611,14 @@ def edit_series_style(
     dialog.deleteLater()
     if not accepted:
         return None
-    return {
+    values = {
         "-color": chosencolour[0],
         "-linestyle": linestylebox.currentData(),
         "-dashes": get_dashes(),
         "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
         "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
     }
+    return {flag: value for flag, value in values.items() if flag in flags}
 
 
 def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":

@@ -2531,10 +2531,10 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     rows = (("-label", ("First",)), ("-color", ("red", "blue")))
     newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
 
-    moved = interactive.move_series_styles(rows, oldspectra, newspectra)
+    moved = viewertools.move_series_styles(rows, oldspectra, newspectra)
     assert dict(moved) == {"-label": ("default", "default", "First"), "-color": ("default", "blue", "red")}
     # the values of a removed spectrum go out of the option rows
-    assert dict(interactive.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
+    assert dict(viewertools.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
     labelled = interactive.set_series_values(viewer.values, reference, {"-label": "Observed"})
