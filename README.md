@@ -65,12 +65,12 @@ artistools plotspectra -t 300 vae26:~/scratch/mymodel
 
 The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./run:2`.
 
-artistools starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host.
+artistools starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools and of its polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host.
 
 An option that reads its files on the local host stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 
 ```sh
-export ARTISTOOLS_REMOTE_COMMAND='~/artistools/.venv/bin/artistools server'
+export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 ~/artistools/.venv/bin/artistools server'
 ```
 
 ## Use from Python

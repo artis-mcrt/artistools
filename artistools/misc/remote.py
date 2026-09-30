@@ -117,6 +117,10 @@ MESSAGE_LENGTH_BYTES = 8
 # saves in the transfer
 COMPRESS_MIN_BYTES = 64 * 1024
 
+# polars starts one thread for each core, and a login node of a cluster has hundreds of cores. On a node of 384 cores,
+# 16 threads made a plot of estimators 0.9 s in place of 2.1 s, and a light curve from packets 1.1 s in place of 1.4 s
+SERVER_POLARS_THREADS = 16
+
 
 def split_remote_path(path: Path | str) -> tuple[str, Path] | None:
     """Return the host and the path on that host for a path of the form "host:path", or None for a local path.
@@ -416,7 +420,10 @@ def get_server_argv(host: str) -> list[str]:
 
     # a plan of polars has a format that changes between two versions of polars, thus the server takes the polars of
     # the client, and collect_on_host can send it the plans of the queries
-    defaultcommand = f"uvx --with polars=={pl.__version__} artistools@{version('artistools')} server"
+    defaultcommand = (
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx --with polars=={pl.__version__}"
+        f" artistools@{version('artistools')} server"
+    )
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
     return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
@@ -502,7 +509,10 @@ def get_git_server_suggestion(host: str) -> str | None:
     import polars as pl
 
     url, commit, notes = gitsource
-    servercommand = f'uvx --with polars=={pl.__version__} --from "artistools @ git+{url}@{commit}" artistools server'
+    servercommand = (
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx --with polars=={pl.__version__}"
+        f' --from "artistools @ git+{url}@{commit}" artistools server'
+    )
     return "\n".join([
         (
             f"This artistools comes from the git commit {commit}, but the default server command runs a release. To"
