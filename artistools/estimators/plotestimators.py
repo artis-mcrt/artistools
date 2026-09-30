@@ -7,7 +7,6 @@ import argparse
 import contextlib
 import math
 import string
-import tempfile
 import typing as t
 from collections.abc import Collection
 from collections.abc import Mapping
@@ -2954,21 +2953,15 @@ def get_figures_data(
         args.multiplot = True
         args.format = "png"
 
+    # each frame reads its timestep from the parquet caches of the run. A copy of the selected timesteps held every
+    # column, and for 10 frames of a 3D run it made the command 16 s and 5.5 GB in place of 5.4 s and 0.85 GB
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
-    with tempfile.TemporaryDirectory() as tmpdir:
-        if len(frames) > 1:
-            # each frame collects a few columns of the estimators several times. A streamed copy of the selected
-            # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
-            estimatorsfile = Path(tmpdir, "estimators.parquet")
-            estimators.sink_parquet(estimatorsfile)
-            estimators = pl.scan_parquet(estimatorsfile)
-
-        figures: list[LineFigureData | ImageFigureData] = [
-            get_image_figure_data(modelpath, frame, estimators, panels, modelmeta, args)
-            if args.dimensionreduce == 2
-            else get_line_figure_data(modelpath, frame, estimators, args.x, plotlist, args)
-            for frame in frames
-        ]
+    figures: list[LineFigureData | ImageFigureData] = [
+        get_image_figure_data(modelpath, frame, estimators, panels, modelmeta, args)
+        if args.dimensionreduce == 2
+        else get_line_figure_data(modelpath, frame, estimators, args.x, plotlist, args)
+        for frame in frames
+    ]
 
     return figures, get_changed_args()
 
