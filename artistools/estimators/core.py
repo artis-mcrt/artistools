@@ -977,8 +977,8 @@ def scan_remote_estimators(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return a LazyFrame of the estimators of a remote model, and the metadata of the model if the model data joins.
 
-    A script builds its queries on this frame as for a local model. A collect asks the host for the rows and the
-    columns of the query. batchcaches gives the caches of the run on the host.
+    A script builds its queries on this frame as for a local model. When the script collects the frame, the host
+    sends the rows and the columns of the query. batchcaches gives the caches of the run on the host.
     """
     import functools
 

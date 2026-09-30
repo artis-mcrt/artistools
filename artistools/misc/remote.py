@@ -611,7 +611,8 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         process.kill()
         exit_with_error(
             f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
-            f" {pl.__version__}. The server reads the polars expressions of the client, which need the same version",
+            f" {pl.__version__}. The server reads the polars expressions of the client, and these expressions need the"
+            " same version of polars",
             f"Add {get_uvx_pins()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
         )
     if serverversion != localversion:

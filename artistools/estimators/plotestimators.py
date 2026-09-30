@@ -268,7 +268,7 @@ class SeriesData(t.NamedTuple):
 
 
 class SubplotSettings(t.TypedDict, total=False):
-    """The settings of the axes of a subplot, which the functions of its series give before the draw.
+    """The settings of the axes of a subplot, which the functions of its series give before draw_subplot draws it.
 
     The host of a remote model runs these functions, thus the settings are values and not calls on the axes.
     """
@@ -278,9 +278,9 @@ class SubplotSettings(t.TypedDict, total=False):
     ylim: tuple[float, float]
     # move the power-of-ten offset of the y axis into the label, see set_exponent_label
     exponentlabel: bool
-    # after the draw, clip the bottom of a log axis to ten decades below the top
+    # clip the bottom of a log axis to ten decades below the top, after draw_subplot draws the series
     cliplogbottom: bool
-    # the directives ymin= and ymax=, which apply after the draw
+    # the directives ymin= and ymax=, which draw_subplot applies after it draws the series
     ymin: float
     ymax: float
     showlegend: bool
@@ -397,7 +397,7 @@ def draw_subplot(
     startfromzero: bool,
 ) -> None:
     """Apply the settings of the subplot to the axes, draw its series in order, and add the limits and the legend."""
-    # the scale and the limits come before the data, so that the axis autoscales in the right space
+    # set the scale and the limits before the data, so that the axis autoscales in the correct space
     if "yscale" in settings:
         ax.set_yscale(settings["yscale"])
     if "ylim" in settings:
@@ -419,7 +419,7 @@ def draw_subplot(
         )
 
     if settings.get("cliplogbottom") and ax.get_yscale() == "log":
-        # set_legend gives the legend its room
+        # a log axis of populations can go down many decades. set_legend adds space for the legend later
         ymin, ymax = ax.get_ylim()
         ax.set_ylim(bottom=max(ymin, ymax / 1e10))
 
@@ -1422,8 +1422,8 @@ def get_subplot_plans(
         seriestype, params = plotitem
         seriestype = get_directive_name(seriestype) or seriestype
         if seriestype == "ymin":
-            # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it before the draw
-            # would leave the other side at the value it held before the data arrived
+            # only record it. set_ylim stops the autoscale of the full axis. A limit before draw_subplot draws the
+            # series thus keeps the other side at its value before the data
             settings["ymin"] = float(params)
 
         elif seriestype == "ymax":
@@ -1444,7 +1444,7 @@ def get_subplot_plans(
         else:
             remaining_plotitems.append(plotitem)
 
-    # the draw keeps the order of the items and of their series
+    # draw_subplot keeps the order of the items and of their series
     plans: list[SeriesPlan] = []
     for plotitem in remaining_plotitems:
         if isinstance(plotitem, str | pl.Expr):
@@ -1589,7 +1589,7 @@ class LineFigureData(t.NamedTuple):
     # the limits of the x axis. A range of zero width gives no limits, so that matplotlib keeps its own padding
     xlimits: tuple[float | None, float | None]
     title: str
-    # the fields of the name of the file, see make_figure
+    # the fields of the filename, see make_figure
     framefields: dict[str, int | str]
 
 
@@ -1755,7 +1755,7 @@ class ImageFigureData(t.NamedTuple):
     plotaxes: tuple[str, str]
     vmax_cmps: float
     title: str
-    # the fields of the name of the file, see make_figure
+    # the fields of the filename, see make_figure
     framefields: dict[str, int | str]
 
 
@@ -2768,13 +2768,13 @@ def prepare_snapshot(
 def write_snapshot_figures(
     args: argparse.Namespace, figures: "Sequence[LineFigureData | ImageFigureData]", timesteps_included: list[int]
 ) -> None:
-    """Draw the figures of a range of cells at one time, which show the internal structure. Write one file per frame.
+    """Draw the figures of the internal structure at one time, and write one file for each frame.
 
     With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
     one PDF file.
     """
     isimage = isinstance(figures[0], ImageFigureData)
-    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+    # a gif or a merged PDF file holds every frame, thus many figures make one product
     firstts, lastts = timesteps_included[0], timesteps_included[-1]
     frameset = resolve_frameset_paths(
         args.outputfile,
@@ -2926,7 +2926,7 @@ def get_figures_data(
         return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
 
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
+    # pl.len() lets projection pushdown read 2 columns. head(1) reads every column
     if estimators.select(pl.len()).collect().item() == 0:
         return [], get_changed_args()
 
@@ -2939,7 +2939,8 @@ def get_figures_data(
         return [figuredata], get_changed_args()
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
-    # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
+    # a gif needs one PNG frame for each timestep, because imageio reads PNG. Thus --makegif sets --multiplot and
+    # -format png
     if args.makegif:
         args.multiplot = True
         args.format = "png"
@@ -3002,7 +3003,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath, timesteps_included = resolve_plot_args(args)
     if args.listvariables or args.listnuclides:
-        # a listing of the variables reads the schema only, thus it must not pay for a count of the rows
+        # a list of the variables needs only the schema, thus do not count the rows
         print_listing(args, get_plot_columns(modelpath, args, timesteps_included))
         return
 
