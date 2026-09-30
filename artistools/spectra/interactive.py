@@ -1272,7 +1272,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
     # the settings keep the open state of the section by its key, which the older heading of the section gave
-    _, xgrid = add_section(panellayout, "x-axis", key="x axis")
+    _, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
     xunitbox = QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
     logscalexcheck = QtWidgets.QCheckBox("--logscalex")
