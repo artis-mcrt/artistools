@@ -37,6 +37,7 @@ from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
 from artistools.misc.fileio import MTIME_TOLERANCE_S
@@ -483,19 +484,17 @@ def get_rank_textfiles(folderpath: Path | str) -> dict[int, Path]:
     estimators_0000.out.bak beside estimators_0000.out, thus has no effect.
     """
     folderpath = Path(folderpath)
+    # the names of the glob select the files. A test of each suffix with stat took 3.4 s on Lustre for the 15368
+    # rank files of a run, because each stat there is a request to a server
+    textfiles = {textfile.name: textfile for textfile in folderpath.glob("estimators_*.out*")}
     # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
-    ranks = {
-        int(rankstr)
-        for rankstr in (textfile.name.split("_")[1].split(".")[0] for textfile in folderpath.glob("estimators_*.out*"))
-        if rankstr.isdigit()
-    }
+    ranks = {int(rankstr) for rankstr in (name.split("_")[1].split(".")[0] for name in textfiles) if rankstr.isdigit()}
     rankfiles: dict[int, Path] = {}
     for rank in sorted(ranks):
-        rankfile = firstexisting_or_none(
-            f"estimators_{rank:04d}.out", folder=folderpath, tryzipped=True, search_subfolders=False
-        )
-        if rankfile is not None:
-            rankfiles[rank] = rankfile
+        stem = f"estimators_{rank:04d}.out"
+        candidates = (stem, *(stem + ext for ext in COMPRESSED_EXTENSIONS))
+        if (name := next((name for name in candidates if name in textfiles), None)) is not None:
+            rankfiles[rank] = textfiles[name]
     return rankfiles
 
 
