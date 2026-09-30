@@ -1227,10 +1227,11 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     assert not remote.names_a_remote_folder("second:label")
 
 
-def test_reply_of_the_server_cannot_call_a_function() -> None:
+def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
     """The client refuses a reply that calls a function, because a different user can control the remote host.
 
     subprocess is a module of the replies, because a reply can hold its CalledProcessError. Its functions stay out.
+    numpy.memmap is a class of numpy that writes a file, thus only the numpy classes of a result pass.
     """
     import pickle  # ruff:ignore[suspicious-pickle-import]
 
@@ -1240,6 +1241,21 @@ def test_reply_of_the_server_cannot_call_a_function() -> None:
 
     with pytest.raises(pickle.UnpicklingError, match="does not accept"):
         remote.load_reply(pickle.dumps((True, CommandOnClient())))
+
+    class FileOnClient:
+        def __reduce__(self) -> tuple[t.Any, ...]:
+            return (np.memmap, (str(tmp_path / "overwritten"), "float64", "w+", 0, (1,)))
+
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, FileOnClient())))
+    assert not (tmp_path / "overwritten").exists()
+
+    result = {"array": np.arange(3.0), "value": np.float64(2.5), "dtype": np.dtype("f8")}
+    succeeded, reply = remote.load_reply(remote.dump_message((True, result)))
+    assert succeeded
+    np.testing.assert_array_equal(reply["array"], result["array"])
+    assert reply["value"] == result["value"]
+    assert reply["dtype"] == result["dtype"]
 
 
 def test_server_command_of_a_git_install_names_its_commit() -> None:

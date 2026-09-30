@@ -18,7 +18,6 @@ import polars as pl
 from polars import selectors as cs
 
 from artistools import misc
-from artistools.atomic import get_nuclides
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -32,6 +31,7 @@ from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_from_packets
+from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
 from artistools.lightcurve.core import read_bol_reflightcurve_data
@@ -87,7 +87,6 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
 from artistools.misc.remote import on_model_host
-from artistools.packets import get_packets
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import get_next_color
@@ -730,23 +729,14 @@ def make_lightcurve_plot(
                 pellet_nucnames: list[str | None] = [None]
                 if topnucs > 0:
                     try:
-                        dfnuclides = get_nuclides(modelpath=modelpath)
-                        _, dfpackets = get_packets(
-                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
-                        )
-                        top_nuclides = (
-                            df_filter_minmax_bracketed(
-                                dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
-                                "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
-                                args.timemin,
-                                args.timemax,
-                            )
-                            .group_by("pellet_nucindex")
-                            .agg(pl.sum("e_rf").alias("e_rf_sum"))
-                            .top_k(by="e_rf_sum", k=topnucs)
-                            .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
-                            .select(["e_rf_sum", "nucname", "pellet_nucindex"])
-                            .collect()
+                        top_nuclides = get_top_nuclides(
+                            Path(modelpath),
+                            escape_type,
+                            topnucs,
+                            maxpacketfiles,
+                            args.timemin,
+                            args.timemax,
+                            use_pellet_decay_time=args.use_pellet_decay_time,
                         )
                         print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])

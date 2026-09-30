@@ -241,6 +241,39 @@ def args_from_kwargs(
 
 
 @on_model_host
+def get_top_nuclides(
+    modelpath: Path,
+    escape_type: str,
+    count: int,
+    maxpacketfiles: int | None = None,
+    timemindays: float | None = None,
+    timemaxdays: float | None = None,
+    *,
+    use_pellet_decay_time: bool = False,
+) -> pl.DataFrame:
+    """Return the nuclides whose decays give the most energy to the escaped packets, with the energy of each one.
+
+    The host of a remote model reads the packets, and only the table of the nuclides comes back.
+    """
+    dfnuclides = get_nuclides(modelpath=modelpath)
+    _, dfpackets = get_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
+    return (
+        df_filter_minmax_bracketed(
+            dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
+            "tdecay_d" if use_pellet_decay_time else "t_arrive_d",
+            timemindays,
+            timemaxdays,
+        )
+        .group_by("pellet_nucindex")
+        .agg(pl.sum("e_rf").alias("e_rf_sum"))
+        .top_k(by="e_rf_sum", k=count)
+        .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
+        .select(["e_rf_sum", "nucname", "pellet_nucindex"])
+        .collect()
+    )
+
+
+@on_model_host
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace | None = None,

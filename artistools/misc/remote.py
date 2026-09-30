@@ -62,6 +62,19 @@ REPLY_MODULES = frozenset({
     "zstandard",
 })
 
+# the classes that a reply can build with no side effect. numpy has classes with side effects, e.g. numpy.memmap
+# writes a file, thus only these ones of numpy pass
+REPLY_CLASSES = frozenset({
+    ("argparse", "Namespace"),
+    ("collections", "OrderedDict"),
+    ("datetime", "date"),
+    ("datetime", "datetime"),
+    ("datetime", "timedelta"),
+    ("datetime", "timezone"),
+    ("numpy", "dtype"),
+    ("numpy", "ndarray"),
+})
+
 # the functions that a reply can call. Every other object of a reply must be a class of a safe kind
 REPLY_FUNCTIONS = frozenset({
     ("artistools.misc.remote", "dataframe_from_ipc"),
@@ -286,13 +299,12 @@ class ReplyUnpickler(pickle.Unpickler):
             msg = f"A reply of the artistools server holds {module}.{name}, which the client does not accept"
             raise pickle.UnpicklingError(msg)
         found = super().find_class(module, name)
-        if (module, name) in REPLY_FUNCTIONS:
+        if (module, name) in REPLY_FUNCTIONS or (module, name) in REPLY_CLASSES:
             return found
-        # a tuple class is a NamedTuple of a result. A reply builds the other classes with no call of a function
-        # that has a side effect
-        issafeclass = isinstance(found, type) and (
-            issubclass(found, (BaseException, tuple, Path, frozenset, set, bytearray, complex, range, slice))
-            or module.startswith(("numpy", "datetime", "collections", "argparse"))
+        # a tuple class is a NamedTuple of a result, and an exception class is an error of a reader. A reply builds
+        # these with no side effect
+        issafeclass = isinstance(found, type) and issubclass(
+            found, (BaseException, tuple, Path, frozenset, set, bytearray, complex, range, slice)
         )
         if not issafeclass:
             msg = f"A reply of the artistools server holds {module}.{name}, which the client does not accept"
@@ -443,8 +455,25 @@ def forget_server(host: str) -> None:
         SERVERS.pop((host, os.getpid()), None)
 
 
+def close_server_pipes(process: "subprocess.Popen[bytes]") -> None:
+    """Close the pipes of a server, and wait a short time for its exit. The server stops at the end of its input."""
+    import contextlib
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    with contextlib.suppress(OSError):
+        if process.stdin is not None:
+            process.stdin.close()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=5)
+
+
 def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
-    """Start the artistools server on the host, and return the process and the lock of its pipes."""
+    """Start the artistools server on the host, and return the process and the lock of its pipes.
+
+    The server stays for the life of the process, e.g. for each plot of a viewer, because a start through ssh takes
+    about 10 s. The exit of the process closes its pipes, and the server then stops.
+    """
+    import atexit
     import os
     import shlex
     import subprocess  # ruff:ignore[suspicious-subprocess-import]
@@ -475,6 +504,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
             f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server",
         )
 
+    atexit.register(close_server_pipes, process)
     if serverversion != localversion:
         print_warning(
             f"The artistools server on {host} has version {serverversion}, but this artistools has version "
@@ -563,6 +593,32 @@ def expand_home(leaf: t.Any) -> t.Any:
     return leaf.expanduser() if isinstance(leaf, Path) else leaf
 
 
+def collect_lazyframes(value: t.Any) -> t.Any:
+    """Return the value with each LazyFrame in its lists, tuples, and dict values collected in one batch.
+
+    The frames of a reader can share a scan, e.g. the 100 direction bins of light_curve_res.out. pl.collect_all
+    reads that file once, but a collect of each frame reads it once for each frame.
+    """
+    import polars as pl
+
+    lazyframes: list[pl.LazyFrame] = []
+
+    def add_lazyframe(leaf: t.Any) -> None:
+        if isinstance(leaf, pl.LazyFrame):
+            lazyframes.append(leaf)
+
+    map_leaves(value, add_lazyframe)
+    if not lazyframes:
+        return value
+
+    collected = iter(pl.collect_all(lazyframes))
+
+    def to_collected(leaf: t.Any) -> t.Any:
+        return next(collected).lazy() if isinstance(leaf, pl.LazyFrame) else leaf
+
+    return map_leaves(value, to_collected)
+
+
 def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], bool]) -> t.Any:
     """Return the result of the function of an unpickled request. With quiet, the function prints nothing."""
     import contextlib
@@ -574,7 +630,7 @@ def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], b
         if quiet:
             devnull = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8"))
             stack.enter_context(contextlib.redirect_stdout(devnull))
-        return func(*map_leaves(args, expand_home), **map_leaves(kwargs, expand_home))
+        return collect_lazyframes(func(*map_leaves(args, expand_home), **map_leaves(kwargs, expand_home)))
 
 
 def run_request(request: bytes) -> bytes:
