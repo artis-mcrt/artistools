@@ -72,11 +72,8 @@ from artistools.misc.remote import on_model_host
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
-from artistools.viewertools import add_command_section
-from artistools.viewertools import add_copy_box
+from artistools.viewertools import add_command_sections
 from artistools.viewertools import add_default_options
-from artistools.viewertools import add_figure_section
-from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_window_actions
@@ -85,42 +82,34 @@ from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
+from artistools.viewertools import finish_viewer_window
 from artistools.viewertools import fit_canvas
-from artistools.viewertools import FIT_MILLISECONDS
 from artistools.viewertools import FLAG_LABELS
-from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
-from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
-from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_short_number
-from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_drag_header
+from artistools.viewertools import make_figscale_box
 from artistools.viewertools import make_flow_layout
 from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_glyph_button
-from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
 from artistools.viewertools import make_play_row
-from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_row_layout
-from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_slider
-from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
-from artistools.viewertools import make_window
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
@@ -134,10 +123,9 @@ from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_spin_value
-from artistools.viewertools import set_window_document
 from artistools.viewertools import show_status_message
-from artistools.viewertools import show_window
 from artistools.viewertools import start_play_timer
+from artistools.viewertools import start_viewer_window
 from artistools.viewertools import ViewerCommand
 
 if t.TYPE_CHECKING:
@@ -1796,7 +1784,6 @@ def run_viewer(tokens: "Sequence[str]") -> None:
 
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
     """Open a window of the viewer for the plotestimators arguments in tokens, or return the reason for no window."""
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from matplotlib.collections import QuadMesh
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -1804,29 +1791,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
-    window = make_window(APPLICATION_NAME)
-    set_window_document(window, viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
-    canvas = FigureCanvasQTAgg(viewer.fig)
-    viewer.darkcolours = get_dark_plot_colours()
-    if (message := viewer.draw(quiet=False)) is not None:
-        # the arguments of the user give the error, and the terminal shows it
-        if not windows:
-            raise SystemExit(1)
-        return message
-    windows.append(window)
-    add_recent_model(viewer.modelpath)
-
-    fittimer = make_timer(window, FIT_MILLISECONDS)
+    viewerwindow = start_viewer_window(
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
+    )
+    if isinstance(viewerwindow, str):
+        return viewerwindow
+    window, canvas, plotarea, panellayout, fittimer = viewerwindow
     playtimer = make_timer(window, 0)
-
-    def on_resize() -> None:
-        fit_canvas(canvas, viewer.figsize, plotarea)
-        # a new plot can take a few seconds, thus the plot takes the new shape only when the resize stops
-        fittimer.start()
-
-    plotarea = make_plot_area(canvas, on_resize)
-    sidebar, panellayout = make_sidebar()
-    make_central_splitter(window, plotarea, sidebar)
     helptexts = viewer.helptexts
 
     _, timegrid = add_section(panellayout, "Time")
@@ -2076,11 +2047,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     fontsizebox.setDecimals(2)
     fontsizebox.setSpecialValueText("default")
     fontsizebox.setToolTip(helptexts.get("labelfontsize", ""))
-    figscalebox = QtWidgets.QDoubleSpinBox()
-    figscalebox.setRange(0.1, 10.0)
-    figscalebox.setSingleStep(0.1)
-    figscalebox.setDecimals(2)
-    figscalebox.setToolTip(helptexts.get("figscale", ""))
+    figscalebox = make_figscale_box(helptexts)
     subplotsperrowbox = QtWidgets.QSpinBox()
     subplotsperrowbox.setRange(1, 12)
     subplotsperrowbox.setToolTip(helptexts.get("subplotsperrow", ""))
@@ -2093,8 +2060,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
 
     defaultdpi: int = viewer.parser.get_default("dpi")
-    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
-    _, optiongrid = add_section(panellayout, "Other options")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
     tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | RUN_DESTS
@@ -2107,17 +2072,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         runrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.runflags)
         queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *runrows)))
 
-    optiontable, set_option_rows = make_option_table(
-        window, viewer.parser, tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows
+    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
+        add_command_sections(
+            viewerwindow,
+            viewer,
+            viewer.parser,
+            viewer.values.dpi,
+            (tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows),
+        )
     )
-    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    commandtext, copybutton = add_command_section(panellayout)
-    pythontext, pythoncopybutton = add_copy_box(
-        panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
-    )
-    statusbar = make_status_bar(window)
-    # the first plot came before the status bar, and a user of the application sees no terminal
-    show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figuresection.dpibox,
@@ -2712,17 +2675,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     apply = queue.apply
 
-    def fit_figwidthscale() -> None:
-        """Give the plot the -figwidthscale that fills the plot area."""
-        figwidthscale = get_new_figwidthscale(
-            plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
-        )
-        if figwidthscale is not None:
-            # the window sets the width, thus Undo does not return to an old width
-            apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
-
-    fittimer.timeout.connect(fit_figwidthscale)
-
     def show_error(message: str) -> None:
         show_status_message(statusbar, message, "")
         show_values()
@@ -3292,15 +3244,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 show_error(message)
 
     def on_closed() -> None:
-        print(viewer.get_command())
         if queue.task is not None:
             print("The reload of the run continues to its end, and then the process ends")
-        queue.close()
         # each kept scan holds the metadata of its file, e.g. 7.6 MB for 3000 columns
         scan_parquet_file.cache_clear()
-        # the list holds a reference to each open window, thus Python does not delete the window. A closed window
-        # leaves the list
-        windows.remove(window)
 
     command = ViewerCommand(
         name="plotestimators",
@@ -3326,15 +3273,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
     )
     set_drop_handler(window, on_drop)
-    follow_colour_scheme(window, viewer, queue)
 
     # the window keeps its command at a quit, and the next start opens the window again
     def get_session_tokens() -> list[str]:
         # a command with no folder reads the working folder, and the next start can be in a different folder. The
         # folder takes the place of the folder of the command, because a folder after an empty -plot removes that -plot
         return viewer.get_plot_tokens(modeltoken=viewer.modeltoken or str(Path.cwd()))
-
-    window.setProperty("sessiontokens", get_session_tokens)
 
     timeslider.valueChanged.connect(on_time)
     widthslider.valueChanged.connect(on_width)
@@ -3380,7 +3324,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ).activated.connect(close_insert_field)
     addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
-    window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: get_plot_frames(viewer.fig),
@@ -3407,6 +3350,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ):
         QtGui.QShortcut(QtGui.QKeySequence(key), window).activated.connect(callback)
 
-    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
+    finish_viewer_window(
+        viewerwindow,
+        windows,
+        viewer,
+        queue,
+        viewer.get_command,
+        get_session_tokens,
+        (
+            viewer.get_fitted_figwidthscale,
+            lambda: viewer.values.figwidthscale,
+            lambda figwidthscale: apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False),
+        ),
+        on_closed,
+    )
     show_values()
     return None

@@ -1912,6 +1912,19 @@ def add_y_limits_row(
     return show_limits
 
 
+def make_figscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QDoubleSpinBox":
+    """Return the box of -figscale. A typed number applies when the user presses Return or leaves the box."""
+    from PySide6 import QtWidgets
+
+    figscalebox = QtWidgets.QDoubleSpinBox()
+    figscalebox.setRange(0.1, 10.0)
+    figscalebox.setSingleStep(0.1)
+    figscalebox.setDecimals(2)
+    figscalebox.setKeyboardTracking(False)
+    figscalebox.setToolTip(helptexts.get("figscale", ""))
+    return figscalebox
+
+
 def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
     """Return a box with the choices Linear and Log for the x axis. The index 1 gives --logscalex.
 
@@ -4552,6 +4565,146 @@ def reload_runs(
 
     if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", on_done):
         show_error("A different task is in progress. Reload the runs after it")
+
+
+class ViewerWindow(t.NamedTuple):
+    """The parts of a window of a viewer that start_viewer_window makes."""
+
+    window: "QtWidgets.QMainWindow"
+    canvas: "FigureCanvasQTAgg"
+    plotarea: "QtWidgets.QWidget"
+    # the layout of the sidebar, which takes the sections of the viewer
+    panellayout: "QtWidgets.QVBoxLayout"
+    # the timer that starts a new fit of the width of the figure when a resize stops
+    fittimer: "QtCore.QTimer"
+
+
+def start_viewer_window(
+    applicationname: str,
+    viewer: "PlotViewer[t.Any]",
+    draw: "Callable[..., str | None]",
+    windows: "list[QtWidgets.QMainWindow]",
+    document: tuple[Path, str],
+) -> ViewerWindow | str:
+    """Make the window of a viewer with its first plot, the plot area, and the sidebar.
+
+    draw is the draw method of the viewer. document gives the folder of the model and the title of the window. A first
+    plot that the command rejects gives its reason and no window. The terminal shows the whole error, and the first
+    window of a start then stops the process.
+    """
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+
+    window = make_window(applicationname)
+    set_window_document(window, *document)
+    canvas = FigureCanvasQTAgg(viewer.fig)
+    viewer.darkcolours = get_dark_plot_colours()
+    if (message := draw(quiet=False)) is not None:
+        if not windows:
+            raise SystemExit(1)
+        return message
+    windows.append(window)
+    add_recent_model(document[0])
+    fittimer = make_timer(window, FIT_MILLISECONDS)
+
+    def on_resize() -> None:
+        fit_canvas(canvas, viewer.figsize, plotarea)
+        # a new plot can take a few seconds, thus the plot takes the new shape only when the resize stops
+        fittimer.start()
+
+    plotarea = make_plot_area(canvas, on_resize)
+    sidebar, panellayout = make_sidebar()
+    make_central_splitter(window, plotarea, sidebar)
+    return ViewerWindow(window=window, canvas=canvas, plotarea=plotarea, panellayout=panellayout, fittimer=fittimer)
+
+
+class CommandSections(t.NamedTuple):
+    """The last sections of a window of a viewer: the figure, the other options, the command, and the Python code."""
+
+    figuresection: FigureSection
+    # the function that shows new rows in the table of the other options
+    set_option_rows: "Callable[[OptionRows], None]"
+    commandtext: "QtWidgets.QPlainTextEdit"
+    pythontext: "QtWidgets.QPlainTextEdit"
+    copybuttons: "tuple[QtWidgets.QPushButton, QtWidgets.QPushButton]"
+    statusbar: StatusBar
+
+
+def add_command_sections(
+    viewerwindow: ViewerWindow,
+    viewer: "PlotViewer[t.Any]",
+    parser: "SuggestingArgumentParser",
+    dpi: int | None,
+    table: "tuple[Collection[str], OptionRows, Callable[[OptionRows], None]]",
+) -> CommandSections:
+    """Add the Figure section, the table of the other options, the command, the Python code, and the status bar.
+
+    dpi is the -dpi of the values, or None for the default. table gives the options that the table hides, the rows of
+    the table, and the function that receives new rows.
+    """
+    window, panellayout = viewerwindow.window, viewerwindow.panellayout
+    defaultdpi: int = parser.get_default("dpi")
+    figuresection = add_figure_section(window, panellayout, dpi or defaultdpi)
+    _, optiongrid = add_section(panellayout, "Other options")
+    hiddendests, rows, on_rows = table
+    optiontable, set_option_rows = make_option_table(window, parser, hiddendests, rows, on_rows)
+    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
+    commandtext, copybutton = add_command_section(panellayout)
+    pythontext, pythoncopybutton = add_copy_box(
+        panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
+    )
+    statusbar = make_status_bar(window)
+    # the first plot came before the status bar, and a user of the application sees no terminal
+    show_status_message(statusbar, None, viewer.warning)
+    return CommandSections(
+        figuresection=figuresection,
+        set_option_rows=set_option_rows,
+        commandtext=commandtext,
+        pythontext=pythontext,
+        copybuttons=(copybutton, pythoncopybutton),
+        statusbar=statusbar,
+    )
+
+
+def finish_viewer_window(
+    viewerwindow: ViewerWindow,
+    windows: "list[QtWidgets.QMainWindow]",
+    viewer: "PlotViewer[t.Any]",
+    queue: "DrawQueue[t.Any]",
+    get_command: "Callable[[], str]",
+    get_session_tokens: "Callable[[], list[str]]",
+    fit: "tuple[Callable[[float, float], float], Callable[[], float], Callable[[float], None]]",
+    on_closed: "Callable[[], None] | None" = None,
+) -> None:
+    """Connect the parts that each window of a viewer has, then show the window.
+
+    - get_session_tokens gives the command that opens the window again at the next start.
+    - fit gives the -figwidthscale that fills an area, the current -figwidthscale, and the function that sets a new
+      one. The window sets it, thus Undo does not return to an old width.
+    - on_closed runs when the window closes, e.g. to clear the caches of a run.
+    """
+    window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
+    get_fitted, get_figwidthscale, set_figwidthscale = fit
+
+    def fit_figwidthscale() -> None:
+        figwidthscale = get_new_figwidthscale(plotarea, viewer.figsize, get_figwidthscale(), get_fitted)
+        if figwidthscale is not None:
+            set_figwidthscale(figwidthscale)
+
+    def on_window_closed() -> None:
+        print(get_command())
+        queue.close()
+        if on_closed is not None:
+            on_closed()
+        # the list holds a reference to each open window, thus Python does not delete the window. A closed window
+        # leaves the list
+        windows.remove(window)
+
+    viewerwindow.fittimer.timeout.connect(fit_figwidthscale)
+    follow_colour_scheme(window, viewer, queue)
+    # the window keeps its command at a quit, and the next start opens the window again
+    window.setProperty("sessiontokens", get_session_tokens)
+    window.destroyed.connect(on_window_closed)
+    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
 
 
 def get_new_figwidthscale(

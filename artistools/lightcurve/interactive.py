@@ -42,12 +42,9 @@ from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
-from artistools.viewertools import add_command_section
-from artistools.viewertools import add_copy_box
+from artistools.viewertools import add_command_sections
 from artistools.viewertools import add_default_options
 from artistools.viewertools import add_direction_section
-from artistools.viewertools import add_figure_section
-from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
@@ -59,17 +56,14 @@ from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
+from artistools.viewertools import finish_viewer_window
 from artistools.viewertools import fit_canvas
-from artistools.viewertools import FIT_MILLISECONDS
-from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
-from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_line_readouts
-from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_path_colours
@@ -77,18 +71,12 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
 from artistools.viewertools import get_short_number
-from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
-from artistools.viewertools import make_option_table
+from artistools.viewertools import make_figscale_box
 from artistools.viewertools import make_parser
-from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
 from artistools.viewertools import make_series_swatch
-from artistools.viewertools import make_sidebar
-from artistools.viewertools import make_status_bar
-from artistools.viewertools import make_timer
-from artistools.viewertools import make_window
 from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
@@ -108,11 +96,10 @@ from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
 from artistools.viewertools import set_series_rows
 from artistools.viewertools import set_spin_value
-from artistools.viewertools import set_window_document
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
-from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
+from artistools.viewertools import start_viewer_window
 from artistools.viewertools import ViewerCommand
 
 if t.TYPE_CHECKING:
@@ -622,7 +609,6 @@ def run_viewer(tokens: "Sequence[str]") -> None:
 
 def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
     """Open a window of the viewer for the plotlightcurves arguments in tokens, or return the reason for no window."""
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -631,32 +617,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = LightCurveViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
-    window = make_window(APPLICATION_NAME)
     # a command with no path reads the model of the working folder
     modelnames = [
         resolve_modelpath(path).name for path in viewer.values.lightcurves if not path_is_reference_lightcurve(path)
     ] or [resolve_modelpath(viewer.runfolders[0]).name]
-    set_window_document(window, viewer.runfolders[0], ", ".join(modelnames))
-    canvas = FigureCanvasQTAgg(viewer.fig)
-    viewer.darkcolours = get_dark_plot_colours()
-    if (message := viewer.draw(quiet=False)) is not None:
-        # the arguments of the user give the error, and the terminal shows it
-        if not windows:
-            raise SystemExit(1)
-        return message
-    windows.append(window)
-    add_recent_model(viewer.runfolders[0])
-
-    fittimer = make_timer(window, FIT_MILLISECONDS)
-
-    def on_resize() -> None:
-        fit_canvas(canvas, viewer.figsize, plotarea)
-        # a new plot takes up to 1 s, thus the plot takes the new shape only when the resize stops
-        fittimer.start()
-
-    plotarea = make_plot_area(canvas, on_resize)
-    sidebar, panellayout = make_sidebar()
-    make_central_splitter(window, plotarea, sidebar)
+    viewerwindow = start_viewer_window(
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.runfolders[0], ", ".join(modelnames))
+    )
+    if isinstance(viewerwindow, str):
+        return viewerwindow
+    window, canvas, plotarea, panellayout, fittimer = viewerwindow
     helptexts = viewer.helptexts
 
     _, lightcurvegrid = add_section(panellayout, "Light curves")
@@ -800,17 +770,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     _, appearancegrid = add_section(panellayout, "Appearance")
     # the box edits the row of -figscale in the other options, as the box of the other viewers does
-    figscalebox = QtWidgets.QDoubleSpinBox()
-    figscalebox.setRange(0.1, 10.0)
-    figscalebox.setSingleStep(0.1)
-    figscalebox.setDecimals(2)
-    figscalebox.setKeyboardTracking(False)
-    figscalebox.setToolTip(helptexts.get("figscale", ""))
+    figscalebox = make_figscale_box(helptexts)
     add_row(appearancegrid, 0, [QtWidgets.QLabel("-figscale"), figscalebox])
     defaultfigscale: float = viewer.parser.get_default("figscale")
     defaultdpi: int = viewer.parser.get_default("dpi")
-    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
-    _, optiongrid = add_section(panellayout, "Other options")
 
     def on_option_rows(rows: OptionRows) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows))
@@ -819,17 +782,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
         on_option_rows(set_row_values(viewer.values.otheroptions, {"-figscale": change}))
 
-    optiontable, set_option_rows = make_option_table(
-        window, viewer.parser, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows
+    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
+        add_command_sections(
+            viewerwindow,
+            viewer,
+            viewer.parser,
+            viewer.values.dpi,
+            (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+        )
     )
-    optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    commandtext, copybutton = add_command_section(panellayout)
-    pythontext, pythoncopybutton = add_copy_box(
-        panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
-    )
-    statusbar = make_status_bar(window)
-    # the first plot came before the status bar, and a user of the application sees no terminal
-    show_status_message(statusbar, None, viewer.warning)
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
@@ -994,17 +955,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         queue.apply(values, undoable=undoable)
-
-    def fit_figwidthscale() -> None:
-        """Give the plot the -figwidthscale that fills the plot area."""
-        figwidthscale = get_new_figwidthscale(
-            plotarea, viewer.figsize, viewer.values.figwidthscale, viewer.get_fitted_figwidthscale
-        )
-        if figwidthscale is not None:
-            # the window sets the width, thus Undo does not return to an old width
-            apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False)
-
-    fittimer.timeout.connect(fit_figwidthscale)
 
     def show_error(message: str) -> None:
         show_status_message(statusbar, message, "")
@@ -1181,13 +1131,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         ),
     )
 
-    def on_closed() -> None:
-        print(viewer.get_command())
-        queue.close()
-        # the list holds a reference to each open window, thus Python does not delete the window. A closed window
-        # leaves the list
-        windows.remove(window)
-
     def on_reload() -> None:
         """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
 
@@ -1245,15 +1188,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    follow_colour_scheme(window, viewer, queue)
-
     # the window keeps its command at a quit, and the next start opens the window again
     def get_session_tokens() -> list[str]:
         # a command with no path reads the working folder, and the next start can be in a different folder
         tokens = viewer.get_plot_tokens()
         return [str(Path.cwd()), *tokens] if viewer.values.lightcurves == DEFAULT_LIGHTCURVES else tokens
-
-    window.setProperty("sessiontokens", get_session_tokens)
 
     for checkbox in (pelletcheck, cmfcheck, invalidcheck):
         checkbox.toggled.connect(on_series)
@@ -1270,7 +1209,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     lumunitbox.currentIndexChanged.connect(on_axes)
     yscalebox.currentIndexChanged.connect(on_axes)
     figscalebox.valueChanged.connect(on_figscale)
-    window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=viewer.get_frames,
@@ -1284,6 +1222,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_tag=make_readout_tag(canvas),
     )
 
-    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
+    finish_viewer_window(
+        viewerwindow,
+        windows,
+        viewer,
+        queue,
+        viewer.get_command,
+        get_session_tokens,
+        (
+            viewer.get_fitted_figwidthscale,
+            lambda: viewer.values.figwidthscale,
+            lambda figwidthscale: apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False),
+        ),
+    )
     show_values()
     return None
