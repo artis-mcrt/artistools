@@ -28,6 +28,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import separate_trailing_folders
+from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
@@ -1092,62 +1093,42 @@ def get_series_name(path: str) -> str:
     return get_model_name(path)
 
 
+def get_series_value(values: "Sequence[str]", index: int) -> str | None:
+    """Return the value of a series style option for the spectrum at index, or None if the option gives none."""
+    value = values[index] if index < len(values) else None
+    return None if value == SERIES_DEFAULT else value
+
+
 def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
     """Return the colour of the plot of each spectrum, as plotspectra gives it."""
     isreference = [path_is_reference_spectrum(path) for path in spectra]
-    colours = get_series_colors(isreference, get_row_values(rows, "-color") or ())
+    usercolours = get_row_values(rows, "-color") or ()
+    colours = get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(spectra))])
     return dict(zip(spectra, colours, strict=True))
 
 
-def get_default_series_style(flag: str, path: str, colour: str) -> str:
-    """Return the value of a series style option that gives the same plot as no value for the spectrum."""
-    match flag:
-        case "-label":
-            return get_series_name(path)
-        case "-color":
-            return colour
-        case "-linestyle":
-            return "-"
-        case "-linewidth":
-            return "1.1" if path_is_reference_spectrum(path) else "1.3"
-        case "-linealpha":
-            return "1"
-        case _:
-            # a dash of 1 and a gap of 0 is a solid line
-            return "1,0"
+def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
+    """Return the values of a series style option in the order of the spectra, or None for no option.
 
-
-def fill_series_values(
-    flag: str, values: "Sequence[str | None]", spectra: "Sequence[str]", colours: dict[str, str]
-) -> tuple[str, ...] | None:
-    """Return the values of a series style option for the spectra, or None for no option.
-
-    The option gives its values in the order of the spectra. Thus a spectrum with no value can come before a spectrum
-    with a value. That spectrum then receives the value that gives the same plot as no value.
+    A spectrum with no value in front of a spectrum with a value takes the token SERIES_DEFAULT.
     """
     values = list(values)
     while values and values[-1] is None:
         values.pop()
-    if not values:
-        return None
-    return tuple(
-        value if value is not None else get_default_series_style(flag, path, colours.get(path, "k"))
-        for path, value in zip(spectra, values, strict=False)
-    )
+    return tuple(SERIES_DEFAULT if value is None else value for value in values) or None
 
 
 def move_series_styles(rows: OptionRows, oldspectra: "Sequence[str]", newspectra: "Sequence[str]") -> OptionRows:
     """Return the option rows with the value of each series style option on the same spectrum in the new list.
 
-    Thus a -label stays on its spectrum when the order changes. The values of a removed spectrum go out of the option rows.
+    Thus a -label stays on its spectrum when the order changes. The values of a removed spectrum go out of the rows.
     """
-    colours = get_series_colours(oldspectra, rows)
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
         if not (values := get_row_values(rows, flag)):
             continue
-        byspectrum = dict(zip(oldspectra, values, strict=False))
-        newvalues = fill_series_values(flag, [byspectrum.get(path) for path in newspectra], newspectra, colours)
+        byspectrum = {path: get_series_value(values, index) for index, path in enumerate(oldspectra)}
+        newvalues = get_series_tokens([byspectrum.get(path) for path in newspectra])
         if newvalues != values:
             changes[flag] = newvalues
     return set_row_values(rows, changes)
@@ -1155,12 +1136,13 @@ def move_series_styles(rows: OptionRows, oldspectra: "Sequence[str]", newspectra
 
 def set_series_label(values: ControlValues, path: str, label: str | None) -> ControlValues:
     """Return the values with a -label for one spectrum, or with no -label for it if label is None."""
-    labels: list[str | None] = list(get_row_values(values.otheroptions, "-label") or ())
-    labels += [None] * (len(values.spectra) - len(labels))
-    labels[values.spectra.index(path)] = label
-    colours = get_series_colours(values.spectra, values.otheroptions)
-    newlabels = fill_series_values("-label", labels, values.spectra, colours)
-    return dc.replace(values, otheroptions=set_row_values(values.otheroptions, {"-label": newlabels}))
+    labels = get_row_values(values.otheroptions, "-label") or ()
+    newlabels = [
+        label if other == path else get_series_value(labels, index) for index, other in enumerate(values.spectra)
+    ]
+    return dc.replace(
+        values, otheroptions=set_row_values(values.otheroptions, {"-label": get_series_tokens(newlabels)})
+    )
 
 
 def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
@@ -1887,7 +1869,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for index, path in enumerate(spectra):
             item = QtWidgets.QListWidgetItem()
             item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            name = labels[index] if index < len(labels) else get_series_name(path)
+            label = get_series_value(labels, index)
+            name = get_series_name(path) if label is None else label
             row = QtWidgets.QWidget()
             itemtext = get_spectrum_item_text(path)
             row.setToolTip(
@@ -1904,7 +1887,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             namelabel = QtWidgets.QLabel(name)
             namelabel.setToolTip(
                 f"The -label of the spectrum: {name}. Double-click the row to change it"
-                if index < len(labels)
+                if label is not None
                 else f"The name of the spectrum in the legend: {name}. Double-click the row to give it a -label"
             )
             rowlayout.addWidget(namelabel)
@@ -2488,14 +2471,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(set_runs(viewer, viewer.values.spectra, path))
 
     def on_edit_label(path: str) -> None:
-        """Ask for the -label of a spectrum. An empty label gives the name that plotspectra takes with no -label."""
+        """Ask for the -label of a spectrum. An empty label gives the automatic label of plotspectra."""
         labels = get_row_values(viewer.values.otheroptions, "-label") or ()
         index = viewer.values.spectra.index(path)
         label, accepted = QtWidgets.QInputDialog.getText(
             window,
             "Set Label",
-            f"The label of {get_series_name(path)} in the legend.\nClear the field to use the name of the spectrum.",
-            text=labels[index] if index < len(labels) else "",
+            f"The label of {get_series_name(path)} in the legend.\nClear the field for the automatic label.",
+            text=get_series_value(labels, index) or "",
         )
         if accepted:
             apply(set_series_label(viewer.values, path, label.strip() or None))

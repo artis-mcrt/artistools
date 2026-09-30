@@ -2505,8 +2505,8 @@ def test_interactive_time_grid_of_a_later_model() -> None:
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     """A new order of the spectra keeps each -label and each -color on its spectrum.
 
-    Each option gives its values in the order of the spectra. Thus a spectrum with no value can come before a spectrum
-    with a value. That spectrum then receives the value that gives the same plot as no value.
+    Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with a
+    value takes the token default, and plotspectra then gives it the automatic label, e.g. with the time.
     """
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
     oldspectra = (str(modelpath), reference, str(modelpath_classic_3d))
@@ -2514,19 +2514,19 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
 
     moved = interactive.move_series_styles(rows, oldspectra, newspectra)
-    classic3dcolour = interactive.get_series_colours(oldspectra, rows)[str(modelpath_classic_3d)]
-    assert dict(moved) == {
-        "-label": ("test-classicmode_3d", "SN2011fe +364d", "First"),
-        "-color": (classic3dcolour, "blue", "red"),
-    }
+    assert dict(moved) == {"-label": ("default", "default", "First"), "-color": ("default", "blue", "red")}
     # the values of a removed spectrum go out of the option rows
     assert dict(interactive.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
     labelled = interactive.set_series_label(viewer.values, reference, "Observed")
-    assert viewertools.get_row_values(labelled.otheroptions, "-label") == ("TEST MODEL", "Observed")
+    assert viewertools.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
+    assert viewer.change(labelled) is None
+    legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
+    assert legendlabels[1] == "Observed"
+    assert legendlabels[0].startswith("TEST MODEL +300")
     unlabelled = interactive.set_series_label(labelled, reference, None)
-    assert viewertools.get_row_values(unlabelled.otheroptions, "-label") == ("TEST MODEL",)
+    assert viewertools.get_row_values(unlabelled.otheroptions, "-label") is None
 
 
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
