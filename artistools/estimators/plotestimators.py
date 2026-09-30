@@ -2541,6 +2541,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
 
 
+@on_model_host
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
