@@ -885,7 +885,11 @@ def get_levelpop_modeldata(modelpath: Path) -> tuple[pl.DataFrame, float]:
 
 
 class RemoteEstimatorSource(t.NamedTuple):
-    """The selection of the estimators of a remote model, which each query of its IO source reads on the host."""
+    """The selection of the estimators of a remote model, which each query of its IO source reads on the host.
+
+    batchcaches holds the paths on the host. on_model_host maps no path inside a NamedTuple, thus these paths go back
+    to the host as they are.
+    """
 
     cells: tuple[int, ...] | None
     timesteps: tuple[int, ...] | None
@@ -1256,7 +1260,11 @@ def select_timesteps_and_cells(
 
 
 class EstimatorBatchCache(t.NamedTuple):
-    """The parquet cache of the estimators of one batch of MPI ranks in one run folder, or of all its ranks."""
+    """The parquet cache of the estimators of one batch of MPI ranks in one run folder, or of all its ranks.
+
+    For a remote run, the paths are the paths on the host. on_model_host maps no path inside a NamedTuple, thus a
+    window gives these caches back to the host as they are, and only the host reads them.
+    """
 
     runfolder: Path
     mpiranks: tuple[int, ...]

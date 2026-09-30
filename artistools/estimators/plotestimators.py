@@ -539,7 +539,6 @@ def plot_average_ionisation(
     return plans
 
 
-@on_model_host
 def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int], cells: Sequence[int]) -> pl.DataFrame:
     """Return the NLTE populations of the timesteps and the cells of the plot.
 
@@ -1279,7 +1278,7 @@ def get_xlist(
         if xstats.get("rowcount"):
             msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
             raise ValueError(msg)
-        raise ValueError(get_no_rows_message(timestepslist, args))
+        raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
@@ -1347,9 +1346,16 @@ def get_xlist(
     suffix = "_binned" if args.xbins else ""
     xlist, mgilist, timesteps = (stats[f"{column}{suffix}"] for column in ("xvalue", "modelgridindex", "timestep"))
     if not xlist:
-        raise ValueError(get_no_rows_message(timestepslist, args))
+        raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
     return xlist, mgilist, timesteps, estimators
+
+
+class NoEstimatorRowsError(ValueError):
+    """The estimators hold no row for the timesteps, the cells, and the x range of a plot.
+
+    The command then names the cells and the timesteps that hold data. The server sends this error back to the client.
+    """
 
 
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
@@ -2642,7 +2648,6 @@ def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]
 
 
 @on_model_host
-@on_model_host
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
@@ -2913,9 +2918,9 @@ def get_figures_data(
     """Return the data of each figure of the arguments, and the arguments that the data code changed.
 
     The host of a remote model runs this function, thus it reads the estimators there and only the data to draw
-    comes back. The data code changes some arguments, e.g. -xbins, and the client draws with the new values. The list
-    of figures is empty if the estimators hold no row for the selection. batchcaches gives the current parquet caches
-    of the run, e.g. for a window that draws many plots.
+    comes back. The data code changes some arguments, e.g. -xbins, and the client draws with the new values. A
+    selection with no row gives NoEstimatorRowsError. batchcaches gives the current parquet caches of the run, e.g. for
+    a window that draws many plots.
     """
     from artistools.misc.remote import is_plain_value
 
@@ -2926,10 +2931,6 @@ def get_figures_data(
         return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
 
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    # pl.len() lets projection pushdown read 2 columns. head(1) reads every column
-    if estimators.select(pl.len()).collect().item() == 0:
-        return [], get_changed_args()
-
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
@@ -2939,6 +2940,11 @@ def get_figures_data(
         return [figuredata], get_changed_args()
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
+    # get_xlist finds a line plot with no row in its statistics query, and an image has no such query. pl.len() lets
+    # projection pushdown read 2 columns
+    if args.dimensionreduce == 2 and estimators.select(pl.len()).collect().item() == 0:
+        raise NoEstimatorRowsError(get_no_rows_message(timesteps_included, args))
+
     # a gif needs one PNG frame for each timestep, because imageio reads PNG. Thus --makegif sets --multiplot and
     # -format png
     if args.makegif:
@@ -2976,8 +2982,6 @@ def draw_plot(
     modelpath, timesteps_included = resolve_plot_args(args)
     figures, changedargs = get_figures_data(modelpath, args, timesteps_included, batchcaches)
     vars(args).update(changedargs)
-    if not figures:
-        raise ValueError(get_no_rows_message(timesteps_included, args))
     draw_figure_data(figures[0], args, fig)
 
 
@@ -3007,11 +3011,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print_listing(args, get_plot_columns(modelpath, args, timesteps_included))
         return
 
-    figures, changedargs = get_figures_data(modelpath, args, timesteps_included)
-    vars(args).update(changedargs)
-    if not figures:
+    try:
+        figures, changedargs = get_figures_data(modelpath, args, timesteps_included)
+    except NoEstimatorRowsError:
         report_data_available(modelpath, classicartis=args.classicartis)
         return
+
+    vars(args).update(changedargs)
 
     if args.x in TIME_XVARIABLES:
         make_figure(figures[0], args)

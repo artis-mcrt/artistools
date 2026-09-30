@@ -24,9 +24,11 @@ import pytest
 import yaml
 
 import artistools as at
+from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
 from artistools.misc import fileio
+from artistools.misc import parse_cli_args
 from artistools.misc import remote
 
 
@@ -1360,6 +1362,16 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
                     ]
                 )
             assert [call.args[2] for call in mockcall.call_args_list].count("get_figures_data") == 1
+            # an empty selection comes back from the host as its own error, and the command then names the data
+            emptyargs = parse_cli_args(
+                plotestimators.addargs,
+                None,
+                None,
+                ["Te", str(remotepath), "-ts", "40", "-x", "velocity", "-xmin", "1e9"],
+            )
+            emptymodelpath, emptytimesteps = plotestimators.resolve_plot_args(emptyargs)
+            with pytest.raises(plotestimators.NoEstimatorRowsError):
+                plotestimators.get_figures_data(emptymodelpath, emptyargs, emptytimesteps)
             estimatorscore = sys.modules["artistools.estimators.core"]
             read_estimator_rows_on_host = estimatorscore.read_estimator_rows_on_host
             hostframes: list[pl.DataFrame] = []
