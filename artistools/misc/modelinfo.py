@@ -329,6 +329,7 @@ def get_runfolder_timesteps_with_restart(folderpath: Path) -> Sequence[int]:
     # this import runs at call time, because artistools.estimators imports artistools.misc
     from artistools.estimators import estimbatch_parquet_is_current
     from artistools.estimators import get_allranks_timesteps
+    from artistools.rustext import estimtimesteps
 
     if (allranks_timesteps := get_allranks_timesteps(folderpath)) is not None:
         return allranks_timesteps
@@ -357,8 +358,9 @@ def get_runfolder_timesteps_with_restart(folderpath: Path) -> Sequence[int]:
         None,
     )
     if estimfilepath is not None:
-        with zopen(estimfilepath) as estfile:
-            return sorted({int(line.split()[1]) for line in estfile if line.startswith("timestep ")})
+        # estimtimesteps reads a compressed file that a stopped job cut, as the parser does. Thus such a file stops no
+        # command that looks for the run folders
+        return estimtimesteps(estimfilepath)
 
     return ()
 

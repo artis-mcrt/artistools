@@ -342,7 +342,7 @@ struct TextPart {
 }
 
 /// Split the text of a reader into parts that end at the end of a cell. An empty line ends each cell, thus no
-/// cell spans two parts.
+/// cell spans two parts. The last part drops a cell that the end of the text cuts.
 struct TextParts<R: BufRead> {
     reader: R,
     nextlinenum: usize,
@@ -358,11 +358,17 @@ impl<R: BufRead> Iterator for TextParts<R> {
         }
         let firstlinenum = self.nextlinenum;
         let mut text = String::new();
+        // the end of the last empty line of the text, which is the end of the last complete cell
+        let mut cellsend = 0;
         loop {
             let linestart = text.len();
             match self.reader.read_line(&mut text) {
                 Ok(0) => {
                     self.finished = true;
+                    // A text that does not end with an empty line ends inside a cell. The decoder gives the complete
+                    // blocks of a zstd frame that a stopped job cut, and it gives no error. Thus the part removes the
+                    // cut cell, and the conversion then drops its timestep as incomplete.
+                    text.truncate(cellsend);
                     break;
                 }
                 Ok(_) => {
@@ -370,8 +376,11 @@ impl<R: BufRead> Iterator for TextParts<R> {
                     let lineisempty = text
                         .get(linestart..)
                         .is_some_and(|line| line.trim().is_empty());
-                    if lineisempty && text.len() >= ALLRANKS_PART_BYTES {
-                        break;
+                    if lineisempty {
+                        cellsend = text.len();
+                        if text.len() >= ALLRANKS_PART_BYTES {
+                            break;
+                        }
                     }
                 }
                 Err(err) => {
@@ -437,7 +446,7 @@ pub fn estimtimesteps(py: Python<'_>, filepath: PathBuf) -> PyResult<Vec<i32>> {
             let mut reader = BufReader::new(open_decompressed(&filepath)?);
             let mut timesteps = BTreeSet::new();
             let mut line = String::new();
-            let mut linenum = 0;
+            let mut linenum: usize = 0;
             while {
                 line.clear();
                 reader.read_line(&mut line)? > 0

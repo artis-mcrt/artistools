@@ -770,7 +770,11 @@ def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
     states = get_estimator_batch_states(modelpath, None, None)
     convert = partial(convert_estimator_batch_caches, verbose=False)
     if any(state.rebuild for state in states):
-        return call_in_child_process(convert, modelpath, states)
+        batchcaches = call_in_child_process(convert, modelpath, states)
+        # the conversion can drop an incomplete last timestep. The child process clears only its own copy of the
+        # timesteps that get_runfolders() read from the text
+        get_runfolder_timesteps_cached.cache_clear()
+        return batchcaches
     return convert(modelpath, states)
 
 

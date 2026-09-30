@@ -42,6 +42,7 @@ from artistools.misc.fileio import mtime_matches_stamp
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.modelinfo import get_nonempty_cellcounts
+from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.rustext import estimparse
 from artistools.rustext import estimparse_allranks
 from artistools.rustext import estimtimesteps
@@ -430,19 +431,34 @@ def get_estimator_textsource(folderpath: Path | str, mpiranks: Sequence[int]) ->
     over an older file of all ranks. The script of ARTIS can combine the files of a job that still runs. sn3d then adds
     timesteps to the files of the ranks, thus a newer file of a rank shows that the file of all ranks is stale.
     mpiranks gives the ranks that the files of the ranks must hold. An empty sequence checks no rank.
+
+    An incomplete set of files of the ranks cannot give a cache, e.g. when a user keeps only the file of rank 0. When no
+    cache holds their text, the file of all ranks then gives the cache. An existing cache stays, because the file of
+    all ranks can be older than the text of that cache.
     """
     rankfile_mtimes = get_textsource_mtimes(folderpath)
+    if mpiranks:
+        mtime, complete = get_batch_textsource_state(rankfile_mtimes, min(mpiranks), max(mpiranks))
+    else:
+        mtime, complete = max(rankfile_mtimes.values(), default=None), False
+
     textfile = get_allranks_textfile(folderpath)
     if textfile is not None:
         textfile_mtime = textfile.stat().st_mtime
         # no tolerance here: a rank file that sn3d wrote soon after the script combined the files holds more timesteps
         if not rankfile_mtimes or max(rankfile_mtimes.values()) <= textfile_mtime:
             return textfile, textfile_mtime, True
+        if mpiranks and not complete and not folder_has_estimator_cache(folderpath):
+            return textfile, textfile_mtime, True
 
-    if not mpiranks:
-        return None, max(rankfile_mtimes.values(), default=None), False
-    mtime, complete = get_batch_textsource_state(rankfile_mtimes, min(mpiranks), max(mpiranks))
     return None, mtime, complete
+
+
+def folder_has_estimator_cache(folderpath: Path | str) -> bool:
+    """Return True when a run folder holds a readable cache of all the estimators, or a batch cache."""
+    return parquet_is_readable(get_allranks_parquetpath(folderpath)) or any(
+        Path(folderpath).glob("estimbatch*.out.parquet*")
+    )
 
 
 # The name of a column of a quantity of one ion, e.g. gamma_R_Fe_II. The element "n" is the neutron.
@@ -453,12 +469,12 @@ PERION_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$"
 CACHEVERSION = 1
 
 
-def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
-    """Return the time of the last change of each rank's estimator file, keyed by MPI rank.
+def get_rank_textfiles(folderpath: Path | str) -> dict[int, Path]:
+    """Return the estimator file of each rank in a run folder, keyed by MPI rank.
 
     The glob finds the ranks, and the suffix order then selects one file for each rank: the same
     file that find_estimator_file() in rust/src/estimators.rs reads. A leftover sibling, e.g.
-    estimators_0000.out.bak beside estimators_0000.out, thus cannot decide the freshness.
+    estimators_0000.out.bak beside estimators_0000.out, thus has no effect.
     """
     folderpath = Path(folderpath)
     # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
@@ -467,14 +483,22 @@ def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
         for rankstr in (textfile.name.split("_")[1].split(".")[0] for textfile in folderpath.glob("estimators_*.out*"))
         if rankstr.isdigit()
     }
-    mtimes: dict[int, float] = {}
+    rankfiles: dict[int, Path] = {}
     for rank in sorted(ranks):
         rankfile = firstexisting_or_none(
             f"estimators_{rank:04d}.out", folder=folderpath, tryzipped=True, search_subfolders=False
         )
         if rankfile is not None:
-            mtimes[rank] = rankfile.stat().st_mtime
-    return mtimes
+            rankfiles[rank] = rankfile
+    return rankfiles
+
+
+def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
+    """Return the time of the last change of each rank's estimator file, keyed by MPI rank.
+
+    get_rank_textfiles selects the file of each rank, thus a leftover sibling cannot decide the freshness.
+    """
+    return {rank: rankfile.stat().st_mtime for rank, rankfile in get_rank_textfiles(folderpath).items()}
 
 
 def get_batch_textsource_state(
@@ -540,25 +564,26 @@ def get_textsource_name(textfile: Path | None) -> str:
     return "rank files" if textfile is None else "allranks file"
 
 
-def allranks_textsource_change(
-    parquetfilepath: Path, textfile: Path | None, textsource_mtime: float | None
-) -> str | None:
-    """Return the reason why the cache of all the estimators is stale when the form of its text changed, else None.
+def allranks_textsource_change(parquetfilepath: Path, runfolder: Path | str, textfile: Path | None) -> str | None:
+    """Return the reason why the cache of all the estimators is stale although its stamp is current, else None.
 
-    Two times of change within the tolerance of MTIME_TOLERANCE_S cannot show this change, e.g. when a user removes the
-    file of all ranks and sn3d then writes the files of the ranks. A cache without the stamp, or with no text, gives
-    no reason.
+    The tolerance of MTIME_TOLERANCE_S hides two changes of the text. The form of the text can change. For example, a
+    user removes the file of all ranks, and sn3d then writes the files of the ranks. sn3d can also write the rest of a
+    timestep that the conversion dropped as incomplete. The cache thus keeps the form of its text, and after a drop
+    also the size of its text. A cache without these stamps gives no reason.
     """
-    if textsource_mtime is None:
-        return None
     try:
-        foundsource = pl.read_parquet_metadata(parquetfilepath).get("textsource")
+        pqmetadata = pl.read_parquet_metadata(parquetfilepath)
     except (FileNotFoundError, pl.exceptions.PolarsError, OSError):
         return None
+    foundsource = pqmetadata.get("textsource")
     expectedsource = get_textsource_name(textfile)
-    if foundsource is None or foundsource == expectedsource:
-        return None
-    return f"the cache holds the {foundsource}, but the text is now the {expectedsource}"
+    if foundsource is not None and foundsource != expectedsource:
+        return f"the cache holds the {foundsource}, but the text is now the {expectedsource}"
+    stampedsize = pqmetadata.get("textsource_size")
+    if stampedsize is not None and (textsize := str(get_estimator_textsize(Path(runfolder), textfile))) != stampedsize:
+        return f"the text changed from {stampedsize} to {textsize} bytes after the conversion"
+    return None
 
 
 def allranks_parquet_is_current(folderpath: Path | str) -> bool:
@@ -575,7 +600,7 @@ def allranks_parquet_is_current(folderpath: Path | str) -> bool:
     rankmin, rankmax = pqmetadata.get("rank_min"), pqmetadata.get("rank_max")
     mpiranks = range(int(rankmin), int(rankmax) + 1) if rankmin is not None and rankmax is not None else ()
     textfile, textsource_mtime, textsource_complete = get_estimator_textsource(folderpath, mpiranks)
-    if textsource_complete and allranks_textsource_change(parquetfilepath, textfile, textsource_mtime) is not None:
+    if textsource_complete and allranks_textsource_change(parquetfilepath, folderpath, textfile) is not None:
         return False
     return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete)
 
@@ -604,7 +629,7 @@ def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
     return None if textfile is None else tuple(estimtimesteps(textfile))
 
 
-def read_estimator_text(modelpath: Path, state: "EstimatorBatchState") -> pl.DataFrame:
+def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
     """Read the estimator text of a cache: the estimator file of all ranks, or the files of the ranks of the cache.
 
     The cache of all the estimators holds the rows in the order of the timesteps and then of the cells, whatever the
@@ -624,49 +649,60 @@ def read_estimator_text(modelpath: Path, state: "EstimatorBatchState") -> pl.Dat
 
     if not state.allranks:
         return dfestimators
-    return drop_incomplete_last_timestep(
-        dfestimators.sort("timestep", "modelgridindex"), state.runfolder, get_nonempty_cellcounts(modelpath)
-    )
+    # sn3d and the script of ARTIS write the file of all ranks in this order. A sort copies every column, thus the
+    # reader sorts only a text in a different order, e.g. the files of the ranks
+    sortkey = pl.col("timestep").cast(pl.Int64) * 2**32 + pl.col("modelgridindex").cast(pl.Int64)
+    if dfestimators.select(sortkey).to_series().is_sorted():
+        return dfestimators
+    return dfestimators.sort("timestep", "modelgridindex")
 
 
 def get_estimator_textsize(runfolder: Path, textfile: Path | None) -> int:
-    """Return the size of the estimator text of a run folder: the file of all ranks, or the sum of the rank files."""
+    """Return the size of the estimator text of a run folder: the file of all ranks, or the sum of the rank files.
+
+    The sum takes only the file of each rank that the reader reads. Thus a leftover sibling, e.g.
+    estimators_0000.out.bak, has no effect on the sum.
+    """
     if textfile is not None:
         return textfile.stat().st_size
-    return sum(rankfile.stat().st_size for rankfile in runfolder.glob("estimators_[0-9]*.out*"))
+    return sum(rankfile.stat().st_size for rankfile in get_rank_textfiles(runfolder).values())
 
 
-def read_unchanged_estimator_text(
-    modelpath: Path, state: "EstimatorBatchState"
-) -> tuple[pl.DataFrame, "EstimatorBatchState"]:
+def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.DataFrame, "EstimatorBatchState", int]:
     """Read the estimator text of a cache, and read it again when a job changed the text during the read.
 
     sn3d can add a timestep to the text during the read. The time of the text then moves by less than the tolerance
     of the cache stamp, thus a cache with the earlier time would stay current without that timestep. The size of the
-    text shows such a change. The state that this function returns holds the time of the text before the last read.
-    After three reads with a change, the state holds a time of zero, which makes the cache stale at the next scan.
+    text shows such a change. The returned state holds the form and the time of the text before the last read. The
+    third value is the size of that text. After three reads with a change, the state holds a time of zero, which makes
+    the cache stale at the next scan.
     """
     for _ in range(3):
-        textsize = get_estimator_textsize(state.runfolder, state.textfile)
-        dfestimators = read_estimator_text(modelpath, state)
+        # the next read must not keep the large frame of the read before it in the memory
+        dfestimators = pl.DataFrame()
+        # the text source comes just before each read. A change before the read, e.g. while the conversion of an
+        # earlier run folder took minutes, thus needs no second read
         textfile, textsource_mtime, textsource_complete = get_estimator_textsource(state.runfolder, state.mpiranks)
-        if (
-            textfile == state.textfile
-            and get_estimator_textsize(state.runfolder, textfile) == textsize
-            and textsource_mtime is not None
-            and mtime_matches_stamp(str(state.textsource_mtime), textsource_mtime)
-        ):
-            return dfestimators, state
-        print("the text changed during the read.", flush=True)
         state = state._replace(
             textfile=textfile, textsource_mtime=textsource_mtime, textsource_complete=textsource_complete
         )
+        textsize = get_estimator_textsize(state.runfolder, textfile)
+        dfestimators = read_estimator_text(state)
+        textfile_after, textsource_mtime_after, _ = get_estimator_textsource(state.runfolder, state.mpiranks)
+        if (
+            textfile_after == textfile
+            and get_estimator_textsize(state.runfolder, textfile) == textsize
+            and textsource_mtime_after is not None
+            and mtime_matches_stamp(str(textsource_mtime), textsource_mtime_after)
+        ):
+            return dfestimators, state, textsize
+        print("the text changed during the read.", flush=True)
 
     print_warning(
         f"{state.runfolder}: the estimator text changed during each of three reads. The cache can lack the last"
         " timestep, thus artistools converts the text again at the next scan."
     )
-    return dfestimators, state._replace(textsource_mtime=0.0)
+    return dfestimators, state._replace(textsource_mtime=0.0), textsize
 
 
 def drop_incomplete_last_timestep(
@@ -695,7 +731,7 @@ def drop_incomplete_last_timestep(
     lasttimestep = cellcounts["timestep"][-1]
     print_warning(
         f"{runfolder}: timestep {lasttimestep} holds {cellcounts['len'][-1]} of {complete_cellcount} cells. The job"
-        " stopped during the write of this timestep, thus artistools drops it."
+        " stopped during the write of this timestep, or it still writes it, thus artistools drops it."
     )
     return dfestimators.filter(pl.col("timestep") != lasttimestep)
 
@@ -749,7 +785,15 @@ def get_estimators_parquetfile(
 
         time_start = time.perf_counter()
 
-        pldf_batch, state = read_unchanged_estimator_text(modelpath, state)
+        pldf_batch, state, textsize = read_unchanged_estimator_text(state)
+        nrowsread = pldf_batch.height
+        if state.allranks:
+            nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
+            if nonempty_cellcounts is not None and state.textfile is None:
+                # the files of the ranks give the cells of the ranks that the conversion reads, and not of every rank
+                readranks = set(state.mpiranks)
+                nonempty_cellcounts = {rank: count for rank, count in nonempty_cellcounts.items() if rank in readranks}
+            pldf_batch = drop_incomplete_last_timestep(pldf_batch, state.runfolder, nonempty_cellcounts)
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)
@@ -765,6 +809,9 @@ def get_estimators_parquetfile(
                 "rank_min": str(min(state.mpiranks)),
                 "rank_max": str(max(state.mpiranks)),
                 "textsource": get_textsource_name(state.textfile),
+                # a job that still runs can write the rest of a dropped timestep within the tolerance of the cache
+                # stamp. The size of the text then shows the change, see allranks_textsource_change()
+                **({"textsource_size": str(textsize)} if pldf_batch.height < nrowsread else {}),
             }
             if state.allranks
             else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
@@ -1114,10 +1161,10 @@ def get_estimator_batch_states(
         # get the identity of the cache before the check of its age. A rewrite replaces only the file that
         # the check saw. Thus a new cache that a different process writes after the check stays
         outdatedparquet = get_file_identity(cachepath)
-        # one metadata read of each cache gives its freshness to the progress bar and to the conversion
+        # one metadata read of each cache gives its freshness to the conversion
         stalereason = rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
         if stalereason is None and allranks and complete:
-            stalereason = allranks_textsource_change(cachepath, textfile, mtime)
+            stalereason = allranks_textsource_change(cachepath, runfolder, textfile)
         return EstimatorBatchState(
             runfolder=runfolder,
             batchindex=batchindex,
@@ -1130,7 +1177,7 @@ def get_estimator_batch_states(
             textsource_complete=complete,
             stalereason=stalereason,
             outdatedparquet=outdatedparquet,
-            # a conversion cannot rebuild some caches. Such a cache stays in use, thus it starts no progress bar
+            # a conversion cannot rebuild some caches. Such a cache stays in use, thus it counts as no conversion
             rebuild=stalereason is not None
             and not rankbatch_cache_cannot_be_rebuilt(cachepath, textsource_complete=complete),
         )
@@ -1138,7 +1185,8 @@ def get_estimator_batch_states(
     states: list[EstimatorBatchState] = []
     for runfolder in runfolders:
         textsource = get_estimator_textsource(runfolder, mpiranklist)
-        if textsource[0] is None and get_allranks_textfile(runfolder) is not None:
+        # incomplete files of the ranks do not make the file of all ranks stale, see get_estimator_textsource()
+        if textsource[0] is None and textsource[2] and get_allranks_textfile(runfolder) is not None:
             print_warning(
                 f"{runfolder}: a file of a rank is newer than {ALLRANKS_TEXTFILENAME}, thus artistools reads the files"
                 " of the ranks. Remove the stale file of all ranks, or combine the files of the ranks again."
@@ -1205,6 +1253,10 @@ def convert_estimator_batch_caches(
                 ),
             )
         )
+    if conversioncount > 0:
+        # get_runfolders() read the timesteps from the text before the conversion, which can drop an incomplete last
+        # timestep. The next call of get_runfolder_timesteps() then reads the timesteps of the new caches
+        get_runfolder_timesteps_cached.cache_clear()
     return batchcaches
 
 
@@ -1239,8 +1291,13 @@ def scan_artis_estimators(
     """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none.
 
     batchcaches gives the current caches of all the batches of the run. The scan then selects from them, and it
-    checks and converts no file.
+    checks and converts no file. When a different process removed one of these caches, the scan checks the caches of
+    the run again.
     """
+    if batchcaches is not None and not all(batchcache.parquetfile.is_file() for batchcache in batchcaches):
+        # the conversion of a different process can remove the batch caches of an earlier artistools version, because
+        # the cache of all the estimators replaces them. The scan thus checks the caches of the run again
+        batchcaches = None
     selectedcaches = (
         convert_estimator_batch_caches(
             modelpath, get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep), verbose

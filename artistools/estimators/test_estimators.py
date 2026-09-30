@@ -655,8 +655,9 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
     )
     assert at.rustext.estimtimesteps(allranksfile) == sorted(set(dfrank0["timestep"].to_list()))
 
+    # the empty line ends the bad text as it ends a cell. The reader drops a text after the last empty line as cut
     linecount = sum(copytext.count("\n") for copytext in copytexts)
-    write_zstd_frames(allranksfile, ["".join(copytexts), "populations Z=26  1: notanumber\n"])
+    write_zstd_frames(allranksfile, ["".join(copytexts), "populations Z=26  1: notanumber\n\n"])
     with pytest.raises(Exception, match=f"estimators_allranks.out.zst:{linecount + 1}: could not parse"):
         at.rustext.estimparse_allranks(allranksfile)
 
@@ -709,8 +710,8 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
 
     read_estimator_text = artistools.estimators.core.read_estimator_text
 
-    def read_during_a_write(modelpath: Path, state: t.Any) -> pl.DataFrame:
-        dfestimators = read_estimator_text(modelpath, state)
+    def read_during_a_write(state: artistools.estimators.core.EstimatorBatchState) -> pl.DataFrame:
+        dfestimators = read_estimator_text(state)
         if mockread.call_count == 1:
             write_zstd_frames(allranksfile, celltexts)
             os.utime(allranksfile, (1005.0, 1005.0))
@@ -807,6 +808,8 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
 
     Each timestep of a job holds the same cells, thus the conversion drops a last timestep with fewer cells.
     """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
     for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
         shutil.copy(modelpath / name, tmp_path / name)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
@@ -822,12 +825,258 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
         for modelgridindex in ((0,) if timestep == lasttimestep else (0, 1))
     ]
     write_zstd_frames(tmp_path / "estimators_allranks.out.zst", texts)
+    # get_runfolders() reads the timesteps from the text before the conversion
+    assert get_runfolder_timesteps(tmp_path)[-1] == lasttimestep
 
     at.estimators.scan_estimators(tmp_path).collect()
     dfestim = pl.read_parquet(tmp_path / "estimators_allranks.out.parquet")
     assert lasttimestep not in dfestim["timestep"].to_list()
     assert dfestim["timestep"].n_unique() == len(celltexts) - 1
     assert dfestim.height == 2 * (len(celltexts) - 1)
+    # the conversion clears the timesteps that the process read before it, thus the list agrees with the cache
+    assert lasttimestep not in get_runfolder_timesteps(tmp_path)
+
+
+def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_path: Path) -> None:
+    """sn3d can write the rest of a timestep that a conversion dropped, within the tolerance of the cache stamp.
+
+    The cache then keeps the size of its text, and a new size makes the cache stale. The text of a job that stopped
+    keeps its size, thus the next scan converts nothing.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    # rank 0 wrote its frame of the last timestep, and the frame of rank 1 comes 10 s later
+    lasttimestep = len(celltexts) - 1
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(
+        allranksfile,
+        [
+            relabel(celltext, modelgridindex)
+            for timestep, celltext in enumerate(celltexts)
+            for modelgridindex in ((0,) if timestep == lasttimestep else (0, 1))
+        ],
+    )
+    os.utime(allranksfile, (1000.0, 1000.0))
+    cachefile = tmp_path / "estimators_allranks.out.parquet"
+    at.estimators.scan_estimators(tmp_path).collect()
+    assert lasttimestep not in pl.read_parquet(cachefile)["timestep"].to_list()
+
+    cachemtime = cachefile.stat().st_mtime_ns
+    at.estimators.scan_estimators(tmp_path).collect()
+    assert cachefile.stat().st_mtime_ns == cachemtime
+
+    write_zstd_frames(
+        allranksfile, [relabel(celltext, modelgridindex) for celltext in celltexts for modelgridindex in (0, 1)]
+    )
+    os.utime(allranksfile, (1010.0, 1010.0))
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert dfestim.filter(pl.col("timestep") == lasttimestep).height == 2
+    assert lasttimestep in get_runfolder_timesteps(tmp_path)
+
+
+def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path: Path) -> None:
+    """A job that stops during the write of the file of all ranks can leave a text that ends inside a cell.
+
+    The zstd decoder gives the complete blocks of a cut frame and no error. The reader must drop the cut cell, thus each
+    row that it gives holds the values of the complete text.
+    """
+    celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
+    ranktexts = [
+        "".join(
+            celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+            for modelgridindex in range(rank * 300, (rank + 1) * 300)
+        )
+        for rank in range(2)
+    ]
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, ["", ranktexts[0]])
+    lastframestart = allranksfile.stat().st_size
+    write_zstd_frames(allranksfile, ["", *ranktexts])
+    completebytes = allranksfile.read_bytes()
+    dfcomplete = at.rustext.estimparse_allranks(allranksfile)
+    assert dfcomplete.height == 600
+
+    # the cut points lie in each block of the frame of the last rank
+    for cutbyte in range(lastframestart + 1, len(completebytes), (len(completebytes) - lastframestart) // 7):
+        allranksfile.write_bytes(completebytes[:cutbyte])
+        dfcut = at.rustext.estimparse_allranks(allranksfile)
+        assert dfcut.height >= 300
+        pltest.assert_frame_equal(dfcut, dfcomplete.head(dfcut.height).select(dfcut.columns))
+
+    # a plain text of a build without libzstd ends inside a line of the last cell
+    plainfile = tmp_path / "estimators_allranks.out"
+    completetext = "".join(ranktexts)
+    plainfile.write_text(
+        completetext[: completetext.rindex("populations")] + "populations        Z=26  1: 1.2", encoding="utf-8"
+    )
+    dfplain = at.rustext.estimparse_allranks(plainfile)
+    pltest.assert_frame_equal(dfplain, dfcomplete.head(599).select(dfplain.columns))
+
+
+def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_path: Path) -> None:
+    """A window keeps the batch caches of an earlier artistools version, and a different process can remove them.
+
+    The conversion of that process writes the cache of all ranks and removes the batch caches. The next scan of the
+    window must then read the new cache, and not stop at a missing file.
+    """
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.estimators.core import convert_estimator_batch_caches
+    from artistools.estimators.core import get_estimator_batch_states
+    from artistools.misc import write_parquet_atomic
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    rankfile = tmp_path / "estimators_0000.out"
+    os.utime(rankfile, (1000.0, 1000.0))
+    batchcachefile = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
+    dfbatch = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
+    write_parquet_atomic(
+        dfbatch, batchcachefile, metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1000.0"}
+    )
+    keptcaches = convert_estimator_batch_caches(
+        tmp_path, get_estimator_batch_states(tmp_path, None, None), verbose=False
+    )
+    assert [keptcache.parquetfile for keptcache in keptcaches] == [batchcachefile]
+
+    # sn3d writes the file of rank 0 again, and the conversion of a different process removes the batch cache
+    os.utime(rankfile, (5000.0, 5000.0))
+    get_runfolder_timesteps_cached.cache_clear()
+    at.estimators.scan_estimators(tmp_path).collect()
+    assert not batchcachefile.exists()
+
+    dfestim = at.estimators.scan_estimators(tmp_path, batchcaches=keptcaches).collect()
+    assert dfestim["timestep"].n_unique() == dfbatch["timestep"].n_unique()
+
+
+def write_model_of_two_cells(folder: Path, nprocs: int) -> None:
+    """Write a model of two cells, which modelgridrankassignments.out gives to two ranks, with nprocs in input.txt."""
+    for name in ("abundances.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, folder / name)
+    (folder / "model.txt").write_text(
+        "2\n0.00115740740741\n"
+        "1   4000.   -0.18   1.0   0.9   0.0   0.0   0.0\n"
+        "2   8000.   -0.18   1.0   0.9   0.0   0.0   0.0\n",
+        encoding="utf-8",
+    )
+    inputlines = (modelpath / "input.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    valuelineindices = [
+        index for index, line in enumerate(inputlines) if line.strip() and not line.lstrip().startswith("#")
+    ]
+    inputlines[valuelineindices[21]] = f"{nprocs}\n"
+    (folder / "input.txt").write_text("".join(inputlines), encoding="utf-8")
+    (folder / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
+
+
+def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path: Path) -> None:
+    """A user can keep only the file of rank 0, and a copy can make it newer than the file of all ranks.
+
+    The files of the ranks are then incomplete, thus they cannot give a cache. With no cache, the file of all ranks
+    gives it. An existing cache stays, because a stale file of all ranks can hold fewer timesteps than that cache.
+    """
+    write_model_of_two_cells(tmp_path, nprocs=2)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(
+        allranksfile, [relabel(celltext, modelgridindex) for celltext in celltexts[:40] for modelgridindex in (0, 1)]
+    )
+    os.utime(allranksfile, (1000.0, 1000.0))
+    rankfiles = [tmp_path / f"estimators_{rank:04d}.out" for rank in (0, 1)]
+    rankfiles[0].write_text("".join(celltexts), encoding="utf-8")
+    os.utime(rankfiles[0], (2000.0, 2000.0))
+
+    cachefile = tmp_path / "estimators_allranks.out.parquet"
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert dfestim["timestep"].n_unique() == 40
+    assert dfestim.height == 80
+    assert pl.read_parquet_metadata(cachefile)["textsource"] == "allranks file"
+
+    # the complete files of the ranks, e.g. after the script of ARTIS combined them while the job ran, give the cache
+    rankfiles[1].write_text("".join(relabel(celltext, 1) for celltext in celltexts), encoding="utf-8")
+    for rankfile in rankfiles:
+        os.utime(rankfile, (3000.0, 3000.0))
+    assert at.estimators.scan_estimators(tmp_path).collect().height == 2 * len(celltexts)
+    assert pl.read_parquet_metadata(cachefile)["textsource"] == "rank files"
+
+    # a user then removes the file of rank 1, and the cache with all the timesteps stays
+    rankfiles[1].unlink()
+    assert at.estimators.scan_estimators(tmp_path).collect().height == 2 * len(celltexts)
+    assert pl.read_parquet_metadata(cachefile)["textsource"] == "rank files"
+
+
+def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tmp_path: Path) -> None:
+    """The conversion reads the files of the ranks that input.txt gives, and each timestep holds only their cells.
+
+    A last timestep with all the cells of these ranks is complete, also when modelgridrankassignments.out names more
+    ranks.
+    """
+    write_model_of_two_cells(tmp_path, nprocs=1)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    (tmp_path / "estimators_0000.out").write_text("".join(celltexts), encoding="utf-8")
+    (tmp_path / "estimators_0001.out").write_text(
+        "".join(celltext.replace("modelgridindex 0 ", "modelgridindex 1 ", 1) for celltext in celltexts),
+        encoding="utf-8",
+    )
+
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert dfestim["timestep"].n_unique() == len(celltexts)
+
+
+def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Path) -> None:
+    """The text can change after the check of the caches and before the read, e.g. during an earlier conversion.
+
+    Such a text needs one read, and the cache gets the time that the text had at that read.
+    """
+    import artistools.estimators.core
+    from artistools.estimators.core import convert_estimator_batch_caches
+    from artistools.estimators.core import get_estimator_batch_states
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, celltexts[:40])
+    os.utime(allranksfile, (1000.0, 1000.0))
+    states = get_estimator_batch_states(tmp_path, None, None)
+
+    write_zstd_frames(allranksfile, celltexts)
+    os.utime(allranksfile, (2000.0, 2000.0))
+    with mock.patch.object(
+        artistools.estimators.core, "read_estimator_text", wraps=artistools.estimators.core.read_estimator_text
+    ) as mockread:
+        convert_estimator_batch_caches(tmp_path, states, verbose=False)
+
+    assert mockread.call_count == 1
+    cachefile = tmp_path / "estimators_allranks.out.parquet"
+    assert pl.read_parquet_metadata(cachefile)["textsource_mtime"] == "2000.0"
+    assert pl.read_parquet(cachefile)["timestep"].n_unique() == len(celltexts)
+
+
+def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(tmp_path: Path) -> None:
+    """A job that stops during a write can leave a file of a rank that ends inside a zstd frame.
+
+    The timesteps of the run folder then come from the complete frames, as the parser reads them. The cut file must
+    not stop the commands that look for the run folders.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    rankfile = tmp_path / "estimators_0000.out.zst"
+    write_zstd_frames(rankfile, celltexts)
+    rankfile.write_bytes(rankfile.read_bytes()[:-10])
+
+    assert get_runfolder_timesteps(tmp_path) == tuple(range(len(celltexts) - 1))
 
 
 def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_path: Path) -> None:
