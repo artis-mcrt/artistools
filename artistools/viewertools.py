@@ -36,6 +36,7 @@ from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc import write_gif
+from artistools.misc.cliutils import dashes_arg
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.plottools import ExponentLabelFormatter
@@ -1296,6 +1297,232 @@ GLYPH_BUTTON_STYLE: t.Final = (
 # the space between the rows of a section, and the space in front of a group, e.g. a label, that follows a control
 ROW_SPACING: t.Final = 6
 LABEL_GAP: t.Final = 12
+
+
+# the line styles of the style dialog: the value of -linestyle and the text of the box
+LINESTYLE_CHOICES: t.Final = (("solid", "Solid"), ("dashed", "Dashed"), ("dotted", "Dotted"), ("dashdot", "Dash-dot"))
+
+# the short names of the line styles of matplotlib, which a command can also give
+LINESTYLE_ALIASES: t.Final = MappingProxyType({"-": "solid", "--": "dashed", ":": "dotted", "-.": "dashdot"})
+
+
+def get_dash_pattern(linestyle: str | None, dashes: str | None) -> list[float] | None:
+    """Return the dash pattern of a line in units of its width, as matplotlib draws it, or None for a solid line.
+
+    -dashes gives the pattern and replaces the line style. matplotlib scales a pattern by the width of the line, and a
+    pattern of Qt has the same unit.
+    """
+    import matplotlib as mpl
+
+    if dashes:
+        with contextlib.suppress(ValueError, argparse.ArgumentTypeError):
+            return list(dashes_arg(dashes))
+    match LINESTYLE_ALIASES.get(linestyle or "", linestyle or "solid"):
+        case "dashed":
+            pattern = mpl.rcParams["lines.dashed_pattern"]
+        case "dotted":
+            pattern = mpl.rcParams["lines.dotted_pattern"]
+        case "dashdot":
+            pattern = mpl.rcParams["lines.dashdot_pattern"]
+        case _:
+            return None
+    return [float(length) for length in pattern]
+
+
+def make_line_swatch(
+    colour: str, alpha: float, linewidth: float, dashpattern: "Sequence[float] | None"
+) -> "QtGui.QPixmap":
+    """Return a short image of a line with the colour, the opacity, the width, and the dash pattern of a series."""
+    import matplotlib.colors as mplcolors
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    width, height = 36, 14
+    ratio = QtWidgets.QApplication.primaryScreen().devicePixelRatio() if QtWidgets.QApplication.primaryScreen() else 1.0
+    pixmap = QtGui.QPixmap(round(width * ratio), round(height * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    red, green, blue = (round(255 * part) for part in mplcolors.to_rgb(colour))
+    pen = QtGui.QPen(QtGui.QColor(red, green, blue, round(255 * alpha)))
+    # a very wide line fills the image, thus the width stays inside the height of the image
+    pen.setWidthF(min(max(linewidth, 0.5), 5.0))
+    # matplotlib ends each dash with no cap, and the square cap of Qt closes a short gap
+    pen.setCapStyle(QtCore.Qt.PenCapStyle.FlatCap)
+    if dashpattern:
+        pen.setDashPattern(list(dashpattern))
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    painter.setPen(pen)
+    painter.drawLine(QtCore.QPointF(2.0, height / 2.0), QtCore.QPointF(width - 2.0, height / 2.0))
+    painter.end()
+    return pixmap
+
+
+# the options of the style dialog of a series, which each give one value for each series
+SERIES_LINE_FLAGS: t.Final = ("-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
+
+
+def edit_series_style(
+    parent: "QtWidgets.QWidget",
+    name: str,
+    style: "Mapping[str, str | None]",
+    defaultcolour: str,
+    defaultlinewidth: float,
+) -> dict[str, str | None] | None:
+    """Ask for the line style of one series, and return the value of each option of SERIES_LINE_FLAGS.
+
+    style gives the current value of each option, or None for the default of the command. A field with the default
+    gives None, thus the command then gives the series no value. A cancelled dialog gives None.
+    """
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle(f"Style of {name}")
+    form = QtWidgets.QFormLayout(dialog)
+    chosencolour: list[str | None] = [style.get("-color")]
+
+    colourbutton = QtWidgets.QPushButton()
+    colourbutton.setToolTip("Select the colour of the line (-color)")
+    defaultcolourbutton = QtWidgets.QPushButton("Default")
+    defaultcolourbutton.setToolTip("Give the line the colour of the command")
+    colourrow = QtWidgets.QHBoxLayout()
+    colourrow.addWidget(colourbutton, 1)
+    colourrow.addWidget(defaultcolourbutton)
+    form.addRow("Colour:", colourrow)
+
+    linestylebox = QtWidgets.QComboBox()
+    linestylebox.addItem("Default", None)
+    for value, text in LINESTYLE_CHOICES:
+        linestylebox.addItem(text, value)
+    linestyle = style.get("-linestyle")
+    linestylebox.setCurrentIndex(max(linestylebox.findData(LINESTYLE_ALIASES.get(linestyle or "", linestyle)), 0))
+    linestylebox.setToolTip("The line style (-linestyle). A dash pattern replaces it")
+    form.addRow("Line style:", linestylebox)
+
+    dashesedit = QtWidgets.QLineEdit(style.get("-dashes") or "")
+    dashesedit.setPlaceholderText("none, e.g. 5,2")
+    dashesedit.setToolTip(
+        "The lengths of each dash and each gap in units of the line width (-dashes), e.g. 5,2. The pattern replaces"
+        " the line style"
+    )
+    form.addRow("Dash pattern:", dashesedit)
+
+    def make_default_spinbox(high: float, step: float, value: str | None, tooltip: str) -> QtWidgets.QDoubleSpinBox:
+        # the lowest value of the box shows "Default", which gives the series no value
+        box = QtWidgets.QDoubleSpinBox()
+        box.setRange(0.0, high)
+        box.setSingleStep(step)
+        box.setDecimals(2)
+        box.setSpecialValueText("Default")
+        box.setValue(float(value) if value else 0.0)
+        box.setToolTip(tooltip)
+        return box
+
+    widthbox = make_default_spinbox(10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)")
+    form.addRow("Width:", widthbox)
+    alphabox = make_default_spinbox(
+        1.0, 0.05, style.get("-linealpha"), "The opacity of the line, from 0 (clear) to 1 (opaque) (-linealpha)"
+    )
+    form.addRow("Opacity:", alphabox)
+
+    previewlabel = QtWidgets.QLabel()
+    form.addRow("Preview:", previewlabel)
+    errorlabel = QtWidgets.QLabel()
+    errorlabel.setStyleSheet("color: red;")
+    errorlabel.hide()
+    form.addRow(errorlabel)
+
+    buttons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.StandardButton.Ok
+        | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        | QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults
+    )
+    form.addRow(buttons)
+
+    def get_dashes() -> str | None:
+        """Return the dash pattern of the field, or None for an empty field. Raise ValueError for a bad pattern."""
+        text = dashesedit.text().strip()
+        if not text:
+            return None
+        try:
+            return ",".join(format(length, "g") for length in dashes_arg(text))
+        except argparse.ArgumentTypeError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def show_preview() -> None:
+        colour = chosencolour[0] or defaultcolour
+        colourbutton.setIcon(QtGui.QIcon(make_line_swatch(colour, 1.0, 5.0, None)))
+        colourbutton.setText(colour if chosencolour[0] else f"Default ({colour})")
+        try:
+            dashes = get_dashes()
+        except ValueError as exc:
+            errorlabel.setText(str(exc))
+            errorlabel.show()
+            dashes = None
+        else:
+            errorlabel.hide()
+        previewlabel.setPixmap(
+            make_line_swatch(
+                colour,
+                alphabox.value() or 1.0,
+                widthbox.value() or defaultlinewidth,
+                get_dash_pattern(linestylebox.currentData(), dashes),
+            )
+        )
+
+    def on_colour() -> None:
+        colour = QtWidgets.QColorDialog.getColor(QtGui.QColor(chosencolour[0] or defaultcolour), dialog, "Line colour")
+        if colour.isValid():
+            chosencolour[0] = colour.name()
+            show_preview()
+
+    def on_default_colour() -> None:
+        chosencolour[0] = None
+        show_preview()
+
+    def on_restore_defaults() -> None:
+        chosencolour[0] = None
+        linestylebox.setCurrentIndex(0)
+        dashesedit.clear()
+        widthbox.setValue(0.0)
+        alphabox.setValue(0.0)
+        show_preview()
+
+    def on_accept() -> None:
+        # a bad dash pattern keeps the dialog open, and the red text gives the reason
+        try:
+            get_dashes()
+        except ValueError:
+            dashesedit.setFocus()
+            return
+        dialog.accept()
+
+    colourbutton.clicked.connect(on_colour)
+    defaultcolourbutton.clicked.connect(on_default_colour)
+    linestylebox.currentIndexChanged.connect(show_preview)
+    dashesedit.textChanged.connect(show_preview)
+    widthbox.valueChanged.connect(show_preview)
+    alphabox.valueChanged.connect(show_preview)
+    buttons.accepted.connect(on_accept)
+    buttons.rejected.connect(dialog.reject)
+    if (restorebutton := buttons.button(QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults)) is not None:
+        restorebutton.clicked.connect(on_restore_defaults)
+    show_preview()
+
+    accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    # the parent keeps its children until it closes, thus the dialog goes when the event loop runs again
+    dialog.deleteLater()
+    if not accepted:
+        return None
+    return {
+        "-color": chosencolour[0],
+        "-linestyle": linestylebox.currentData(),
+        "-dashes": get_dashes(),
+        "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
+        "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
+    }
 
 
 def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":

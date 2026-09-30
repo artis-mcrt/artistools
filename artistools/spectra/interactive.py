@@ -9,6 +9,7 @@ import typing as t
 from functools import partial
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
@@ -59,6 +60,7 @@ from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_figure_of_command
 from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
+from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
@@ -67,6 +69,7 @@ from artistools.viewertools import fix_title_position
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
+from artistools.viewertools import get_dash_pattern
 from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
@@ -89,6 +92,7 @@ from artistools.viewertools import make_completer
 from artistools.viewertools import make_elided_label
 from artistools.viewertools import make_fps_box
 from artistools.viewertools import make_glyph_button
+from artistools.viewertools import make_line_swatch
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
@@ -131,6 +135,7 @@ from artistools.viewertools import start_play_timer
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -1106,15 +1111,28 @@ def move_series_styles(rows: OptionRows, oldspectra: "Sequence[str]", newspectra
     return set_row_values(rows, changes)
 
 
-def set_series_label(values: ControlValues, path: str, label: str | None) -> ControlValues:
-    """Return the values with a -label for one spectrum, or with no -label for it if label is None."""
-    labels = get_row_values(values.otheroptions, "-label") or ()
-    newlabels = [
-        label if other == path else get_series_value(labels, index) for index, other in enumerate(values.spectra)
-    ]
-    return dc.replace(
-        values, otheroptions=set_row_values(values.otheroptions, {"-label": get_series_tokens(newlabels)})
-    )
+def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, str | None]") -> ControlValues:
+    """Return the values with the value of each series style option in changes for one spectrum.
+
+    changes gives each option by its flag, e.g. -label. A value of None gives the spectrum the default of plotspectra,
+    and the other spectra keep their values.
+    """
+    rowchanges: dict[str, tuple[str, ...] | None] = {}
+    for flag, value in changes.items():
+        oldvalues = get_row_values(values.otheroptions, flag) or ()
+        newvalues = [
+            value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(values.spectra)
+        ]
+        rowchanges[flag] = get_series_tokens(newvalues)
+    return dc.replace(values, otheroptions=set_row_values(values.otheroptions, rowchanges))
+
+
+def get_series_style(values: ControlValues, path: str) -> dict[str, str | None]:
+    """Return the value of each series style option of one spectrum, or None where it takes the default."""
+    index = values.spectra.index(path)
+    return {
+        flag: get_series_value(get_row_values(values.otheroptions, flag) or (), index) for flag in SERIES_STYLE_FLAGS
+    }
 
 
 def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
@@ -1820,6 +1838,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             ("Move to Bottom", index < len(spectra) - 1, partial(on_move_row, index, len(spectra) - 1 - index)),
             ("Use for the Time Controls", ismodel and path != gridpath, partial(on_use_timegrid, path)),
             ("Set Label…", True, partial(on_edit_label, path)),
+            ("Set Style…", True, partial(on_edit_style, path)),
             ("Copy Path", True, partial(on_copy_path, path)),
             ("Open Folder", islocal, partial(on_open_spectrum_folder, path)),
             ("Remove", path not in viewer.runtimes or len(viewer.runtimes) > 1, partial(on_remove_spectrum, path)),
@@ -1858,9 +1877,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             rowlayout.setContentsMargins(4, 0, 2, 0)
             rowlayout.setSpacing(2)
             rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
-            swatch = QtWidgets.QLabel("━━")
-            swatch.setStyleSheet(f"color: {mplcolors.to_hex(colours[path])};")
-            swatch.setToolTip("The colour of the spectrum in the plot")
+            style = get_series_style(values, path)
+            swatch = QtWidgets.QToolButton()
+            swatch.setAutoRaise(True)
+            swatch.setIconSize(QtCore.QSize(36, 14))
+            swatch.setIcon(
+                QtGui.QIcon(
+                    make_line_swatch(
+                        mplcolors.to_hex(colours[path]),
+                        float(style["-linealpha"] or 1.0),
+                        float(style["-linewidth"] or mpl.rcParams["lines.linewidth"]),
+                        get_dash_pattern(style["-linestyle"], style["-dashes"]),
+                    )
+                )
+            )
+            swatch.setToolTip("The colour and the line style of the spectrum in the plot. Click to change them")
+            swatch.setAccessibleName(f"Set the style of {name}")
+            swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(on_edit_style, path)))
             rowlayout.addWidget(swatch)
             namelabel = QtWidgets.QLabel(name)
             namelabel.setToolTip(
@@ -2465,7 +2498,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             text=get_series_value(labels, index) or "",
         )
         if accepted:
-            apply(set_series_label(viewer.values, path, label.strip() or None))
+            apply(set_series_values(viewer.values, path, {"-label": label.strip() or None}))
+
+    def on_edit_style(path: str) -> None:
+        """Ask for the colour, the line style, the width, and the opacity of the line of a spectrum."""
+        values = viewer.values
+        if path not in values.spectra:
+            return
+        # the colour of the dialog for "Default" is the colour that the spectrum has with no -color of its own
+        defaultcolours = get_series_colours(
+            values.spectra, set_series_values(values, path, {"-color": None}).otheroptions
+        )
+        style = get_series_style(values, path)
+        name = style["-label"] or get_series_name(path)
+        changes = edit_series_style(
+            window, name, style, mplcolors.to_hex(defaultcolours[path]), float(mpl.rcParams["lines.linewidth"])
+        )
+        if changes is not None:
+            apply(set_series_values(viewer.values, path, changes))
 
     def on_copy_path(path: str) -> None:
         copy_text(str(get_spectrum_path(path)))

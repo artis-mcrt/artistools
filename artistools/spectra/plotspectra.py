@@ -1225,9 +1225,11 @@ def plot_reference_spectra(
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
-            plotkwargs.pop("linewidth", None)
-            if args.linewidth[index]:
-                plotkwargs["linewidth"] = args.linewidth[index]
+            plotkwargs["linestyle"] = args.linestyle[index]
+            for stylename in ("linewidth", "dashes"):
+                plotkwargs.pop(stylename, None)
+                if value := getattr(args, stylename)[index]:
+                    plotkwargs[stylename] = value
 
         plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
             filepath, axis, args, filterfunc, scale_to_peak, offset=0.3 if scale_to_peak else 0.0, **plotkwargs

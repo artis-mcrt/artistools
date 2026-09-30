@@ -2537,13 +2537,13 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     assert dict(interactive.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
-    labelled = interactive.set_series_label(viewer.values, reference, "Observed")
+    labelled = interactive.set_series_values(viewer.values, reference, {"-label": "Observed"})
     assert viewertools.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
     assert viewer.change(labelled) is None
     legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
     assert legendlabels[1] == "Observed"
     assert legendlabels[0].startswith("TEST MODEL +300")
-    unlabelled = interactive.set_series_label(labelled, reference, None)
+    unlabelled = interactive.set_series_values(labelled, reference, {"-label": None})
     assert viewertools.get_row_values(unlabelled.otheroptions, "-label") is None
 
 
