@@ -13,7 +13,6 @@ import matplotlib as mpl
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.lightcurve.core import find_bol_reflightcurve_file
 from artistools.lightcurve.core import path_is_reference_lightcurve
@@ -56,7 +55,6 @@ from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import add_y_limits_row
-from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
@@ -64,7 +62,6 @@ from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
-from artistools.viewertools import fix_title_position
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
@@ -102,7 +99,7 @@ from artistools.viewertools import read_limit_fields
 from artistools.viewertools import ReferenceData
 from artistools.viewertools import reload_runs
 from artistools.viewertools import remove_options
-from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools import render_command
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import SERIES_LINE_FLAGS
 from artistools.viewertools import SERIES_STYLE_FLAGS
@@ -114,7 +111,6 @@ from artistools.viewertools import set_row_values
 from artistools.viewertools import set_series_rows
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
-from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
@@ -382,9 +378,8 @@ def get_reference_lightcurve_names() -> list[str]:
 
 
 class RenderedLightCurve(t.NamedTuple):
-    """A figure that the worker thread drew, with the frames that the window reads."""
+    """The frames of a plot that the worker thread drew, which the window reads."""
 
-    fig: mplfig.Figure
     axis: "mplax.Axes"
     thermaxis: "mplax.Axes | None"
     residualaxis: "mplax.Axes | None"
@@ -577,36 +572,19 @@ class LightCurveViewer:
         then stays. A worker thread can run this method, because it changes nothing that the window reads. The
         function that it returns must run in the thread of the window.
         """
-        plots: list[RenderedLightCurve] = []
 
-        def make_plot() -> str | None:
+        def draw(fig: mplfig.Figure) -> RenderedLightCurve:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
             resolve_plot_args(plotargs)
             check_viewer_args(plotargs)
-            fig = mplfig.Figure()
-            FigureCanvasAgg(fig)
             _, axis, thermaxis, residualaxis = make_plot_figure(plotargs, fig=fig)
             draw_plot(plotargs, axis, thermaxis, residualaxis)
-            fix_title_position(axis)
-            if (darkcolours := self.darkcolours) is not None:
-                apply_dark_colours(fig, *darkcolours)
-            # the worker makes the ticks and the text layout, thus the first draw in the window is faster
-            fig.draw_without_rendering()
-            plots.append(RenderedLightCurve(fig=fig, axis=axis, thermaxis=thermaxis, residualaxis=residualaxis))
-            return None
+            return RenderedLightCurve(axis=axis, thermaxis=thermaxis, residualaxis=residualaxis)
 
-        message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
+        def keep(plot: RenderedLightCurve) -> None:
+            self.axis, self.thermaxis, self.residualaxis = plot
 
-        def show_plot() -> str | None:
-            self.warning = warning
-            if message is not None:
-                return message
-            plot = plots[0]
-            self.figsize = show_figure_in_canvas(self.fig, plot.fig)
-            self.fig, self.axis, self.thermaxis, self.residualaxis = plot
-            return None
-
-        return show_plot
+        return render_command(self, draw, keep, quiet=quiet)
 
     def get_frames(self) -> "list[mplax.Axes]":
         """Return the frames of the plot on the screen, from the top to the bottom."""

@@ -14,7 +14,6 @@ from types import MappingProxyType
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.atomic import get_ionstring
 from artistools.constants import C_cm_per_s
@@ -72,7 +71,6 @@ from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
@@ -84,7 +82,6 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import add_y_axis_actions
-from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
@@ -130,8 +127,8 @@ from artistools.viewertools import open_model_folder
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
+from artistools.viewertools import render_command
 from artistools.viewertools import run_command_step
-from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
@@ -140,7 +137,6 @@ from artistools.viewertools import set_row_values
 from artistools.viewertools import set_search_completion
 from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
-from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_window
 from artistools.viewertools import split_option_rows
@@ -266,13 +262,12 @@ class ControlValues:
 
 
 class RenderedPlot(t.NamedTuple):
-    """A figure that the worker thread drew, with the properties of the plot that the window shows.
+    """The properties of a plot that the worker thread drew, which the window shows.
 
     plotestimators chooses the bins, the markers, and the colours when the command gives no option. The last three
     fields hold the values that the plot used.
     """
 
-    fig: mplfig.Figure
     isimage: bool
     xlimitscale: float
     xbins: int | None
@@ -1089,50 +1084,24 @@ class EstimatorViewer:
         then stays. A worker thread can run this method, because it changes nothing that the window reads. The
         function that it returns must run in the thread of the window.
         """
-        plots: list[RenderedPlot] = []
 
-        def make_plot() -> None:
+        def draw(fig: mplfig.Figure) -> RenderedPlot:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
             check_viewer_args(plotargs)
             givenx = plotargs.x
-            fig = mplfig.Figure()
-            FigureCanvasAgg(fig)
             draw_plot(plotargs, fig, self.batchcaches)
-            isimage = plotargs.dimensionreduce == 2
-            # the constrained layout of a colour image keeps the title inside the figure
-            if not isimage:
-                make_room_for_title(fig)
-            if (darkcolours := self.darkcolours) is not None:
-                apply_dark_colours(fig, *darkcolours)
-            # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
-            # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
-            fig.draw_without_rendering()
-            xlimitscale = C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0
-            plots.append(
-                RenderedPlot(
-                    fig=fig,
-                    isimage=isimage,
-                    xlimitscale=xlimitscale,
-                    xbins=plotargs.xbins,
-                    markers=bool(plotargs.markers),
-                    colorbyion=bool(plotargs.colorbyion),
-                )
+            return RenderedPlot(
+                isimage=plotargs.dimensionreduce == 2,
+                xlimitscale=C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0,
+                xbins=plotargs.xbins,
+                markers=bool(plotargs.markers),
+                colorbyion=bool(plotargs.colorbyion),
             )
 
-        message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
+        def keep(plot: RenderedPlot) -> None:
+            self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot
 
-        def show_plot() -> str | None:
-            self.warning = warning
-            if message is not None:
-                return message
-            plot = plots[0]
-            fig, self.isimage, self.xlimitscale = plot.fig, plot.isimage, plot.xlimitscale
-            self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot.xbins, plot.markers, plot.colorbyion
-            self.figsize = show_figure_in_canvas(self.fig, fig)
-            self.fig = fig
-            return None
-
-        return show_plot
+        return render_command(self, draw, keep, quiet=quiet)
 
     def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values and the old plot if plotestimators rejects them."""

@@ -43,6 +43,7 @@ from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
+from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -4539,10 +4540,67 @@ class PlotViewer[ValuesT](t.Protocol):
     """A viewer with the values of its controls, the last warning of its plot, and the colours of Dark Mode."""
 
     values: ValuesT
+    # the figure of the canvas, and its size in inches, which render_command sets for each plot
+    fig: "mplfig.Figure"
+    figsize: tuple[float, float]
     # the last warning of the last plot, which the status bar shows. A user of the application sees no terminal
     warning: str
     # the background and the foreground of the plot in Dark Mode, or None for the usual colours
     darkcolours: tuple[str, str] | None
+
+
+def render_command[PlotT](
+    viewer: "PlotViewer[t.Any]",
+    draw: "Callable[[mplfig.Figure], PlotT | str]",
+    keep: "Callable[[PlotT], None]",
+    *,
+    quiet: bool,
+) -> "Callable[[], str | None]":
+    """Draw a plot on a new figure, and return the function that shows it in the canvas of the viewer.
+
+    draw parses the command and draws the plot on the empty figure that it receives. It returns the frames and the
+    data that the window reads, or the reason that it rejects the values. keep gives these to the viewer. Each plot of
+    each viewer gets the same last steps: the titles, the colours of Dark Mode, and the layout of the text.
+
+    A worker thread can run this function, because it changes nothing that the window reads. The function that it
+    returns must run in the thread of the window. That function returns the reason for the status line if the command
+    rejects the values, and the old plot then stays.
+    """
+    import matplotlib.figure as mplfig
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    plots: list[tuple[mplfig.Figure, PlotT]] = []
+
+    def make_plot() -> str | None:
+        fig = mplfig.Figure()
+        FigureCanvasAgg(fig)
+        result = draw(fig)
+        if isinstance(result, str):
+            return result
+        for axis in fig.axes:
+            fix_title_position(axis)
+        make_room_for_title(fig)
+        if (darkcolours := viewer.darkcolours) is not None:
+            apply_dark_colours(fig, *darkcolours)
+        # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
+        # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
+        fig.draw_without_rendering()
+        plots.append((fig, result))
+        return None
+
+    message, warning = run_command_step_with_warning(make_plot, quiet=quiet)
+
+    def show_plot() -> str | None:
+        viewer.warning = warning
+        if message is not None:
+            return message
+        fig, result = plots[0]
+        viewer.figsize = show_figure_in_canvas(viewer.fig, fig)
+        viewer.fig = fig
+        keep(result)
+        return None
+
+    return show_plot
 
 
 def changes_values[ValuesT](
