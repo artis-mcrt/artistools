@@ -37,14 +37,15 @@ SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
 REPOSITORY_URL = "https://github.com/artis-mcrt/artistools"
 
 # the servers of this process, with the lock of the pipes of each one. The key holds the process ID, because a
-# child process cannot use the pipes of its parent. A failed server leaves the registry alone, and the servers of
-# the other hosts stay
+# child process cannot use the pipes of its parent. A server that fails leaves the registry, and the servers of the
+# other hosts stay. An ssh start takes about 10 s, thus the process keeps one server for each host
 SERVERS: "dict[tuple[str, int], tuple[subprocess.Popen[bytes], threading.Lock]]" = {}
 # two threads can make the first call to one host at the same time. The lock makes the start of its server happen
 # once
 SERVERS_LOCK = threading.Lock()
 
-# the modules of the objects that a reply of the server can hold. The unpickler of the client imports nothing else
+# the modules of the objects that a reply of the server can hold. The unpickler of the client imports no module, and
+# it reads only a module that this process has loaded already
 REPLY_MODULES = frozenset({
     "argparse",
     "artistools",
@@ -52,20 +53,24 @@ REPLY_MODULES = frozenset({
     "collections",
     "copyreg",
     "datetime",
-    "json",
     "numpy",
     "pathlib",
-    "pickle",
-    "polars",
-    "pyo3_runtime",
-    "subprocess",
-    "zstandard",
 })
 
+# the modules of the exceptions that a reply can hold. The server sends a different exception as a RuntimeError with
+# the name of its type, because the client can lack its module, e.g. zstandard
+EXCEPTION_MODULES = frozenset({"artistools", "builtins", "numpy", "polars"})
+
 # the classes that a reply can build with no side effect. numpy has classes with side effects, e.g. numpy.memmap
-# writes a file, thus only these ones of numpy pass
+# writes a file, thus only these ones of numpy pass. The frames of polars go as tuples of Arrow IPC data, see
+# FRAME_MARKER, because the __setstate__ of a polars frame unpickles a plan with the plain unpickler
 REPLY_CLASSES = frozenset({
     ("argparse", "Namespace"),
+    ("builtins", "bytearray"),
+    ("builtins", "complex"),
+    ("builtins", "frozenset"),
+    ("builtins", "set"),
+    ("builtins", "tuple"),
     ("collections", "OrderedDict"),
     ("datetime", "date"),
     ("datetime", "datetime"),
@@ -77,8 +82,6 @@ REPLY_CLASSES = frozenset({
 
 # the functions that a reply can call. Every other object of a reply must be a class of a safe kind
 REPLY_FUNCTIONS = frozenset({
-    ("artistools.misc.remote", "dataframe_from_ipc"),
-    ("artistools.misc.remote", "lazyframe_from_ipc"),
     ("copyreg", "__newobj__"),
     ("copyreg", "_reconstructor"),
     ("numpy._core.multiarray", "_reconstruct"),
@@ -89,17 +92,25 @@ REPLY_FUNCTIONS = frozenset({
     ("numpy.core.numeric", "_frombuffer"),
 })
 
+# a polars frame goes in a message as a plain tuple of this text, its Arrow IPC data, and whether it was a LazyFrame.
+# The receiver makes the frame after the unpickle, see restore_frames
+FRAME_MARKER = "artistools polars frame"
+
+# the maximum size of a message, which limits the memory that a reply of a host can take
+MAX_MESSAGE_BYTES = 16 * 1024**3
+
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
 SERVER_START_LINE = b"artistools server protocol 1\n"
 
-# each message is the length of its data in this number of bytes, one byte that says whether zlib compressed the
-# data, then the pickle data. The receiver reads a full message before it unpickles it, thus an error in the
-# unpickle leaves the next message in step
+# each message starts with the length of its data in this number of bytes. One byte then shows whether zlib
+# compressed the data, and the pickle data comes last. The receiver reads a full message before it unpickles it,
+# thus after an unpickle error the next read starts at the next message
 MESSAGE_LENGTH_BYTES = 8
 
 # zlib makes a message of at least this size smaller before it goes through ssh. The emission contributions of a 3D
-# model were 2.55 MB, and zlib level 1 made them 0.25 MB in 9 ms. A small message gains less than the time of zlib
+# model were 2.55 MB, and zlib level 1 made them 0.25 MB in 9 ms. For a smaller message, zlib takes more time than it
+# saves in the transfer
 COMPRESS_MIN_BYTES = 64 * 1024
 
 
@@ -174,7 +185,13 @@ def names_a_remote_folder(text: str) -> bool:
 
 
 def is_plain_value(value: t.Any) -> bool:
-    """Return whether a value of an argparse.Namespace goes to the server: None, a number, a str, a Path, or a list.
+    """Return whether a value of an argparse.Namespace can go to the server.
+
+    A plain value is one of these:
+
+    - None, a bool, a number, a str, or a Path;
+    - a list or a tuple of plain values;
+    - a dict with plain keys and plain values.
 
     The Namespace of a command also holds the parser, the function of the command, and with --quiet a stream. The
     server needs none of these, and pickle cannot send all of them.
@@ -229,20 +246,6 @@ def to_server_arguments(value: t.Any) -> tuple[str | None, t.Any]:
     return next(iter(hosts), None), servervalue
 
 
-def dataframe_from_ipc(data: bytes) -> "pl.DataFrame":
-    """Return the DataFrame of Arrow IPC data."""
-    import io
-
-    import polars as pl
-
-    return pl.read_ipc(io.BytesIO(data))
-
-
-def lazyframe_from_ipc(data: bytes) -> "pl.LazyFrame":
-    """Return a LazyFrame that holds the DataFrame of Arrow IPC data."""
-    return dataframe_from_ipc(data).lazy()
-
-
 def get_ipc_bytes(df: "pl.DataFrame") -> bytes:
     """Return the Arrow IPC data of a DataFrame."""
     import io
@@ -252,17 +255,35 @@ def get_ipc_bytes(df: "pl.DataFrame") -> bytes:
     return buffer.getvalue()
 
 
-def reduce_dataframe(df: "pl.DataFrame") -> tuple[Callable[[bytes], "pl.DataFrame"], tuple[bytes]]:
-    """Return the pickle form of a DataFrame, which holds its Arrow IPC data."""
-    return dataframe_from_ipc, (get_ipc_bytes(df),)
+def reduce_dataframe(df: "pl.DataFrame") -> tuple[type[tuple[t.Any, ...]], tuple[tuple[str, bytes, bool]]]:
+    """Return the pickle form of a DataFrame: a plain tuple that holds FRAME_MARKER and the Arrow IPC data."""
+    return tuple, ((FRAME_MARKER, get_ipc_bytes(df), False),)
 
 
-def reduce_lazyframe(lf: "pl.LazyFrame") -> tuple[Callable[[bytes], "pl.LazyFrame"], tuple[bytes]]:
+def reduce_lazyframe(lf: "pl.LazyFrame") -> tuple[type[tuple[t.Any, ...]], tuple[tuple[str, bytes, bool]]]:
     """Return the pickle form of a LazyFrame, which holds the Arrow IPC data of its result.
 
     The plan of a LazyFrame reads the files of the server, thus the client cannot collect it.
     """
-    return lazyframe_from_ipc, (get_ipc_bytes(lf.collect()),)
+    return tuple, ((FRAME_MARKER, get_ipc_bytes(lf.collect()), True),)
+
+
+def restore_frames(value: t.Any) -> t.Any:
+    """Return the value of a message with a polars frame in place of each tuple of FRAME_MARKER."""
+    import io
+
+    import polars as pl
+
+    if type(value) is tuple and len(value) == 3 and value[0] == FRAME_MARKER and isinstance(value[1], bytes):
+        df = pl.read_ipc(io.BytesIO(value[1]))
+        return df.lazy() if value[2] else df
+    if type(value) is list:
+        return [restore_frames(item) for item in value]
+    if type(value) is tuple:
+        return tuple(restore_frames(item) for item in value)
+    if type(value) is dict:
+        return {key: restore_frames(item) for key, item in value.items()}
+    return value
 
 
 def dump_message(value: t.Any) -> bytes:
@@ -273,7 +294,6 @@ def dump_message(value: t.Any) -> bytes:
     """
     import copyreg
     import io
-    import pickle
 
     import polars as pl
 
@@ -296,6 +316,26 @@ def write_message(stream: t.IO[bytes], data: bytes) -> None:
     stream.flush()
 
 
+def is_reply_exception(exc: BaseException) -> bool:
+    """Return whether the client accepts the exception in a reply.
+
+    SystemExit comes from exit_with_error on the server, and it stops the command of the client too. KeyboardInterrupt
+    and GeneratorExit are not errors of a reader.
+    """
+    if type(exc).__module__.split(".", maxsplit=1)[0] not in EXCEPTION_MODULES:
+        return False
+    return isinstance(exc, Exception) or type(exc) is SystemExit
+
+
+def is_reply_class(cls: type, module: str) -> bool:
+    """Return whether a reply can build the class: a NamedTuple of a result, a path, or an exception of a reader."""
+    if issubclass(cls, tuple):
+        return module.startswith("artistools.")
+    if issubclass(cls, Path):
+        return module.startswith("pathlib")
+    return issubclass(cls, BaseException) and module.split(".", maxsplit=1)[0] in EXCEPTION_MODULES
+
+
 class ReplyUnpickler(pickle.Unpickler):
     """Unpickle a reply of the server, with only the objects that a result or an exception needs.
 
@@ -305,29 +345,29 @@ class ReplyUnpickler(pickle.Unpickler):
 
     @t.override
     def find_class(self, module: str, name: str, /) -> t.Any:
-        """Return a class of a safe kind or a function of REPLY_FUNCTIONS, and refuse each other object."""
-        if module.split(".", maxsplit=1)[0] not in REPLY_MODULES:
-            msg = f"A reply of the artistools server holds {module}.{name}, which the client does not accept"
-            raise pickle.UnpicklingError(msg)
-        found = super().find_class(module, name)
-        if (module, name) in REPLY_FUNCTIONS or (module, name) in REPLY_CLASSES:
-            return found
-        # a tuple class is a NamedTuple of a result, and an exception class is an error of a reader. A reply builds
-        # these with no side effect
-        issafeclass = isinstance(found, type) and issubclass(
-            found, (BaseException, tuple, Path, frozenset, set, bytearray, complex, range, slice)
-        )
-        if not issafeclass:
-            msg = f"A reply of the artistools server holds {module}.{name}, which the client does not accept"
-            raise pickle.UnpicklingError(msg)
-        return found
+        """Return an allowed class or function of a module that this process has loaded, and refuse each other object.
+
+        The import of a module runs its code, thus the unpickler imports no module. A name with a dot reads an
+        attribute of a different object, thus the unpickler refuses it.
+        """
+        import sys
+
+        loadedmodule = sys.modules.get(module)
+        found = None if "." in name or loadedmodule is None else getattr(loadedmodule, name, None)
+        if module.split(".", maxsplit=1)[0] in REPLY_MODULES | EXCEPTION_MODULES and found is not None:
+            if (module, name) in REPLY_FUNCTIONS or (module, name) in REPLY_CLASSES:
+                return found
+            if isinstance(found, type) and is_reply_class(found, module):
+                return found
+        msg = f"A reply of the artistools server holds {module}.{name}, which the client does not accept"
+        raise pickle.UnpicklingError(msg)
 
 
 def load_reply(data: bytes) -> t.Any:
-    """Return the value of a reply of the server."""
+    """Return the value of a reply of the server, with the polars frames that it holds."""
     import io
 
-    return ReplyUnpickler(io.BytesIO(data)).load()
+    return restore_frames(ReplyUnpickler(io.BytesIO(data)).load())
 
 
 def read_message(stream: t.IO[bytes]) -> bytes:
@@ -338,10 +378,20 @@ def read_message(stream: t.IO[bytes]) -> bytes:
     if len(header) < MESSAGE_LENGTH_BYTES + 1:
         raise EOFError
     size = int.from_bytes(header[:MESSAGE_LENGTH_BYTES], "big")
+    if size > MAX_MESSAGE_BYTES:
+        msg = f"A message of {size} bytes is larger than the maximum of {MAX_MESSAGE_BYTES} bytes"
+        raise ValueError(msg)
     data = stream.read(size)
     if len(data) < size:
         raise EOFError
-    return zlib.decompress(data) if header[MESSAGE_LENGTH_BYTES] else data
+    if not header[MESSAGE_LENGTH_BYTES]:
+        return data
+    decompressor = zlib.decompressobj()
+    data = decompressor.decompress(data, MAX_MESSAGE_BYTES)
+    if decompressor.unconsumed_tail:
+        msg = f"A message holds more than the maximum of {MAX_MESSAGE_BYTES} bytes"
+        raise ValueError(msg)
+    return data
 
 
 def get_server_argv(host: str) -> list[str]:
@@ -355,16 +405,19 @@ def get_server_argv(host: str) -> list[str]:
     import os
     from importlib.metadata import version
 
+    if host.startswith("-"):
+        msg = f"The host {host} starts with -, and ssh would read it as an option"
+        raise ValueError(msg)
     defaultcommand = f"uvx artistools@{version('artistools')} server"
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
-    return ["ssh", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
+    return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
 
 
 def read_server_version(process: "subprocess.Popen[bytes]") -> str:
     """Return the version that the server sends after its start line. Raise EOFError if the server stops first."""
     assert process.stdout is not None
-    while not (line := process.stdout.readline()).endswith(SERVER_START_LINE):
+    while not (line := process.stdout.readline(64 * 1024)).endswith(SERVER_START_LINE):
         if not line:
             raise EOFError
 
@@ -448,7 +501,7 @@ def get_git_server_suggestion(host: str) -> str | None:
 
 
 def get_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
-    """Return the process of the artistools server on the host, and the lock of its pipes. Start the server first.
+    """Return the process and the pipe lock of the artistools server on the host. Start the server if necessary.
 
     The server stops when this process closes the pipes at its exit.
     """
@@ -576,11 +629,12 @@ def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, .
 def on_model_host[**P, R](func: Callable[P, R]) -> Callable[P, R]:
     """Run the function on the host of the model when an argument is a remote path.
 
-    A remote path is a Path object. A str argument stays local, because a label can have the form "name:text".
-    The arguments go through pickle. An argparse.Namespace goes with its plain values only, see is_plain_value.
-    The result must be small. A LazyFrame comes back as the collected data. Put this decorator on a
-    function that reduces the data, e.g. a function that returns a spectrum. Do not put it on a function that
-    returns all the packets.
+    The decorator finds a remote path only in a Path argument. A str argument stays local, because a label can have
+    the form "name:text". The arguments go through pickle, and an argparse.Namespace goes with only its plain values
+    (see is_plain_value). A LazyFrame result comes back as the collected data.
+
+    Put this decorator only on a function that returns a small result, e.g. a spectrum. Do not put it on a function
+    that returns all the packets.
     """
 
     @functools.wraps(func)
@@ -658,10 +712,11 @@ def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], b
 
 def run_request(request: bytes) -> bytes:
     """Run one request of a client, and return the message with the result or the exception."""
+    import contextlib
     import traceback
 
     try:
-        return dump_message((True, run_function(pickle.loads(request))))
+        return dump_message((True, run_function(restore_frames(pickle.loads(request)))))
     except BaseException as exc:
         # a panic of polars or of rustext is a BaseException. The client gets it as an error, and the server keeps
         # its state for the next request
@@ -670,11 +725,14 @@ def run_request(request: bytes) -> bytes:
         # the client raises the same exception, thus a caller that catches FileNotFoundError still works. The client
         # shows the traceback of the server with ARTISTOOLS_TRACEBACK=1 only, as for a local error
         exc.add_note("The traceback on the server:\n" + "".join(traceback.format_exception(exc)).rstrip())
-        try:
-            return dump_message((False, exc))
-        except Exception:  # ruff:ignore[blind-except]
-            msg = f"{type(exc).__name__}: {exc}"
-            return dump_message((False, RuntimeError(msg)))
+        if is_reply_exception(exc):
+            with contextlib.suppress(Exception):
+                return dump_message((False, exc))
+        msg = f"{type(exc).__name__}: {exc}"
+        replyexc = RuntimeError(msg)
+        for note in getattr(exc, "__notes__", []):
+            replyexc.add_note(note)
+        return dump_message((False, replyexc))
 
 
 def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:

@@ -19,7 +19,6 @@ from artistools.lightcurve.core import get_phillips_relation_data
 from artistools.lightcurve.core import scan_lightcurve
 from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
-from artistools.misc import folder_holds_match
 from artistools.misc import get_costhetabin_phibin_labels
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -32,6 +31,7 @@ from artistools.misc import path_is_file
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc.fileio import folder_holds_match
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles

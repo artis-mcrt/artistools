@@ -53,7 +53,11 @@ Use the -h option to get a list of command-line arguments for each subcommand. S
 
 ### A model on a different host
 
-plotlightcurve and plotspectra accept a model path of the form `host:path`, where `host` is a name that ssh knows:
+These commands accept a model path of the form `host:path`, where `host` is a name that ssh knows:
+
+- plotestimators and its `--interactive` viewer;
+- plotlightcurve;
+- plotspectra and its `--interactive` viewer.
 
 ```sh
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
@@ -61,7 +65,9 @@ artistools plotspectra -t 300 vae26:~/scratch/mymodel
 
 The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./run:2`.
 
-artistools starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host. Some options still read their files on the local host, e.g. `-filter` of plotlightcurve. Such an option stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
+artistools starts `uvx artistools@<version> server` on that host through ssh, with the version of the local artistools. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host.
+
+An option that reads its files on the local host stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 
 ```sh
 export ARTISTOOLS_REMOTE_COMMAND='~/artistools/.venv/bin/artistools server'

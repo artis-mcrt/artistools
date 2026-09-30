@@ -512,8 +512,8 @@ def get_remote_path_kind(path: Path) -> tuple[bool, bool, bool]:
     """Return whether a remote path is a folder, whether it is a file, and whether it is the folder of an ARTIS run.
 
     The host gives the three answers in one ssh round trip. The spectrum viewer asks about the same paths at each
-    plot, and 10 round trips took 0.33 s of the 0.5 s of a plot. The kind of a model path does not change during a
-    run, thus the cache keeps the answers for the process.
+    plot, and 10 round trips took 0.33 s of the 0.5 s of a plot. The kind of a model path does not change while the
+    process runs, thus the cache keeps the answers until the process stops.
     """
     return path.is_dir(), path.is_file(), path.is_dir() and (path / "input.txt").is_file()
 

@@ -775,7 +775,7 @@ def get_spectra(
     gamma: bool = False,
     directionbins: Sequence[int] | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra.
+    """Return the emergent ultraviolet, optical, and infrared (UVOIR) spectra, with one LazyFrame for each direction bin.
 
     directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
     model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no

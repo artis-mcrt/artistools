@@ -61,7 +61,8 @@ DISPATCHERSCRIPTS = ("at", "artistools")
 class CommandSpec:
     """A subcommand definition: the implementing module and the static help text shown in command listings.
 
-    A hidden command still works but is left out of the --help listing, e.g. a deprecated duplicate name or the server.
+    The --help listing leaves out a hidden command, but the command still works. Examples are a deprecated duplicate
+    name and the server.
     """
 
     module: str

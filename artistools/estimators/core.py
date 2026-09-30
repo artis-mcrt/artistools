@@ -896,8 +896,8 @@ def get_plot_estimator_rows(
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the columns of the estimators with the model data of each cell, and the metadata of the model.
 
-    scan_remote_plot_estimators calls this on the host of a remote model. With no columns, the frame has no rows
-    and every column, thus it gives the schema. The cache keeps the columns of each plot of a viewer, thus a new
+    scan_remote_plot_estimators calls this on the host of a remote model. If columns is None, the frame has
+    every column and no rows, thus it gives the schema. The cache keeps the columns of each plot of a viewer, thus a new
     plot of the same data makes no round trip. Do not change the frame that this function returns.
     """
     estimators, modelmeta = join_cell_modeldata(

@@ -1223,7 +1223,7 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
     # rsync takes an IPv6 address in brackets, and ssh takes it with no brackets
     assert remote.split_remote_path("user@[2001:db8::1]:/model") == ("user@[2001:db8::1]", Path("/model"))
-    assert remote.get_server_argv("user@[2001:db8::1]")[1] == "user@2001:db8::1"
+    assert remote.get_server_argv("user@[2001:db8::1]")[1:3] == ["--", "user@2001:db8::1"]
     # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
     assert remote.names_a_remote_folder("vae26:~/model")
     assert not remote.names_a_remote_folder("second:label")
@@ -1256,6 +1256,15 @@ def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
     with pytest.raises(pickle.UnpicklingError, match="does not accept"):
         remote.load_reply(pickle.dumps((True, FileOnClient())))
     assert not (tmp_path / "overwritten").exists()
+
+    # the __setstate__ of a polars frame unpickles a plan with the plain unpickler, thus a reply holds no polars object
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, pl.LazyFrame({"a": [1]}))))
+    succeeded, frames = remote.load_reply(
+        remote.dump_message((True, {-1: pl.LazyFrame({"a": [1.0]}), 0: pl.DataFrame()}))
+    )
+    assert isinstance(frames[-1], pl.LazyFrame)
+    assert isinstance(frames[0], pl.DataFrame)
 
     result = {"array": np.arange(3.0), "value": np.float64(2.5), "dtype": np.dtype("f8")}
     succeeded, reply = remote.load_reply(remote.dump_message((True, result)))

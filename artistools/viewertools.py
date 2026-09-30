@@ -2749,7 +2749,7 @@ def set_window_document(window: "QtWidgets.QMainWindow", folder: Path, title: st
     of the icon gives the folder to a different app.
     """
     window.setWindowTitle(title)
-    # a model on a different host has no folder on this computer, thus its window shows no folder icon
+    # a model on a different host has no local folder, thus its window shows no folder icon
     window.setWindowFilePath("" if is_remote_path(folder) else str(folder.absolute()))
 
 

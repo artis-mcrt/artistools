@@ -2133,7 +2133,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply_spectra((*spectra, *newpaths))
 
     def on_add_model() -> None:
-        # the dialog shows only the folders of this computer, thus a remote first run starts it in the working folder
+        # the dialog shows only local folders, thus it opens in the working folder if the first run is on a different host
         startfolder = (
             Path.cwd() if is_remote_path(viewer.runfolders[0]) else Path(viewer.runfolders[0]).absolute().parent
         )
