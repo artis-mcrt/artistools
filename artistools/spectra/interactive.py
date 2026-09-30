@@ -56,6 +56,7 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
+from artistools.viewertools import add_y_limits_row
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DirectionChoice
@@ -83,7 +84,6 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
 from artistools.viewertools import get_series_value
-from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_fps_box
@@ -103,6 +103,7 @@ from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
+from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
@@ -1269,10 +1270,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     _, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
     xunitbox = QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
-    logscalexcheck = QtWidgets.QCheckBox("--logscalex")
-    for widget, dest in ((xunitbox, "xunit"), (logscalexcheck, "logscalex")):
-        widget.setToolTip(helptexts.get(dest, ""))
-    add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, logscalexcheck])
+    xunitbox.setToolTip(helptexts.get("xunit", ""))
+    xscalebox = make_xscale_box(helptexts)
+    add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     # the label gives the quantity and the unit of the x axis, e.g. "Wavelength [Å]", and a new unit changes it
@@ -1313,26 +1313,24 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     binwidthbox.setStepType(QtWidgets.QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
     add_row(xgrid, 2, [QtWidgets.QLabel("Bins:"), binmodebox, binwidthbox])
 
-    _, axesgrid = add_section(panellayout, "y-axis")
+    # the settings keep the open state of the section by its key, which the older heading of the section gave
+    _, axesgrid = add_section(panellayout, "Vertical axis", key="y-axis")
     yscalebox = QtWidgets.QComboBox()
     # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
     for yscale in viewer.yscalechoices:
         yscalebox.addItem(yscale.capitalize(), yscale)
     # the text of the "auto" item changes after each plot, and the box keeps a width for the longest text
     yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-    setyrangebutton = QtWidgets.QPushButton("Set current y range")
-    setyrangebutton.setToolTip(
-        "Set y min and y max to the current range of the y axis. The axis then stays the same when the time or a"
-        " different option changes. Clear a field to get the automatic limit at that end again."
+    yscalebox.setToolTip(helptexts.get("yscale", ""))
+    # the handlers come later in this function, thus the lambdas read them at the time of a change
+    show_y_limits = add_y_limits_row(
+        axesgrid,
+        1,
+        helptexts,
+        lambda ymin, ymax: apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax)),
+        lambda: viewer.axes[0].get_ylim() if plot_shows_values() and len(viewer.axes) else None,
+        lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
     )
-    yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    for widget, dest in ((yscalebox, "yscale"), (yminedit, "ymin"), (ymaxedit, "ymax")):
-        widget.setToolTip(helptexts.get(dest, ""))
-    for edit in (yminedit, ymaxedit):
-        edit.setFixedWidth(110)
-        edit.setPlaceholderText("auto")
-    # the limits of the y axis go on the row below the y axis boxes
-    add_row(axesgrid, 1, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
     yvariablebox = QtWidgets.QComboBox()
     yvariablebox.addItems(viewer.yvariablechoices)
     normalisedcheck = QtWidgets.QCheckBox("--normalised")
@@ -1484,7 +1482,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xrangeslider,
         xunitbox,
         yscalebox,
-        logscalexcheck,
+        xscalebox,
         emissioncheck,
         absorptioncheck,
         groupbybox,
@@ -1755,9 +1753,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_edit_text(xmaxedit, values.xmax)
         xunitbox.setCurrentText(values.xunit)
         yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
-        logscalexcheck.setChecked(values.logscalex)
-        set_edit_text(yminedit, values.ymin)
-        set_edit_text(ymaxedit, values.ymax)
+        xscalebox.setCurrentIndex(1 if values.logscalex else 0)
+        show_y_limits(values.ymin, values.ymax)
         emissioncheck.setChecked(values.showemission)
         absorptioncheck.setChecked(values.showabsorption)
         groupbybox.setCurrentText(values.groupby or get_default_groupby(gamma=values.gamma))
@@ -2008,32 +2005,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g"))
         apply(values)
 
-    def on_set_y_range() -> None:
-        if not plot_shows_values():
-            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
-            return
-        # the limits of the plot on the screen become the limits of the command, thus the plot does not change
-        low, high = (get_short_number(limit) for limit in viewer.axes[0].get_ylim())
-        apply(dc.replace(viewer.values, ymin=low, ymax=high))
-
-    def on_yedit() -> None:
-        yminedit.setModified(False)
-        ymaxedit.setModified(False)
-        # an empty field gives the automatic limit at that end of the y axis
-        limits: list[str] = []
-        for edit, flag in ((yminedit, "-ymin"), (ymaxedit, "-ymax")):
-            text = edit.text().strip()
-            try:
-                limits.append(format(float(text), ".10g") if text else "")
-            except ValueError:
-                show_error(f"Give a number for {flag}, or clear the field for the automatic limit")
-                return
-        low, high = limits
-        if low and high and not float(low) < float(high):
-            show_error("Give a -ymin that is less than -ymax")
-            return
-        apply(dc.replace(viewer.values, ymin=low, ymax=high))
-
     def on_axes() -> None:
         values = viewer.values
         if xunitbox.currentText() != values.xunit:
@@ -2041,7 +2012,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(
             values,
             yscale=yscalebox.currentData(),
-            logscalex=logscalexcheck.isChecked(),
+            logscalex=xscalebox.currentIndex() == 1,
             yvariable=yvariablebox.currentText(),
             normalised=normalisedcheck.isChecked(),
         )
@@ -2276,10 +2247,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xmaxedit.editingFinished.connect(on_xedit)
     xunitbox.currentTextChanged.connect(on_axes)
     yscalebox.currentIndexChanged.connect(on_axes)
-    logscalexcheck.toggled.connect(on_axes)
-    setyrangebutton.clicked.connect(on_set_y_range)
-    yminedit.editingFinished.connect(on_yedit)
-    ymaxedit.editingFinished.connect(on_yedit)
+    xscalebox.currentIndexChanged.connect(on_axes)
     emissioncheck.toggled.connect(on_emission_options)
     absorptioncheck.toggled.connect(on_emission_options)
     groupbybox.currentTextChanged.connect(on_emission_options)

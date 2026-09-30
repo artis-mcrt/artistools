@@ -54,6 +54,7 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
+from artistools.viewertools import add_y_limits_row
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DirectionChoice
@@ -79,7 +80,6 @@ from artistools.viewertools import get_path_colours
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
-from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_option_table
@@ -92,9 +92,11 @@ from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
+from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import read_limit_fields
 from artistools.viewertools import ReferenceData
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step_with_warning
@@ -787,16 +789,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             widget.setToolTip(helptexts.get(dest, "") + zoomtip)
         timegrid.addWidget(widget, 0, column)
     timegrid.setColumnStretch(1, 1)
-    # the index of an item: 0 for a linear time axis, and 1 for a log time axis (--logscalex). The command has no
-    # -xscale, thus the box gives no automatic scale as the y scale box does
-    xscalebox = QtWidgets.QComboBox()
-    for text, tooltip in (("Linear", "A linear time axis"), ("Log", f"--logscalex: {helptexts.get('logscalex', '')}")):
-        xscalebox.addItem(text)
-        xscalebox.setItemData(xscalebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    xscalebox.setToolTip("The scale of the time axis. Log gives --logscalex")
+    xscalebox = make_xscale_box(helptexts)
     add_row(timegrid, 1, [QtWidgets.QLabel("x scale:"), xscalebox])
 
-    _, ygrid = add_section(panellayout, "y-axis", key="y axis")
+    _, ygrid = add_section(panellayout, "Vertical axis", key="y axis")
     lumunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
     for unit, text, flag in LUMUNITS:
         lumunitbox.addItem(text, unit)
@@ -811,18 +807,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         yscalebox.addItem(yscale.capitalize(), yscale)
     yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
     yscalebox.setToolTip(helptexts.get("yscale", ""))
-    setyrangebutton = QtWidgets.QPushButton("Set current y range")
-    setyrangebutton.setToolTip(
-        "Set y min and y max to the current range of the y axis. The axis then stays the same when a different option"
-        " changes. Clear a field to get the automatic limit at that end again."
-    )
-    yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    for edit, dest in ((yminedit, "ymin"), (ymaxedit, "ymax")):
-        edit.setFixedWidth(110)
-        edit.setPlaceholderText("auto")
-        edit.setToolTip(helptexts.get(dest, ""))
     add_row(ygrid, 0, [QtWidgets.QLabel("Unit:"), lumunitbox, QtWidgets.QLabel("-yscale"), yscalebox])
-    add_row(ygrid, 1, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
+    # the handlers come later in this function, thus the lambdas read them at the time of a change
+    show_y_limits = add_y_limits_row(
+        ygrid,
+        1,
+        helptexts,
+        lambda ymin, ymax: apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax)),
+        lambda: viewer.axis.get_ylim() if plot_shows_values() and viewer.axis is not None else None,
+        lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
+    )
 
     # the handlers come later in this function, thus the lambdas read them at the time of a change
     show_direction, set_direction_run = add_direction_section(
@@ -1002,8 +996,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
         # a magnitude is a logarithm already, thus plotlightcurves gives it no log scale
         yscalebox.setEnabled(values.lumunit != "mag")
-        set_edit_text(yminedit, values.ymin)
-        set_edit_text(ymaxedit, values.ymax)
+        show_y_limits(values.ymin, values.ymax)
         show_direction()
         set_option_rows(values.otheroptions)
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
@@ -1109,38 +1102,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         elif handle == 1 and limit > low:
             apply(dc.replace(values, timemax=format(limit, ".10g")))
 
-    def read_limit_fields(fields: "Sequence[tuple[QtWidgets.QLineEdit, str]]") -> list[str] | None:
-        """Return the text of each field as a number with no rounding, or "" for an empty field. Show an error for text."""
-        limits: list[str] = []
-        for edit, flag in fields:
-            edit.setModified(False)
-            text = edit.text().strip()
-            try:
-                limits.append(format(float(text), ".10g") if text else "")
-            except ValueError:
-                show_error(f"Give a number for {flag}, or clear the field for the automatic limit")
-                return None
-        if limits[0] and limits[1] and not float(limits[0]) < float(limits[1]):
-            show_error(f"Give a {fields[0][1]} that is less than {fields[1][1]}")
-            return None
-        return limits
-
     def on_timeedit() -> None:
-        if (limits := read_limit_fields([(timeminedit, "-timemin"), (timemaxedit, "-timemax")])) is not None:
+        timefields = [(timeminedit, "-timemin"), (timemaxedit, "-timemax")]
+        if (limits := read_limit_fields(timefields, show_error)) is not None:
             apply(dc.replace(viewer.values, timemin=limits[0], timemax=limits[1]))
-
-    def on_yedit() -> None:
-        if (limits := read_limit_fields([(yminedit, "-ymin"), (ymaxedit, "-ymax")])) is not None:
-            apply(dc.replace(viewer.values, ymin=limits[0], ymax=limits[1]))
-
-    def on_set_y_range() -> None:
-        if not plot_shows_values() or viewer.axis is None:
-            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
-            return
-        # the limits of the plot on the screen become the limits of the command, thus the plot does not change. A
-        # magnitude axis runs from the faint end to the bright end, and -ymin and -ymax give the low and high numbers
-        low, high = (get_short_number(limit) for limit in sorted(viewer.axis.get_ylim()))
-        apply(dc.replace(viewer.values, ymin=low, ymax=high))
 
     def on_axes() -> None:
         lumunit: LumUnit = lumunitbox.currentData()
@@ -1308,9 +1273,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xscalebox.currentIndexChanged.connect(on_axes)
     lumunitbox.currentIndexChanged.connect(on_axes)
     yscalebox.currentIndexChanged.connect(on_axes)
-    setyrangebutton.clicked.connect(on_set_y_range)
-    yminedit.editingFinished.connect(on_yedit)
-    ymaxedit.editingFinished.connect(on_yedit)
     figscalebox.valueChanged.connect(on_figscale)
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(

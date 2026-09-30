@@ -1778,6 +1778,96 @@ def add_direction_section(
     return show, set_run
 
 
+def read_limit_fields(
+    fields: "Sequence[tuple[QtWidgets.QLineEdit, str]]", show_error: "Callable[[str], None]"
+) -> list[str] | None:
+    """Return the text of two limit fields as numbers, or "" for an empty field, which gives the automatic limit.
+
+    fields gives each field with its flag, e.g. -ymin. A field with text that is not a number, or a minimum that is not
+    less than the maximum, gives the reason to show_error and None.
+    """
+    limits: list[str] = []
+    for edit, flag in fields:
+        edit.setModified(False)
+        text = edit.text().strip()
+        try:
+            limits.append(format(float(text), ".10g") if text else "")
+        except ValueError:
+            show_error(f"Give a number for {flag}, or clear the field for the automatic limit")
+            return None
+    if limits[0] and limits[1] and not float(limits[0]) < float(limits[1]):
+        show_error(f"Give a {fields[0][1]} that is less than {fields[1][1]}")
+        return None
+    return limits
+
+
+def add_y_limits_row(
+    grid: "QtWidgets.QGridLayout",
+    row: int,
+    helptexts: "Mapping[str, str]",
+    set_limits: "Callable[[str, str], None]",
+    get_drawn_limits: "Callable[[], tuple[float, float] | None]",
+    show_error: "Callable[[str], None]",
+) -> "Callable[[str, str], None]":
+    """Add the fields of -ymin and -ymax and the button Set current y range to a row of a grid.
+
+    set_limits receives the text of each limit, and "" gives the automatic limit. get_drawn_limits gives the y limits of
+    the plot on the screen, or None while the plot does not show the values of the controls. Return the function that
+    shows the limits of the values.
+    """
+    from PySide6 import QtWidgets
+
+    yminedit, ymaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+    for edit, dest in ((yminedit, "ymin"), (ymaxedit, "ymax")):
+        edit.setFixedWidth(110)
+        edit.setPlaceholderText("auto")
+        edit.setToolTip(helptexts.get(dest, ""))
+    setrangebutton = QtWidgets.QPushButton("Set current y range")
+    setrangebutton.setToolTip(
+        "Set y min and y max to the current range of the y axis. The axis then stays the same when a different option"
+        " changes. Clear a field to get the automatic limit at that end again."
+    )
+    add_row(grid, row, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setrangebutton])
+
+    def on_edit() -> None:
+        if (limits := read_limit_fields([(yminedit, "-ymin"), (ymaxedit, "-ymax")], show_error)) is not None:
+            set_limits(limits[0], limits[1])
+
+    def on_set_range() -> None:
+        if (drawnlimits := get_drawn_limits()) is None:
+            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
+            return
+        # the limits of the plot on the screen become the limits of the command, thus the plot does not change. An
+        # inverted axis, e.g. of a magnitude, gives the lower number to -ymin
+        low, high = (get_short_number(limit) for limit in sorted(drawnlimits))
+        set_limits(low, high)
+
+    def show_limits(ymin: str, ymax: str) -> None:
+        set_edit_text(yminedit, ymin)
+        set_edit_text(ymaxedit, ymax)
+
+    yminedit.editingFinished.connect(on_edit)
+    ymaxedit.editingFinished.connect(on_edit)
+    setrangebutton.clicked.connect(on_set_range)
+    return show_limits
+
+
+def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
+    """Return a box with the choices Linear and Log for the x axis. The index 1 gives --logscalex.
+
+    The commands have no -xscale, thus the box has no automatic scale as the y scale box has.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    xscalebox = QtWidgets.QComboBox()
+    for text, tooltip in (("Linear", "A linear x axis"), ("Log", f"--logscalex: {helptexts.get('logscalex', '')}")):
+        xscalebox.addItem(text)
+        xscalebox.setItemData(xscalebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    xscalebox.setToolTip("The scale of the x axis. Log gives --logscalex")
+    return xscalebox
+
+
 def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
     """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame."""
     from PySide6 import QtWidgets
