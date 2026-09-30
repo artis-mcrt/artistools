@@ -303,9 +303,10 @@ def item_names_a_folder(item: str) -> bool:
     A folder that exists names the model, even when the command has an item of the same name. A name
     that is not last stays an item. A variable thus keeps its meaning when a folder has the same name.
     """
-    from artistools.misc.remote import names_a_remote_folder
+    from artistools.misc.remote import is_remote_path
 
-    return bool(item) and (names_a_remote_folder(item) or Path(item).is_dir() or item_names_a_path(item))
+    # a name of an item has no colon, thus a last item of the form host:path names a remote folder
+    return bool(item) and (is_remote_path(item) or Path(item).is_dir() or item_names_a_path(item))
 
 
 def addarg_positional_items(
