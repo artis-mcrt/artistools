@@ -408,9 +408,6 @@ def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[i
 # the same file from the files of the ranks.
 ALLRANKS_TEXTFILENAME = "estimators_allranks.out"
 
-# The parquet cache of all the estimators of a run folder. A conversion writes this one file from either form of text.
-ALLRANKS_PARQUETFILENAME = "estimators_allranks.out.parquet"
-
 
 def get_allranks_textfile(folderpath: Path | str) -> Path | None:
     """Return the estimator file of all ranks in a run folder, e.g. estimators_allranks.out.zst, or None."""
@@ -418,8 +415,11 @@ def get_allranks_textfile(folderpath: Path | str) -> Path | None:
 
 
 def get_allranks_parquetpath(folderpath: Path | str) -> Path:
-    """Return the path of the parquet cache of all the estimators of a run folder."""
-    return Path(folderpath) / ALLRANKS_PARQUETFILENAME
+    """Return the path of the parquet cache of all the estimators of a run folder.
+
+    A conversion writes this one cache from either form of text: the file of all ranks or the files of the ranks.
+    """
+    return Path(folderpath) / f"{ALLRANKS_TEXTFILENAME}.parquet"
 
 
 def get_estimator_textsource(folderpath: Path | str, mpiranks: Sequence[int]) -> tuple[Path | None, float | None, bool]:
