@@ -93,9 +93,14 @@ REPLY_FUNCTIONS = frozenset({
 # standard output first, thus the client ignores each line before this one
 SERVER_START_LINE = b"artistools server protocol 1\n"
 
-# each message is the length of its pickle data in this number of bytes, then the pickle data. The receiver reads
-# a full message before it unpickles it, thus an error in the unpickle leaves the next message in step
+# each message is the length of its data in this number of bytes, one byte that says whether zlib compressed the
+# data, then the pickle data. The receiver reads a full message before it unpickles it, thus an error in the
+# unpickle leaves the next message in step
 MESSAGE_LENGTH_BYTES = 8
+
+# zlib makes a message of at least this size smaller before it goes through ssh. The emission contributions of a 3D
+# model were 2.55 MB, and zlib level 1 made them 0.25 MB in 9 ms. A small message gains less than the time of zlib
+COMPRESS_MIN_BYTES = 64 * 1024
 
 
 def split_remote_path(path: Path | str) -> tuple[str, Path] | None:
@@ -280,8 +285,13 @@ def dump_message(value: t.Any) -> bytes:
 
 
 def write_message(stream: t.IO[bytes], data: bytes) -> None:
-    """Write the length of the pickle data and then the data."""
-    stream.write(len(data).to_bytes(MESSAGE_LENGTH_BYTES, "big"))
+    """Write the length of the data, the flag of the compression, and then the data."""
+    import zlib
+
+    compressed = len(data) >= COMPRESS_MIN_BYTES
+    if compressed:
+        data = zlib.compress(data, 1)
+    stream.write(len(data).to_bytes(MESSAGE_LENGTH_BYTES, "big") + bytes([compressed]))
     stream.write(data)
     stream.flush()
 
@@ -322,14 +332,16 @@ def load_reply(data: bytes) -> t.Any:
 
 def read_message(stream: t.IO[bytes]) -> bytes:
     """Return the pickle data of the next message. Raise EOFError if the stream ends first."""
-    header = stream.read(MESSAGE_LENGTH_BYTES)
-    if len(header) < MESSAGE_LENGTH_BYTES:
+    import zlib
+
+    header = stream.read(MESSAGE_LENGTH_BYTES + 1)
+    if len(header) < MESSAGE_LENGTH_BYTES + 1:
         raise EOFError
-    size = int.from_bytes(header, "big")
+    size = int.from_bytes(header[:MESSAGE_LENGTH_BYTES], "big")
     data = stream.read(size)
     if len(data) < size:
         raise EOFError
-    return data
+    return zlib.decompress(data) if header[MESSAGE_LENGTH_BYTES] else data
 
 
 def get_server_argv(host: str) -> list[str]:

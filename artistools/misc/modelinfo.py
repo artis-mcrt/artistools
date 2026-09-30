@@ -28,6 +28,7 @@ from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
 from artistools.misc.remote import check_local_path
+from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
@@ -198,13 +199,21 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+@lru_cache(maxsize=16)
 @on_model_host
+def get_remote_model_logname(path: Path, label: str | None) -> str:
+    """Return the log name of a remote model. The host gives it, and the cache keeps it for each plot of a viewer."""
+    return get_model_logname(path, label)
+
+
 def get_model_logname(path: Path | str, label: str | None = None) -> str:
     """Return the label of an ARTIS model and the name of its folder, for a log message.
 
     The label comes from the caller (e.g. the -label argument) or from get_model_name.
     """
     path = Path(path)
+    if is_remote_path(path):
+        return get_remote_model_logname(path, label)
     modelname = get_model_name(path)
     label = label or modelname
     if path_is_codecomparison(path):
