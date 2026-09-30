@@ -21,6 +21,7 @@ import typing as t
 import weakref
 from functools import cache
 from functools import partial
+from functools import wraps
 from pathlib import Path
 from types import MappingProxyType
 
@@ -54,6 +55,7 @@ if t.TYPE_CHECKING:
     import numpy.typing as npt
     from matplotlib.backend_bases import FigureCanvasBase
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.font_manager import FontProperties
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -727,6 +729,37 @@ def relaunch_in_macos_bundle(applicationname: str, documenttypes: "Sequence[str]
     os.execve(executable, argv, environment)  # ruff:ignore[start-process-with-no-shell]
 
 
+def serialise_mathtext_parser() -> None:
+    """Let one thread at a time parse mathtext, e.g. a tick label or a label of the legend.
+
+    matplotlib keeps one parser for all threads, and pyparsing keeps a packrat cache in it. The worker thread lays out
+    the text of a new plot while the window thread draws the old plot. A parse in both threads then corrupted the
+    parser, and it rejected valid text, e.g. the tick label 0.8 of a log axis. A parse takes about 1 ms, thus
+    the window thread waits for one parse and not for the whole plot.
+    """
+    import matplotlib.mathtext as mplmathtext
+
+    parse = mplmathtext.MathTextParser.parse
+    # wraps gives the new function __wrapped__, thus a second window does not wrap the parse again
+    if hasattr(parse, "__wrapped__"):
+        return
+    lock = threading.Lock()
+
+    @wraps(parse)
+    def serialised_parse(
+        self: mplmathtext.MathTextParser[t.Any],
+        s: str,
+        dpi: float = 72,
+        prop: "FontProperties | None" = None,
+        *,
+        antialiased: bool | None = None,
+    ) -> t.Any:
+        with lock:
+            return parse(self, s, dpi, prop, antialiased=antialiased)
+
+    mplmathtext.MathTextParser.parse = serialised_parse  # ty:ignore[invalid-assignment]
+
+
 def start_application(
     applicationname: str, iconcurve: "npt.NDArray[np.float64]", documenttypes: "Sequence[str]" = ("public.folder",)
 ) -> "QtWidgets.QApplication":
@@ -756,6 +789,7 @@ def start_application(
 
     # the Save command runs the command, which makes a pyplot figure. A pyplot window must not open beside the viewer
     plt.switch_backend("agg")
+    serialise_mathtext_parser()
     # a worker thread draws each plot and hides its output, and the window thread still prints to the terminal
     if not isinstance(sys.stdout, ThreadOutput):
         sys.stdout = ThreadOutput(sys.stdout)

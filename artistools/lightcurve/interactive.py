@@ -798,9 +798,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             widget.setToolTip(helptexts.get(dest, "") + zoomtip)
         timegrid.addWidget(widget, 0, column)
     timegrid.setColumnStretch(1, 1)
-    logscalexcheck = QtWidgets.QCheckBox("--logscalex")
-    logscalexcheck.setToolTip(helptexts.get("logscalex", ""))
-    add_row(timegrid, 1, [logscalexcheck])
+    # the index of an item: 0 for a linear time axis, and 1 for a log time axis (--logscalex). The command has no
+    # -xscale, thus the box gives no automatic scale as the y scale box does
+    xscalebox = QtWidgets.QComboBox()
+    for text, tooltip in (("Linear", "A linear time axis"), ("Log", f"--logscalex: {helptexts.get('logscalex', '')}")):
+        xscalebox.addItem(text)
+        xscalebox.setItemData(xscalebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
+    xscalebox.setToolTip("The scale of the time axis. Log gives --logscalex")
+    add_row(timegrid, 1, [QtWidgets.QLabel("x scale:"), xscalebox])
 
     _, ygrid = add_section(panellayout, "y axis")
     lumunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
@@ -946,7 +951,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         invalidcheck,
         *energychecks.values(),
         timerangeslider,
-        logscalexcheck,
+        xscalebox,
         lumunitbox,
         yscalebox,
         directionkindbox,
@@ -1057,7 +1062,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         set_edit_text(timeminedit, values.timemin)
         set_edit_text(timemaxedit, values.timemax)
-        logscalexcheck.setChecked(values.logscalex)
+        xscalebox.setCurrentIndex(1 if values.logscalex else 0)
         lumunitbox.setCurrentIndex(lumunitbox.findData(values.lumunit))
         yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
         # a magnitude is a logarithm already, thus plotlightcurves gives it no log scale
@@ -1219,7 +1224,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values = dc.replace(values, ymin="", ymax="", plotcmf=values.plotcmf and lumunit != "mag")
         # a magnitude is a logarithm already, and a log scale of its negative values gives no plot
         yscale = viewer.defaultyscale if lumunit == "mag" else yscalebox.currentData()
-        apply(dc.replace(values, lumunit=lumunit, yscale=yscale, logscalex=logscalexcheck.isChecked()))
+        apply(dc.replace(values, lumunit=lumunit, yscale=yscale, logscalex=xscalebox.currentIndex() == 1))
 
     def on_direction() -> None:
         directionkind: str = directionkindbox.currentData()
@@ -1436,7 +1441,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     connect_timerange(on_timerange)
     timeminedit.editingFinished.connect(on_timeedit)
     timemaxedit.editingFinished.connect(on_timeedit)
-    logscalexcheck.toggled.connect(on_axes)
+    xscalebox.currentIndexChanged.connect(on_axes)
     lumunitbox.currentIndexChanged.connect(on_axes)
     yscalebox.currentIndexChanged.connect(on_axes)
     setyrangebutton.clicked.connect(on_set_y_range)
