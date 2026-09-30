@@ -3023,3 +3023,32 @@ def test_interactive_direction_kinds_follow_the_first_run() -> None:
     assert "vpkt" in viewer.directionkinds
     viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
     assert "vpkt" not in viewer.directionkinds
+
+
+@pytest.mark.parametrize("fixedionlist", [None, ["ion 30", "ion 2", "ion 99", "ion 39"]])
+def test_host_merge_of_flux_contributions_keeps_the_plot(
+    fixedionlist: list[str] | None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The host merges the small series of emission.out into "Other", and the plot and its printed list must not change.
+
+    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus the host keeps them.
+    """
+    rng = np.random.default_rng(1)
+    contributions = [
+        atspectra.FluxContributionTuple(float(flux), f"ion {index}", rng.random(5) * flux, rng.random(5) * flux)
+        for index, flux in enumerate(rng.random(40))
+    ]
+    arraylambda = np.linspace(3000.0, 9000.0, 5)
+
+    reduced_of_source = []
+    for source in (contributions, atspectra.merge_other_flux_contributions(contributions, 4, fixedionlist)):
+        reduced = atspectra.sort_and_reduce_flux_contribution_list(list(source), 4, arraylambda, fixedionlist)
+        reduced_of_source.append((reduced, capsys.readouterr().out))
+
+    (reduced_full, printed_full), (reduced_merged, printed_merged) = reduced_of_source
+    assert printed_merged == printed_full
+    assert [row.linelabel for row in reduced_merged] == [row.linelabel for row in reduced_full]
+    for row_merged, row_full in zip(reduced_merged, reduced_full, strict=True):
+        assert np.isclose(row_merged.fluxcontrib, row_full.fluxcontrib, rtol=1e-12, atol=0.0)
+        assert np.allclose(row_merged.array_flambda_emission, row_full.array_flambda_emission, rtol=1e-12, atol=0.0)
+        assert np.allclose(row_merged.array_flambda_absorption, row_full.array_flambda_absorption, rtol=1e-12, atol=0.0)

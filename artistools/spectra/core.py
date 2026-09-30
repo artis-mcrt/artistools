@@ -1162,8 +1162,13 @@ def get_flux_contributions_cached(
     average_over_theta: bool = False,
     lambda_min: float = 0.0,
     lambda_max: float = math.inf,
+    maxseriescount: int | None = None,
+    fixedionlist: tuple[str, ...] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+
+    With maxseriescount, merge_other_flux_contributions puts the small series into one "Other" series. A 3D kilonova
+    model has 647 series, and a remote model sends each one through ssh.
 
     The returned spectra hold the bins with a centre from lambda_min to lambda_max [Å], and the nearest bin beyond
     each bound. These are the bins of get_lambda_bin_edges, thus a series fills the plotted range, and the ranking of
@@ -1337,7 +1342,38 @@ def get_flux_contributions_cached(
                     )
                 )
 
+    if maxseriescount is not None:
+        contribution_list = merge_other_flux_contributions(contribution_list, maxseriescount, fixedionlist)
+
     return contribution_list, array_flambda_emission_total, arraylambda
+
+
+def merge_other_flux_contributions(
+    contributions: Sequence[FluxContributionTuple], maxseriescount: int, fixedionlist: Sequence[str] | None
+) -> list[FluxContributionTuple]:
+    """Return the series that rank_flux_series_names keeps, the 20 largest other series, and one "Other" series.
+
+    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus they stay. "Other" sums the rest.
+    """
+    rowofname = {row.linelabel: row for row in contributions}
+    keptnames, othernames = rank_flux_series_names(
+        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+    )
+    printednames = [name for name in othernames if name != "Other"][:20]
+    kept = [rowofname[name] for name in (*keptnames, *printednames)]
+    other = [rowofname[name] for name in othernames if name not in printednames]
+    if not other:
+        return kept
+
+    return [
+        *kept,
+        FluxContributionTuple(
+            fluxcontrib=sum(row.fluxcontrib for row in other),
+            linelabel="Other",
+            array_flambda_emission=np.sum([row.array_flambda_emission for row in other], axis=0),
+            array_flambda_absorption=np.sum([row.array_flambda_absorption for row in other], axis=0),
+        ),
+    ]
 
 
 def get_flux_contributions(
@@ -1353,12 +1389,14 @@ def get_flux_contributions(
     average_over_theta: bool = False,
     lambda_min: float = 0.0,
     lambda_max: float = math.inf,
+    maxseriescount: int | None = None,
+    fixedionlist: Sequence[str] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
     The spectra cover lambda_min to lambda_max [Å], and the nearest bin beyond each bound, as in
-    get_flux_contributions_cached. The cache takes the absolute path, thus a change of the working folder gives the
-    new model.
+    get_flux_contributions_cached. With maxseriescount, the other series join one "Other" series. The cache takes the
+    absolute path, thus a change of the working folder gives the new model.
     """
     return get_flux_contributions_cached(
         resolve_modelpath(modelpath),
@@ -1373,6 +1411,8 @@ def get_flux_contributions(
         average_over_theta,
         lambda_min,
         lambda_max,
+        maxseriescount,
+        None if fixedionlist is None else tuple(fixedionlist),
     )
 
 
