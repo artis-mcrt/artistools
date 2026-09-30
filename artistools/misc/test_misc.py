@@ -1219,6 +1219,27 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     assert not remote.is_remote_path("runs/run:2")
     assert remote.model_path_from_text("./run:2") == tmp_path / "run:2"
     assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
+    # rsync takes an IPv6 address in brackets, and ssh takes it with no brackets
+    assert remote.split_remote_path("user@[2001:db8::1]:/model") == ("user@[2001:db8::1]", Path("/model"))
+    assert remote.get_server_argv("user@[2001:db8::1]")[1] == "user@2001:db8::1"
+    # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
+    assert remote.names_a_remote_folder("vae26:~/model")
+    assert not remote.names_a_remote_folder("second:label")
+
+
+def test_reply_of_the_server_cannot_call_a_function() -> None:
+    """The client refuses a reply that calls a function, because a different user can control the remote host.
+
+    subprocess is a module of the replies, because a reply can hold its CalledProcessError. Its functions stay out.
+    """
+    import pickle  # ruff:ignore[suspicious-pickle-import]
+
+    class CommandOnClient:
+        def __reduce__(self) -> tuple[t.Any, ...]:
+            return (subprocess.call, (["true"],))
+
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, CommandOnClient())))
 
 
 def test_server_command_of_a_git_install_names_its_commit() -> None:
@@ -1260,7 +1281,8 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     with mock_direct_url(json.dumps({"url": "file:///somewhere/else", "dir_info": {"editable": True}})):
         gitsource = remote.get_git_source()
     assert gitsource is not None
-    assert gitsource[:2] == (remote.REPOSITORY_URL, headcommit.stdout.strip())
+    # the URL is the one of the remote that holds the commit, which can be a fork
+    assert gitsource[1] == headcommit.stdout.strip()
 
 
 def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
@@ -1277,9 +1299,9 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     remotepath = Path(f"testhost:{modelpath}")
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
 
-    remote.get_server.cache_clear()
+    remote.forget_server("testhost")
     with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
-        process, _ = remote.get_server("testhost", os.getpid())
+        process, _ = remote.get_server("testhost")
         try:
             assert at.misc.path_is_dir(remotepath)
             assert not at.misc.path_is_file(remotepath)
@@ -1289,13 +1311,16 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
+            # the band light curves take the Namespace of the command as an argument
+            main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
         finally:
             assert process.stdin is not None
             process.stdin.close()
             assert process.wait(timeout=30) == 0
-            remote.get_server.cache_clear()
+            remote.forget_server("testhost")
 
     assert (tmp_path / "plotlightcurves.pdf").is_file()
+    assert (tmp_path / "plotBlightcurves.pdf").is_file()
     localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none
     pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect(), abs_tol=0.0)

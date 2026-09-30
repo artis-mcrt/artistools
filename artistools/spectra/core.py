@@ -987,6 +987,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
 @lru_cache(maxsize=2)
+@on_model_host
 def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
@@ -1409,6 +1410,7 @@ SHELLCOLUMNS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
 DEFAULT_YE_SHELLS: t.Final[tuple[float, ...]] = (*(index * 0.05 for index in range(11)), 1.0)
 
 
+@on_model_host
 def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tuple[list[float], t.Literal["kmps", "c"]]:
     """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
 

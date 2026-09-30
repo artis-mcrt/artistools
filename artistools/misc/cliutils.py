@@ -139,12 +139,12 @@ class KeepGivenPaths(argparse.Action):
 def trailing_folder_count(values: list[t.Any]) -> int:
     """Return how many values at the end of a list name an ARTIS run folder."""
     from artistools.misc.fileio import folder_is_artis_run
-    from artistools.misc.remote import is_remote_path
+    from artistools.misc.remote import names_a_remote_folder
 
     count = 0
     # a remote path counts with no test, because a test of the folder asks the host through ssh
     for value in reversed(values):
-        if not isinstance(value, str) or not (is_remote_path(value) or folder_is_artis_run(value)):
+        if not isinstance(value, str) or not (names_a_remote_folder(value) or folder_is_artis_run(value)):
             break
         count += 1
 

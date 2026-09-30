@@ -240,6 +240,7 @@ def args_from_kwargs(
     return args
 
 
+@on_model_host
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace | None = None,

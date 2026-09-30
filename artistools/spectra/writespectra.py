@@ -39,8 +39,10 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
     """
     if outdirectory is None:
         # a folder below a remote path would make a local folder of the same name, and that folder would then hide
-        # the remote model. Thus the files of a remote model go to the working folder
-        outdirectory = Path("spectra") if is_remote_path(modelpath) else Path(modelpath, "spectra")
+        # the remote model. Thus the files of a remote model go to the working folder, in a folder for each model
+        outdirectory = (
+            Path("spectra", Path(modelpath).name) if is_remote_path(modelpath) else Path(modelpath, "spectra")
+        )
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 

@@ -86,6 +86,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.remote import on_model_host
 from artistools.packets import get_packets
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
@@ -276,6 +277,17 @@ def plot_bol_reflightcurve(
     return plotlabel
 
 
+@on_model_host
+def get_model_mass_and_kinetic_energy(modelpath: Path) -> tuple[float, float]:
+    """Return the mass [g] and the kinetic energy [erg] of the ejecta. The host of a remote model reads the model."""
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+
+    # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
+    model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
+    return float(model_mass_grams), float(ejecta_ke_erg)
+
+
 def plot_deposition_thermalisation(
     axis: mplax.Axes,
     axistherm: mplax.Axes | None,
@@ -292,11 +304,7 @@ def plot_deposition_thermalisation(
     lumunit = get_plot_lum_unit(args)
 
     if args.plotthermalisation:
-        dfmodel, modelmeta = get_modeldata(modelpath)
-        dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
-
-        # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
-        model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
+        model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     depdata = get_deposition(modelpath).collect()
