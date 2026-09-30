@@ -1621,6 +1621,163 @@ def edit_series_style(
     return {flag: value for flag, value in values.items() if flag in flags}
 
 
+# each kind of viewing direction: the value of the kind, the text of its choice, and the option that gives its help
+DIRECTION_KINDS: t.Final = (
+    ("", "All directions", ""),
+    ("bin", "-plotviewingangle", "plotviewingangle"),
+    ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
+    ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
+    ("vpkt", "-plotvspecpol", "plotvspecpol"),
+)
+
+
+class DirectionChoice(t.NamedTuple):
+    """The viewing direction of the values of a window: the kind, the bins, and the unit of the angles."""
+
+    kind: str
+    bins: tuple[int, ...]
+    usedegrees: bool
+
+
+def get_direction_bins(runfolder: Path | str, kind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
+    """Return each bin of a kind of viewing direction with its label, and first the average over all the directions.
+
+    The average is bin -1. An observer of the virtual packets has no such average.
+    """
+    if not kind:
+        return []
+    averagebin = [] if kind == "vpkt" else [(-1, "All directions")]
+    return [*averagebin, *get_direction_choices(Path(runfolder), kind, usedegrees=usedegrees)]
+
+
+def add_direction_section(
+    panellayout: "QtWidgets.QVBoxLayout",
+    helptexts: "Mapping[str, str]",
+    runfolder: Path | str,
+    get_choice: "Callable[[], tuple[DirectionChoice, bool]]",
+    on_change: "Callable[[DirectionChoice], None]",
+    show_error: "Callable[[str], None]",
+) -> "tuple[Callable[[], None], Callable[[Path | str], None]]":
+    """Add the section of the viewing direction: the kind of direction, --usedegrees, and a list of the bins.
+
+    get_choice gives the choice of the values of the window, and whether the plot draws one bin, e.g. an emission plot.
+    Such a plot has a radio button for each bin, and a click on a bin replaces the bin. on_change receives each new
+    choice. A new kind keeps each bin that the kind also has.
+
+    Return the function that shows the choice of get_choice, and the function that reads the kinds of direction and
+    the labels of the bins of a new first run.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    _, directiongrid = add_section(panellayout, "Viewing direction")
+    kindbox = QtWidgets.QComboBox()
+    usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
+    usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
+    add_row(directiongrid, 0, [kindbox, usedegreescheck])
+    # the plot can show several directions at once, thus each bin has a check box. The list scrolls, and the label of
+    # a bin is long, thus the list takes the full width of the sidebar
+    binbox = QtWidgets.QScrollArea()
+    binbox.setWidgetResizable(True)
+    binbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    binbox.setToolTip(
+        "The direction bins of the plot, or the observers of the virtual packets. A plot that draws one bin, e.g. an"
+        " emission plot, shows a radio button for each bin"
+    )
+    directiongrid.addWidget(binbox, 1, 0, 1, -1)
+    binchecks: dict[int, QtWidgets.QAbstractButton] = {}
+    # the labels of the bins come from the files of the run, thus the section reads them one time for each kind
+    binlabels: dict[tuple[str, bool], list[tuple[int, str]]] = {}
+    shownlist: tuple[str, bool, bool] | None = None
+    run: list[Path | str] = [runfolder]
+
+    def get_bins(kind: str, usedegrees: bool) -> list[tuple[int, str]]:
+        if (kind, usedegrees) not in binlabels:
+            binlabels[kind, usedegrees] = get_direction_bins(run[0], kind, usedegrees=usedegrees)
+        return binlabels[kind, usedegrees]
+
+    def set_run(newrunfolder: Path | str) -> None:
+        nonlocal shownlist
+        run[0], shownlist = newrunfolder, None
+        binlabels.clear()
+        kinds = get_direction_kinds(Path(newrunfolder))
+        with QtCore.QSignalBlocker(kindbox):
+            kindbox.clear()
+            for kind, text, dest in DIRECTION_KINDS:
+                if kind in kinds:
+                    kindbox.addItem(text, kind)
+                    kindbox.setItemData(
+                        kindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
+                    )
+
+    def show_bins(kind: str, usedegrees: bool, onebin: bool) -> bool:
+        """Fill the list with a button for each bin of a kind of direction. Return whether the list is new."""
+        nonlocal shownlist
+        if (kind, usedegrees, onebin) == shownlist:
+            return False
+        checklist = QtWidgets.QWidget()
+        checklayout = QtWidgets.QVBoxLayout(checklist)
+        checklayout.setContentsMargins(6, 4, 6, 4)
+        checklayout.setSpacing(2)
+        binchecks.clear()
+        for dirbin, label in get_bins(kind, usedegrees):
+            text = f"{dirbin}: {label}"
+            check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
+            # a click on a radio button also clears the previous button, thus toggled would call the handler twice
+            check.clicked.connect(on_direction)
+            checklayout.addWidget(check)
+            binchecks[dirbin] = check
+        checklayout.addStretch(1)
+        # the list shows up to 6 bins, and a longer list scrolls
+        shownbins = min(max(len(binchecks), 1), 6)
+        lineheight = max((check.sizeHint().height() for check in binchecks.values()), default=20)
+        binbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
+        binbox.setWidget(checklist)
+        shownlist = (kind, usedegrees, onebin)
+        return True
+
+    def show() -> None:
+        choice, onebin = get_choice()
+        with QtCore.QSignalBlocker(kindbox), QtCore.QSignalBlocker(usedegreescheck):
+            kindbox.setCurrentIndex(max(kindbox.findData(choice.kind), 0))
+            usedegreescheck.setChecked(choice.usedegrees)
+        usedegreescheck.setEnabled(bool(choice.kind))
+        isnewlist = show_bins(choice.kind, choice.usedegrees, onebin)
+        for dirbin, check in binchecks.items():
+            with QtCore.QSignalBlocker(check):
+                check.setChecked(dirbin in choice.bins)
+        # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
+        if isnewlist and choice.bins and (firstcheck := binchecks.get(choice.bins[0])):
+            QtCore.QTimer.singleShot(0, binbox, partial(binbox.ensureWidgetVisible, firstcheck))
+        # all the directions have no bin to select, thus the list shows only for a kind of direction
+        binbox.setVisible(bool(choice.kind))
+
+    def on_direction() -> None:
+        kind: str = kindbox.currentData()
+        usedegrees = usedegreescheck.isChecked()
+        current, onebin = get_choice()
+        if kind == current.kind:
+            bins = tuple(dirbin for dirbin, check in binchecks.items() if check.isChecked())
+            if kind and not bins:
+                show_error("A kind of viewing direction needs one direction bin at least")
+                return
+            newbins = tuple(dirbin for dirbin in bins if dirbin not in current.bins)
+            # a plot of one bin takes the bin of the click, and the previous bin leaves
+            if onebin and newbins:
+                bins = newbins[:1]
+        else:
+            kindbins = [dirbin for dirbin, _ in get_bins(kind, usedegrees)]
+            bins = tuple(dirbin for dirbin in current.bins if dirbin in kindbins) or tuple(kindbins[:1])
+            if onebin:
+                bins = bins[:1]
+        on_change(DirectionChoice(kind=kind, bins=bins, usedegrees=usedegrees))
+
+    kindbox.currentIndexChanged.connect(on_direction)
+    usedegreescheck.toggled.connect(on_direction)
+    set_run(runfolder)
+    return show, set_run
+
+
 def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
     """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame."""
     from PySide6 import QtWidgets

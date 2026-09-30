@@ -47,6 +47,7 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
+from artistools.viewertools import add_direction_section
 from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -54,6 +55,7 @@ from artistools.viewertools import add_section
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
+from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
@@ -849,79 +851,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(ygrid, 0, [QtWidgets.QLabel("Unit:"), lumunitbox, QtWidgets.QLabel("-yscale"), yscalebox])
     add_row(ygrid, 1, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setyrangebutton])
 
-    _, directiongrid = add_section(panellayout, "Viewing direction")
-    directionkindbox = QtWidgets.QComboBox()
-
-    def show_direction_kinds() -> None:
-        """Give the box the kinds of viewing direction of the first run, which Add Model or a new order can change."""
-        with QtCore.QSignalBlocker(directionkindbox):
-            directionkindbox.clear()
-            for directionkind, directionkindtext, dest in (
-                ("", "All directions", ""),
-                ("bin", "-plotviewingangle", "plotviewingangle"),
-                ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
-                ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
-                ("vpkt", "-plotvspecpol", "plotvspecpol"),
-            ):
-                if directionkind in viewer.directionkinds:
-                    directionkindbox.addItem(directionkindtext, directionkind)
-                    directionkindbox.setItemData(
-                        directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
-                    )
-
-    show_direction_kinds()
-    usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
-    usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
-    add_row(directiongrid, 0, [directionkindbox, usedegreescheck])
-    # the plot can show several directions at the same time, thus each direction bin has a check box. The list scrolls, and
-    # the label of a bin is long, thus the list takes the full width of the sidebar
-    directionbox = QtWidgets.QScrollArea()
-    directionbox.setWidgetResizable(True)
-    directionbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    directionbox.setToolTip(
-        "The direction bins of the plot, or the observers of the virtual packets. A light curve from the text files"
-        " reads light_curve_res.out, and the observers read the packets files"
+    # the handlers come later in this function, thus the lambdas read them at the time of a change
+    show_direction, set_direction_run = add_direction_section(
+        panellayout,
+        helptexts,
+        viewer.runfolders[0],
+        lambda: (get_direction_choice(viewer.values), False),
+        lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
+        lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
     )
-    directionchecks: dict[int, QtWidgets.QCheckBox] = {}
-    directiongrid.addWidget(directionbox, 1, 0, 1, -1)
-    # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
-    directionchoices: dict[tuple[str, bool], list[tuple[int, str]]] = {}
-    shownchoices: tuple[str, bool] | None = None
-
-    def get_direction_choices_of_kind(directionkind: str, usedegrees: bool) -> list[tuple[int, str]]:
-        if not directionkind:
-            return []
-        if (directionkind, usedegrees) not in directionchoices:
-            directionchoices[directionkind, usedegrees] = get_direction_choices(
-                viewer.runfolders[0], directionkind, usedegrees=usedegrees
-            )
-        return directionchoices[directionkind, usedegrees]
-
-    def show_direction_choices(directionkind: str, usedegrees: bool) -> bool:
-        """Fill the list of the direction bins with a check box for each bin of a kind. Return whether it is new."""
-        nonlocal shownchoices
-        if (directionkind, usedegrees) == shownchoices:
-            return False
-        checklist = QtWidgets.QWidget()
-        checklayout = QtWidgets.QVBoxLayout(checklist)
-        checklayout.setContentsMargins(6, 4, 6, 4)
-        checklayout.setSpacing(2)
-        directionchecks.clear()
-        # the average over all the directions is bin -1. An observer of the virtual packets has no such average
-        allchoice = [] if directionkind == "vpkt" else [(-1, "All directions")]
-        for dirbin, label in [*allchoice, *get_direction_choices_of_kind(directionkind, usedegrees)]:
-            check = QtWidgets.QCheckBox(f"{dirbin}: {label}")
-            check.clicked.connect(on_direction)
-            checklayout.addWidget(check)
-            directionchecks[dirbin] = check
-        checklayout.addStretch(1)
-        # the list shows up to 6 bins, and a longer list scrolls
-        shownbins = min(max(len(directionchecks), 1), 6)
-        lineheight = max((check.sizeHint().height() for check in directionchecks.values()), default=20)
-        directionbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
-        directionbox.setWidget(checklist)
-        shownchoices = (directionkind, usedegrees)
-        return True
 
     _, appearancegrid = add_section(panellayout, "Appearance")
     # the box edits the row of -figscale in the other options, as the box of the other viewers does
@@ -971,8 +909,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         xscalebox,
         lumunitbox,
         yscalebox,
-        directionkindbox,
-        usedegreescheck,
     ]
 
     # the time slider acts on log10(t) over the times of the runs
@@ -981,12 +917,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def show_run_ranges() -> None:
         """Set the range of the time slider and the direction bins from the runs of the plot, e.g. after Add Model."""
-        nonlocal logtrange, shownchoices, shownruns
+        nonlocal logtrange, shownruns
         logtrange = (math.log10(max(viewer.timebounds[0], 1e-3)), math.log10(viewer.timebounds[1]))
         # the direction bins come from the new first run
-        shownchoices = None
-        directionchoices.clear()
-        show_direction_kinds()
+        set_direction_run(viewer.runfolders[0])
         shownruns = viewer.runlightcurves
 
     def to_position(value: float) -> int:
@@ -1137,17 +1071,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         yscalebox.setEnabled(values.lumunit != "mag")
         set_edit_text(yminedit, values.ymin)
         set_edit_text(ymaxedit, values.ymax)
-        directionkindbox.setCurrentIndex(max(directionkindbox.findData(values.directionkind), 0))
-        usedegreescheck.setChecked(values.usedegrees)
-        usedegreescheck.setEnabled(bool(values.directionkind))
-        isnewlist = show_direction_choices(values.directionkind, values.usedegrees)
-        for dirbin, check in directionchecks.items():
-            check.setChecked(dirbin in values.directionbins)
-        # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and values.directionbins and (firstcheck := directionchecks.get(values.directionbins[0])):
-            QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
-        # "All directions" has no bins, thus the list of the bins shows only for a kind of direction
-        directionbox.setVisible(bool(values.directionkind))
+        show_direction()
         set_option_rows(values.otheroptions)
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_spin_value(
@@ -1295,27 +1219,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         yscale = viewer.defaultyscale if lumunit == "mag" else yscalebox.currentData()
         apply(dc.replace(values, lumunit=lumunit, yscale=yscale, logscalex=xscalebox.currentIndex() == 1))
 
-    def on_direction() -> None:
-        directionkind: str = directionkindbox.currentData()
-        usedegrees = usedegreescheck.isChecked()
-        # a kind of direction other than the observers has the average over all the directions as bin -1
-        averagebin = [] if directionkind in {"", "vpkt"} else [-1]
-        dirbins = [*averagebin, *(dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees))]
-        if directionkind == viewer.values.directionkind:
-            directionbins = tuple(dirbin for dirbin, check in directionchecks.items() if check.isChecked())
-            if directionkind and not directionbins:
-                show_error("A kind of viewing direction needs one direction bin at least")
-                return
-        else:
-            # a new kind keeps each direction bin that the kind also has
-            directionbins = tuple(dirbin for dirbin in viewer.values.directionbins if dirbin in dirbins) or tuple(
-                dirbins[:1]
-            )
+    def get_direction_choice(values: ControlValues) -> DirectionChoice:
+        return DirectionChoice(kind=values.directionkind, bins=values.directionbins, usedegrees=values.usedegrees)
+
+    def on_direction(choice: DirectionChoice) -> None:
         values = dc.replace(
-            viewer.values, directionkind=directionkind, directionbins=directionbins, usedegrees=usedegrees
+            viewer.values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
         )
         # the observers of the virtual packets need the packets files
-        if directionkind == "vpkt" and not values.topnucs:
+        if choice.kind == "vpkt" and not values.topnucs:
             values = dc.replace(values, frompackets=True)
         apply(values)
 
@@ -1527,8 +1439,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     setyrangebutton.clicked.connect(on_set_y_range)
     yminedit.editingFinished.connect(on_yedit)
     ymaxedit.editingFinished.connect(on_yedit)
-    directionkindbox.currentIndexChanged.connect(on_direction)
-    usedegreescheck.toggled.connect(on_direction)
     figscalebox.valueChanged.connect(on_figscale)
     addmodelbutton.clicked.connect(on_add_model)
     # the list moves the row at the end of the drop, thus the new order applies after the drop

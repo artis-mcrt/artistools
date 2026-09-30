@@ -49,6 +49,7 @@ from artistools.spectra.plotspectra import resolve_plot_args
 from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
+from artistools.viewertools import add_direction_section
 from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
@@ -57,6 +58,7 @@ from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import copy_text
+from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
@@ -67,7 +69,6 @@ from artistools.viewertools import fix_title_position
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
-from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
 from artistools.viewertools import get_fitted_figwidthscale
@@ -1412,44 +1413,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
-    _, directiongrid = add_section(panellayout, "Viewing direction")
-    directionkindbox = QtWidgets.QComboBox()
-
-    def show_direction_kinds() -> None:
-        """Give the box the kinds of viewing direction of the first run, which Add Model or a new order can change."""
-        with QtCore.QSignalBlocker(directionkindbox):
-            directionkindbox.clear()
-            for directionkind, directionkindtext, dest in (
-                ("", "All directions", ""),
-                ("bin", "-plotviewingangle", "plotviewingangle"),
-                ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
-                ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
-                ("vpkt", "-plotvspecpol", "plotvspecpol"),
-            ):
-                if directionkind in viewer.directionkinds:
-                    directionkindbox.addItem(directionkindtext, directionkind)
-                    directionkindbox.setItemData(
-                        directionkindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
-                    )
-
-    show_direction_kinds()
-    usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
-    usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
-    add_row(directiongrid, 0, [directionkindbox, usedegreescheck])
-    # the plot can show several directions at once, thus each direction bin has a checkbox. The list scrolls, and the
-    # label of a bin is long, thus the list takes the full width of the sidebar
-    directionbox = QtWidgets.QScrollArea()
-    directionbox.setWidgetResizable(True)
-    directionbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    directionbox.setToolTip(
-        "The direction bins of the plot, or the observers of the virtual packets. An emission plot draws one bin, thus"
-        " the list then shows a radio button for each bin."
+    # the handlers come later in this function, thus the lambdas read them at the time of a change
+    show_direction, set_direction_run = add_direction_section(
+        panellayout,
+        helptexts,
+        viewer.runfolders[0],
+        lambda: get_direction_choice(viewer.values),
+        lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
+        lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
     )
-    directionchecks: dict[int, QtWidgets.QAbstractButton] = {}
-    directiongrid.addWidget(directionbox, 1, 0, 1, -1)
-    # the labels of the direction bins come from the files of the run, thus the window reads them one time for each kind
-    directionchoices: dict[tuple[str, bool], list[tuple[int, str]]] = {}
-    shownchoices: tuple[str, bool, bool] | None = None
     for box in (countbox, binwidthbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
@@ -1564,8 +1536,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         hidenetcheck,
         hideothercheck,
         thermalbox,
-        directionkindbox,
-        usedegreescheck,
     ]
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
@@ -1605,47 +1575,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         binwidthbox.setRange(low, high)
         binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
 
-    def show_direction_choices(directionkind: str, usedegrees: bool, onebin: bool) -> bool:
-        """Fill the list of the direction bins with a button for each bin of a kind of viewing direction.
-
-        A plot that draws one bin, i.e. an emission plot, gets radio buttons, and a different plot gets checkboxes.
-        Return whether the list is new.
-        """
-        nonlocal shownchoices
-        if (directionkind, usedegrees, onebin) == shownchoices:
-            return False
-        checklist = QtWidgets.QWidget()
-        checklayout = QtWidgets.QVBoxLayout(checklist)
-        checklayout.setContentsMargins(6, 4, 6, 4)
-        checklayout.setSpacing(2)
-        directionchecks.clear()
-        # the average over all the directions is bin -1. An observer of the virtual packets has no such average
-        allchoice = [] if directionkind == "vpkt" else [(-1, "All directions")]
-        for dirbin, label in [*allchoice, *get_direction_choices_of_kind(directionkind, usedegrees)]:
-            text = f"{dirbin}: {label}"
-            check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
-            # a click on a radio button also clears the previous button, thus toggled would call the handler twice
-            check.clicked.connect(on_direction)
-            checklayout.addWidget(check)
-            directionchecks[dirbin] = check
-        checklayout.addStretch(1)
-        # the list shows up to 6 bins, and a longer list scrolls
-        shownbins = min(max(len(directionchecks), 1), 6)
-        lineheight = max(check.sizeHint().height() for check in directionchecks.values()) if directionchecks else 20
-        directionbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
-        directionbox.setWidget(checklist)
-        shownchoices = (directionkind, usedegrees, onebin)
-        return True
-
-    def get_direction_choices_of_kind(directionkind: str, usedegrees: bool) -> list[tuple[int, str]]:
-        if not directionkind:
-            return []
-        if (directionkind, usedegrees) not in directionchoices:
-            directionchoices[directionkind, usedegrees] = get_direction_choices(
-                viewer.runfolders[0], directionkind, usedegrees=usedegrees
-            )
-        return directionchoices[directionkind, usedegrees]
-
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
     # the spectra and the time grid of the runs that give the ranges of the time controls
@@ -1656,15 +1585,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         The ranges of the sliders and the direction bins came from the models of the command only.
         """
-        nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownchoices, shownruns
+        nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownruns
         logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
         widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
         dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
         nvalid = len(viewer.validtimesteps)
         # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
-        slidermode, shownchoices = None, None
-        directionchoices.clear()
-        show_direction_kinds()
+        slidermode = None
+        set_direction_run(viewer.runfolders[0])
         shownruns = viewer.runkey
         timegridbox.clear()
         # two models can have one name, thus each choice gives the place of the model in the list of spectra
@@ -1957,20 +1885,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if thermalitem.isEnabled() != (thermalavailable := thermalreason is None or values.usethermalemissiontype):
             thermalitem.setEnabled(thermalavailable)
         thermalitem.setToolTip(thermaltooltip if thermalreason is None else thermalreason)
-        directionkindbox.setCurrentIndex(directionkindbox.findData(values.directionkind))
-        usedegreescheck.setChecked(values.usedegrees)
-        usedegreescheck.setEnabled(bool(values.directionkind))
-        isnewlist = show_direction_choices(
-            values.directionkind, values.usedegrees, values.showemission or values.showabsorption
-        )
-        for dirbin, check in directionchecks.items():
-            with QtCore.QSignalBlocker(check):
-                check.setChecked(dirbin in values.directionbins)
-        # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and values.directionbins and (firstcheck := directionchecks.get(values.directionbins[0])):
-            QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
-        # all the directions have no bin to select, thus the list of the bins shows only for a kind of direction
-        directionbox.setVisible(bool(values.directionkind))
+        show_direction()
         if shownspectra != get_spectra_key(values):
             show_spectra(values)
         set_option_rows(values.otheroptions)
@@ -2274,33 +2189,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             set_binwidth_box(binmodebox.currentData() or "deltax")
         on_emission_options()
 
-    def on_direction() -> None:
-        directionkind: str = directionkindbox.currentData()
-        usedegrees = usedegreescheck.isChecked()
-        # a kind of direction other than the observers has the average over all the directions as bin -1
-        averagebin = [] if directionkind in {"", "vpkt"} else [-1]
-        dirbins = [*averagebin, *(dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees))]
-        # an emission plot draws one direction bin, thus a click on a bin replaces the previous bin
-        showscontributions = viewer.values.showemission or viewer.values.showabsorption
-        if directionkind == viewer.values.directionkind:
-            directionbins = tuple(dirbin for dirbin, check in directionchecks.items() if check.isChecked())
-            if directionkind and not directionbins:
-                show_error("A kind of viewing direction needs one direction bin at least")
-                return
-            newbins = tuple(dirbin for dirbin in directionbins if dirbin not in viewer.values.directionbins)
-            if showscontributions and newbins:
-                directionbins = newbins[:1]
-        else:
-            # a new kind keeps each direction bin that the kind also has
-            directionbins = tuple(dirbin for dirbin in viewer.values.directionbins if dirbin in dirbins) or tuple(
-                dirbins[:1]
+    def get_direction_choice(values: ControlValues) -> tuple[DirectionChoice, bool]:
+        """Return the viewing direction of the values, and whether the plot draws one bin, i.e. an emission plot."""
+        choice = DirectionChoice(kind=values.directionkind, bins=values.directionbins, usedegrees=values.usedegrees)
+        return choice, values.showemission or values.showabsorption
+
+    def on_direction(choice: DirectionChoice) -> None:
+        apply(
+            dc.replace(
+                viewer.values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
             )
-            if showscontributions:
-                directionbins = directionbins[:1]
-        values = dc.replace(
-            viewer.values, directionkind=directionkind, directionbins=directionbins, usedegrees=usedegrees
         )
-        apply(values)
 
     def on_lock(checked: bool) -> None:
         if not checked:
@@ -2598,8 +2497,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     thermalbox.currentIndexChanged.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)
     normalisedcheck.toggled.connect(on_axes)
-    directionkindbox.currentIndexChanged.connect(on_direction)
-    usedegreescheck.toggled.connect(on_direction)
     addmodelbutton.clicked.connect(on_add_model)
     recentmodelsmenu.aboutToShow.connect(show_recent_models)
     timegridbox.currentIndexChanged.connect(on_timegrid)
