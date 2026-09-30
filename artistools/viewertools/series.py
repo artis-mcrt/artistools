@@ -1,4 +1,4 @@
-"""Make the list of the series and the style dialog of a series."""
+"""Make the list of the series and the dialog of the line properties of a series."""
 
 import argparse
 import contextlib
@@ -29,7 +29,7 @@ from artistools.viewertools.widgets import make_elided_label
 from artistools.viewertools.widgets import make_glyph_button
 from artistools.viewertools.widgets import make_reorder_list
 
-# the line styles of the style dialog: the value of -linestyle and the text of the box
+# the line styles of the dialog of the line properties: the value of -linestyle and the text of the box
 LINESTYLE_CHOICES: t.Final = (("solid", "Solid"), ("dashed", "Dashed"), ("dotted", "Dotted"), ("dashdot", "Dash-dot"))
 
 # the short names of the line styles of matplotlib, which a command can also give
@@ -101,31 +101,38 @@ def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui
     )
 
 
-# the options of the style dialog of a series, which each give one value for each series
-SERIES_LINE_FLAGS: t.Final = ("-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
+# the options of the dialog of the line properties, which each give one value for each series
+SERIES_PROPERTY_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
 
 
-def edit_series_style(
+def edit_series_properties(
     parent: "QtWidgets.QWidget",
     name: str,
     style: "Mapping[str, str | None]",
     defaultcolour: str,
     defaultlinewidth: float,
-    flags: "Collection[str]" = SERIES_LINE_FLAGS,
+    flags: "Collection[str]" = SERIES_PROPERTY_FLAGS,
 ) -> dict[str, str | None] | None:
-    """Ask for the line style of one series, and return the value of each option of flags.
+    """Ask for the label and the line style of one series, and return the value of each option of flags.
 
     style gives the current value of each option, or None for the default of the command. A field with the default
-    gives None, thus the command then gives the series no value. A cancelled dialog gives None. The dialog shows only
-    the fields of flags, e.g. a series of markers has no line style.
+    gives None, thus the command then gives the series no value. An empty label gives the automatic label of the
+    command. A cancelled dialog gives None. The dialog shows only the fields of flags, e.g. a series of markers has no
+    line style.
     """
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     dialog = QtWidgets.QDialog(parent)
-    dialog.setWindowTitle(f"Style of {name}")
+    dialog.setWindowTitle(f"Line Properties of {name}")
     form = QtWidgets.QFormLayout(dialog)
     chosencolour: list[str | None] = [style.get("-color")]
+
+    labeledit = QtWidgets.QLineEdit(style.get("-label") or "")
+    labeledit.setPlaceholderText("automatic")
+    labeledit.setToolTip("The label of the series in the legend (-label). Clear the field for the automatic label")
+    labeledit.setMinimumWidth(240)
+    form.addRow("Label:", labeledit)
 
     colourbutton = QtWidgets.QPushButton()
     colourbutton.setToolTip("Select the colour of the line (-color)")
@@ -227,6 +234,7 @@ def edit_series_style(
         show_preview()
 
     def on_restore_defaults() -> None:
+        labeledit.clear()
         chosencolour[0] = None
         linestylebox.setCurrentIndex(0)
         dashesedit.clear()
@@ -254,6 +262,7 @@ def edit_series_style(
     if (restorebutton := buttons.button(QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults)) is not None:
         restorebutton.clicked.connect(on_restore_defaults)
     for flag, field in (
+        ("-label", labeledit),
         ("-color", colourrow),
         ("-linestyle", linestylebox),
         ("-dashes", dashesedit),
@@ -269,6 +278,7 @@ def edit_series_style(
     if not accepted:
         return None
     values = {
+        "-label": labeledit.text().strip() or None,
         "-color": chosencolour[0],
         "-linestyle": linestylebox.currentData(),
         "-dashes": get_dashes(),
@@ -317,8 +327,7 @@ class SeriesListActions(t.NamedTuple):
     get_paths: "Callable[[], Sequence[str]]"
     # apply a new list of paths, e.g. a new order, an added path, or a removed path
     apply_paths: "Callable[[Sequence[str]], None]"
-    edit_label: "Callable[[str], None]"
-    edit_style: "Callable[[str], None]"
+    edit_properties: "Callable[[str], None]"
     # return the full path of a series, e.g. of ".", thus two spellings of one series give one row
     get_full_path: "Callable[[str], Path]"
     # return True for the folder of an ARTIS run. A plot needs one run at least
@@ -337,7 +346,7 @@ def add_series_list(
     """Add the list of the series of a viewer, with the row that adds a model or a file of reference data.
 
     Each row shows the number, the image of the line, the name, and the path of a series, and buttons that move it
-    and remove it. A double-click gives the series a -label, and the context menu of a row gives each action. A drag
+    and remove it. A double-click opens the line properties of the series, and the context menu of a row gives each action. A drag
     or Alt-Up and Alt-Down change the order. A folder or a file that the user drops on the window adds a series.
 
     Return the function that shows the rows. It takes a key of the parts of the values that the rows show, and it
@@ -436,14 +445,16 @@ def add_series_list(
         swatch.setAutoRaise(True)
         swatch.setIconSize(QtCore.QSize(36, 14))
         swatch.setIcon(QtGui.QIcon(seriesrow.swatch))
-        swatch.setToolTip("The colour and the line style of the series in the plot. Click to change them")
-        swatch.setAccessibleName(f"Set the style of {name}")
+        swatch.setToolTip(
+            "The colour and the line style of the series in the plot. Click to change the line properties"
+        )
+        swatch.setAccessibleName(f"Set the line properties of {name}")
         # the new list replaces this row, thus each action of a button waits until the click ends
-        swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(actions.edit_style, path)))
+        swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(actions.edit_properties, path)))
         rowlayout.addWidget(swatch)
         namelabel = QtWidgets.QLabel(name)
         namelabel.setToolTip(
-            f"The -label of the series: {name}. Double-click the row to change it"
+            f"The -label of the series: {name}. Double-click the row to change it in the line properties"
             if seriesrow.labelled
             else f"The name of the series in the legend: {name}. Double-click the row to give it a -label"
         )
@@ -479,8 +490,7 @@ def add_series_list(
             ("Move to Top", index > 0, partial(move_row, index, -index)),
             ("Move to Bottom", index < count - 1, partial(move_row, index, count - 1 - index)),
             *seriesrow.extraactions,
-            ("Set Label…", True, partial(actions.edit_label, path)),
-            ("Set Style…", True, partial(actions.edit_style, path)),
+            ("Line Properties…", True, partial(actions.edit_properties, path)),
             ("Copy Path", True, partial(copy_path, path)),
             ("Open Folder", not is_remote_path(path), partial(open_folder, path)),
             ("Remove", seriesrow.removereason is None, partial(remove_path, path)),
@@ -599,7 +609,7 @@ def add_series_list(
     recentmodelsmenu.aboutToShow.connect(show_recent_models)
 
     def on_double_click(item: QtWidgets.QListWidgetItem) -> None:
-        actions.edit_label(item.data(QtCore.Qt.ItemDataRole.UserRole))
+        actions.edit_properties(item.data(QtCore.Qt.ItemDataRole.UserRole))
 
     serieslist.itemDoubleClicked.connect(on_double_click)
     # the list changes its rows at the end of the drop, thus the new order applies after the drop

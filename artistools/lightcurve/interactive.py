@@ -74,10 +74,10 @@ from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import read_limit_fields
 from artistools.viewertools.series import add_series_list
-from artistools.viewertools.series import edit_series_style
+from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
 from artistools.viewertools.series import ReferenceData
-from artistools.viewertools.series import SERIES_LINE_FLAGS
+from artistools.viewertools.series import SERIES_PROPERTY_FLAGS
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
@@ -590,7 +590,7 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 # the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
 KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of light curves", "Move the light curve up or down (Option on a Mac)"),
-    ("<b>Double-click</b> a light curve", "Give the light curve a -label"),
+    ("<b>Double-click</b> a light curve", "Set the label and the line style of the light curve"),
     ("<b>Right-click</b> a light curve", "Move it, set its style, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the time range"),
     ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
@@ -1063,23 +1063,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
 
-    def on_edit_label(path: str) -> None:
-        """Ask for the -label of a light curve. An empty label gives the automatic label of plotlightcurves."""
-        values = viewer.values
-        if path not in values.lightcurves:
-            return
-        label, accepted = QtWidgets.QInputDialog.getText(
-            window,
-            "Set Label",
-            "The label of the light curve in the legend.\nClear the field for the automatic label.",
-            text=get_series_style(values.otheroptions, values.lightcurves, path)["-label"] or "",
-        )
-        if accepted:
-            rows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-label": label.strip() or None})
-            apply(dc.replace(viewer.values, otheroptions=rows))
-
-    def on_edit_style(path: str) -> None:
-        """Ask for the colour, the line style, the width, and the opacity of the series of a light curve.
+    def on_edit_properties(path: str) -> None:
+        """Ask for the label, the colour, the line style, the width, and the opacity of the series of a light curve.
 
         A reference light curve has markers and error bars, thus it has no line style.
         """
@@ -1090,13 +1075,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the colour of the dialog for "Default" is the colour that the light curve has with no -color of its own
         defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
-        changes = edit_series_style(
+        changes = edit_series_properties(
             window,
             get_lightcurve_name(values, path),
             get_series_style(values.otheroptions, values.lightcurves, path),
             mplcolors.to_hex(defaultcolour),
             float(mpl.rcParams["lines.linewidth"]),
-            flags=("-color", "-linewidth", "-linealpha") if path_is_reference_lightcurve(path) else SERIES_LINE_FLAGS,
+            flags=("-label", "-color", "-linewidth", "-linealpha")
+            if path_is_reference_lightcurve(path)
+            else SERIES_PROPERTY_FLAGS,
         )
         if changes is not None:
             rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
@@ -1123,8 +1110,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         SeriesListActions(
             get_paths=lambda: viewer.values.lightcurves,
             apply_paths=apply_lightcurves,
-            edit_label=on_edit_label,
-            edit_style=on_edit_style,
+            edit_properties=on_edit_properties,
             get_full_path=get_lightcurve_path,
             is_run=is_run_folder,
             show_error=show_error,

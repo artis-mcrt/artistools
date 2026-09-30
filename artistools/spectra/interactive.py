@@ -55,7 +55,6 @@ from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
-from artistools.viewertools.core import get_series_value
 from artistools.viewertools.core import get_short_number
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -80,7 +79,7 @@ from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.series import add_series_list
-from artistools.viewertools.series import edit_series_style
+from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
 from artistools.viewertools.series import ReferenceData
 from artistools.viewertools.series import SeriesListActions
@@ -1067,7 +1066,7 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
     ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
-    ("<b>Double-click</b> a spectrum", "Give the spectrum a -label"),
+    ("<b>Double-click</b> a spectrum", "Set the label and the line style of the spectrum"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the x range"),
     ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
@@ -1994,21 +1993,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_use_timegrid(path: str) -> None:
         apply(set_runs(viewer, viewer.values.spectra, path))
 
-    def on_edit_label(path: str) -> None:
-        """Ask for the -label of a spectrum. An empty label gives the automatic label of plotspectra."""
-        labels = get_row_values(viewer.values.otheroptions, "-label") or ()
-        index = viewer.values.spectra.index(path)
-        label, accepted = QtWidgets.QInputDialog.getText(
-            window,
-            "Set Label",
-            f"The label of {get_series_name(path)} in the legend.\nClear the field for the automatic label.",
-            text=get_series_value(labels, index) or "",
-        )
-        if accepted:
-            apply(set_series_values(viewer.values, path, {"-label": label.strip() or None}))
-
-    def on_edit_style(path: str) -> None:
-        """Ask for the colour, the line style, the width, and the opacity of the line of a spectrum."""
+    def on_edit_properties(path: str) -> None:
+        """Ask for the label, the colour, the line style, the width, and the opacity of the line of a spectrum."""
         values = viewer.values
         if path not in values.spectra:
             return
@@ -2018,7 +2004,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         style = get_series_style(values.otheroptions, values.spectra, path)
         name = style["-label"] or get_series_name(path)
-        changes = edit_series_style(
+        changes = edit_series_properties(
             window, name, style, mplcolors.to_hex(defaultcolours[path]), float(mpl.rcParams["lines.linewidth"])
         )
         if changes is not None:
@@ -2074,8 +2060,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         SeriesListActions(
             get_paths=lambda: viewer.values.spectra,
             apply_paths=apply_spectra,
-            edit_label=on_edit_label,
-            edit_style=on_edit_style,
+            edit_properties=on_edit_properties,
             get_full_path=get_spectrum_path,
             is_run=is_run_folder,
             show_error=show_error,
