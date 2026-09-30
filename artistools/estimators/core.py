@@ -38,6 +38,7 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import mtime_matches_stamp
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.modelinfo import get_nonempty_cellcounts
@@ -628,6 +629,46 @@ def read_estimator_text(modelpath: Path, state: "EstimatorBatchState") -> pl.Dat
     )
 
 
+def get_estimator_textsize(runfolder: Path, textfile: Path | None) -> int:
+    """Return the size of the estimator text of a run folder: the file of all ranks, or the sum of the rank files."""
+    if textfile is not None:
+        return textfile.stat().st_size
+    return sum(rankfile.stat().st_size for rankfile in runfolder.glob("estimators_[0-9]*.out*"))
+
+
+def read_unchanged_estimator_text(
+    modelpath: Path, state: "EstimatorBatchState"
+) -> tuple[pl.DataFrame, "EstimatorBatchState"]:
+    """Read the estimator text of a cache, and read it again when a job changed the text during the read.
+
+    sn3d can add a timestep to the text during the read. The time of the text then moves by less than the tolerance
+    of the cache stamp, thus a cache with the earlier time would stay current without that timestep. The size of the
+    text shows such a change. The state that this function returns holds the time of the text before the last read.
+    After three reads with a change, the state holds a time of zero, which makes the cache stale at the next scan.
+    """
+    for _ in range(3):
+        textsize = get_estimator_textsize(state.runfolder, state.textfile)
+        dfestimators = read_estimator_text(modelpath, state)
+        textfile, textsource_mtime, textsource_complete = get_estimator_textsource(state.runfolder, state.mpiranks)
+        if (
+            textfile == state.textfile
+            and get_estimator_textsize(state.runfolder, textfile) == textsize
+            and textsource_mtime is not None
+            and mtime_matches_stamp(str(state.textsource_mtime), textsource_mtime)
+        ):
+            return dfestimators, state
+        print("the text changed during the read.", flush=True)
+        state = state._replace(
+            textfile=textfile, textsource_mtime=textsource_mtime, textsource_complete=textsource_complete
+        )
+
+    print_warning(
+        f"{state.runfolder}: the estimator text changed during each of three reads. The cache can lack the last"
+        " timestep, thus artistools converts the text again at the next scan."
+    )
+    return dfestimators, state._replace(textsource_mtime=0.0)
+
+
 def drop_incomplete_last_timestep(
     dfestimators: pl.DataFrame, runfolder: Path, nonempty_cellcounts: Mapping[int, int] | None
 ) -> pl.DataFrame:
@@ -708,7 +749,7 @@ def get_estimators_parquetfile(
 
         time_start = time.perf_counter()
 
-        pldf_batch = read_estimator_text(modelpath, state)
+        pldf_batch, state = read_unchanged_estimator_text(modelpath, state)
 
         pldf_batch = pldf_batch.with_columns(
             cs.by_name("titeration", "timestep", "modelgridindex", require_all=False).cast(pl.Int32)

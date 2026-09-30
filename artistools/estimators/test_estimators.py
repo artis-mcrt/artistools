@@ -692,6 +692,40 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "allranks file"
 
 
+def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Path) -> None:
+    """sn3d can add a timestep to the file of all ranks during the conversion.
+
+    The time of the file then moves by less than the tolerance of the cache stamp. The conversion must read the text
+    again, or a cache without the new timesteps stays current.
+    """
+    import artistools.estimators.core
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, celltexts[:40])
+    os.utime(allranksfile, (1000.0, 1000.0))
+
+    read_estimator_text = artistools.estimators.core.read_estimator_text
+
+    def read_during_a_write(modelpath: Path, state: t.Any) -> pl.DataFrame:
+        dfestimators = read_estimator_text(modelpath, state)
+        if mockread.call_count == 1:
+            write_zstd_frames(allranksfile, celltexts)
+            os.utime(allranksfile, (1005.0, 1005.0))
+        return dfestimators
+
+    with mock.patch.object(
+        artistools.estimators.core, "read_estimator_text", side_effect=read_during_a_write
+    ) as mockread:
+        dfestim = at.estimators.scan_estimators(tmp_path).collect()
+
+    assert mockread.call_count == 2
+    assert dfestim["timestep"].n_unique() == len(celltexts)
+    assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource_mtime"] == "1005.0"
+
+
 def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: Path) -> None:
     """A cell that writes no line of a quantity gets zero, also when a whole file of a rank or a part lacks the line.
 
