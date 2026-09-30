@@ -22,7 +22,6 @@ from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
-from artistools.estimators.core import get_plot_estimator_rows
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
@@ -381,9 +380,10 @@ class RunData(t.NamedTuple):
 def read_remote_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
     """Read the data of a remote run on its host, which also converts the stale estimator caches there.
 
-    The caches of the batches stay on the host, and each plot asks the host for its columns.
+    The batch caches hold the paths on the host. The window gives them back to the host with each plot, thus the host
+    checks no text file for a plot.
     """
-    return read_run(modelpath, args, ntimesteps)._replace(batchcaches=None)
+    return read_run(modelpath, args, ntimesteps)
 
 
 def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
@@ -437,8 +437,6 @@ def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -
     cache of 5335 columns. Thus the scans of the replaced caches must go.
     """
     clear_run_caches(modelpath)
-    # the columns of a remote run that the last plots fetched
-    get_plot_estimator_rows.cache_clear()
     return read_run(modelpath, args, ntimesteps)
 
 

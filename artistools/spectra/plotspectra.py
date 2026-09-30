@@ -981,6 +981,8 @@ def get_emission_contributions(
             average_over_theta=args.average_over_theta_angle,
             lambda_min=lambda_min,
             lambda_max=lambda_max,
+            maxseriescount=args.maxseriescount,
+            fixedionlist=args.fixedionlist,
         )
 
     use_time = get_packet_use_time(args)

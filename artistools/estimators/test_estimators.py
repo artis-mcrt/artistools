@@ -2705,7 +2705,7 @@ def test_estimator_image_with_a_log_scale_and_no_value_above_zero(tmp_path: Path
 def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
     """One NaN value must not remove the mean of its ring, and a frame with no estimators gives an empty grid."""
     plotestimators = at.estimators.plotestimators
-    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
     # a 2D model of 2 rings and 2 layers, where ring 0 of layer 1 holds a NaN in one of its two timesteps
     vmax_cmps = 1.0e9
     modelmeta = {"dimensions": 2, "ncoordgridrcyl": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
@@ -3241,11 +3241,10 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
         "nnion_Ni_I": [1.0, 1.0],
     })
 
-    _, ax = plt.subplots()
+    settings: plotestimators.SubplotSettings = {}
     # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
-    at.estimators.plotestimators.plot_average_ionisation(ax, ["Fe", "Ni"], estimators)
-    assert ax.get_ylim()[1] > 5.0
-    plt.close()
+    plotestimators.plot_average_ionisation(settings, ["Fe", "Ni"], estimators)
+    assert settings["ylim"][1] > 5.0
 
 
 def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
@@ -4562,7 +4561,7 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
 
     A plane of -slice gives one cell for each pixel, and a projection reads every cell of the line.
     """
-    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
     vmax_cmps = 1.0e9
     modelmeta = {"dimensions": 3, "ncoordgridx": 2, "ncoordgridy": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
     # the line at x layer 0 and y layer 1 holds two cells, and the line at x layer 1 and y layer 0 holds one

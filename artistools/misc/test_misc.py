@@ -16,6 +16,7 @@ import typing as t
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -24,11 +25,13 @@ import pytest
 import yaml
 
 import artistools as at
+from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
-from artistools.estimators.core import scan_remote_plot_estimators
 from artistools.misc import dirbins
 from artistools.misc import fileio
+from artistools.misc import parse_cli_args
 from artistools.misc import remote
+from artistools.viewertools import run_command_step_with_warning
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -1293,7 +1296,8 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         suggestion = remote.get_git_server_suggestion("vae26")
     assert suggestion is not None
     expected = (
-        'export ARTISTOOLS_REMOTE_COMMAND=\'uvx --from "artistools @ git+https://github.com/fork/artistools@abc123"'
+        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
+        ' --from "artistools @ git+https://github.com/fork/artistools@abc123"'
     )
     assert f"{expected} artistools server'" in suggestion
 
@@ -1315,6 +1319,23 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert gitsource is not None
     # the URL is the one of the remote that holds the commit, which can be a fork
     assert gitsource[1] == headcommit.stdout.strip()
+
+
+def test_server_of_a_different_protocol_stops_the_start() -> None:
+    """The start line of a different protocol must give an error at once.
+
+    That server waits for a request after its start line, thus a search for the next line would wait for ever.
+    """
+    fakescript = (
+        "import sys, time; sys.stdout.buffer.write(b'motd\\nartistools server protocol 1\\n'); sys.stdout.flush()"
+    )
+    fakeserver = subprocess.Popen([sys.executable, "-c", f"{fakescript}; time.sleep(60)"], stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
+    try:
+        with pytest.raises(ConnectionError, match="protocol 1"):
+            remote.read_server_versions(fakeserver)
+    finally:
+        fakeserver.kill()
+        fakeserver.wait()
 
 
 def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
@@ -1343,12 +1364,66 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
-            # plotestimators takes the rows of the estimators from the host, and polars filters them here
-            remoteestimators, _ = scan_remote_plot_estimators(remotepath, None, [40, 41], classicartis=False)
-            remoterows = remoteestimators.filter(pl.col("Te") > 5000.0).select(
-                "timestep", "modelgridindex", "Te", "rho"
+            # a collect, e.g. in a script, asks the host for the rows of the filter and the columns of the query
+            dfremoteestimators = (
+                at
+                .scan_estimators(remotepath, timestep=[40, 41], join_modeldata=True)
+                .filter(pl.col("Te") > 5000.0)
+                .select("timestep", "modelgridindex", "Te", "rho")
+                .collect()
             )
-            dfremoteestimators = remoterows.collect()
+            # the host collects the data of all the subplots of plotestimators in one call, and the client draws
+            with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
+                main(
+                    argsraw=[
+                        *("plotestimators", "Te", "-plot", "TR", "nne", "-plot", "populations", "Fe II", "Fe III"),
+                        *(str(remotepath), "-timestep", "40", "-x", "velocity", "-o", str(tmp_path / "est.pdf")),
+                    ]
+                )
+            assert [call.args[2] for call in mockcall.call_args_list].count("get_figures_data") == 1
+            # an empty selection comes back from the host as its own error, and the command then names the data
+            emptyargs = parse_cli_args(
+                plotestimators.addargs,
+                None,
+                None,
+                ["Te", str(remotepath), "-ts", "40", "-x", "velocity", "-xmin", "1e9"],
+            )
+            emptymodelpath, emptytimesteps = plotestimators.resolve_plot_args(emptyargs)
+            with pytest.raises(plotestimators.NoEstimatorRowsError):
+                plotestimators.get_figures_data(emptymodelpath, emptyargs, emptytimesteps)
+            # a window reads the first line of an error and the last warning from the buffer of its thread, thus a quiet
+            # request brings back the standard error of the host
+            for tokens, expected in (
+                (["nosuchvariable"], ("'nosuchvariable' is not an estimator variable", "")),
+                (["-plot", "populations", "Fe II", "Zz IX"], (None, "Can't plot populations for {(-1, 9)}")),
+            ):
+
+                def draw_remote_plot(plottokens: list[str] = tokens) -> None:
+                    plotargs = parse_cli_args(plotestimators.addargs, None, None, [*plottokens, str(remotepath)])
+                    plotestimators.draw_plot(plotargs, mplfig.Figure())
+
+                message, warning = run_command_step_with_warning(draw_remote_plot, quiet=True)
+                assert message == expected[0]
+                assert warning.startswith(expected[1])
+            estimatorscore = sys.modules["artistools.estimators.core"]
+            read_estimator_rows_on_host = estimatorscore.read_estimator_rows_on_host
+            hostframes: list[pl.DataFrame] = []
+
+            def read_rows_on_host(*args: t.Any) -> pl.DataFrame:
+                hostframes.append(read_estimator_rows_on_host(*args))
+                return hostframes[-1]
+
+            with mock.patch.object(estimatorscore, "read_estimator_rows_on_host", side_effect=read_rows_on_host):
+                dfremotecell = (
+                    at
+                    .scan_estimators(str(remotepath))
+                    .filter(pl.col("timestep") == 41)
+                    .filter(pl.col("modelgridindex") == 0)
+                    .select("nne")
+                    .collect()
+                )
+            # the host applies the filter, thus only the row of the cell comes back through ssh
+            assert [frame.height for frame in hostframes] == [1]
             # the band light curves take the Namespace of the command as an argument
             main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
         finally:
@@ -1358,12 +1433,23 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             remote.forget_server("testhost")
 
     assert (tmp_path / "plotlightcurves.pdf").is_file()
+    assert (tmp_path / "est.pdf").is_file()
     localestimators, _ = join_cell_modeldata(at.estimators.scan_estimators(modelpath, timestep=[40, 41]), modelpath)
     pltest.assert_frame_equal(
         dfremoteestimators,
         localestimators.filter(pl.col("Te") > 5000.0).select("timestep", "modelgridindex", "Te", "rho").collect(),
         abs_tol=0.0,
     )
+    dflocalcell = (
+        at
+        .scan_estimators(modelpath)
+        .filter(pl.col("timestep") == 41)
+        .filter(pl.col("modelgridindex") == 0)
+        .select("nne")
+        .collect()
+    )
+    assert dflocalcell.height == 1
+    pltest.assert_frame_equal(dfremotecell, dflocalcell, abs_tol=0.0)
     assert (tmp_path / "plotBlightcurves.pdf").is_file()
     localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none

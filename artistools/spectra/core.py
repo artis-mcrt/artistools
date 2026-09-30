@@ -398,18 +398,6 @@ def convert_xlimits_to_lambda_range(xmin: float, xmax: float, xunit: str) -> tup
     return lambda_min, lambda_max
 
 
-def weighted_average_spectra(
-    spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]],
-) -> npt.NDArray[np.floating]:
-    """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
-
-    spectra_and_factors should be a list of tuples: spectra[], factor.
-    """
-    spectra, factors = zip(*spectra_and_factors, strict=True)
-
-    return np.average(spectra, axis=0, weights=factors)
-
-
 def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycols: str | Sequence[str]) -> pl.DataFrame:
     """Return the mean x and the mean of each y column, for each group of nbins consecutive rows.
 
@@ -1135,6 +1123,31 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
     return n_timeblocks
 
 
+def get_emabs_average(
+    dfemabs_of_dbin: Mapping[int, pl.DataFrame],
+    timeblocks_of_dbin: Mapping[int, int],
+    timesteps: range,
+    arr_tdelta: Sequence[float],
+    n_nu: int,
+) -> npt.NDArray[np.float64]:
+    """Return f_nu of each column of an emission or absorption file, with the shape (frequency bin, column).
+
+    The mean takes each timestep with its duration as the weight, and each direction bin with an equal weight. A
+    slice of a DataFrame with a step runs one polars collect. One slice for each of the 970 series of a 3D kilonova
+    model took 1.3 s, thus one gather takes the rows of every series.
+    """
+    tdeltas = np.array([arr_tdelta[timestep] for timestep in timesteps], dtype=np.float64)
+    total = np.zeros((n_nu, next(iter(dfemabs_of_dbin.values())).width), dtype=np.float64)
+    for dbin, dfemabs in dfemabs_of_dbin.items():
+        # the frequency varies slowest, thus the row of a frequency bin and a timestep is nu * timeblocks + timestep
+        rowindices = np.arange(n_nu)[:, np.newaxis] * timeblocks_of_dbin[dbin] + np.array(timesteps)[np.newaxis, :]
+        rows = dfemabs[rowindices.ravel()].to_numpy().reshape(n_nu, len(timesteps), -1)
+        # the float64 weights make einsum sum in float64, with no float64 copy of the float32 rows
+        total += np.einsum("t,ntc->nc", tdeltas, rows)
+
+    return total / (tdeltas.sum() * len(dfemabs_of_dbin))
+
+
 @lru_cache(maxsize=4)
 @on_model_host
 def get_flux_contributions_cached(
@@ -1150,8 +1163,13 @@ def get_flux_contributions_cached(
     average_over_theta: bool = False,
     lambda_min: float = 0.0,
     lambda_max: float = math.inf,
+    maxseriescount: int | None = None,
+    fixedionlist: tuple[str, ...] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+
+    With maxseriescount, merge_other_flux_contributions puts the small series into one "Other" series. A 3D kilonova
+    model has 647 series, and a remote model sends each one through ssh.
 
     The returned spectra hold the bins with a centre from lambda_min to lambda_max [Å], and the nearest bin beyond
     each bound. These are the bins of get_lambda_bin_edges, thus a series fills the plotted range, and the ranking of
@@ -1258,6 +1276,17 @@ def get_flux_contributions_cached(
         print("Applying filter to ARTIS spectrum")
 
     assert maxion is not None
+    timesteps = range(timestepmin, timestepmax + 1)
+    fnu_emission_of_column = (
+        get_emabs_average(emissiondata, emission_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
+        if getemission
+        else None
+    )
+    fnu_absorption_of_column = (
+        get_emabs_average(absorptiondata, absorption_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
+        if absorptiondata
+        else None
+    )
     for elementindex in range(nelements):
         nions = elementlist["nions"][elementindex]
         for ion in range(nions):
@@ -1271,29 +1300,17 @@ def get_flux_contributions_cached(
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
             for selectedcolumn, emissiontypeclass in ionserieslist:
-                if getemission:
-                    array_fnu_emission = weighted_average_spectra([
-                        (
-                            emissiondata[dbin][timestep :: emission_timeblocks[dbin], selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])[nu_select]
-                else:
-                    array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
-
-                if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = weighted_average_spectra([
-                        (
-                            absorptiondata[dbin][timestep :: absorption_timeblocks[dbin], selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])[nu_select]
-                else:
-                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
+                array_fnu_emission = (
+                    fnu_emission_of_column[:, selectedcolumn]
+                    if fnu_emission_of_column is not None
+                    else np.zeros_like(arraylambda, dtype=float)
+                )
+                # only a bound-bound process has an absorption column
+                array_fnu_absorption = (
+                    fnu_absorption_of_column[:, selectedcolumn]
+                    if fnu_absorption_of_column is not None and selectedcolumn < nelements * maxion
+                    else np.zeros_like(arraylambda, dtype=float)
+                )
 
                 if filterfunc:
                     array_fnu_emission = filterfunc(array_fnu_emission)
@@ -1326,7 +1343,38 @@ def get_flux_contributions_cached(
                     )
                 )
 
+    if maxseriescount is not None:
+        contribution_list = merge_other_flux_contributions(contribution_list, maxseriescount, fixedionlist)
+
     return contribution_list, array_flambda_emission_total, arraylambda
+
+
+def merge_other_flux_contributions(
+    contributions: Sequence[FluxContributionTuple], maxseriescount: int, fixedionlist: Sequence[str] | None
+) -> list[FluxContributionTuple]:
+    """Return the series that rank_flux_series_names keeps, the 20 largest other series, and one "Other" series.
+
+    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus they stay. "Other" sums the rest.
+    """
+    rowofname = {row.linelabel: row for row in contributions}
+    keptnames, othernames = rank_flux_series_names(
+        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+    )
+    printednames = [name for name in othernames if name != "Other"][:20]
+    kept = [rowofname[name] for name in (*keptnames, *printednames)]
+    other = [rowofname[name] for name in othernames if name not in printednames]
+    if not other:
+        return kept
+
+    return [
+        *kept,
+        FluxContributionTuple(
+            fluxcontrib=sum(row.fluxcontrib for row in other),
+            linelabel="Other",
+            array_flambda_emission=np.sum([row.array_flambda_emission for row in other], axis=0),
+            array_flambda_absorption=np.sum([row.array_flambda_absorption for row in other], axis=0),
+        ),
+    ]
 
 
 def get_flux_contributions(
@@ -1342,12 +1390,14 @@ def get_flux_contributions(
     average_over_theta: bool = False,
     lambda_min: float = 0.0,
     lambda_max: float = math.inf,
+    maxseriescount: int | None = None,
+    fixedionlist: Sequence[str] | None = None,
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
     The spectra cover lambda_min to lambda_max [Å], and the nearest bin beyond each bound, as in
-    get_flux_contributions_cached. The cache takes the absolute path, thus a change of the working folder gives the
-    new model.
+    get_flux_contributions_cached. With maxseriescount, the other series join one "Other" series. The cache takes the
+    absolute path, thus a change of the working folder gives the new model.
     """
     return get_flux_contributions_cached(
         resolve_modelpath(modelpath),
@@ -1362,6 +1412,8 @@ def get_flux_contributions(
         average_over_theta,
         lambda_min,
         lambda_max,
+        maxseriescount,
+        None if fixedionlist is None else tuple(fixedionlist),
     )
 
 
