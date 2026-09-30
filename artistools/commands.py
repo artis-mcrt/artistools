@@ -61,7 +61,7 @@ DISPATCHERSCRIPTS = ("at", "artistools")
 class CommandSpec:
     """A subcommand definition: the implementing module and the static help text shown in command listings.
 
-    A hidden command still works but is left out of the --help listing (used for deprecated duplicate names).
+    A hidden command still works but is left out of the --help listing, e.g. a deprecated duplicate name or the server.
     """
 
     module: str
@@ -116,7 +116,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "getpath", "server", "timesteps", "version"),
+    "other commands": ("completions", "getpath", "timesteps", "version"),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -300,6 +300,8 @@ subcommandtree: CommandTree = {
             "A command on a different host starts this server through ssh when it gets a model path of the"
             " form host:path, e.g. vae26:~/scratch/mymodel. Do not run it yourself."
         ),
+        # a user does not run the server, thus the listing of the commands leaves it out
+        hidden=True,
     ),
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",
