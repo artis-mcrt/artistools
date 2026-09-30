@@ -884,31 +884,57 @@ def get_levelpop_modeldata(modelpath: Path) -> tuple[pl.DataFrame, float]:
     return modeldata, float(modelmeta["t_model_init_days"])
 
 
-@lru_cache(maxsize=32)
 @on_model_host
-def get_plot_estimator_rows(
-    modelpath: Path,
-    modelgridindex: tuple[int, ...] | None,
-    timesteps: tuple[int, ...],
-    classicartis: bool,
-    columns: tuple[str, ...] | None,
-    n_rows: int | None,
+def get_plot_estimator_schema(
+    modelpath: Path, modelgridindex: tuple[int, ...] | None, timesteps: tuple[int, ...], classicartis: bool
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
-    """Return the columns of the estimators with the model data of each cell, and the metadata of the model.
+    """Return an empty frame with the columns of the estimators and the model data, and the metadata of the model.
 
-    scan_remote_plot_estimators calls this on the host of a remote model. If columns is None, the frame has
-    every column and no rows, thus it gives the schema. The cache keeps the columns of each plot of a viewer, thus a new
-    plot of the same data makes no round trip. Do not change the frame that this function returns.
+    scan_remote_plot_estimators calls this on the host of a remote model, and the frame gives the schema of its source.
     """
     estimators, modelmeta = join_cell_modeldata(
         scan_estimators(modelpath, modelgridindex=modelgridindex, timestep=timesteps, classicartis=classicartis),
         modelpath,
     )
-    if columns is None:
-        return estimators.clear().collect(), modelmeta
+    return estimators.clear().collect(), modelmeta
 
-    selected = estimators.select(columns)
-    return (selected if n_rows is None else selected.head(n_rows)).collect(), modelmeta
+
+def read_remote_estimator_rows(
+    modelpath: Path,
+    cells: tuple[int, ...] | None,
+    timesteps: tuple[int, ...],
+    classicartis: bool,
+    with_columns: list[str] | None,
+    predicate: pl.Expr | None,
+    n_rows: int | None,
+    batch_size: int | None,
+) -> "Iterator[pl.DataFrame]":
+    """Yield the estimators of a remote model with the model data, for the polars IO source of the model.
+
+    collect_on_host sends each query of the source to the host, and the host runs this function with the projection,
+    the filter, and the row limit of the query. The plan holds this function by its name. The client never reads the
+    rows, thus only the result of a query comes back through ssh.
+    """
+    import os
+
+    from artistools.misc.remote import SERVER_PROCESS_ENVVAR
+    from artistools.misc.remote import split_remote_path
+
+    del batch_size
+    if not os.environ.get(SERVER_PROCESS_ENVVAR):
+        msg = f"A query of the estimators of the remote model {modelpath} must run on its host. Use collect_on_host"
+        raise ValueError(msg)
+
+    remote = split_remote_path(modelpath)
+    hostpath = remote[1].expanduser() if remote is not None else modelpath
+    estimators, _ = join_cell_modeldata(
+        scan_estimators(hostpath, modelgridindex=cells, timestep=timesteps, classicartis=classicartis), hostpath
+    )
+    if predicate is not None:
+        estimators = estimators.filter(predicate)
+    if with_columns is not None:
+        estimators = estimators.select(with_columns)
+    yield (estimators if n_rows is None else estimators.head(n_rows)).collect()
 
 
 def scan_remote_plot_estimators(
@@ -916,31 +942,17 @@ def scan_remote_plot_estimators(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return a LazyFrame of the estimators of a remote model with the model data, and the metadata of the model.
 
-    A collect of the frame asks the host for the columns that the query projects, and for the columns of its
-    filter. polars then applies the filter here, because a polars expression has a format that changes between two
-    versions of polars. The plot code thus needs no change for a remote model.
+    The plot code builds its queries on this frame as for a local model. collect_on_host then sends each query to the
+    host, which runs it whole.
     """
+    import functools
+
     from polars.io.plugins import register_io_source
 
     cells = None if modelgridindex is None else tuple(modelgridindex)
-    template, modelmeta = get_plot_estimator_rows(modelpath, cells, tuple(timesteps), classicartis, None, None)
-
-    def read_rows(
-        with_columns: list[str] | None, predicate: pl.Expr | None, n_rows: int | None, batch_size: int | None
-    ) -> "Iterator[pl.DataFrame]":
-        del batch_size
-        columns = template.columns if with_columns is None else with_columns
-        filtercolumns = [] if predicate is None else predicate.meta.root_names()
-        neededcolumns = tuple(dict.fromkeys([*columns, *filtercolumns]))
-        # a filter can remove rows, thus the host sends every row when the query has one
-        rows, _ = get_plot_estimator_rows(
-            modelpath, cells, tuple(timesteps), classicartis, neededcolumns, None if predicate is not None else n_rows
-        )
-        if predicate is not None:
-            rows = rows.filter(predicate)
-        yield (rows if n_rows is None else rows.head(n_rows)).select(columns)
-
-    return register_io_source(read_rows, schema=template.schema, is_pure=True), modelmeta
+    template, modelmeta = get_plot_estimator_schema(modelpath, cells, tuple(timesteps), classicartis)
+    source = functools.partial(read_remote_estimator_rows, modelpath, cells, tuple(timesteps), classicartis)
+    return register_io_source(source, schema=template.schema, is_pure=True), modelmeta
 
 
 def join_cell_modeldata(

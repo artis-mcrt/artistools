@@ -90,6 +90,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.misc.remote import collect_on_host
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
@@ -354,7 +355,8 @@ def draw_subplot_items(
     # -xbins 0 draws the points alone, thus it needs no average line
     linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
-    frames: list[pl.DataFrame | None] = [*pl.collect_all([*linequeries, *pointqueries])]
+    # the host of a remote model runs the queries, thus only the points of the lines come back
+    frames: list[pl.DataFrame | None] = [*collect_on_host(Path(args.modelpath), [*linequeries, *pointqueries])]
     dflinepoints_of_plan = frames[: len(linequeries)] or [None] * len(plans)
     dfpoints_of_plan = frames[len(linequeries) :] or [None] * len(plans)
 
@@ -590,7 +592,7 @@ def plot_levelpop(
 
     # this series draws one point for each cell, thus the horizontal axis must give one value for
     # each cell. A time axis gives one value for each timestep instead
-    dfxofmgi = estimators.select("modelgridindex", "xvalue").unique().collect()
+    dfxofmgi = collect_on_host(Path(modelpath), [estimators.select("modelgridindex", "xvalue").unique()])[0]
     if dfxofmgi.height != dfxofmgi["modelgridindex"].n_unique():
         exit_with_error(
             "a level population plot draws one point for each cell, thus the horizontal axis must"
@@ -1206,7 +1208,10 @@ def get_xlist(
         # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
         statexprs["rowcount"] = pl.len()
 
-    xstats: dict[str, t.Any] = estimators.select(**statexprs).collect().row(0, named=True) if statexprs else {}
+    modelpath = Path(args.modelpath)
+    xstats: dict[str, t.Any] = (
+        collect_on_host(modelpath, [estimators.select(**statexprs)])[0].row(0, named=True) if statexprs else {}
+    )
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
@@ -1226,7 +1231,7 @@ def get_xlist(
         args.xbins = -1
 
     if args.xbins is not None and args.xbins < 0:
-        xdeltamax = estimators.select(pl.col("xvalue").sort().diff().max()).collect().item()
+        xdeltamax = collect_on_host(modelpath, [estimators.select(pl.col("xvalue").sort().diff().max())])[0].item()
         if not xdeltamax:
             # a single row gives None, and a column that holds one x value gives 0.0
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
@@ -1281,18 +1286,14 @@ def get_xlist(
     estimators = estimators.sort("xvalue")
 
     # again one collect rather than three separate scans of the same query
-    uniques = (
-        estimators
-        .select(
-            # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
-            # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
-            xvalue=pl.col("xvalue").unique().sort().implode(),
-            modelgridindex=pl.col("modelgridindex").unique().sort().implode(),
-            timestep=pl.col("timestep").unique().sort().implode(),
-        )
-        .collect()
-        .row(0, named=True)
+    uniquesquery = estimators.select(
+        # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
+        # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
+        xvalue=pl.col("xvalue").unique().sort().implode(),
+        modelgridindex=pl.col("modelgridindex").unique().sort().implode(),
+        timestep=pl.col("timestep").unique().sort().implode(),
     )
+    uniques = collect_on_host(modelpath, [uniquesquery])[0].row(0, named=True)
 
     if not uniques["xvalue"]:
         raise ValueError(get_no_rows_message(timestepslist, args))
@@ -1800,17 +1801,21 @@ def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
 
 
 def get_shell_values_on_rz_grid(
-    estimators: pl.LazyFrame, panels: Sequence[ImagePanel], vmax_cmps: float, timesteps: Collection[int]
+    estimators: pl.LazyFrame,
+    panels: Sequence[ImagePanel],
+    vmax_cmps: float,
+    timesteps: Collection[int],
+    modelpath: Path,
 ) -> "list[npt.NDArray[np.float64]]":
     """Return the grid of values of each panel for a 1D model, which gives each point the value of its shell."""
-    dfshells = (
+    shellquery = (
         estimators
         .filter(pl.col("timestep").is_in(list(timesteps)))
         .group_by("modelgridindex")
         .agg(pl.col("vel_r_min").first(), pl.col("vel_r_max").first(), *get_panel_means(panels))
         .sort("vel_r_min")
-        .collect()
     )
+    dfshells = collect_on_host(modelpath, [shellquery])[0]
     # two points across the thinnest shell of a model with equal shells, and 200 for a smooth circle
     nradialpoints = max(200, 2 * dfshells.height)
     pointwidth = vmax_cmps / nradialpoints
@@ -1841,6 +1846,7 @@ def get_image_values(
     modelmeta: dict[str, t.Any],
     sliceaxis: str | None,
     timesteps: Collection[int],
+    modelpath: Path,
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
@@ -1857,7 +1863,7 @@ def get_image_values(
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if modelmeta["dimensions"] == 1:
-        return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
+        return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps, modelpath), ("rcyl", "z")
 
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
@@ -1874,7 +1880,7 @@ def get_image_values(
         ncells1 = int(modelmeta[f"ncoordgrid{plotaxis1}"])
         cellindex1 = cellindex(plotaxis1)
 
-    dfcells = (
+    cellquery = (
         estimators
         .filter(pl.col("timestep").is_in(list(timesteps)))
         .with_columns(cellindex1=cellindex1, cellindex2=cellindex(plotaxis2))
@@ -1882,8 +1888,8 @@ def get_image_values(
         .filter(pl.col("cellindex1") < ncells1)
         .group_by("cellindex1", "cellindex2")
         .agg(get_panel_means(panels))
-        .collect()
     )
+    dfcells = collect_on_host(modelpath, [cellquery])[0]
 
     grids = []
     for panelindex in range(len(panels)):
@@ -1931,7 +1937,9 @@ def draw_image_figure(
     import matplotlib.pyplot as plt
 
     set_mpl_style()
-    grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    grids, (plotaxis1, plotaxis2) = get_image_values(
+        estimators, panels, modelmeta, args.sliceaxis, timestepslist, Path(modelpath)
+    )
     isplane = plotaxis1 != "rcyl"
 
     nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
@@ -2699,7 +2707,8 @@ def write_snapshot_figures(
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        if len(frames) > 1:
+        # the copy of a remote model would bring every row of the host, and the host runs each frame of it
+        if len(frames) > 1 and not is_remote_path(modelpath):
             # each frame collects a few columns of the estimators several times. A streamed copy of the selected
             # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
             estimatorsfile = Path(tmpdir, "estimators.parquet")
@@ -2870,7 +2879,7 @@ def draw_plot(
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
     if args.dimensionreduce == 2:
         # get_xlist checks the rows of a line plot, and an image reads the estimators without it
-        if estimators.select(pl.len()).collect().item() == 0:
+        if collect_on_host(modelpath, [estimators.select(pl.len())])[0].item() == 0:
             raise ValueError(get_no_rows_message(timesteps_included, args))
         draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
     else:
@@ -2903,7 +2912,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
     # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
-    if not wantslisting and estimators.select(pl.len()).collect().item() == 0:
+    if not wantslisting and collect_on_host(modelpath, [estimators.select(pl.len())])[0].item() == 0:
         report_data_available(modelpath, classicartis=args.classicartis)
         return
 

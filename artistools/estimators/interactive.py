@@ -22,7 +22,6 @@ from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
-from artistools.estimators.core import get_plot_estimator_rows
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
@@ -437,8 +436,6 @@ def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -
     cache of 5335 columns. Thus the scans of the replaced caches must go.
     """
     clear_run_caches(modelpath)
-    # the columns of a remote run that the last plots fetched
-    get_plot_estimator_rows.cache_clear()
     return read_run(modelpath, args, ntimesteps)
 
 

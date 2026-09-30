@@ -2717,12 +2717,12 @@ def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
         "deltavol_deltat": [1.0, 3.0, 1.0, 3.0, 1.0],
         "Te": [1000.0, 2000.0, float("nan"), 4000.0, 3000.0],
     })
-    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5, 6])
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5, 6], Path())
     assert plotaxes == ("rcyl", "z")
     assert np.allclose(grid, [[1000.0, 2000.0], [3000.0, 4000.0]])
 
     estimators1d = estimators.with_columns(vel_r_min=pl.lit(0.0), vel_r_max=pl.lit(vmax_cmps))
-    (emptygrid,) = plotestimators.get_shell_values_on_rz_grid(estimators1d, panels, vmax_cmps, [999])
+    (emptygrid,) = plotestimators.get_shell_values_on_rz_grid(estimators1d, panels, vmax_cmps, [999], Path())
     assert np.isnan(emptygrid).all()
 
 
@@ -4575,7 +4575,7 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
         "deltavol_deltat": [1.0, 3.0, 1.0],
         "Te": [1000.0, 5000.0, 7000.0],
     })
-    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5])
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], Path())
     assert plotaxes == ("x", "y")
     # the grid holds [y layer][x layer]
     assert np.isclose(grid[1, 0], (1000.0 * 1.0 + 5000.0 * 3.0) / 4.0, rtol=1e-12)

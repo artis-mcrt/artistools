@@ -33,6 +33,10 @@ REMOTEPATH_PATTERN = re.compile(r"^(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+)
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
 
+# the server process sets this variable. A reader in a plan of the client then reads the files of the process itself
+SERVER_PROCESS_ENVVAR = "ARTISTOOLS_SERVER_PROCESS"
+
+
 # the repository that a host can get a commit of a clone from
 REPOSITORY_URL = "https://github.com/artis-mcrt/artistools"
 
@@ -408,22 +412,30 @@ def get_server_argv(host: str) -> list[str]:
     if host.startswith("-"):
         msg = f"The host {host} starts with -, and ssh would read it as an option"
         raise ValueError(msg)
-    defaultcommand = f"uvx artistools@{version('artistools')} server"
+    import polars as pl
+
+    # a plan of polars has a format that changes between two versions of polars, thus the server takes the polars of
+    # the client, and collect_on_host can send it the plans of the queries
+    defaultcommand = f"uvx --with polars=={pl.__version__} artistools@{version('artistools')} server"
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
     return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
 
 
-def read_server_version(process: "subprocess.Popen[bytes]") -> str:
-    """Return the version that the server sends after its start line. Raise EOFError if the server stops first."""
+def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
+    """Return the versions of artistools and polars that the server sends after its start line.
+
+    Raise EOFError if the server stops first.
+    """
     assert process.stdout is not None
     while not (line := process.stdout.readline(64 * 1024)).endswith(SERVER_START_LINE):
         if not line:
             raise EOFError
 
-    serverversion = load_reply(read_message(process.stdout))
-    assert isinstance(serverversion, str)
-    return serverversion
+    artistoolsversion, polarsversion = load_reply(read_message(process.stdout))
+    assert isinstance(artistoolsversion, str)
+    assert isinstance(polarsversion, str)
+    return artistoolsversion, polarsversion
 
 
 def get_git_source() -> tuple[str, str, list[str]] | None:
@@ -487,8 +499,10 @@ def get_git_server_suggestion(host: str) -> str | None:
     if (gitsource := get_git_source()) is None:
         return None
 
+    import polars as pl
+
     url, commit, notes = gitsource
-    servercommand = f'uvx --from "artistools @ git+{url}@{commit}" artistools server'
+    servercommand = f'uvx --with polars=={pl.__version__} --from "artistools @ git+{url}@{commit}" artistools server'
     return "\n".join([
         (
             f"This artistools comes from the git commit {commit}, but the default server command runs a release. To"
@@ -551,6 +565,8 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     import subprocess  # ruff:ignore[suspicious-subprocess-import]
     from importlib.metadata import version
 
+    import polars as pl
+
     from artistools.misc.cliutils import exit_with_error
     from artistools.misc.cliutils import print_detail
     from artistools.misc.cliutils import print_warning
@@ -564,7 +580,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
 
     try:
-        serverversion = read_server_version(process)
+        serverversion, serverpolarsversion = read_server_versions(process)
     except Exception:  # ruff:ignore[blind-except]
         # text of a shell or a server of a different protocol can give any error of the unpickle
         process.kill()
@@ -577,6 +593,13 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         )
 
     atexit.register(close_server_pipes, process)
+    if serverpolarsversion != pl.__version__:
+        process.kill()
+        exit_with_error(
+            f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
+            f" {pl.__version__}. The server runs the plans of polars, which need the same version",
+            f"Add --with polars=={pl.__version__} to the uvx command of {SERVER_COMMAND_ENVVAR}",
+        )
     if serverversion != localversion:
         print_warning(
             f"The artistools server on {host} has version {serverversion}, but this artistools has version "
@@ -654,6 +677,32 @@ def on_model_host[**P, R](func: Callable[P, R]) -> Callable[P, R]:
         )
 
     return run_on_model_host
+
+
+def collect_on_host(modelpath: Path, queries: "Sequence[pl.LazyFrame]") -> "list[pl.DataFrame]":
+    """Collect the queries, on the host of a remote model.
+
+    A query of a remote model reads its rows from a polars IO source, see scan_remote_plot_estimators. The host runs
+    the whole query, e.g. a group_by over the cells, and only the result comes back. The server has the polars of the
+    client, see start_server, thus it can read the plans.
+    """
+    import polars as pl
+
+    if not is_remote_path(modelpath) or not queries:
+        return pl.collect_all(queries)
+
+    return collect_plans(modelpath, [query.serialize() for query in queries])
+
+
+@on_model_host
+def collect_plans(modelpath: Path, plans: list[bytes]) -> "list[pl.DataFrame]":
+    """Collect the serialised plans of a client with the streaming engine. The model path selects the host."""
+    import io
+
+    import polars as pl
+
+    del modelpath
+    return pl.collect_all([pl.LazyFrame.deserialize(io.BytesIO(plan)) for plan in plans], engine="streaming")
 
 
 def get_server_function(modulename: str, qualname: str) -> Callable[..., t.Any]:
@@ -747,10 +796,15 @@ def run_request(request: bytes) -> bytes:
 
 def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:
     """Run each request of the request stream, and write each result to the result stream."""
+    import os
     from importlib.metadata import version
 
+    import polars as pl
+
+    # a reader in a plan of a client then reads the files of this process
+    os.environ[SERVER_PROCESS_ENVVAR] = "1"
     resultstream.write(SERVER_START_LINE)
-    write_message(resultstream, dump_message(version("artistools")))
+    write_message(resultstream, dump_message((version("artistools"), pl.__version__)))
     while True:
         try:
             request = read_message(requeststream)

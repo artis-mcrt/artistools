@@ -1293,7 +1293,8 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         suggestion = remote.get_git_server_suggestion("vae26")
     assert suggestion is not None
     expected = (
-        'export ARTISTOOLS_REMOTE_COMMAND=\'uvx --from "artistools @ git+https://github.com/fork/artistools@abc123"'
+        f"export ARTISTOOLS_REMOTE_COMMAND='uvx --with polars=={pl.__version__}"
+        ' --from "artistools @ git+https://github.com/fork/artistools@abc123"'
     )
     assert f"{expected} artistools server'" in suggestion
 
@@ -1343,12 +1344,14 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
-            # plotestimators takes the rows of the estimators from the host, and polars filters them here
+            # the host runs the whole query of plotestimators, and only the result comes back
             remoteestimators, _ = scan_remote_plot_estimators(remotepath, None, [40, 41], classicartis=False)
             remoterows = remoteestimators.filter(pl.col("Te") > 5000.0).select(
                 "timestep", "modelgridindex", "Te", "rho"
             )
-            dfremoteestimators = remoterows.collect()
+            [dfremoteestimators] = remote.collect_on_host(remotepath, [remoterows])
+            with pytest.raises(pl.exceptions.ComputeError, match="must run on its host"):
+                remoterows.collect()
             # the band light curves take the Namespace of the command as an argument
             main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
         finally:
