@@ -836,6 +836,7 @@ def get_spectra(
     return specdataout
 
 
+@on_model_host
 def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     """Sum the per-rank virtual packet spectra into one vspecpol_total file per observer direction."""
     nprocs = get_nprocs(modelpath)

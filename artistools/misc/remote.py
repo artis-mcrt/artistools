@@ -211,8 +211,9 @@ def to_server_arguments(value: t.Any) -> tuple[str | None, t.Any]:
             hosts.add(remote[0])
             return remote[1]
         if isinstance(leaf, argparse.Namespace):
-            plainvalues = {key: value for key, value in vars(leaf).items() if is_plain_value(value)}
-            return argparse.Namespace(**map_leaves(plainvalues, to_server_path))
+            # the reader gets its model path as an argument of its own. The paths of the Namespace, e.g. the models
+            # of a band plot on two hosts, thus give no host to the call, and the server does not use them
+            return argparse.Namespace(**{key: value for key, value in vars(leaf).items() if is_plain_value(value)})
         return leaf
 
     servervalue = map_leaves(value, to_server_path)
@@ -514,17 +515,27 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     return process, threading.Lock()
 
 
-def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, ...], kwargs: dict[str, t.Any]) -> t.Any:
-    """Run the function on the artistools server of the host, and return its result."""
-    import os
+def output_is_hidden() -> bool:
+    """Return whether the standard output of the calling thread goes elsewhere than to the terminal of the process.
+
+    --quiet sends it to the null device, and the worker thread of a viewer sends it to a buffer. The server then
+    hides the output of the reader too. The ThreadOutput of a viewer gives the target of each thread.
+    """
     import sys
 
+    stream: object = sys.stdout
+    if (get_target := getattr(stream, "get_target", None)) is not None:
+        stream = get_target()
+    return stream is not sys.__stdout__
+
+
+def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, ...], kwargs: dict[str, t.Any]) -> t.Any:
+    """Run the function on the artistools server of the host, and return its result."""
     process, lock = get_server(host)
     assert process.stdin is not None
     assert process.stdout is not None
 
-    # --quiet sends the standard output of the client to the null device, and the server then does the same
-    quiet = getattr(sys.stdout, "name", None) == os.devnull
+    quiet = output_is_hidden()
     request = dump_message((modulename, qualname, args, kwargs, quiet))
     with lock:
         try:
