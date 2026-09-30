@@ -609,6 +609,52 @@ def addarg_axislimits(
         group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
+# an entry of a list of series styles that gives no value to its series, e.g. -label default Model2. A missing entry at
+# the end of a list has the same effect. The token lets a list give a value to a later series only
+SERIES_DEFAULT: t.Final = "default"
+
+# the help text of each list of series styles gives the token
+SERIES_DEFAULT_HELP: t.Final = f"An entry {SERIES_DEFAULT} keeps the default of its series"
+
+
+def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
+    """Return an argparse type that reads SERIES_DEFAULT as None, and each other value with convert."""
+
+    def convert_or_default(value: str) -> T | None:
+        return None if value == SERIES_DEFAULT else convert(value)
+
+    # argparse names the type in the message of a bad value, e.g. "invalid float value"
+    convert_or_default.__name__ = getattr(convert, "__name__", "value")
+    return convert_or_default
+
+
+class KeepDefaultColors(argparse.Action):
+    """Store the colours of -color, with the default colour of its series for each entry SERIES_DEFAULT.
+
+    A command can give a default colour to each series, e.g. C0 to C9. A -color list replaces the whole default list,
+    thus an entry SERIES_DEFAULT takes the default colour of its place in the list.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Set the colours, and give each entry SERIES_DEFAULT the default colour of its series."""
+        defaults: Sequence[str] = self.default or []
+        colours: list[t.Any] = [] if values is None else [values] if isinstance(values, str) else list(values)
+        setattr(
+            namespace,
+            self.dest,
+            [
+                defaults[index] if colour is None and index < len(defaults) else colour
+                for index, colour in enumerate(colours)
+            ],
+        )
+
+
 def color_arg(value: str) -> str:
     """Return a colour the user asked for, rejecting one matplotlib cannot parse.
 
@@ -657,34 +703,56 @@ def addarg_seriesstyle(
 ) -> None:
     """Add the per-series style list arguments shared by the multi-series plotting commands."""
     group = arggroup(parser, "appearance")
-    group.add_argument("-label", default=[], nargs="*", help="List of series label overrides")
+    group.add_argument(
+        "-label",
+        type=series_value_arg(str),
+        default=[],
+        nargs="*",
+        help=f"List of series label overrides. {SERIES_DEFAULT_HELP}",
+    )
     group.add_argument(
         "-color",
         "-colors",
         dest="color",
-        type=color_arg,
+        type=series_value_arg(color_arg),
         default=list(colordefault) if colordefault else [],
+        action=KeepDefaultColors,
         nargs="*",
-        help="List of line colors",
+        help=f"List of line colors. {SERIES_DEFAULT_HELP}",
     )
     if include_linestyles:
-        group.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
         group.add_argument(
-            "-linewidth",
-            type=float,
+            "-linestyle",
+            type=series_value_arg(str),
             default=[],
             nargs="*",
-            help="List of line widths. For a reference series the value gives the size of the marker",
+            help=f"List of line styles. {SERIES_DEFAULT_HELP}",
+        )
+        group.add_argument(
+            "-linewidth",
+            type=series_value_arg(float),
+            default=[],
+            nargs="*",
+            help=(
+                "List of line widths. For a reference series the value gives the size of the marker."
+                f" {SERIES_DEFAULT_HELP}"
+            ),
         )
     if include_linealpha:
-        group.add_argument("-linealpha", type=float, default=[], nargs="*", help="List of line alphas (opacities)")
+        group.add_argument(
+            "-linealpha",
+            type=series_value_arg(float),
+            default=[],
+            nargs="*",
+            help=f"List of line alphas (opacities). {SERIES_DEFAULT_HELP}",
+        )
     if include_dashes:
         group.add_argument(
             "-dashes",
-            type=dashes_arg,
+            type=series_value_arg(dashes_arg),
             default=[],
             nargs="*",
-            help="List of dash patterns of lines, each one a list such as 5,2",
+            help=f"List of dash patterns of lines, each one a list such as 5,2. {SERIES_DEFAULT_HELP}",
         )
 
 

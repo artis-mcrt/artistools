@@ -387,6 +387,21 @@ def test_add_cli_arg_helpers() -> None:
     assert args.xmin == 1500
     assert args.filtersavgol == ["5", "3"]
 
+    # the token default gives no value to its series, thus a list can give a value to a later series only
+    styles = {"-label": "Two", "-colors": "blue", "-linewidth": "2", "-linealpha": "0.5", "-dashes": "5,2"}
+    args = parser.parse_args([
+        *(token for flag, value in {**styles, "-linestyle": ":"}.items() for token in (flag, "default", value))
+    ])
+    assert args.label == [None, "Two"]
+    # the parser gives the colours C0 and C1 by default, thus a default entry takes the colour of its place
+    assert args.color == ["C0", "blue"]
+    assert args.linewidth == [None, 2.0]
+    assert args.linealpha == [None, 0.5]
+    assert args.dashes == [None, (5.0, 2.0)]
+    assert args.linestyle == [None, ":"]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-linewidth", "thick"])
+
 
 def test_add_cli_arg_helper_variants() -> None:
     """The non-default helper modes must reproduce the per-command argument shapes."""
