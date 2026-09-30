@@ -2502,6 +2502,24 @@ def test_interactive_time_grid_of_a_later_model() -> None:
     assert (viewer.values.timegrid, viewer.gridfolder) == ("", modelpath_classic_3d)
 
 
+def test_interactive_time_fits_the_timestep_of_each_run() -> None:
+    """A time inside the valid times can still give a timestep of a different run that ends outside its valid times.
+
+    plotspectra clamps the time to the timestep of each run, and it then rejects the days of that timestep.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    tstarts = at.get_timestep_times(classic1dpath, loc="start")
+    tends = at.get_timestep_times(classic1dpath, loc="end")
+    timestep = 25
+    # the valid times end in the middle of the timestep
+    validend = (tstarts[timestep] + tends[timestep]) / 2.0
+    runtimes = interactive.RunTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
+    earlytime = f"{tstarts[timestep] + 0.25 * (tends[timestep] - tstarts[timestep]):.6f}"
+    assert float(earlytime) < validend
+    assert not interactive.fits_each_run([(classic1dpath, runtimes)], earlytime)
+    assert interactive.fits_each_run([(classic1dpath, runtimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
+
+
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     """A new order of the spectra keeps each -label and each -color on its spectrum.
 

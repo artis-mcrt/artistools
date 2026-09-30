@@ -393,7 +393,8 @@ def test_add_cli_arg_helpers() -> None:
         *(token for flag, value in {**styles, "-linestyle": ":"}.items() for token in (flag, "default", value))
     ])
     assert args.label == [None, "Two"]
-    assert args.color == [None, "blue"]
+    # the parser gives the colours C0 and C1 by default, thus a default entry takes the colour of its place
+    assert args.color == ["C0", "blue"]
     assert args.linewidth == [None, 2.0]
     assert args.linealpha == [None, 0.5]
     assert args.dashes == [None, (5.0, 2.0)]

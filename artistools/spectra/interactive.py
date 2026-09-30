@@ -375,6 +375,21 @@ def get_run_times(runfolder: Path, *, plotinvalidpart: bool) -> RunTimes:
     return RunTimes(tstart=tstart, tend=tend, validstart=validstart, validend=validend)
 
 
+def fits_each_run(runfoldertimes: "Sequence[tuple[Path, RunTimes]]", timedays: str) -> bool:
+    """Return True if each run clamps the -timedays value to timesteps inside the valid times of the run.
+
+    plotspectra clamps the time to the timesteps of each run, and then it rejects days outside the valid times.
+    """
+    for runfolder, runtimes in runfoldertimes:
+        try:
+            _, _, daysmin, daysmax = get_time_range(runfolder, timedays_range_str=timedays, clamp_to_timesteps=True)
+        except ValueError:
+            return False
+        if daysmin < runtimes.validstart or daysmax > runtimes.validend:
+            return False
+    return True
+
+
 def get_run_times_text(runtimes: RunTimes) -> str:
     """Return the times of a run for the tooltip of its row in the list of spectra."""
     text = f"Timesteps from {runtimes.tstart:.4g} to {runtimes.tend:.4g} d."
@@ -716,10 +731,12 @@ class SpectrumViewer:
         tends = get_timestep_times(gridfolder, loc="end")
         timebounds = [tstarts[0], tends[-1]]
         self.runtimes: dict[str, RunTimes] = {}
+        runfoldertimes: list[tuple[Path, RunTimes]] = []
         for path in spectra:
             for runfolder in get_artis_run_folders([Path(path)]):
                 runtimes = get_run_times(runfolder, plotinvalidpart=bool(self.args.plotinvalidpart))
                 self.runtimes[str(path)] = runtimes
+                runfoldertimes.append((runfolder, runtimes))
                 timebounds = [max(timebounds[0], runtimes.validstart), min(timebounds[1], runtimes.validend)]
         self.runfolders, self.gridfolder = runfolders, gridfolder
         self.tmids, self.tstarts, self.tends = tmids, tstarts, tends
@@ -728,10 +745,14 @@ class SpectrumViewer:
         # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with this one
         self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
         self.timebounds = (timebounds[0], timebounds[1])
+        # a different run clamps the time of a timestep to its own timestep, which can be longer and can end outside
+        # the valid times of that run. Thus each run tests the time of each timestep
         self.validtimesteps = [
             timestep
             for timestep in range(len(tmids))
-            if tstarts[timestep] >= self.timebounds[0] and tends[timestep] <= self.timebounds[1]
+            if tstarts[timestep] >= self.timebounds[0]
+            and tends[timestep] <= self.timebounds[1]
+            and fits_each_run(runfoldertimes, get_snapped_timedays_argument(tmids, tstarts, tends, timestep, timestep))
         ] or list(range(len(tmids)))
         self.hasgammaspectrum = has_gamma_spectrum(runfolders)
         # the direction controls read the first run, e.g. for the observers of -plotvspecpol

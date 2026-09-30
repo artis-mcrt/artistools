@@ -628,6 +628,33 @@ def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None
     return convert_or_default
 
 
+class KeepDefaultColors(argparse.Action):
+    """Store the colours of -color, with the default colour of its series for each entry SERIES_DEFAULT.
+
+    A command can give a default colour to each series, e.g. C0 to C9. A -color list replaces the whole default list,
+    thus an entry SERIES_DEFAULT takes the default colour of its place in the list.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Set the colours, and give each entry SERIES_DEFAULT the default colour of its series."""
+        defaults: Sequence[str] = self.default or []
+        colours: list[t.Any] = [] if values is None else [values] if isinstance(values, str) else list(values)
+        setattr(
+            namespace,
+            self.dest,
+            [
+                defaults[index] if colour is None and index < len(defaults) else colour
+                for index, colour in enumerate(colours)
+            ],
+        )
+
+
 def color_arg(value: str) -> str:
     """Return a colour the user asked for, rejecting one matplotlib cannot parse.
 
@@ -689,6 +716,7 @@ def addarg_seriesstyle(
         dest="color",
         type=series_value_arg(color_arg),
         default=list(colordefault) if colordefault else [],
+        action=KeepDefaultColors,
         nargs="*",
         help=f"List of line colors. {SERIES_DEFAULT_HELP}",
     )
