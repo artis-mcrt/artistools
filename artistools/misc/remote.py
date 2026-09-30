@@ -513,12 +513,18 @@ def get_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         return SERVERS[host, os.getpid()]
 
 
-def forget_server(host: str) -> None:
-    """Remove the server of the host from the registry. The next call starts a new server."""
+def forget_server(host: str, process: "subprocess.Popen[bytes] | None" = None) -> None:
+    """Remove the server of the host from the registry. The next call starts a new server.
+
+    With a process, only that server leaves the registry. A thread can fail on a server that a different thread
+    replaced, and the new server must then stay.
+    """
     import os
 
     with SERVERS_LOCK:
-        SERVERS.pop((host, os.getpid()), None)
+        entry = SERVERS.get((host, os.getpid()))
+        if entry is not None and (process is None or entry[0] is process):
+            del SERVERS[host, os.getpid()]
 
 
 def close_server_pipes(process: "subprocess.Popen[bytes]") -> None:
@@ -610,7 +616,7 @@ def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, .
             # an exchange that stops in the middle, e.g. at Ctrl-C, leaves a part of a message in the pipes. The next
             # call would read it, thus the server stops, and the next call starts a new one
             process.kill()
-            forget_server(host)
+            forget_server(host, process)
             if isinstance(exc, (BrokenPipeError, EOFError)):
                 msg = f"The artistools server on {host} stopped during a call of {qualname}"
                 raise OSError(msg) from exc
@@ -661,6 +667,10 @@ def get_server_function(modulename: str, qualname: str) -> Callable[..., t.Any]:
     func: t.Any = importlib.import_module(modulename)
     for name in qualname.split("."):
         func = getattr(func, name)
+    # the client caches the result of a remote call. A cache of the server would keep old data after a reload of a
+    # viewer, thus the server calls the function below its lru_cache
+    while hasattr(func, "cache_clear") and hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
 
     return t.cast("Callable[..., t.Any]", func)
 

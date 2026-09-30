@@ -35,6 +35,7 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.modelinfo import parse_npts_line
+from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
 CREATED_COMMENT_PREFIX = "created:"
@@ -572,6 +573,7 @@ def get_modeldata(
         if True, print warnings but skip informational progress messages
 
     """
+    check_local_path(modelpath)
     inputpath = Path(modelpath)
 
     if inputpath.is_dir():

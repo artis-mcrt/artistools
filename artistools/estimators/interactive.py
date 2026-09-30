@@ -436,12 +436,19 @@ def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -
     These caches hold the files of the last read. A kept scan also holds the metadata of its file, e.g. 8 MB for a
     cache of 5335 columns. Thus the scans of the replaced caches must go.
     """
-    scan_parquet_file.cache_clear()
-    get_runfolder_timesteps_cached.cache_clear()
-    read_classic_estimators_cached.cache_clear()
+    clear_run_caches(modelpath)
     # the columns of a remote run that the last plots fetched
     get_plot_estimator_rows.cache_clear()
     return read_run(modelpath, args, ntimesteps)
+
+
+@on_model_host
+def clear_run_caches(modelpath: Path) -> None:
+    """Clear the caches of the scans of a run. The host of a remote run clears its own caches."""
+    del modelpath
+    scan_parquet_file.cache_clear()
+    get_runfolder_timesteps_cached.cache_clear()
+    read_classic_estimators_cached.cache_clear()
 
 
 def set_run(viewer: "EstimatorViewer", run: RunData) -> None:

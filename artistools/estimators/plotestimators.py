@@ -2488,6 +2488,13 @@ def select_cells_of_slice(
     args: argparse.Namespace, modelpath: Path, conditions: Sequence[tuple[str, float, str]]
 ) -> None:
     """Select the cells of a 3D model that hold the plane or the line of -slice."""
+    args.modelgridindex = get_cells_of_slice(modelpath, list(conditions))
+    print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
+
+
+@on_model_host
+def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
+    """Return the cells of a 3D model that hold the plane or the line of -slice. The host of a remote model reads it."""
     lzmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
         exit_with_error(
@@ -2505,8 +2512,7 @@ def select_cells_of_slice(
         poscolumn = pl.col(f"pos_{axisname}_min")
         lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
 
-    args.modelgridindex = lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
-    print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
+    return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
 
 
 def select_cells_along_axis(args: argparse.Namespace) -> None:
@@ -2520,7 +2526,12 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
-    modelpath = normalize_path_list(args.modelpath)[0]
+    args.modelgridindex = get_cells_along_axis(normalize_path_list(args.modelpath)[0], args)
+
+
+@on_model_host
+def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
+    """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = (
@@ -2538,7 +2549,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
     # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
-    args.modelgridindex = list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
+    return list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
 
 
 @on_model_host
