@@ -451,6 +451,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
+        directionbins=[dirbin],
     )[dirbin]
 
 
@@ -772,23 +773,31 @@ def get_spectra(
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     gamma: bool = False,
+    directionbins: Sequence[int] | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra."""
+    """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra.
+
+    directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
+    model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
+    spec_res.out.
+    """
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
     check_averaging_angles(average_over_phi, average_over_theta)
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
-    with suppress(FileNotFoundError):
-        # the direction-resolved file must match the packet type of the spherically averaged one below,
-        # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
-        res_specdata = read_spec_res(modelpath, gamma=gamma)
-        if average_over_theta:
-            res_specdata = average_direction_bins(res_specdata, overangle="theta")
-        if average_over_phi:
-            res_specdata = average_direction_bins(res_specdata, overangle="phi")
-        specdata_alltimesteps |= res_specdata
+    readsresbins = directionbins is None or any(dirbin >= 0 for dirbin in directionbins)
+    if readsresbins:
+        with suppress(FileNotFoundError):
+            # the direction-resolved file must match the packet type of the spherically averaged one below,
+            # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
+            res_specdata = read_spec_res(modelpath, gamma=gamma)
+            if average_over_theta:
+                res_specdata = average_direction_bins(res_specdata, overangle="theta")
+            if average_over_phi:
+                res_specdata = average_direction_bins(res_specdata, overangle="phi")
+            specdata_alltimesteps |= res_specdata
 
     # spherically averaged spectra
     try:
@@ -800,12 +809,16 @@ def get_spectra(
             raise FileNotFoundError(msg) from e
         if not specdata_alltimesteps:
             # a run with specpol.out alone has no spec.out, thus only a run with no spectrum file fails here
-            msg = f"{modelpath} holds no spec.out and no spec_res.out"
+            msg = (
+                f"{modelpath} holds no spec.out and no spec_res.out"
+                if readsresbins
+                else f"{modelpath} holds no spec.out"
+            )
             raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
-    for dirbin in specdata_alltimesteps:
+    for dirbin in specdata_alltimesteps if directionbins is None else set(specdata_alltimesteps) & set(directionbins):
         dfspectrum = (
             specdata_alltimesteps[dirbin]
             .select(

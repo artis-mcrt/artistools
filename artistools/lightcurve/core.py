@@ -412,7 +412,8 @@ def get_bolometric_luminosities(
     the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
+        for timestep in timesteps
     ]
 
     return {

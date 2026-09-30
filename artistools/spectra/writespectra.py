@@ -60,7 +60,8 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     lzspectra_of_timestep = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=[-1])
+        for timestep in timesteps
     ]
     if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
         msg = f"{modelpath} holds no spec.out, thus there is no angle-averaged spectrum to write"
@@ -72,7 +73,9 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     lzspectra_polar = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
+        get_spectra(
+            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
+        )
         for timestep in timesteps
     ]
     if lzspectra_polar and 0 in lzspectra_polar[0]:

@@ -675,6 +675,8 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
                 gamma=args.gamma,
+                # bin -1 stays, because the plot shows it in place of a bin that the run does not have
+                directionbins=[-1, *directionbins],
             )
 
         if args.plotvspecpol is None and (average_over_phi or average_over_theta):

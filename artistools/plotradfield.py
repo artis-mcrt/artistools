@@ -230,7 +230,7 @@ def plot_specout(
     The caller gives the model path, because a run on a cluster writes spec.out to a subfolder of the
     model. The parent folder of that file is then the run folder and not the model.
     """
-    dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep)[-1].collect()
+    dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep, directionbins=[-1])[-1].collect()
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
