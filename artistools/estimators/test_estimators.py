@@ -770,6 +770,70 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     assert dfallranks.filter(pl.col("modelgridindex") >= 20)["gamma_R_Fe_II"].unique().to_list() == [0.0]
 
 
+def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:
+    """The script of ARTIS combined the files of the ranks while the job still ran, and the user later removed them.
+
+    The file of all ranks is then older than the text of the cache, and it holds fewer timesteps. The cache stays.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    rankfile = tmp_path / "estimators_0000.out"
+    os.utime(rankfile, (2000.0, 2000.0))
+    ntimesteps = at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique()
+
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, get_cell_texts(rankfile.read_text(encoding="utf-8"))[:40])
+    os.utime(allranksfile, (1000.0, 1000.0))
+    rankfile.unlink()
+    get_runfolder_timesteps_cached.cache_clear()
+
+    assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == ntimesteps
+    assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "rank files"
+    assert len(get_runfolder_timesteps(tmp_path)) == ntimesteps
+
+
+def test_a_partly_archived_run_rebuilds_only_its_stale_batches(tmp_path: Path) -> None:
+    """A run of an earlier artistools version has a cache for each batch of ranks, and some files of ranks are gone.
+
+    The conversion into one cache of all the ranks needs every file of a rank. The reader thus rebuilds only the stale
+    batch, and the batch without its files keeps its cache.
+    """
+    import itertools
+    from collections.abc import Iterable
+
+    import artistools.estimators.core
+    from artistools.estimators.core import CACHEVERSION
+    from artistools.misc import write_parquet_atomic
+
+    def batched_by_one(ranks: Iterable[int], _batchsize: int, strict: bool = False) -> Iterable[tuple[int, ...]]:
+        return itertools.batched(ranks, 1, strict=strict)
+
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    dfrank0 = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
+    # the text of rank 0 is newer than its cache. The text of rank 1 is archived, but its cache is current
+    os.utime(tmp_path / "estimators_0000.out", (5000.0, 5000.0))
+    for batchindex, dfbatch in enumerate((dfrank0, dfrank0.with_columns(modelgridindex=pl.lit(1, pl.Int32)))):
+        write_parquet_atomic(
+            dfbatch,
+            tmp_path / f"estimbatch{batchindex:02d}_{batchindex:04d}_{batchindex:04d}.out.parquet.tmp",
+            metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "1000.0"},
+        )
+
+    with (
+        mock.patch.object(artistools.estimators.core, "get_mpiranklist", return_value=[0, 1]),
+        mock.patch.object(artistools.estimators.core, "batched", side_effect=batched_by_one),
+    ):
+        dfestim = at.estimators.scan_estimators(tmp_path).collect()
+
+    assert sorted(dfestim["modelgridindex"].unique().to_list()) == [0, 1]
+    assert not (tmp_path / "estimators_allranks.out.parquet").exists()
+    assert (tmp_path / "estimbatch01_0001_0001.out.parquet.tmp").is_file()
+
+
 def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(tmp_path: Path) -> None:
     """An earlier artistools version made one cache for each batch of ranks.
 

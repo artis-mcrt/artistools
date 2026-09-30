@@ -39,6 +39,7 @@ from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
+from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.modelinfo import get_nonempty_cellcounts
@@ -587,6 +588,22 @@ def allranks_textsource_change(parquetfilepath: Path, runfolder: Path | str, tex
     return None
 
 
+def text_is_older_than_cache(parquetfilepath: Path, textsource_mtime: float | None) -> bool:
+    """Return True when the estimator text is older than the text of the cache of all the estimators.
+
+    Older text cannot hold newer data. For example, the script of ARTIS combined the files of the ranks while the job
+    still ran, and the user later removed the files of the ranks. A conversion of the older text would then replace
+    the cache with fewer timesteps, thus the cache stays.
+    """
+    if textsource_mtime is None:
+        return False
+    try:
+        stampedmtime = pl.read_parquet_metadata(parquetfilepath).get("textsource_mtime")
+        return stampedmtime is not None and textsource_mtime < float(stampedmtime) - MTIME_TOLERANCE_S
+    except (FileNotFoundError, pl.exceptions.PolarsError, OSError, ValueError):
+        return False
+
+
 def allranks_parquet_is_current(folderpath: Path | str) -> bool:
     """Return True when the reader takes the data of a run folder from its cache of all the estimators.
 
@@ -601,6 +618,8 @@ def allranks_parquet_is_current(folderpath: Path | str) -> bool:
     rankmin, rankmax = pqmetadata.get("rank_min"), pqmetadata.get("rank_max")
     mpiranks = range(int(rankmin), int(rankmax) + 1) if rankmin is not None and rankmax is not None else ()
     textfile, textsource_mtime, textsource_complete = get_estimator_textsource(folderpath, mpiranks)
+    if text_is_older_than_cache(parquetfilepath, textsource_mtime):
+        return True
     if textsource_complete and allranks_textsource_change(parquetfilepath, folderpath, textfile) is not None:
         return False
     return rankbatch_parquet_is_current(parquetfilepath, textsource_mtime, textsource_complete=textsource_complete)
@@ -1165,6 +1184,9 @@ def get_estimator_batch_states(
         stalereason = rankbatch_parquet_staleness(cachepath, CACHEVERSION, mtime, textsource_complete=complete)
         if stalereason is None and allranks and complete:
             stalereason = allranks_textsource_change(cachepath, runfolder, textfile)
+        if stalereason is not None and allranks and text_is_older_than_cache(cachepath, mtime):
+            print_warning(f"{runfolder}: the estimator text is older than {cachepath.name}, thus artistools keeps it.")
+            stalereason = None
         return EstimatorBatchState(
             runfolder=runfolder,
             batchindex=batchindex,
@@ -1196,7 +1218,8 @@ def get_estimator_batch_states(
         batchcaches = tuple(sorted(runfolder.glob("estimbatch*.out.parquet*")))
         if textsource[0] is None and batchcaches and not allranks_parquetpath.is_file():
             # an earlier artistools version made the caches of the batches. They stay in use while they are all
-            # current. A stale or absent batch cache makes the conversion into the cache of all the ranks
+            # current, or while some files of the ranks are absent, e.g. in a run that is partly archived. A
+            # conversion then rebuilds only the stale batches. Otherwise the whole folder goes into one cache
             # one glob of the folder gives the text file mtimes of every batch, because a glob of a folder
             # that holds one file for each MPI rank is slow
             rankfile_mtimes = get_textsource_mtimes(runfolder)
@@ -1211,7 +1234,7 @@ def get_estimator_batch_states(
                 )
                 for batchindex, mpiranks in mpirank_groups
             ]
-            if all(not state.rebuild and state.parquetfile.is_file() for state in batchstates):
+            if not textsource[2] or all(not state.rebuild and state.parquetfile.is_file() for state in batchstates):
                 states.extend(batchstates)
                 continue
 
