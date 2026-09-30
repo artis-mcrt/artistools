@@ -2065,7 +2065,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_emission_options()
 
     def get_direction_choice(values: ControlValues) -> tuple[DirectionChoice, bool]:
-        """Return the viewing direction of the values, and whether the plot draws one bin, i.e. an emission plot."""
+        """Return the viewing direction of the values, and whether the plot draws one bin, i.e. an emission or absorption plot."""
         choice = DirectionChoice(kind=values.directionkind, bins=values.directionbins, usedegrees=values.usedegrees)
         return choice, values.showemission or values.showabsorption
 

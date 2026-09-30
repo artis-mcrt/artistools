@@ -1724,7 +1724,7 @@ def add_direction_section(
         for dirbin, label in get_bins(kind, usedegrees):
             text = f"{dirbin}: {label}"
             check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
-            # a click on a radio button also clears the previous button, thus toggled would call the handler twice
+            # a click on a radio button also clears the previous button, thus the toggled signal calls the handler two times
             check.clicked.connect(on_direction)
             checklayout.addWidget(check)
             binchecks[dirbin] = check
@@ -1763,7 +1763,7 @@ def add_direction_section(
                 show_error("A kind of viewing direction needs one direction bin at least")
                 return
             newbins = tuple(dirbin for dirbin in bins if dirbin not in current.bins)
-            # a plot of one bin takes the bin of the click, and the previous bin leaves
+            # a plot of one bin replaces the previous bin with the bin of the click
             if onebin and newbins:
                 bins = newbins[:1]
         else:
@@ -4127,7 +4127,7 @@ class SeriesRow(t.NamedTuple):
     itemtext: str
     tooltip: str
     swatch: "QtGui.QPixmap"
-    # the reason that the row cannot go, e.g. for the last model, or None
+    # the reason that the user cannot remove the row, e.g. for the last model, or None
     removereason: str | None
     # a glyph after the path, e.g. the mark of the model that gives the timesteps, and its tooltip
     mark: tuple[str, str] | None
@@ -4360,7 +4360,7 @@ def add_series_list(
 
         Qt can move a dropped row, or it can insert a copy and then remove the source row. Until the removal, the
         list holds one series two times, thus the function waits for the removal. A copy has no row widget, thus the
-        rows then come again with the next show_rows.
+        next show_rows makes the rows again.
         """
         items = [serieslist.item(index) for index in range(serieslist.count())]
         order = [item.data(QtCore.Qt.ItemDataRole.UserRole) for item in items]
@@ -4498,7 +4498,7 @@ def reload_runs(
 ) -> None:
     """Read the runs again in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
 
-    The caches of this process and of the host of a remote run hold the files of the last read, thus both go. The
+    The caches of this process and of the host of a remote run hold old data, thus the function clears both. The
     reload waits for the plot in progress, and a new plot waits for the reload.
     """
 
