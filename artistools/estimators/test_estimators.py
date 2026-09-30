@@ -3974,17 +3974,6 @@ def test_interactive_snapshot_and_time_evolution() -> None:
     assert snapshot.first == snapshot.last == viewer.validtimesteps[(len(viewer.validtimesteps) - 1) // 2]
 
 
-def test_interactive_rejection_keeps_the_old_plot() -> None:
-    """A variable that the model does not have gives the message of plotestimators, and the old command stays."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    command = viewer.get_command()
-    message = viewer.change(dc.replace(viewer.values, subplots=(("Tee",),)))
-    assert message is not None
-    assert "'Tee' is not an estimator variable" in message
-    assert viewer.get_command() == command
-    assert viewer.fig.axes[0].get_lines()
-
-
 def test_interactive_command_of_a_dispatcher_call() -> None:
     """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
     from artistools.__main__ import main as dispatcher_main

@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import dataclasses as dc
 import hashlib
 import importlib
 import inspect
@@ -8,6 +9,7 @@ import itertools
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -4229,3 +4231,61 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
     rows, othertokens = viewertools.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
     assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
+
+
+# each viewer with the arguments of a plot that sets several of its controls
+VIEWER_CASES: t.Final = (
+    ("spectra", [str(modelpath), "-t", "300", "-xmin", "3000", "-label", "model", "--interactive"]),
+    (
+        "lightcurve",
+        [
+            str(modelpath_classic_3d),
+            "-deposition",
+            "gamma",
+            "-thermalisation",
+            "gamma",
+            "--showbarnes",
+            "--interactive",
+        ],
+    ),
+    ("estimators", ["Te", str(modelpath), "-timestep", "50", "--interactive"]),
+)
+
+
+def make_viewer(kind: str, tokens: "Sequence[str]") -> t.Any:
+    """Return the viewer of a command, with a canvas and no window, after its first plot."""
+    module = importlib.import_module(f"artistools.{kind}.interactive")
+    viewerclass = next(
+        value for name, value in vars(module).items() if name.endswith("Viewer") and isinstance(value, type)
+    )
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = viewerclass(tokens, fig)
+    assert viewer.draw() is None
+    return viewer
+
+
+@pytest.mark.parametrize(("kind", "tokens"), VIEWER_CASES)
+def test_viewer_command_opens_the_same_plot(kind: str, tokens: list[str]) -> None:
+    """The command that a viewer shows must open a viewer with the same command.
+
+    A user copies the command of a window and runs it later, e.g. in a script. An option that the window gives but
+    does not read back, or reads in a different way, then gives a different plot.
+    """
+    viewer = make_viewer(kind, tokens)
+    command = viewer.get_command()
+    again = make_viewer(kind, [*shlex.split(command)[2:], "--interactive"])
+    assert again.get_command() == command
+
+
+@pytest.mark.parametrize(("kind", "tokens"), VIEWER_CASES)
+def test_viewer_keeps_its_plot_after_a_rejected_change(kind: str, tokens: list[str]) -> None:
+    """A change that the command rejects must keep the values and the figure of the last plot, and give the reason."""
+    viewer = make_viewer(kind, tokens)
+    oldvalues, oldfig = viewer.values, viewer.fig
+    badvalues = dc.replace(oldvalues, otheroptions=(*oldvalues.otheroptions, ("-figscale", ("abc",))))
+    message = viewer.change(badvalues)
+    assert message is not None
+    assert "-figscale" in message
+    assert viewer.values == oldvalues
+    assert viewer.fig is oldfig
