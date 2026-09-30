@@ -25,7 +25,6 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
-from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
@@ -71,7 +70,6 @@ from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
 from artistools.viewertools import get_fitted_figwidthscale
-from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
@@ -106,9 +104,9 @@ from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import parse_viewer_tokens
 from artistools.viewertools import ReferenceData
 from artistools.viewertools import reload_runs
-from artistools.viewertools import remove_options
 from artistools.viewertools import render_command
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
@@ -126,7 +124,6 @@ from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
-from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_play_timer
 from artistools.viewertools import ViewerCommand
 
@@ -609,12 +606,7 @@ class SpectrumViewer:
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
-        parser = make_parser(addargs)
-        usertokens = remove_options(parser, tokens, {"interactive"})
-        # parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list, e.g.
-        # -fixedionlist, does not take a folder. The removal of the controlled options must keep those folders
-        basetokens = remove_options(parser, separate_trailing_folders(usertokens), CONTROLLED_DESTS)
-        args = parse_cli_args(addargs, None, None, usertokens)
+        parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
         # -deltax and --notimeclamp also make plotspectra read the packets, thus only a --frompackets that the user
@@ -633,12 +625,6 @@ class SpectrumViewer:
             )
         self.load_runs(args.modelspecpaths)
 
-        # the table of the window shows each option that no other control sets. The tokens that no option takes are
-        # paths, e.g. the path of "--notitle mymodel", or the paths after "--"
-        pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
-        otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
-        # the order of the paths gives the -label and the style of each series, thus the paths keep their order
-        startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
         self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
         self.parser = parser
 
@@ -655,7 +641,6 @@ class SpectrumViewer:
         self.groupbychoices = [str(choice) for choice in actions["groupby"].choices or ()]
         self.yvariablechoices = [str(choice) for choice in actions["yvariable"].choices or ()]
         self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
-        self.helptexts = get_helptexts(parser)
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultyvariable: str = parser.get_default("yvariable")
         # the time of the command stays exact, because a rounded time can select a different timestep

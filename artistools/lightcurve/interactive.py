@@ -37,7 +37,6 @@ from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
@@ -69,7 +68,6 @@ from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
 from artistools.viewertools import get_fitted_figwidthscale
-from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
@@ -95,10 +93,10 @@ from artistools.viewertools import make_xscale_box
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import parse_viewer_tokens
 from artistools.viewertools import read_limit_fields
 from artistools.viewertools import ReferenceData
 from artistools.viewertools import reload_runs
-from artistools.viewertools import remove_options
 from artistools.viewertools import render_command
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import SERIES_LINE_FLAGS
@@ -115,7 +113,6 @@ from artistools.viewertools import show_status_message
 from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
-from artistools.viewertools import split_option_rows
 from artistools.viewertools import ViewerCommand
 
 if t.TYPE_CHECKING:
@@ -395,12 +392,7 @@ class LightCurveViewer:
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
-        parser = make_parser(addargs)
-        usertokens = remove_options(parser, tokens, {"interactive"})
-        # parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list, e.g.
-        # -deposition, does not take a folder. The removal of the controlled options must keep those folders
-        basetokens = remove_options(parser, separate_trailing_folders(usertokens), CONTROLLED_DESTS)
-        args = parse_cli_args(addargs, None, None, usertokens)
+        parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
         resolve_plot_args(args)
         check_viewer_args(args)
         if args.rpkt and args.gamma:
@@ -417,17 +409,10 @@ class LightCurveViewer:
             )
         self.load_runs(args.modelpath)
 
-        # the table of the window shows each option that no other control sets. The tokens that no option takes are
-        # paths, e.g. the path of "--notitle mymodel", or the paths after "--"
-        pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
-        otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
-        # the order of the paths gives the -label and the style of each series, thus the paths keep their order
-        startpaths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
         self.parser = parser
 
         actions = {action.dest: action for action in parser._actions}  # ruff:ignore[private-member-access]
         self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
-        self.helptexts = get_helptexts(parser)
         self.defaultyscale: str = parser.get_default("defaultyscale")
         directionkind = get_direction_kind(args)
         directionbins = tuple(args.plotvspecpol or args.plotviewingangle or ())

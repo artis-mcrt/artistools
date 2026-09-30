@@ -151,6 +151,42 @@ def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "Sugges
     return parser
 
 
+class ViewerTokens(t.NamedTuple):
+    """The arguments that the user gave to a viewer, in the parts that the viewer reads."""
+
+    parser: "SuggestingArgumentParser"
+    # the arguments as the command parses them, before the command resolves them
+    args: argparse.Namespace
+    # the paths of the command in their order, which gives the style and the -label of each series
+    paths: list[str]
+    # each option that no control of the viewer gives, which the table of the other options shows
+    otheroptions: OptionRows
+    helptexts: dict[str, str]
+
+
+def parse_viewer_tokens(
+    addargs: "Callable[[argparse.ArgumentParser], None]", tokens: "Sequence[str]", controlleddests: "Collection[str]"
+) -> ViewerTokens:
+    """Parse the arguments that the user gave to a viewer, and split them into the parts that the viewer reads.
+
+    controlleddests gives the options that the controls of the viewer give, thus the other options leave them out.
+    parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list does not take
+    a folder. The tokens that no option takes are the paths, e.g. the path of "--notitle mymodel".
+    """
+    from artistools.misc import parse_cli_args
+
+    parser = make_parser(addargs)
+    usertokens = remove_options(parser, tokens, {"interactive"})
+    basetokens = remove_options(parser, separate_trailing_folders(usertokens), controlleddests)
+    pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
+    otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
+    paths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
+    args = parse_cli_args(addargs, None, None, usertokens)
+    return ViewerTokens(
+        parser=parser, args=args, paths=paths, otheroptions=otheroptions, helptexts=get_helptexts(parser)
+    )
+
+
 def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") -> None:
     """Stop when an argument selects an action that is not one plot. The window shows one plot only.
 

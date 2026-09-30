@@ -63,7 +63,6 @@ from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
-from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
@@ -94,7 +93,6 @@ from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_fitted_figwidthscale
-from artistools.viewertools import get_helptexts
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
@@ -126,7 +124,7 @@ from artistools.viewertools import make_window
 from artistools.viewertools import open_model_folder
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
-from artistools.viewertools import remove_options
+from artistools.viewertools import parse_viewer_tokens
 from artistools.viewertools import render_command
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_viewer_application
@@ -139,7 +137,6 @@ from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_status_message
 from artistools.viewertools import show_window
-from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_play_timer
 from artistools.viewertools import ViewerCommand
 
@@ -817,13 +814,10 @@ class EstimatorViewer:
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
-        parser = make_parser(addargs)
-        usertokens = remove_options(parser, tokens, {"interactive"})
-        # parse_cli_args also puts "--" in front of the ARTIS folder at the end. Then -plot does not take the folder
-        basetokens = remove_options(parser, separate_trailing_folders(usertokens), CONTROLLED_DESTS | OUTPUT_DESTS)
-        # the tokens that no option takes are the variables of the first subplot and the folder, which args holds
-        otheroptions, _ = split_option_rows(parser, basetokens)
-        args = parse_cli_args(addargs, None, None, usertokens)
+        # the paths are the variables of the first subplot and the folder, which args holds
+        parser, args, _, otheroptions, self.helptexts = parse_viewer_tokens(
+            addargs, tokens, CONTROLLED_DESTS | OUTPUT_DESTS
+        )
         check_viewer_args(args)
         resolve_positional_args(args)
         self.parser = parser
@@ -831,7 +825,6 @@ class EstimatorViewer:
         require_artis_folder(self.modelpath)
         # the working folder needs no token in the command
         self.modeltoken = "" if self.modelpath == Path() else str(args.modelpath)
-        self.helptexts = get_helptexts(parser)
         # the arguments of the user, which give the columns of the plot and the format of the run
         self.userargs = args
 
