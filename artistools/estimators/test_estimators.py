@@ -881,6 +881,25 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     assert lasttimestep in get_runfolder_timesteps(tmp_path)
 
 
+def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
+    """sn3d can add a timestep after the read of the conversion, e.g. during the write of the cache.
+
+    The time of the text then moves by less than the tolerance of the cache stamp. The size of the text shows the
+    change, thus the next scan converts the text again.
+    """
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
+        shutil.copy(modelpath / name, tmp_path / name)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, celltexts[:40])
+    os.utime(allranksfile, (1000.0, 1000.0))
+    assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == 40
+
+    write_zstd_frames(allranksfile, celltexts)
+    os.utime(allranksfile, (1005.0, 1005.0))
+    assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == len(celltexts)
+
+
 def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path: Path) -> None:
     """A job that stops during the write of the file of all ranks can leave a text that ends inside a cell.
 

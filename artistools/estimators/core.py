@@ -568,9 +568,10 @@ def allranks_textsource_change(parquetfilepath: Path, runfolder: Path | str, tex
     """Return the reason why the cache of all the estimators is stale although its stamp is current, else None.
 
     The tolerance of MTIME_TOLERANCE_S hides two changes of the text. The form of the text can change. For example, a
-    user removes the file of all ranks, and sn3d then writes the files of the ranks. sn3d can also write the rest of a
-    timestep that the conversion dropped as incomplete. The cache thus keeps the form of its text, and after a drop
-    also the size of its text. A cache without these stamps gives no reason.
+    user removes the file of all ranks, and sn3d then writes the files of the ranks. sn3d can also add to the text
+    after the read of the conversion, e.g. during the write of the cache, or it can write the rest of a timestep that
+    the conversion dropped as incomplete. The cache thus keeps the form and the size of its text. A cache without these
+    stamps gives no reason.
     """
     try:
         pqmetadata = pl.read_parquet_metadata(parquetfilepath)
@@ -786,7 +787,6 @@ def get_estimators_parquetfile(
         time_start = time.perf_counter()
 
         pldf_batch, state, textsize = read_unchanged_estimator_text(state)
-        nrowsread = pldf_batch.height
         if state.allranks:
             nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
             if nonempty_cellcounts is not None and state.textfile is None:
@@ -809,9 +809,9 @@ def get_estimators_parquetfile(
                 "rank_min": str(min(state.mpiranks)),
                 "rank_max": str(max(state.mpiranks)),
                 "textsource": get_textsource_name(state.textfile),
-                # a job that still runs can write the rest of a dropped timestep within the tolerance of the cache
-                # stamp. The size of the text then shows the change, see allranks_textsource_change()
-                **({"textsource_size": str(textsize)} if pldf_batch.height < nrowsread else {}),
+                # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
+                # The size of the text then shows the change, see allranks_textsource_change()
+                "textsource_size": str(textsize),
             }
             if state.allranks
             else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
