@@ -6,10 +6,10 @@ from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
 from artistools.misc.cliutils import addarg_labelfontsize as addarg_labelfontsize
+from artistools.misc.cliutils import addarg_legend as addarg_legend
 from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
 from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridindex
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
-from artistools.misc.cliutils import addarg_nolegend as addarg_nolegend
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
@@ -84,6 +84,7 @@ from artistools.misc.fileio import find_reference_data_file as find_reference_da
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import folder_is_artis_run as folder_is_artis_run
+from artistools.misc.fileio import get_artis_run_folders as get_artis_run_folders
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_model_folder as get_model_folder

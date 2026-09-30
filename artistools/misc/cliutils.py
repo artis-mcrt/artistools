@@ -980,10 +980,19 @@ def addarg_notitle(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addarg_nolegend(parser: argparse.ArgumentParser) -> None:
-    """Add the --nolegend argument that suppresses the plot legend."""
+def addarg_legend(parser: argparse.ArgumentParser) -> None:
+    """Add the arguments of the legend: --nolegend, --legendframe, and -legendcols."""
     arggroup(parser, "appearance").add_argument(
         "--nolegend", action="store_true", help="Suppress the legend from the plot"
+    )
+    arggroup(parser, "appearance").add_argument(
+        "-legendcols",
+        type=int,
+        default=None,
+        help=(
+            "Number of columns of the legend. The default gives a long legend more columns, thus the legend takes"
+            " half of the frame height at most"
+        ),
     )
     arggroup(parser, "appearance").add_argument(
         "--legendframe",

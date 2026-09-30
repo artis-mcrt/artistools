@@ -15,6 +15,7 @@ from artistools.inputmodel.core import get_cell_selection
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import get_selection_labels
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
@@ -140,6 +141,7 @@ def make_plot(args: argparse.Namespace) -> None:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_output(parser, kind="file", default=Path())
 
     addarg_figscale(parser)

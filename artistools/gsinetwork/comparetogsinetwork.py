@@ -27,6 +27,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_t
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -245,6 +246,7 @@ def plot_qdot(
     dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
+    args: argparse.Namespace,
     xmax: float | None = None,
 ) -> None:
     """Plot the ARTIS radioactive heating rate against the rate from the nuclear network trajectories."""
@@ -307,7 +309,7 @@ def plot_qdot(
                 label=f"{label} ARTIS",
             )
 
-    set_legend(axis, ncol=3)
+    set_legend(axis, args, ncol=3)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
@@ -324,6 +326,7 @@ def plot_cell_abund_evolution(
     arr_abund_artis: pl.DataFrame | None,
     pdfoutpath: Path,
     mgi: int,
+    args: argparse.Namespace,
 ) -> None:
     """Plot the abundance evolution of one model cell, comparing ARTIS to the nuclear network trajectories."""
     if dfpairs is not None and dfparticledata is not None:
@@ -394,7 +397,7 @@ def plot_cell_abund_evolution(
         else:
             print(" [no ARTIS data]")
 
-        set_legend(axis, handlelength=1)
+        set_legend(axis, args, handlelength=1)
 
         axis.autoscale(enable=True, axis="both")
         axis.set_xmargin(0.02)
@@ -564,6 +567,7 @@ def plot_qdot_abund_modelcells(
     merger_root: Path,
     mgiplotlist: Sequence[int],
     arr_species: list[str],
+    args: argparse.Namespace,
     timedaysmax: float | None = None,
     nogsinet: bool = False,
 ) -> None:
@@ -637,6 +641,7 @@ def plot_qdot_abund_modelcells(
         dfparticledata,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
+        args=args,
         xmax=timedaysmax,
     )
 
@@ -662,11 +667,13 @@ def plot_qdot_abund_modelcells(
                 arr_abund_artis.get(mgi),
                 mgi=mgi,
                 pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
+                args=args,
             )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(
@@ -723,6 +730,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         merger_root=Path(args.mergerroot),
         mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex is not None else [],
         arr_species=args.species,
+        args=args,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
     )

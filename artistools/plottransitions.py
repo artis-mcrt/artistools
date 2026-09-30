@@ -26,6 +26,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
@@ -259,6 +260,7 @@ def add_upper_lte_pop(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_modelpath(parser, default=None)
 
     addarg_figscale(parser)

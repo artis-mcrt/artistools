@@ -28,12 +28,16 @@ import numpy as np
 
 from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
+from artistools.misc import get_dirbin_definitions
+from artistools.misc import get_dirbins
 from artistools.misc import import_optional
+from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc import write_gif
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
+from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -150,6 +154,56 @@ def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") ->
             f"--interactive shows one plot of {plotname}. A different action comes from: {', '.join(given)}",
             f"Remove {', '.join(given)}, or remove --interactive",
         )
+
+
+def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -> list[str]:
+    """Return the arguments of the command with the options of the controls after the paths at the start."""
+    pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
+    return [*basetokens[:pathcount], *options, *basetokens[pathcount:]]
+
+
+def fix_title_position(axis: "mplax.Axes") -> None:
+    """Keep the title at the top of the frame.
+
+    matplotlib moves the title above the offset text of the y axis. For this, it measures the y axis each time that it
+    draws the plot. ExponentLabelFormatter puts the offset in the label of the axis, thus the offset text is empty and
+    the title stays at the top of the frame.
+    """
+    if axis.get_title() and isinstance(axis.yaxis.get_major_formatter(), ExponentLabelFormatter):
+        axis.set_title(axis.get_title(), y=1.0)
+
+
+def get_direction_kinds(runfolder: Path) -> list[str]:
+    """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
+    return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(runfolder / "vpkt.txt") else [])]
+
+
+def get_direction_kind(args: argparse.Namespace) -> str:
+    """Return the kind of viewing direction of the arguments, in the form of ControlValues.directionkind."""
+    if args.plotvspecpol:
+        return "vpkt"
+    if not args.plotviewingangle:
+        return ""
+    if args.average_over_phi_angle:
+        return "phi"
+    return "theta" if args.average_over_theta_angle else "bin"
+
+
+def get_direction_choices(runfolder: Path, directionkind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
+    """Return each bin of a kind of viewing direction with its label.
+
+    An average over the phi angle or the theta angle takes the first bin of each group, as get_dirbins gives it.
+    """
+    averagephi, averagetheta = directionkind == "phi", directionkind == "theta"
+    labels = get_dirbin_definitions(
+        runfolder,
+        get_dirbins(average_over_phi=averagephi, average_over_theta=averagetheta),
+        vpkt_observers=directionkind == "vpkt",
+        average_over_phi=averagephi,
+        average_over_theta=averagetheta,
+        usedegrees=usedegrees,
+    )
+    return list(labels.items())
 
 
 class ThreadOutput(io.TextIOBase):
@@ -2579,22 +2633,23 @@ def add_menus(
     window: "QtWidgets.QMainWindow",
     callbacks: "Mapping[str, Callable[[], object]]",
     queue: "DrawQueue[t.Any]",
-    playbutton: "QtWidgets.QAbstractButton",
+    playbutton: "QtWidgets.QAbstractButton | None",
     open_folder: "Callable[[str], object]",
 ) -> list[str]:
     """Add the menus File, Edit, View, Window, and Help, and return the text of each item.
 
     callbacks gives the function of each item by the text of get_menu_items. A viewer omits an item that it does not
     support, e.g. Reload Data. This function gives the items of the sidebar, the full screen, and the window. The
-    queue gives Undo, Redo, and Cancel Plot, unless callbacks gives them, and playbutton gives Play. File > Open
-    Recent gives a recent model to open_folder.
+    queue gives Undo, Redo, and Cancel Plot, unless callbacks gives them, and playbutton gives Play. A viewer with no
+    playbutton gets no Play item. File > Open Recent gives a recent model to open_folder.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     def cancel_plot() -> None:
-        playbutton.setChecked(False)
+        if playbutton is not None:
+            playbutton.setChecked(False)
         queue.cancel()
 
     enabled: dict[str, Callable[[], bool]] = {
@@ -2602,11 +2657,11 @@ def add_menus(
         "Redo": queue.can_redo,
         "Cancel Plot": queue.is_busy,
     }
-    titles: dict[str, Callable[[], str]] = {"Play": playbutton.text}
+    titles: dict[str, Callable[[], str]] = {"Play": playbutton.text} if playbutton is not None else {}
     plotcallbacks: dict[str, Callable[[], object]] = {
         "Undo": queue.undo,
         "Redo": queue.redo,
-        "Play": playbutton.toggle,
+        **({"Play": playbutton.toggle} if playbutton is not None else {}),
         "Cancel Plot": cancel_plot,
     }
 
@@ -3904,8 +3959,11 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--normalised": "Normalise",
     "--nostack": "Unstacked",
     "--notitle": "Hide title",
+    "--plotcmf": "Comoving frame",
+    "--plotinvalidpart": "Partial times",
     "--showabsorption": "Show absorption",
     "--showemission": "Show emission",
+    "--use_pellet_decay_time": "Pellet decay time",
     "--use_thermalemissiontype": "Event",
     "--usedegrees": "Degrees",
     "-axis": "Axis",
@@ -3915,6 +3973,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "-labelfontsize": "Label size",
     "-maxseriescount": "Max series",
     "-subplotsperrow": "Subplots per row",
+    "-topnucs": "Top nuclides",
     "-x": "x variable",
     "-xbins": "x bins",
     "-xmax": "x max",

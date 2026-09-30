@@ -28,9 +28,9 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -758,9 +758,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
             plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
         if tmid == times_days[-1]:
-            set_legend(
-                axis, args, loc="best", frameon=False, handlelength=1, ncol=1, borderpad=0, numpoints=1, markerscale=2.5
-            )
+            set_legend(axis, args, loc="best", frameon=False, handlelength=1, borderpad=0, numpoints=1, markerscale=2.5)
 
         axis.set_ylim(3000, 10000)
         axis.set_xlim(4.5, 7.15)
@@ -786,7 +784,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
     addarg_show(parser)
     addarg_verbose(parser)
 

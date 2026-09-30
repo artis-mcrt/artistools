@@ -24,6 +24,7 @@ from unittest import mock
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.legend as mpllegend
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import numpy as np
@@ -2215,6 +2216,40 @@ def test_set_legend_keeps_a_top_of_the_user() -> None:
     fig.canvas.draw()
     assert np.isclose(ax.get_ylim()[1], 1.02, rtol=1e-12, atol=0.0)
     plt.close(fig)
+
+
+@pytest.mark.parametrize(("labelwidth", "legendcols"), [(4, None), (60, None), (4, 1)])
+def test_set_legend_takes_columns_for_a_long_legend(labelwidth: int, legendcols: int | None) -> None:
+    """A long legend takes more columns, until it has half the frame height or it would be wider than the frame.
+
+    Only one legend goes on the axes, thus a trial legend of the rule must stay off them. -legendcols overrides the
+    rule.
+    """
+    fig = mplfig.Figure()
+    canvas = FigureCanvasAgg(fig)
+    _, axesgrid = at.plottools.make_frame_figure(fig=fig)
+    ax = axesgrid[0][0]
+    for index in range(16):
+        ax.plot([0.0, 1.0], [index, index], label=f"{index}".ljust(labelwidth, "x"))
+    legend = at.plottools.set_legend(ax, argparse.Namespace(legendcols=legendcols), loc="upper right")
+    assert legend is not None
+    assert ax.get_legend() is legend
+    assert [child for child in ax.get_children() if isinstance(child, mpllegend.Legend)] == [legend]
+    # the draw gives each text of the legend its position
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    frame = at.plottools.get_legend_frame(legend, renderer)
+    # each column of the legend starts its labels at one x position
+    ncols = len({round(text.get_window_extent(renderer).x0) for text in legend.get_texts()})
+    if legendcols is not None:
+        assert ncols == legendcols
+    elif labelwidth > 10:
+        # a wide label leaves no room for a second column
+        assert frame.width <= 1.0
+        assert ncols == 1
+    else:
+        assert frame.height <= at.plottools.MAX_LEGEND_HEIGHT_FRACTION
+        assert ncols > 1
 
 
 def test_get_series_colors_greys_then_cycle() -> None:
