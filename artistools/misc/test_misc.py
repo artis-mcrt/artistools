@@ -25,7 +25,6 @@ import yaml
 
 import artistools as at
 from artistools.estimators.core import join_cell_modeldata
-from artistools.estimators.core import scan_remote_plot_estimators
 from artistools.misc import dirbins
 from artistools.misc import fileio
 from artistools.misc import remote
@@ -1345,14 +1344,35 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
-            # the host runs the whole query of plotestimators, and only the result comes back
-            remoteestimators, _ = scan_remote_plot_estimators(remotepath, None, [40, 41], classicartis=False)
-            remoterows = remoteestimators.filter(pl.col("Te") > 5000.0).select(
-                "timestep", "modelgridindex", "Te", "rho"
+            # collect_on_host runs the whole query on the host. A plain collect, e.g. in a script, asks the host for
+            # the rows of the filter and the columns of the query
+            remoterows = (
+                at
+                .scan_estimators(remotepath, timestep=[40, 41], join_modeldata=True)
+                .filter(pl.col("Te") > 5000.0)
+                .select("timestep", "modelgridindex", "Te", "rho")
             )
             [dfremoteestimators] = remote.collect_on_host(remotepath, [remoterows])
-            with pytest.raises(pl.exceptions.ComputeError, match="must run on its host"):
-                remoterows.collect()
+            pltest.assert_frame_equal(remoterows.collect(), dfremoteestimators)
+            estimatorscore = sys.modules["artistools.estimators.core"]
+            read_estimator_rows_on_host = estimatorscore.read_estimator_rows_on_host
+            hostframes: list[pl.DataFrame] = []
+
+            def read_rows_on_host(*args: t.Any) -> pl.DataFrame:
+                hostframes.append(read_estimator_rows_on_host(*args))
+                return hostframes[-1]
+
+            with mock.patch.object(estimatorscore, "read_estimator_rows_on_host", side_effect=read_rows_on_host):
+                dfremotecell = (
+                    at
+                    .scan_estimators(str(remotepath))
+                    .filter(pl.col("timestep") == 41)
+                    .filter(pl.col("modelgridindex") == 0)
+                    .select("nne")
+                    .collect()
+                )
+            # the host applies the filter, thus only the row of the cell comes back through ssh
+            assert [frame.height for frame in hostframes] == [1]
             # the band light curves take the Namespace of the command as an argument
             main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
         finally:
@@ -1368,6 +1388,16 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         localestimators.filter(pl.col("Te") > 5000.0).select("timestep", "modelgridindex", "Te", "rho").collect(),
         abs_tol=0.0,
     )
+    dflocalcell = (
+        at
+        .scan_estimators(modelpath)
+        .filter(pl.col("timestep") == 41)
+        .filter(pl.col("modelgridindex") == 0)
+        .select("nne")
+        .collect()
+    )
+    assert dflocalcell.height == 1
+    pltest.assert_frame_equal(dfremotecell, dflocalcell, abs_tol=0.0)
     assert (tmp_path / "plotBlightcurves.pdf").is_file()
     localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none

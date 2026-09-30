@@ -43,7 +43,7 @@ from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
-from artistools.estimators.core import scan_remote_plot_estimators
+from artistools.estimators.core import scan_remote_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
@@ -2866,8 +2866,13 @@ def get_plot_estimators(
     plots. The scan then checks and converts no file.
     """
     if is_remote_path(modelpath):
-        return scan_remote_plot_estimators(
-            modelpath, args.modelgridindex, timesteps_included, classicartis=args.classicartis, batchcaches=batchcaches
+        return scan_remote_estimators(
+            modelpath,
+            args.modelgridindex,
+            timesteps_included,
+            classicartis=args.classicartis,
+            join_modeldata=True,
+            batchcaches=batchcaches,
         )
 
     estimators = scan_estimators(

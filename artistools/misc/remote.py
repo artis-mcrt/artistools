@@ -705,7 +705,7 @@ def on_model_host[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 def collect_on_host(modelpath: Path, queries: "Sequence[pl.LazyFrame]") -> "list[pl.DataFrame]":
     """Collect the queries, on the host of a remote model.
 
-    A query of a remote model reads its rows from a polars IO source, see scan_remote_plot_estimators. The host runs
+    A query of a remote model reads its rows from a polars IO source, see scan_remote_estimators. The host runs
     the whole query, e.g. a group_by over the cells, and only the result comes back. The server has the polars of the
     client, see start_server, thus it can read the plans.
     """
