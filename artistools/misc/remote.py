@@ -30,6 +30,9 @@ REMOTEPATH_PATTERN = re.compile(r"^(?P<host>[^/:]+):(?P<path>.*)$", re.DOTALL)
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
 
+# the repository that a host can get a commit of a clone from
+REPOSITORY_URL = "https://github.com/artis-mcrt/artistools"
+
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
 SERVER_START_LINE = b"artistools server protocol 1\n"
@@ -238,6 +241,74 @@ def read_server_version(process: "subprocess.Popen[bytes]") -> str:
     return serverversion
 
 
+def get_git_source() -> tuple[str, str, list[str]] | None:
+    """Return the git URL and the commit of this artistools, and notes on that commit. Return None for a release.
+
+    An install from git, e.g. with uvx --from git+https://..., records the commit in direct_url.json (PEP 610). An
+    install of a clone records its folder there. git then gives the commit of the folder of the code that runs, which
+    can be a different clone, e.g. with PYTHONPATH.
+    """
+    import json
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+    from importlib.metadata import distribution
+
+    directurl = distribution("artistools").read_text("direct_url.json")
+    if directurl is None:
+        return None
+
+    source = json.loads(directurl)
+    if (vcsinfo := source.get("vcs_info")) is not None:
+        return (source["url"], vcsinfo["commit_id"], []) if vcsinfo.get("vcs") == "git" else None
+
+    folder = str(Path(__file__).resolve().parents[2])
+
+    def run_git(*gitargs: str) -> str:
+        return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+            ["git", "-C", folder, *gitargs],  # ruff:ignore[start-process-with-partial-path]
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    try:
+        commit = run_git("rev-parse", "HEAD")
+        onremote = bool(run_git("branch", "--remotes", "--contains", commit))
+        haschanges = bool(run_git("status", "--porcelain", "--untracked-files=no"))
+    except (OSError, subprocess.CalledProcessError):
+        # a folder that is not a clone, or a host with no git, gives no commit
+        return None
+
+    notes = []
+    if not onremote:
+        notes.append("Push the commit to GitHub first. The host cannot get a commit that is only on this host.")
+    if haschanges:
+        notes.append("The changes that are not in a commit stay on this host.")
+
+    return REPOSITORY_URL, commit, notes
+
+
+def get_git_server_suggestion(host: str) -> str | None:
+    """Return the text that tells the user how to run the commit of this artistools on the host, or None for a release.
+
+    The default command runs the release of the same version, thus a clone with later commits runs different code
+    on the server.
+    """
+    if (gitsource := get_git_source()) is None:
+        return None
+
+    url, commit, notes = gitsource
+    servercommand = f'uvx --from "artistools @ git+{url}@{commit}" artistools server'
+    return "\n".join([
+        (
+            f"This artistools comes from the git commit {commit}, but the default server command runs a release. To"
+            f" run the same commit on {host}, set:"
+        ),
+        f"  export {SERVER_COMMAND_ENVVAR}='{servercommand}'",
+        "The first start builds the Rust extension of artistools on the host, thus the host needs git and Rust.",
+        *notes,
+    ])
+
+
 @functools.cache
 def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     """Start the artistools server on the host, and return the process and the lock of its pipes.
@@ -258,6 +329,9 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
     assert pid == os.getpid()
     localversion = version("artistools")
     argv = get_server_argv(host)
+    gitsuggestion = None if os.environ.get(SERVER_COMMAND_ENVVAR) else get_git_server_suggestion(host)
+    if gitsuggestion is not None:
+        print_warning(gitsuggestion)
     print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
 
@@ -268,8 +342,10 @@ def get_server(host: str, pid: int) -> "tuple[subprocess.Popen[bytes], threading
         process.kill()
         exit_with_error(
             f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}",
-            f"Install uv on {host}. The default command needs a release {localversion} of artistools with the server"
-            f" command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server",
+            f"Set {SERVER_COMMAND_ENVVAR} as the warning above shows"
+            if gitsuggestion is not None
+            else f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
+            f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server",
         )
 
     if serverversion != localversion:

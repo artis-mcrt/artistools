@@ -1221,6 +1221,48 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
 
 
+def test_server_command_of_a_git_install_names_its_commit() -> None:
+    """A git install gives the commit for the server command, and a release gives no suggestion.
+
+    uvx --from git+... records the commit in direct_url.json. An install of a clone gives the commit of the folder
+    of the code that runs, which can differ from the folder in direct_url.json.
+    """
+    import json
+
+    def mock_direct_url(directurl: str | None) -> t.Any:
+        distribution = mock.Mock()
+        distribution.read_text.return_value = directurl
+        return mock.patch("importlib.metadata.distribution", return_value=distribution)
+
+    vcsinstall = {"url": "https://github.com/fork/artistools", "vcs_info": {"vcs": "git", "commit_id": "abc123"}}
+    with mock_direct_url(json.dumps(vcsinstall)):
+        assert remote.get_git_source() == ("https://github.com/fork/artistools", "abc123", [])
+        suggestion = remote.get_git_server_suggestion("vae26")
+    assert suggestion is not None
+    expected = (
+        'export ARTISTOOLS_REMOTE_COMMAND=\'uvx --from "artistools @ git+https://github.com/fork/artistools@abc123"'
+    )
+    assert f"{expected} artistools server'" in suggestion
+
+    with mock_direct_url(None):
+        assert remote.get_git_source() is None
+        assert remote.get_git_server_suggestion("vae26") is None
+
+    packagefolder = Path(remote.__file__).resolve().parents[2]
+    headcommit = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        ["git", "-C", str(packagefolder), "rev-parse", "HEAD"],  # ruff:ignore[start-process-with-partial-path]
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if headcommit.returncode != 0:
+        pytest.skip("artistools does not run from a git clone")
+    with mock_direct_url(json.dumps({"url": "file:///somewhere/else", "dir_info": {"editable": True}})):
+        gitsource = remote.get_git_source()
+    assert gitsource is not None
+    assert gitsource[:2] == (remote.REPOSITORY_URL, headcommit.stdout.strip())
+
+
 def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
 
