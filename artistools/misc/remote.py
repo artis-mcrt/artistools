@@ -719,13 +719,13 @@ def collect_on_host(modelpath: Path, queries: "Sequence[pl.LazyFrame]") -> "list
 
 @on_model_host
 def collect_plans(modelpath: Path, plans: list[bytes]) -> "list[pl.DataFrame]":
-    """Collect the serialised plans of a client with the streaming engine. The model path selects the host."""
+    """Collect the serialised plans of a client with the default engine. The model path selects the host."""
     import io
 
     import polars as pl
 
     del modelpath
-    return pl.collect_all([pl.LazyFrame.deserialize(io.BytesIO(plan)) for plan in plans], engine="streaming")
+    return pl.collect_all([pl.LazyFrame.deserialize(io.BytesIO(plan)) for plan in plans])
 
 
 def get_server_function(modulename: str, qualname: str) -> Callable[..., t.Any]:
