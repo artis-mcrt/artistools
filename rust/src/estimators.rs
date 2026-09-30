@@ -7,8 +7,8 @@ use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 use pyo3_polars::error::PyPolarsErr;
 use rayon::prelude::*;
-use std::collections::HashMap;
-use std::io::{BufRead as _, BufReader};
+use std::collections::{BTreeSet, HashMap};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 const ELSYMBOLS: [&str; 119] = [
@@ -261,6 +261,23 @@ fn find_estimator_file(folderpath: &Path, rank: i32) -> Option<PathBuf> {
         .find(|filepath| filepath.is_file())
 }
 
+/// Parse the lines of an estimator text into a `DataFrame`. An error names the file and the line, and the
+/// first line has the number `firstlinenum`.
+fn parse_estimator_lines<S: AsRef<str>>(
+    lines: impl Iterator<Item = std::io::Result<S>>,
+    filepath: &Path,
+    firstlinenum: usize,
+) -> PolarsResult<DataFrame> {
+    let mut columns = EstimatorColumns::default();
+    for (index, line) in lines.enumerate() {
+        columns.parse_line(line?.as_ref()).map_err(|err| {
+            err.wrap_msg(|msg| format!("{}:{}: {msg}", filepath.display(), firstlinenum + index))
+        })?;
+    }
+
+    columns.into_dataframe()
+}
+
 /// Read a single ARTIS estimators*.out[.zst] file and return a `DataFrame`
 fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> {
     let filepath = find_estimator_file(folderpath, rank).ok_or_else(|| {
@@ -273,17 +290,21 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
         )
     })?;
 
-    let mut columns = EstimatorColumns::default();
-    for (linenum, line) in BufReader::new(open_decompressed(&filepath)?)
-        .lines()
-        .enumerate()
-    {
-        columns.parse_line(&line?).map_err(|err| {
-            err.wrap_msg(|msg| format!("{}:{}: {msg}", filepath.display(), linenum + 1))
-        })?;
-    }
+    parse_estimator_lines(
+        BufReader::new(open_decompressed(&filepath)?).lines(),
+        &filepath,
+        1,
+    )
+}
 
-    columns.into_dataframe()
+/// Join the `DataFrame`s of the files of the ranks, or of the parts of one file, into one `DataFrame`
+///
+/// Within one file, `EstimatorColumns` gives a zero to a cell that does not write a quantity, e.g. the ion of an
+/// element that the cell does not hold. A diagonal join gives a null to the rows of a file or a part that does not
+/// write the quantity at all. The boundaries of the ranks and of the parts are arbitrary, thus a zero replaces each
+/// such null, and both forms of the text give the same values.
+fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
+    polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero)
 }
 
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
@@ -304,9 +325,144 @@ pub fn estimparse(
                 .map(|rank| read_estimator_file(&folderpath, rank))
                 .collect::<PolarsResult<_>>()?;
 
-            polars::functions::concat_df_diagonal(&vecdfs)
+            concat_estimator_frames(&vecdfs)
         })
         .map_err(PyPolarsErr::from)?;
 
     Ok(PyDataFrame(dfbatch))
+}
+
+/// The minimum size of the text of one part of the estimator file of all ranks. One thread parses each part.
+const ALLRANKS_PART_BYTES: usize = 16 * 1024 * 1024;
+
+/// A part of an estimator text, and the line number of its first line in the file
+struct TextPart {
+    firstlinenum: usize,
+    text: String,
+}
+
+/// Split the text of a reader into parts that end at the end of a cell. An empty line ends each cell, thus no
+/// cell spans two parts. The last part drops a cell that the end of the text cuts.
+struct TextParts<R: BufRead> {
+    reader: R,
+    nextlinenum: usize,
+    finished: bool,
+}
+
+impl<R: BufRead> Iterator for TextParts<R> {
+    type Item = std::io::Result<TextPart>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        let firstlinenum = self.nextlinenum;
+        let mut text = String::new();
+        // the end of the last empty line of the text, which is the end of the last complete cell
+        let mut cellsend = 0;
+        loop {
+            let linestart = text.len();
+            match self.reader.read_line(&mut text) {
+                Ok(0) => {
+                    self.finished = true;
+                    // A text that does not end with an empty line ends inside a cell. The decoder gives the complete
+                    // blocks of a zstd frame that a stopped job cut, and it gives no error. Thus the part removes the
+                    // cut cell, and the conversion then drops its timestep as incomplete.
+                    text.truncate(cellsend);
+                    break;
+                }
+                Ok(_) => {
+                    self.nextlinenum += 1;
+                    let lineisempty = text
+                        .get(linestart..)
+                        .is_some_and(|line| line.trim().is_empty());
+                    if lineisempty {
+                        cellsend = text.len();
+                        if text.len() >= ALLRANKS_PART_BYTES {
+                            break;
+                        }
+                    }
+                }
+                Err(err) => {
+                    self.finished = true;
+                    return Some(Err(err));
+                }
+            }
+        }
+
+        (!text.is_empty()).then_some(Ok(TextPart { firstlinenum, text }))
+    }
+}
+
+/// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
+///
+/// ARTIS writes this file in place of one file for each rank. The threads parse the parts of the text in
+/// parallel, and the rows keep the order of the file. The parse runs without the GIL.
+#[pyfunction]
+#[expect(clippy::needless_pass_by_value)]
+pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyDataFrame> {
+    let dfallranks = py
+        .detach(|| {
+            let parts = TextParts {
+                reader: BufReader::new(open_decompressed(&filepath)?),
+                nextlinenum: 1,
+                finished: false,
+            };
+            let mut indexeddfs: Vec<(usize, DataFrame)> = parts
+                .enumerate()
+                .par_bridge()
+                .map(|(partindex, part)| {
+                    let part = part?;
+                    let dfpart = parse_estimator_lines(
+                        part.text.lines().map(Ok::<_, std::io::Error>),
+                        &filepath,
+                        part.firstlinenum,
+                    )?;
+                    Ok((partindex, dfpart))
+                })
+                .collect::<PolarsResult<_>>()?;
+
+            if indexeddfs.is_empty() {
+                return EstimatorColumns::default().into_dataframe();
+            }
+            indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);
+            let vecdfs: Vec<DataFrame> = indexeddfs.into_iter().map(|(_, dfpart)| dfpart).collect();
+            concat_estimator_frames(&vecdfs)
+        })
+        .map_err(PyPolarsErr::from)?;
+
+    Ok(PyDataFrame(dfallranks))
+}
+
+/// Return the timesteps of the cells of an estimator file in ascending order, without repeats
+///
+/// The scan parses only the number after "timestep" in each line that starts with that word, thus it is much
+/// faster than a full parse of the file.
+#[pyfunction]
+#[expect(clippy::needless_pass_by_value)]
+pub fn estimtimesteps(py: Python<'_>, filepath: PathBuf) -> PyResult<Vec<i32>> {
+    let timesteps = py
+        .detach(|| -> PolarsResult<Vec<i32>> {
+            let mut reader = BufReader::new(open_decompressed(&filepath)?);
+            let mut timesteps = BTreeSet::new();
+            let mut line = String::new();
+            let mut linenum: usize = 0;
+            while {
+                line.clear();
+                reader.read_line(&mut line)? > 0
+            } {
+                linenum += 1;
+                if let Some(rest) = line.strip_prefix("timestep ") {
+                    let token = rest.split_whitespace().next().unwrap_or_default();
+                    let timestep: i32 = parse_field(token, "an integer").map_err(|err| {
+                        err.wrap_msg(|msg| format!("{}:{linenum}: {msg}", filepath.display()))
+                    })?;
+                    timesteps.insert(timestep);
+                }
+            }
+            Ok(timesteps.into_iter().collect())
+        })
+        .map_err(PyPolarsErr::from)?;
+
+    Ok(timesteps)
 }
