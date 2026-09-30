@@ -8,6 +8,7 @@ import shlex
 import typing as t
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib as mpl
 import matplotlib.colors as mplcolors
@@ -181,14 +182,14 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 DEFAULT_LIGHTCURVES: t.Final = (".",)
 
 # the text of each particle in the controls of the energy rates
-PARTICLETEXTS: t.Final = {
+PARTICLETEXTS: t.Final = MappingProxyType({
     "gamma": "\N{GREEK SMALL LETTER GAMMA}",
     "betaminus": "\N{GREEK SMALL LETTER BETA}\N{SUPERSCRIPT MINUS}",
     "betaplus": "\N{GREEK SMALL LETTER BETA}\N{SUPERSCRIPT PLUS SIGN}",
     "alpha": "\N{GREEK SMALL LETTER ALPHA}",
     "fission": "Fission",
     "total": "Total",
-}
+})
 
 # the text of each luminosity unit of the y axis, and its flag
 LUMUNITS: t.Final[tuple[tuple[LumUnit, str, str], ...]] = (

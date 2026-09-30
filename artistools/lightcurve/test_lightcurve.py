@@ -2261,3 +2261,10 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     for label, ydata in viewercurves.items():
         assert np.allclose(commandcurves[label], ydata, rtol=1e-12, atol=0.0, equal_nan=True), label
     assert sorted(path.name for path in tmp_path.iterdir()) == ["lc.pdf"]
+
+
+def test_plotlightcurves_writes_png_data_to_a_png_file(tmp_path: Path) -> None:
+    """A light curve with -o lc.png must hold PNG data. The save once gave format="pdf" for each file name."""
+    outputfile = tmp_path / "lc.png"
+    at.lightcurve.plot(argsraw=[str(modelpath), "-o", str(outputfile)])
+    assert outputfile.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")

@@ -4268,6 +4268,18 @@ def make_viewer(kind: str, tokens: "Sequence[str]") -> t.Any:
     return viewer
 
 
+@pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", [])])
+def test_viewer_takes_the_model_of_the_path_option(
+    kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A viewer must plot the model of -modelpath, and not read the working folder, which is not an ARTIS run."""
+    monkeypatch.chdir(tmp_path)
+    viewer = make_viewer(kind, ["-modelpath", str(modelpath), *timetokens, "--interactive"])
+    seriespaths = viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves
+    assert seriespaths == (str(modelpath),)
+    assert "-modelpath" not in viewer.get_command()
+
+
 @pytest.mark.parametrize(("kind", "tokens"), VIEWER_CASES)
 def test_viewer_command_opens_the_same_plot(kind: str, tokens: list[str]) -> None:
     """The command that a viewer shows must open a viewer with the same command.

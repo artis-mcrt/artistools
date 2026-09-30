@@ -130,6 +130,15 @@ class ViewerTokens(t.NamedTuple):
     helptexts: dict[str, str]
 
 
+def get_path_option_flags(parser: "SuggestingArgumentParser") -> set[str]:
+    """Return the first flag of each option that gives the paths of the positional argument, e.g. -modelpath."""
+    from artistools.misc.cliutils import KeepGivenPaths
+
+    actions = parser._actions  # ruff:ignore[private-member-access]
+    pathdests = {action.dest for action in actions if isinstance(action, KeepGivenPaths)}
+    return {action.option_strings[0] for action in actions if action.option_strings and action.dest in pathdests}
+
+
 def parse_viewer_tokens(
     addargs: "Callable[[argparse.ArgumentParser], None]", tokens: "Sequence[str]", controlleddests: "Collection[str]"
 ) -> ViewerTokens:
@@ -146,7 +155,11 @@ def parse_viewer_tokens(
     basetokens = remove_options(parser, separate_trailing_folders(usertokens), controlleddests)
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
     otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
-    paths = [*basetokens[:pathcount], *(word for word in positionaltokens if word != "--")]
+    # -modelpath gives the paths of the positional argument, thus the list of the series holds them and not the options
+    pathflags = get_path_option_flags(parser)
+    optionpaths = [path for flag, values in otheroptions if flag in pathflags for path in values]
+    otheroptions = tuple(row for row in otheroptions if row[0] not in pathflags)
+    paths = [*basetokens[:pathcount], *optionpaths, *(word for word in positionaltokens if word != "--")]
     args = parse_cli_args(addargs, None, None, usertokens)
     return ViewerTokens(
         parser=parser, args=args, paths=paths, otheroptions=otheroptions, helptexts=get_helptexts(parser)
