@@ -257,6 +257,20 @@ def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
     return float(pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item())
 
 
+@on_model_host
+def get_ion_levels(modelpath: Path, atomic_number: int, ion_stage: int) -> pl.DataFrame | None:
+    """Return the energy levels of one ion as a plain frame, or None if the atomic data has no such ion.
+
+    get_levels holds the frame of each ion inside an object column, and Arrow IPC cannot send such a column. The
+    host of a remote model thus gives one ion at a time, with no object column.
+    """
+    dfion = get_levels(modelpath, ionlist=[(atomic_number, ion_stage)]).filter(
+        (pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)
+    )
+    # an object column of a level frame, e.g. the transitions of each level, has no Arrow form
+    return dfion["levels"].item().select(pl.exclude(pl.Object)) if dfion.height > 0 else None
+
+
 def get_levels(
     modelpath: str | Path,
     ionlist: Collection[tuple[int, int]] | None = None,
@@ -403,6 +417,7 @@ roman_numerals = (
 
 
 @lru_cache(maxsize=8)
+@on_model_host
 def get_composition_data(filename: Path | str) -> pl.DataFrame:
     """Return a DataFrame containing details of included elements and ions."""
     filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)

@@ -24,6 +24,8 @@ import pytest
 import yaml
 
 import artistools as at
+from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import scan_remote_plot_estimators
 from artistools.misc import dirbins
 from artistools.misc import fileio
 from artistools.misc import remote
@@ -1332,6 +1334,12 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
+            # plotestimators takes the rows of the estimators from the host, and polars filters them here
+            remoteestimators, _ = scan_remote_plot_estimators(remotepath, None, [40, 41], classicartis=False)
+            remoterows = remoteestimators.filter(pl.col("Te") > 5000.0).select(
+                "timestep", "modelgridindex", "Te", "rho"
+            )
+            dfremoteestimators = remoterows.collect()
             # the band light curves take the Namespace of the command as an argument
             main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
         finally:
@@ -1341,6 +1349,12 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             remote.forget_server("testhost")
 
     assert (tmp_path / "plotlightcurves.pdf").is_file()
+    localestimators, _ = join_cell_modeldata(at.estimators.scan_estimators(modelpath, timestep=[40, 41]), modelpath)
+    pltest.assert_frame_equal(
+        dfremoteestimators,
+        localestimators.filter(pl.col("Te") > 5000.0).select("timestep", "modelgridindex", "Te", "rho").collect(),
+        abs_tol=0.0,
+    )
     assert (tmp_path / "plotBlightcurves.pdf").is_file()
     localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none

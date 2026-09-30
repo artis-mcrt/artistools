@@ -303,7 +303,9 @@ def item_names_a_folder(item: str) -> bool:
     A folder that exists names the model, even when the command has an item of the same name. A name
     that is not last stays an item. A variable thus keeps its meaning when a folder has the same name.
     """
-    return bool(item) and (Path(item).is_dir() or item_names_a_path(item))
+    from artistools.misc.remote import names_a_remote_folder
+
+    return bool(item) and (names_a_remote_folder(item) or Path(item).is_dir() or item_names_a_path(item))
 
 
 def addarg_positional_items(
@@ -338,7 +340,9 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     items: list[str] = list(getattr(args, dest))
 
     if items and item_names_a_folder(items[-1]):
-        givenpath = Path(items.pop())
+        from artistools.misc.remote import get_canonical_path
+
+        givenpath = get_canonical_path(model_path_from_text(items.pop()))
         # the default of such a command is None, thus a different value is one that the user wrote.
         # A command can also take many paths, and then only the positional argument names the model
         given_modelpath = getattr(args, "modelpath", None)

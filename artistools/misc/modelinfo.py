@@ -189,7 +189,9 @@ def print_modelpath(modelpath: Path | str) -> None:
     The name of a model says nothing about the folder that holds it, and a user runs a command over
     many folders. The full path answers that, because "." says nothing on a run inside the model.
     """
-    folder = Path(modelpath) if path_is_codecomparison(modelpath) else Path(modelpath).resolve()
+    folder = (
+        Path(modelpath) if path_is_codecomparison(modelpath) or is_remote_path(modelpath) else Path(modelpath).resolve()
+    )
     print_detail(f"modelpath: {folder}")
 
 

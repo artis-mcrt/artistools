@@ -35,6 +35,7 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.modelinfo import parse_npts_line
+from artistools.misc.remote import on_model_host
 
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
@@ -540,6 +541,15 @@ def get_model_text_folder(modelpath: Path | str) -> Path:
         return Path(get_path("codecomparisonmodelartismodelpath"), inputmodel)
 
     return inputpath
+
+
+@on_model_host
+def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
+    """Return the metadata of the model, e.g. the dimensions and the time of the model.
+
+    The host of a remote model reads the model and sends back the metadata alone.
+    """
+    return get_modeldata(modelpath, printwarningsonly=True)[1]
 
 
 def get_modeldata(

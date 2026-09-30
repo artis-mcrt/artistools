@@ -29,19 +29,21 @@ from artistools.atomic import get_composition_data
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_elsymbolslist
+from artistools.atomic import get_ion_levels
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
-from artistools.atomic import get_levels
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
+from artistools.estimators.core import get_levelpop_modeldata
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
+from artistools.estimators.core import scan_remote_plot_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
@@ -88,6 +90,8 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
@@ -485,6 +489,7 @@ def plot_average_ionisation(
     return plans
 
 
+@on_model_host
 def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int], cells: Sequence[int]) -> pl.DataFrame:
     """Return the NLTE populations of the timesteps and the cells of the plot.
 
@@ -570,22 +575,15 @@ def plot_levelpop(
 
     set_exponent_label(ax)
 
-    lzmodel, modelmeta = get_modeldata(modelpath)
     # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
-    modeldata = (
-        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
-        .collect()
-    )
-
-    adata = get_levels(modelpath)
+    modeldata, t_model_init_days = get_levelpop_modeldata(Path(modelpath))
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
     # model.txt gives the volume at t_model_init, and the homologous flow expands the cell by the cube
     # of the time. dN/dv needs the number in the cell, thus the density takes the expanded volume
     arr_volumefactor = (
-        (np.array(get_timestep_times(modelpath, loc="mid")) / modelmeta["t_model_init_days"]) ** 3
+        (np.array(get_timestep_times(modelpath, loc="mid")) / t_model_init_days) ** 3
         if seriestype == "levelpopulation_dn_on_dvel"
         else np.ones(len(arr_tdelta))
     )
@@ -611,9 +609,8 @@ def plot_levelpop(
         ion_stage = decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
 
-        ionlevels = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(
-            0, named=True
-        )["levels"]
+        ionlevels = get_ion_levels(Path(modelpath), atomic_number, ion_stage)
+        assert ionlevels is not None
         levelname = ionlevels["levelname"].item(levelindex)
         label = (
             f"{get_ionstring(atomic_number, ion_stage, style='chargelatex')} level {levelindex}:"
@@ -2811,6 +2808,11 @@ def get_plot_estimators(
     batchcaches gives the current parquet caches of all the batches of the run, e.g. for a window that draws many
     plots. The scan then checks and converts no file.
     """
+    if is_remote_path(modelpath):
+        return scan_remote_plot_estimators(
+            modelpath, args.modelgridindex, timesteps_included, classicartis=args.classicartis
+        )
+
     estimators = scan_estimators(
         modelpath=modelpath,
         modelgridindex=args.modelgridindex,
