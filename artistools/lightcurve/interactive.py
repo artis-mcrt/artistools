@@ -730,10 +730,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     energychecks: dict[tuple[str, str], QtWidgets.QCheckBox] = {}
     energyheaders = {
         "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
-        "emission": ("Emission", "The emission rate that ARTIS counts from the packets"),
+        "emission": ("Packets", "The emission rate that ARTIS counts from the packets"),
         "analyticemission": (
             "Analytical",
-            "The emission rate that ARTIS calculates from the decay rates of the nuclides",
+            "The analytical emission rate, which ARTIS calculates from the decay rates of the nuclides",
         ),
         "thermalisation": (
             "Thermalisation",
@@ -743,14 +743,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             ),
         ),
     }
+    # the two emission rates share one heading above their own headings, thus both columns are clearly emission rates
+    emissionheader = QtWidgets.QLabel("Emission rate")
+    emissionheader.setToolTip("The energy that the decays give to each particle (-emission and -analyticemission)")
+    energygrid.addWidget(emissionheader, 0, 2, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
     for column, dest in enumerate(ENERGYRATEDESTS, start=1):
         text, tooltip = energyheaders[dest]
         header = QtWidgets.QLabel(text)
         header.setToolTip(f"{tooltip} (-{dest})")
-        energygrid.addWidget(header, 0, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        energygrid.addWidget(header, 1, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
         # the columns share the width of the section, thus each check box is under the middle of its heading
         energygrid.setColumnStretch(column, 1)
-    for row, particle in enumerate(DEPOSITIONCHOICES, start=1):
+    for row, particle in enumerate(DEPOSITIONCHOICES, start=2):
         particlelabel = QtWidgets.QLabel(PARTICLETEXTS[particle])
         particlelabel.setToolTip(f"The word {particle} of the command")
         energygrid.addWidget(particlelabel, row, 0)
