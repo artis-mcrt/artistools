@@ -168,7 +168,15 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 
 - Put a new plot feature in the command first, with an option. Then give the viewer a control for that option. Do not give a viewer a feature that the command does not have.
 - A viewer calls the functions of its command in this sequence: `resolve_plot_args`, `make_plot_figure`, and `draw_plot`. Do not copy their code into the viewer. plotestimators has no `make_plot_figure`, because the data sets the number of its subplots. Thus its `draw_plot` takes an empty figure and calls `resolve_plot_args` itself.
-- Put the code that two viewers need in `artistools/viewertools.py`. Use it in each viewer that has the feature. Before you write a control, search `viewertools.py` for one that exists. Examples:
+- Put the code that two viewers need in the package `artistools/viewertools/`. Use it in each viewer that has the feature. Before you write a control, search that package for one that exists. Each module imports only from the modules above it in this list:
+  1. `core.py` makes, parses, and changes the command tokens;
+  2. `application.py` starts the Qt application, and it opens and remembers the windows;
+  3. `widgets.py` makes the widgets, e.g. the sections, the option table, and the status bar;
+  4. `sections.py` makes the sections of the viewing direction, the axes, and the time;
+  5. `series.py` makes the list of the series and the style dialog;
+  6. `menus.py` makes the menus and the actions of the figure;
+  7. `window.py` builds the window and draws the plot in a worker thread.
+- Examples of the shared code:
   - `add_window_actions` gives the menus, the copy actions, and the save action;
   - `add_series_list` gives the list of the models and the reference files;
   - `add_direction_section` gives the section of the viewing direction;

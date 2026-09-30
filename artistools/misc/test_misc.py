@@ -31,7 +31,7 @@ from artistools.misc import dirbins
 from artistools.misc import fileio
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
-from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools.core import run_command_step_with_warning
 
 
 def write_timesteps_out(modeldir: Path) -> None:

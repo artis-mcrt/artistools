@@ -2177,7 +2177,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.interactive:
         from artistools.spectra.interactive import run_viewer
-        from artistools.viewertools import get_command_tokens
+        from artistools.viewertools.core import get_command_tokens
 
         run_viewer(
             get_command_tokens(

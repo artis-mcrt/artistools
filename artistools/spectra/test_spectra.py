@@ -20,10 +20,10 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
-from artistools import viewertools
 from artistools.spectra import core as atspectra
 from artistools.spectra import interactive
 from artistools.spectra import plotspectra
+from artistools.viewertools import core as viewercore
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -2232,7 +2232,7 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 
 def test_interactive_command_tokens() -> None:
     """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
-    parser = viewertools.make_parser(plotspectra.addargs)
+    parser = viewercore.make_parser(plotspectra.addargs)
     tokens = [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2267,8 +2267,8 @@ def test_interactive_command_tokens() -> None:
         "--",
         "-folder",
     ]
-    basetokens = viewertools.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
-    assert viewertools.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
+    basetokens = viewercore.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    assert viewercore.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
         *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
@@ -2531,20 +2531,20 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     rows = (("-label", ("First",)), ("-color", ("red", "blue")))
     newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
 
-    moved = viewertools.move_series_styles(rows, oldspectra, newspectra)
+    moved = viewercore.move_series_styles(rows, oldspectra, newspectra)
     assert dict(moved) == {"-label": ("default", "default", "First"), "-color": ("default", "blue", "red")}
     # the values of a removed spectrum go out of the option rows
-    assert dict(viewertools.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
+    assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
     labelled = interactive.set_series_values(viewer.values, reference, {"-label": "Observed"})
-    assert viewertools.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
+    assert viewercore.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
     assert viewer.change(labelled) is None
     legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
     assert legendlabels[1] == "Observed"
     assert legendlabels[0].startswith("TEST MODEL +300")
     unlabelled = interactive.set_series_values(labelled, reference, {"-label": None})
-    assert viewertools.get_row_values(unlabelled.otheroptions, "-label") is None
+    assert viewercore.get_row_values(unlabelled.otheroptions, "-label") is None
 
 
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
@@ -2885,7 +2885,7 @@ def test_interactive_direction_and_bin_controls() -> None:
     assert "--average_every_tenth_viewing_angle" not in command
     assert command[command.index("-plotviewingangle") + 1] == "10"
 
-    choices = viewertools.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
+    choices = viewercore.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
     assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())
@@ -2906,9 +2906,9 @@ def test_interactive_direction_and_bin_controls() -> None:
 
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
-    parser = viewertools.make_parser(plotspectra.addargs)
+    parser = viewercore.make_parser(plotspectra.addargs)
     tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
-    rows, othertokens = viewertools.split_option_rows(parser, [*tokens, "--", "rest"])
+    rows, othertokens = viewercore.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (
         ("-deltax", ("5",)),
         ("-label", ("a b", "c")),
@@ -2921,7 +2921,7 @@ def test_interactive_option_rows() -> None:
 
     actions = {
         action.option_strings[0]: action
-        for action in viewertools.get_table_actions(
+        for action in viewercore.get_table_actions(
             parser, interactive.CONTROLLED_DESTS | interactive.TABLE_EXCLUDED_DESTS
         )
     }
@@ -2931,10 +2931,10 @@ def test_interactive_option_rows() -> None:
         & actions.keys()
     )
     # no option of the table has choices now, but a new option with choices gets a list in the table
-    allactions = viewertools.get_actions_by_flag(parser)
-    kinds = {flag: viewertools.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    allactions = viewercore.get_actions_by_flag(parser)
+    kinds = {flag: viewercore.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
     assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
-    assert [viewertools.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+    assert [viewercore.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
         "values",
         "list",
         "text",
@@ -2942,8 +2942,8 @@ def test_interactive_option_rows() -> None:
     # an option with no default needs a value from the user before the command can give it. Export Figure asks for
     # -dpi, thus the table does not offer it
     assert "-dpi" not in actions
-    assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
-    assert viewertools.get_default_tokens(actions["-title"]) is None
+    assert viewercore.get_default_tokens(allactions["-dpi"]) == ("250",)
+    assert viewercore.get_default_tokens(actions["-title"]) is None
 
 
 def test_interactive_other_options_reach_the_command() -> None:

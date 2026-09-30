@@ -37,8 +37,11 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
-from artistools import viewertools
 from artistools.misc.remote import model_path_from_text
+from artistools.viewertools import core as viewercore
+from artistools.viewertools import menus as viewermenus
+from artistools.viewertools import widgets as viewerwidgets
+from artistools.viewertools import window as viewerwindow
 
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
@@ -3668,8 +3671,8 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
 def test_viewer_status_line_gives_the_error() -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
     stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
-    assert viewertools.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
-    assert viewertools.get_first_line("A file is missing\nThe second line") == "A file is missing"
+    assert viewercore.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
+    assert viewercore.get_first_line("A file is missing\nThe second line") == "A file is missing"
 
 
 def test_viewer_queue_moves_a_clamped_control_back() -> None:
@@ -3684,7 +3687,7 @@ def test_viewer_queue_moves_a_clamped_control_back() -> None:
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=5)
     showvalues = mock.Mock()
-    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=mock.Mock())
+    queue = viewerwindow.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=mock.Mock())
     queue.apply(5)
     showvalues.assert_called_once_with()
     assert queue.requestedvalues is None, "unchanged values must draw no plot"
@@ -3699,14 +3702,14 @@ def test_viewer_undo_reverts_a_drag_in_one_step_and_skips_a_rejected_change() ->
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     qtcore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
     viewer = mock.Mock(values=1)
-    queue = viewertools.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    queue = viewerwindow.DrawQueue(qtcore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
     # the test needs no plot, and a timer of a plot that stays in the process crashed a later test of this worker
     with mock.patch.object(queue, "redraw"):
         # a drag gives a new value at each movement of the mouse
         for values in (2, 3, 4):
             queue.apply(values)
         # the user stops for a time that is longer than the merge time
-        queue.lastchangetime -= 10.0 * viewertools.UNDO_MERGE_SECONDS
+        queue.lastchangetime -= 10.0 * viewercore.UNDO_MERGE_SECONDS
         queue.apply(5)
         # the command rejected 5, thus the viewer kept the values of the last plot
         viewer.values = 4
@@ -3733,8 +3736,8 @@ def test_viewer_cancel_keeps_the_history_of_the_plot_on_the_screen() -> None:
     from PySide6 import QtCore
 
     viewer = mock.Mock(values=1, warning="")
-    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
-    with mock.patch.object(queue, "redraw"), mock.patch.object(viewertools, "set_plot_busy"):
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock())
+    with mock.patch.object(queue, "redraw"), mock.patch.object(viewerwindow, "set_plot_busy"):
         queue.apply(2)
         # the plot of 2 is on the screen, then Undo asks for a plot of 1, which waits
         queue.drawnvalues = 2
@@ -3763,7 +3766,7 @@ def test_viewer_undo_ignores_the_parts_that_the_window_sets() -> None:
         return restored[0], current[1]
 
     viewer = mock.Mock(values=(1, 1.0))
-    queue = viewertools.DrawQueue(
+    queue = viewerwindow.DrawQueue(
         QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock(), keep_on_undo=keep_width
     )
     with mock.patch.object(queue, "redraw") as mockredraw:
@@ -3799,7 +3802,7 @@ def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
     deletedfield = fields[3]
     viewer = mock.Mock(values=0, warning="")
     showvalues = mock.Mock()
-    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
 
     def wait_for_plots() -> None:
         deadline = time.perf_counter() + 10.0
@@ -3811,12 +3814,12 @@ def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
         return field is not deletedfield
 
     with (
-        mock.patch.object(viewertools, "get_edited_field", side_effect=fields),
-        mock.patch.object(viewertools, "is_live", side_effect=is_live),
-        mock.patch.object(viewertools, "mark_field_error") as mockmark,
-        mock.patch.object(viewertools, "clear_field_error"),
-        mock.patch.object(viewertools, "set_plot_busy"),
-        mock.patch.object(viewertools, "show_plot_banner"),
+        mock.patch.object(viewerwindow, "get_edited_field", side_effect=fields),
+        mock.patch.object(viewerwindow, "is_live", side_effect=is_live),
+        mock.patch.object(viewerwindow, "mark_field_error") as mockmark,
+        mock.patch.object(viewerwindow, "clear_field_error"),
+        mock.patch.object(viewerwindow, "set_plot_busy"),
+        mock.patch.object(viewerwindow, "show_plot_banner"),
     ):
         queue.apply(1)
         app.processEvents()
@@ -3853,7 +3856,7 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
-    viewertools.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
+    viewermenus.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
 
     assert mcolors.same_color(blackline.get_color(), "#dddddd")
     assert mcolors.same_color(blueline.get_color(), "tab:blue")
@@ -3875,17 +3878,17 @@ def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(mon
     def get_float_setting(key: str, default: float) -> float:
         return settings.get(key, default)
 
-    monkeypatch.setattr(viewertools, "get_float_setting", get_float_setting)
-    estimatorparser = viewertools.make_parser(at.estimators.addargs)
-    assert viewertools.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
+    monkeypatch.setattr(viewermenus, "get_float_setting", get_float_setting)
+    estimatorparser = viewercore.make_parser(at.estimators.addargs)
+    assert viewermenus.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
         "-labelfontsize",
         "12",
         "Te",
         "-figscale",
         "2",
     ]
-    spectraparser = viewertools.make_parser(at.spectra.plotspectra.addargs)
-    assert viewertools.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
+    spectraparser = viewercore.make_parser(at.spectra.plotspectra.addargs)
+    assert viewermenus.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
 
 
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3894,13 +3897,13 @@ def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytes
     contextlib.redirect_stdout changed the stream of each thread, thus a print of the window went to the plot.
     """
     terminal = io.StringIO()
-    monkeypatch.setattr(sys, "stdout", viewertools.ThreadOutput(terminal))
-    monkeypatch.setattr(sys, "stderr", viewertools.ThreadOutput(io.StringIO()))
+    monkeypatch.setattr(sys, "stdout", viewercore.ThreadOutput(terminal))
+    monkeypatch.setattr(sys, "stderr", viewercore.ThreadOutput(io.StringIO()))
     plotoutput = io.StringIO()
     inside, printed = threading.Event(), threading.Event()
 
     def plot() -> None:
-        with viewertools.send_output(plotoutput, io.StringIO()):
+        with viewercore.send_output(plotoutput, io.StringIO()):
             print("a line of the plot")
             inside.set()
             printed.wait(timeout=10)
@@ -3936,7 +3939,7 @@ def test_viewer_cancel_discards_the_plot_in_progress() -> None:
         return show
 
     viewer = mock.Mock(values=0, warning="")
-    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=render)
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=render)
 
     def wait_for_plots() -> None:
         deadline = time.perf_counter() + 10.0
@@ -3989,7 +3992,7 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
 
     viewer = mock.Mock(values=0)
     afterdraw = mock.Mock()
-    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
 
     def wait_for_plots() -> None:
         deadline = time.perf_counter() + 10.0
@@ -4027,7 +4030,7 @@ def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:
         return f"ComputeError: the query failed for {tokens[0]} and {len(windows)} window"
 
     with mock.patch("PySide6.QtWidgets.QFileDialog.getExistingDirectory", return_value="mymodel"):
-        message = viewertools.open_model_window(mock.Mock(), open_window, [mock.Mock()])
+        message = viewermenus.open_model_window(mock.Mock(), open_window, [mock.Mock()])
     assert message == "The viewer cannot open mymodel: ComputeError: the query failed for mymodel and 1 window"
 
 
@@ -4037,9 +4040,9 @@ def test_viewer_status_line_reads_text_in_colour() -> None:
     A colour code in front of "error: " hid the error, thus the status line showed the usage line of argparse.
     """
     warning = "\x1b[1;33mWARNING: every Te value is below the requested minimum\x1b[0m\n"
-    assert viewertools.get_last_warning(warning) == "every Te value is below the requested minimum"
+    assert viewercore.get_last_warning(warning) == "every Te value is below the requested minimum"
     error = "\x1b[1;34musage: \x1b[0martistools [options]\n\x1b[1;31merror: \x1b[0m'q=1' is not a plane or a line\n"
-    assert viewertools.get_first_line(error) == "'q=1' is not a plane or a line"
+    assert viewercore.get_first_line(error) == "'q=1' is not a plane or a line"
 
 
 def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
@@ -4059,7 +4062,7 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
     canvas.draw()
     xselections: list[tuple[float, float]] = []
     yselections: list[tuple[int, float, float]] = []
-    viewertools.connect_plot_mouse(
+    viewerwindow.connect_plot_mouse(
         canvas,
         get_frames=lambda: list(frames),
         get_readout=lambda _event, _frame: "",
@@ -4115,9 +4118,9 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
 
         with (
             mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
-            mock.patch.object(viewertools, "show_wait_cursor", contextlib.nullcontext),
+            mock.patch.object(viewermenus, "show_wait_cursor", contextlib.nullcontext),
         ):
-            viewertools.save_figure_of_command(
+            viewermenus.save_figure_of_command(
                 mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, (suffix, dpi)
             )
         # a name with no suffix takes the suffix of the selected format
@@ -4148,8 +4151,8 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
 
     queue = mock.Mock(run_task=run_task)
     statusbar = mock.Mock()
-    with mock.patch.object(viewertools, "put_file_on_clipboard", return_value=None) as mockclipboard:
-        viewertools.copy_figure_of_command(
+    with mock.patch.object(viewermenus, "put_file_on_clipboard", return_value=None) as mockclipboard:
+        viewermenus.copy_figure_of_command(
             queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], ("svg", 150)
         )
     assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
@@ -4160,10 +4163,10 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
 
 def test_viewer_row_wraps_its_groups() -> None:
     """A group of a row goes to a new line when the line is full, and a hidden group takes no place and no gap."""
-    assert viewertools.get_wrapped_lines([100, 100, 100], 250, 12) == [[0, 1], [2]]
-    assert viewertools.get_wrapped_lines([100, 0, 100], 212, 12) == [[0, 1, 2]]
+    assert viewerwidgets.get_wrapped_lines([100, 100, 100], 250, 12) == [[0, 1], [2]]
+    assert viewerwidgets.get_wrapped_lines([100, 0, 100], 212, 12) == [[0, 1, 2]]
     # a group wider than the line has a line of its own
-    assert viewertools.get_wrapped_lines([50, 400, 50], 300, 12) == [[0], [1], [2]]
+    assert viewerwidgets.get_wrapped_lines([50, 400, 50], 300, 12) == [[0], [1], [2]]
 
 
 def test_viewer_queue_runs_a_task_between_plots() -> None:
@@ -4191,7 +4194,7 @@ def test_viewer_queue_runs_a_task_between_plots() -> None:
     statusbar = mock.Mock()
     ondone = mock.Mock()
     viewer = mock.Mock(values=0, warning="")
-    queue = viewertools.DrawQueue(QtCore.QObject(), viewer, statusbar, mock.Mock(), mock.Mock(), render=render)
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, statusbar, mock.Mock(), mock.Mock(), render=render)
     queue.apply(1)
     app.processEvents()
     assert queue.run_task(task, "Reload in progress...", ondone)
@@ -4219,7 +4222,7 @@ def test_viewer_typed_centre_gives_back_the_range() -> None:
     for count in (1, 2, 3, 4):
         for start in range(len(tmids) - count + 1):
             centre = float(f"{(tmids[start] + tmids[start + count - 1]) / 2.0:.4g}")
-            assert viewertools.get_nearest_range_start(tmids, centre, count) == start, (count, start)
+            assert viewercore.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
 def test_viewer_option_rows_split_a_group_of_switches() -> None:
@@ -4227,8 +4230,8 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
 
     The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
     """
-    parser = viewertools.make_parser(at.estimators.addargs)
-    rows, othertokens = viewertools.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
+    parser = viewercore.make_parser(at.estimators.addargs)
+    rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
     assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
 

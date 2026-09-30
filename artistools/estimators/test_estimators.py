@@ -21,9 +21,9 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
-from artistools import viewertools
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
+from artistools.viewertools import core as viewercore
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -4416,7 +4416,7 @@ def test_interactive_geometry_modes_draw() -> None:
     oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
     assert "-0.006967c ≤ x < 0.006967c" in oddtext
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
-    assert viewertools.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
+    assert viewercore.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
         ("-axis", ("-x",)),
     )
